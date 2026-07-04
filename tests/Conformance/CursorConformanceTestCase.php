@@ -1,0 +1,551 @@
+<?php
+
+declare(strict_types=1);
+
+namespace haddowg\JsonApiLaravel\Tests\Conformance;
+
+use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+use Illuminate\Testing\TestResponse;
+use Orchestra\Testbench\TestCase as Orchestra;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\Test;
+
+/**
+ * The cursor (keyset) pagination acceptance suite (the Laravel port of the bundle's
+ * `CursorConformanceTestCase`), asserted byte-identical over HTTP on the in-memory
+ * witness ({@see InMemoryCursorConformanceTest}) and the reference Eloquent provider
+ * ({@see EloquentCursorConformanceTest}) over the SAME
+ * {@see \Workbench\App\Support\ConformanceFixtures::cursorWidgets()} seed. The
+ * in-memory witness is the ground truth; the Eloquent keyset push-down must match it
+ * (PLAN decision 9, bundle ADR 0063).
+ *
+ * This is the HTTP arm the provider-level {@see \haddowg\JsonApiLaravel\Tests\Unit\DataProvider\Eloquent\EloquentDataProviderCursorTest}
+ * / {@see \haddowg\JsonApiLaravel\Tests\Unit\DataProvider\InMemoryDataProviderCursorTest}
+ * stop one layer below: it drives the handler's cursor render branch (token propagation
+ * through prev/next links, the has-flags, from/to page meta) and the CursorMalformed /
+ * CursorStale 400s rendered as JSON:API error documents.
+ *
+ * The keyset walks a forced NULL=largest total order terminated by the PK tiebreak; the
+ * cases cover forward/backward round-trips, mixed asc/desc, a non-unique sort column
+ * resolved only by the PK, PK-only paging, a NULLABLE column paged through its null
+ * bucket (asc and desc, and below a higher sort key), the typed date boundary,
+ * before-wins-over-after, exhaustion, and the stale/malformed 400s.
+ */
+abstract class CursorConformanceTestCase extends Orchestra
+{
+    public const string MEDIA_TYPE = 'application/vnd.api+json';
+
+    /**
+     * The workbench service provider that wires exactly ONE provider (in-memory or
+     * Eloquent) over the isolated cursorWidgets resource.
+     *
+     * @return class-string
+     */
+    abstract protected function conformanceServiceProvider(): string;
+
+    /**
+     * @param \Illuminate\Foundation\Application $app
+     *
+     * @return array<int, class-string>
+     */
+    protected function getPackageProviders($app): array
+    {
+        return [
+            JsonApiServiceProvider::class,
+            $this->conformanceServiceProvider(),
+        ];
+    }
+
+    /**
+     * Seeds the concrete's data layer. The in-memory concrete no-ops (the fixtures
+     * live in the provider registration); the Eloquent concrete migrates + seeds.
+     */
+    protected function seedConformanceData(): void {}
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedConformanceData();
+    }
+
+    // --- forward / backward round-trips --------------------------------------
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    public function forwardPagingWalksTheWholeCollectionInFixedPages(): void
+    {
+        // sort=priority,id: priority asc (nulls last, NULL=largest), id tiebreak.
+        //   10:(2,7) 20:(5,8) 30:(1,4) null:(3,6)
+        self::assertSame(
+            ['2', '7', '5', '8', '1', '4', '3', '6'],
+            $this->walkForward('/api/cursorWidgets?sort=priority,id', 2),
+        );
+    }
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    public function theFinalForwardPageHasNoNextLinkButHasPrev(): void
+    {
+        $path = '/api/cursorWidgets?sort=priority,id&page[size]=2';
+        $seen = 0;
+        $last = null;
+        while (true) {
+            [$ids, $links] = $this->page($path);
+            $seen += \count($ids);
+            if (!isset($links['next'])) {
+                $last = $links;
+
+                break;
+            }
+            $path = $this->relativePath($this->href($links['next']));
+            self::assertLessThan(10, ++$seen, 'paging must terminate');
+        }
+
+        self::assertNotNull($last);
+        self::assertArrayNotHasKey('next', $last);
+        self::assertArrayHasKey('prev', $last);
+    }
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    public function backwardPagingFromADeepPageEqualsTheForwardPages(): void
+    {
+        $forwardPages = $this->forwardPages('/api/cursorWidgets?sort=priority,id', 2);
+        self::assertGreaterThanOrEqual(3, \count($forwardPages));
+
+        self::assertSame(
+            \array_map(static fn(array $page): array => $page['ids'], $forwardPages),
+            $this->backwardPagesFrom($forwardPages[\count($forwardPages) - 1]['path']),
+        );
+    }
+
+    // --- mixed asc/desc + the PK tiebreak ------------------------------------
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    #[Group('spec:fetching-sorting')]
+    public function mixedAscDescMultiColumnPagesInTheForcedOrder(): void
+    {
+        // sort=category,-priority: category asc, priority DESC (nulls FIRST in desc),
+        // PK tiebreak follows the last directive (priority desc) so it is DESC.
+        //   guide: 30:(4,1) 10:(7,2)   news: null:(6,3) 20:(8,5)
+        self::assertSame(
+            ['4', '1', '7', '2', '6', '3', '8', '5'],
+            $this->walkForward('/api/cursorWidgets?sort=category,-priority', 2),
+        );
+    }
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    public function aNonUniqueSortColumnIsResolvedOnlyByThePkTiebreak(): void
+    {
+        // sort=category with page[size]=1 — guide×4, news×4 all tie on category, so only
+        // the appended PK keeps them totally ordered. Every row visited exactly once.
+        //   guide:(1,2,4,7) news:(3,5,6,8)
+        self::assertSame(
+            ['1', '2', '4', '7', '3', '5', '6', '8'],
+            $this->walkForward('/api/cursorWidgets?sort=category', 1),
+        );
+    }
+
+    // --- PK-only -------------------------------------------------------------
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    public function pkOnlyPagingWithNoSortWalksIdOrder(): void
+    {
+        // No ?sort → keyset is PK-only (id asc). page[size]=2 walks 1..8.
+        self::assertSame(
+            ['1', '2', '3', '4', '5', '6', '7', '8'],
+            $this->walkForward('/api/cursorWidgets', 2),
+        );
+    }
+
+    // --- the nullable column / null bucket -----------------------------------
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    public function aNullableColumnPagesThroughItsNullBucketAscNullsLast(): void
+    {
+        // sort=priority,id asc: non-null priorities first, then the NULL rows (3,6) last.
+        self::assertSame(
+            ['2', '7', '5', '8', '1', '4', '3', '6'],
+            $this->walkForward('/api/cursorWidgets?sort=priority,id', 3),
+        );
+    }
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    public function aNullableColumnDescPutsNullsFirst(): void
+    {
+        // sort=-priority,-id: priority DESC puts the NULL rows FIRST (NULL=largest), then
+        // 30,20,10 descending; the appended PK follows -priority (desc).
+        //   null:(6,3 desc-id) 30:(4,1) 20:(8,5) 10:(7,2)
+        self::assertSame(
+            ['6', '3', '4', '1', '8', '5', '7', '2'],
+            $this->walkForward('/api/cursorWidgets?sort=-priority,-id', 3),
+        );
+    }
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    #[Group('spec:fetching-sorting')]
+    public function aNullableColumnBelowAHigherSortKeyPagesThroughItsNullBucket(): void
+    {
+        // sort=category,priority,id: the NULLABLE column sits at LEVEL 1 (below category),
+        // so a boundary landing on a null-priority row carries a NON-null higher column
+        // AND a null on the nullable level — the keyset WHERE must drop that level's
+        // after-term without orphaning the higher column's equality-prefix binding.
+        //   guide: 10:(2,7) 30:(1,4)   news: 20:(5,8) null:(3,6)
+        self::assertSame(
+            ['2', '7', '1', '4', '5', '8', '3', '6'],
+            $this->walkForward('/api/cursorWidgets?sort=category,priority,id', 2),
+        );
+    }
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    #[Group('spec:fetching-sorting')]
+    public function aBackwardWalkFlipsADescNullableColumnToAscBelowAHigherKey(): void
+    {
+        // sort=category,-priority,-id walked BACKWARD: page[before] flips -priority (desc)
+        // to priority ASC, so the backward keyset has an ASCENDING nullable column at
+        // level 1 — the post-flip degenerate the forward path never hits. A backward step
+        // whose boundary is a null-priority row must not orphan the category prefix.
+        $forwardPages = $this->forwardPages('/api/cursorWidgets?sort=category,-priority,-id', 2);
+        self::assertGreaterThanOrEqual(3, \count($forwardPages));
+
+        self::assertSame(
+            \array_map(static fn(array $page): array => $page['ids'], $forwardPages),
+            $this->backwardPagesFrom($forwardPages[\count($forwardPages) - 1]['path']),
+        );
+    }
+
+    // --- date-keyed + typed boundary -----------------------------------------
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    public function dateKeyedSortPagesChronologicallyAcrossBoundaries(): void
+    {
+        // sort=releasedAt,id asc: non-null dates chronologically, then the NULL rows (4,6)
+        // last. page[size]=3 so a boundary lands on a date row and the ISO-8601 mint →
+        // typed datetime bind must round-trip (a row equal to the boundary is not
+        // duplicated/skipped).
+        //   2024-01-05:1, 2024-01-20:5, 2024-02-10:3, 2024-03-01:2,
+        //   2024-04-15:8, 2024-05-01:7, null:(4,6)
+        self::assertSame(
+            ['1', '5', '3', '2', '8', '7', '4', '6'],
+            $this->walkForward('/api/cursorWidgets?sort=releasedAt,id', 3),
+        );
+    }
+
+    // --- before wins over after ----------------------------------------------
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    public function beforeWinsOverAfterWhenBothAreSupplied(): void
+    {
+        [, $firstLinks] = $this->page('/api/cursorWidgets?sort=priority,id&page[size]=2');
+        [$secondIds, $secondLinks] = $this->page($this->relativePath($this->href($firstLinks['next'])));
+        self::assertSame(['5', '8'], $secondIds);
+
+        $afterToken = $this->cursorParam($this->href($secondLinks['next']), 'after');
+        $beforeToken = $this->cursorParam($this->href($secondLinks['prev']), 'before');
+
+        // Both supplied: before (page 1: 2,7) must win over after (page 3: 1,4).
+        [$ids] = $this->page(\sprintf(
+            '/api/cursorWidgets?sort=priority,id&page[size]=2&page[after]=%s&page[before]=%s',
+            \rawurlencode($afterToken),
+            \rawurlencode($beforeToken),
+        ));
+
+        self::assertSame(['2', '7'], $ids);
+    }
+
+    // --- exhaustion + page meta ----------------------------------------------
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    public function theExhaustingPageEmitsNoNextAndCarriesPageMeta(): void
+    {
+        [$ids, $links] = $this->page('/api/cursorWidgets?sort=priority,id&page[size]=4');
+        self::assertSame(['2', '7', '5', '8'], $ids);
+        self::assertArrayHasKey('next', $links);
+        self::assertArrayNotHasKey('prev', $links);
+        // first always, last never (cursor pages omit `last` by design).
+        self::assertArrayHasKey('first', $links);
+        self::assertArrayNotHasKey('last', $links);
+
+        [$ids, $links] = $this->page($this->relativePath($this->href($links['next'])));
+        self::assertSame(['1', '4', '3', '6'], $ids);
+        self::assertArrayNotHasKey('next', $links);
+        self::assertArrayHasKey('prev', $links);
+    }
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    public function theFirstPageCarriesCursorPageMeta(): void
+    {
+        $document = $this->fetch('/api/cursorWidgets?sort=priority,id&page[size]=2');
+
+        $meta = $document['meta'] ?? null;
+        self::assertIsArray($meta);
+        $page = $meta['page'] ?? null;
+        self::assertIsArray($page);
+        self::assertSame(2, $page['perPage'] ?? null);
+        self::assertSame('2', $page['from'] ?? null);
+        self::assertSame('7', $page['to'] ?? null);
+        self::assertTrue($page['hasMore'] ?? null);
+    }
+
+    // --- stale / malformed 400 -----------------------------------------------
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    #[Group('spec:errors')]
+    public function aCursorReusedUnderADifferentSortColumnIsAStale400(): void
+    {
+        [, $links] = $this->page('/api/cursorWidgets?sort=priority,id&page[size]=2');
+        $afterToken = $this->cursorParam($this->href($links['next']), 'after');
+
+        $response = $this->request(\sprintf(
+            '/api/cursorWidgets?sort=category&page[size]=2&page[after]=%s',
+            \rawurlencode($afterToken),
+        ));
+
+        $response->assertStatus(400);
+        $error = $this->firstError($response);
+        self::assertSame('CURSOR_STALE', $error['code'] ?? null);
+        self::assertSame(['parameter' => 'page[after]'], $error['source'] ?? null);
+    }
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    #[Group('spec:errors')]
+    public function aFlippedSortDirectionIsAStale400ButTheSameSortPagesOn(): void
+    {
+        [, $links] = $this->page('/api/cursorWidgets?sort=category&page[size]=2');
+        $afterToken = $this->cursorParam($this->href($links['next']), 'after');
+
+        // The column SET is unchanged but its direction flipped (asc → desc), so the
+        // cursor was minted under the opposite order: 400 STALE.
+        $flipped = $this->request(\sprintf(
+            '/api/cursorWidgets?sort=-category&page[size]=2&page[after]=%s',
+            \rawurlencode($afterToken),
+        ));
+        $flipped->assertStatus(400);
+        self::assertSame('CURSOR_STALE', $this->firstError($flipped)['code'] ?? null);
+
+        // The SAME sort the cursor was minted under is fresh — it pages on.
+        $this->request(\sprintf(
+            '/api/cursorWidgets?sort=category&page[size]=2&page[after]=%s',
+            \rawurlencode($afterToken),
+        ))->assertStatus(200);
+    }
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    #[Group('spec:errors')]
+    public function aMalformedCursorIsA400(): void
+    {
+        $response = $this->request('/api/cursorWidgets?sort=priority,id&page[after]=not-base64url!!');
+
+        $response->assertStatus(400);
+        $error = $this->firstError($response);
+        self::assertSame('CURSOR_MALFORMED', $error['code'] ?? null);
+        self::assertSame(['parameter' => 'page[after]'], $error['source'] ?? null);
+    }
+
+    // --- helpers --------------------------------------------------------------
+
+    /**
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    protected function request(string $path): TestResponse
+    {
+        return $this->get($path, ['Accept' => self::MEDIA_TYPE]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function fetch(string $path): array
+    {
+        $response = $this->request($path);
+        $response->assertOk();
+        $response->assertHeader('Content-Type', self::MEDIA_TYPE);
+
+        $document = $response->json();
+        self::assertIsArray($document);
+
+        /** @var array<string, mixed> $document */
+        return $document;
+    }
+
+    /**
+     * Walks forward from `$path` following `next` until exhausted, returning the
+     * concatenated ids in document order.
+     *
+     * @return list<string>
+     */
+    private function walkForward(string $path, int $size): array
+    {
+        $path .= (\str_contains($path, '?') ? '&' : '?') . 'page[size]=' . $size;
+
+        $ids = [];
+        $guard = 0;
+        while (true) {
+            [$pageIds, $links] = $this->page($path);
+            foreach ($pageIds as $id) {
+                $ids[] = $id;
+            }
+            if (!isset($links['next'])) {
+                break;
+            }
+            $path = $this->relativePath($this->href($links['next']));
+            self::assertLessThan(20, ++$guard, 'forward paging must terminate');
+        }
+
+        return $ids;
+    }
+
+    /**
+     * The forward pages from `$path` as `[{ids, path}, …]`, capturing each page's
+     * request path so a backward walk can start from the deepest one.
+     *
+     * @return list<array{ids: list<string>, path: string}>
+     */
+    private function forwardPages(string $path, int $size): array
+    {
+        $path .= (\str_contains($path, '?') ? '&' : '?') . 'page[size]=' . $size;
+
+        $pages = [];
+        $guard = 0;
+        while (true) {
+            [$pageIds, $links] = $this->page($path);
+            $pages[] = ['ids' => $pageIds, 'path' => $path];
+            if (!isset($links['next'])) {
+                break;
+            }
+            $path = $this->relativePath($this->href($links['next']));
+            self::assertLessThan(20, ++$guard, 'forward paging must terminate');
+        }
+
+        return $pages;
+    }
+
+    /**
+     * Walks backward from `$path` following `prev` to the head, returning the pages in
+     * natural forward order (each page's ids stay in forward order).
+     *
+     * @return list<list<string>>
+     */
+    private function backwardPagesFrom(string $path): array
+    {
+        $pages = [];
+        $guard = 0;
+        while (true) {
+            [$ids, $links] = $this->page($path);
+            $pages[] = $ids;
+            if (!isset($links['prev'])) {
+                break;
+            }
+            $path = $this->relativePath($this->href($links['prev']));
+            self::assertLessThan(20, ++$guard, 'backward paging must terminate');
+        }
+
+        return \array_reverse($pages);
+    }
+
+    /**
+     * Fetches a cursor page and returns `[ids, links]` (null links dropped).
+     *
+     * @return array{0: list<string>, 1: array<string, mixed>}
+     */
+    private function page(string $path): array
+    {
+        $response = $this->request($path);
+        $response->assertOk();
+        $response->assertHeader('Content-Type', self::MEDIA_TYPE);
+
+        $document = $response->json();
+        self::assertIsArray($document);
+
+        $data = $document['data'] ?? null;
+        self::assertIsArray($data);
+
+        $ids = [];
+        foreach ($data as $resource) {
+            self::assertIsArray($resource);
+            self::assertSame('cursorWidgets', $resource['type'] ?? null);
+            $id = $resource['id'] ?? null;
+            self::assertIsString($id);
+            $ids[] = $id;
+        }
+
+        $links = $document['links'] ?? [];
+        self::assertIsArray($links);
+
+        /** @var array<string, mixed> $links */
+        $links = \array_filter($links, static fn(mixed $link): bool => $link !== null);
+
+        return [$ids, $links];
+    }
+
+    /**
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
+     *
+     * @return array<string, mixed>
+     */
+    private function firstError(TestResponse $response): array
+    {
+        $document = $response->json();
+        self::assertIsArray($document);
+
+        $errors = $document['errors'] ?? null;
+        self::assertIsArray($errors);
+        self::assertNotEmpty($errors);
+
+        $first = $errors[0] ?? null;
+        self::assertIsArray($first);
+
+        /** @var array<string, mixed> $first */
+        return $first;
+    }
+
+    private function href(mixed $link): string
+    {
+        if (\is_array($link) && isset($link['href']) && \is_string($link['href'])) {
+            return $link['href'];
+        }
+
+        self::assertIsString($link);
+
+        return $link;
+    }
+
+    /**
+     * The path + query of an absolute link, for re-issuing through the test app.
+     */
+    private function relativePath(string $url): string
+    {
+        $path = (string) \parse_url($url, \PHP_URL_PATH);
+        $query = \parse_url($url, \PHP_URL_QUERY);
+
+        return \is_string($query) && $query !== '' ? $path . '?' . $query : $path;
+    }
+
+    /**
+     * The `page[$key]` cursor token from an absolute link href.
+     */
+    private function cursorParam(string $url, string $key): string
+    {
+        \parse_str((string) \parse_url($url, \PHP_URL_QUERY), $query);
+        $page = $query['page'] ?? null;
+        self::assertIsArray($page);
+        $token = $page[$key] ?? null;
+        self::assertIsString($token);
+
+        return $token;
+    }
+}

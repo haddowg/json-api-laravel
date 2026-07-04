@@ -10,22 +10,24 @@ use Illuminate\Support\ServiceProvider;
 use Workbench\App\Domain\Album;
 use Workbench\App\Domain\Artist;
 use Workbench\App\Domain\Genre;
-use Workbench\App\Support\Fixtures;
+use Workbench\App\Support\ConformanceFixtures;
 
 /**
- * The in-memory workbench wiring: it points discovery at `app/JsonApi` and registers
- * one seeded {@see InMemoryDataProvider} per resource type at the default priority. The
- * in-memory providers carry their fixture data (which the container cannot supply), so
- * they are registered explicitly via `JsonApi::provider()` rather than discovered.
+ * The **in-memory** half of the read-conformance dual-provider wiring: it points
+ * discovery at the SAME `app/JsonApi` resources the Eloquent wiring
+ * ({@see EloquentWorkbenchServiceProvider}) serves, and registers one
+ * {@see InMemoryDataProvider} per type seeded from the richer
+ * {@see ConformanceFixtures} — the identical rows the {@see \Workbench\Database\Seeders\ConformanceSeeder}
+ * loads into SQLite, so the two conformance suites assert against like data and a
+ * divergence localizes to one provider's execution (blueprint §5.4).
  *
- * The seed rows come from the shared {@see Fixtures} the Eloquent wiring
- * ({@see EloquentWorkbenchServiceProvider}) also seeds, so the two provider suites read
- * identical data — the dual-provider conformance premise.
- *
- * Everything runs in `register()` so it lands before the package provider's `boot()`
- * reads the discovery + provider registrations.
+ * Distinct from the Phase-0 {@see WorkbenchServiceProvider} (which seeds the minimal
+ * 2-row {@see \Workbench\App\Support\Fixtures} the feature suite asserts against) so
+ * enriching the conformance dataset never perturbs the existing tests. Everything
+ * runs in `register()` so it lands before the package provider's `boot()` reads the
+ * discovery + provider registrations.
  */
-final class WorkbenchServiceProvider extends ServiceProvider
+final class ConformanceInMemoryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
@@ -42,7 +44,7 @@ final class WorkbenchServiceProvider extends ServiceProvider
     private function artists(): array
     {
         $artists = [];
-        foreach (Fixtures::artists() as $row) {
+        foreach (ConformanceFixtures::artists() as $row) {
             $artists[(string) $row['id']] = new Artist(
                 id: (string) $row['id'],
                 name: $row['name'],
@@ -63,7 +65,7 @@ final class WorkbenchServiceProvider extends ServiceProvider
     private function albums(): array
     {
         $albums = [];
-        foreach (Fixtures::albums() as $row) {
+        foreach (ConformanceFixtures::albums() as $row) {
             $albums[(string) $row['id']] = new Album(
                 id: (string) $row['id'],
                 title: $row['title'],
@@ -84,7 +86,7 @@ final class WorkbenchServiceProvider extends ServiceProvider
     private function genres(): array
     {
         $genres = [];
-        foreach (Fixtures::genres() as $row) {
+        foreach (ConformanceFixtures::genres() as $row) {
             $genres[$row['id']] = new Genre(id: $row['id'], name: $row['name']);
         }
 
