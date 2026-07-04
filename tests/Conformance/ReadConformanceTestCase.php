@@ -686,14 +686,28 @@ abstract class ReadConformanceTestCase extends Orchestra
     #[Test]
     #[Group('spec:fetching-filtering')]
     #[Group('spec:errors')]
-    public function aMalformedFilterValueRendersA400IsDeferredToPhase2(): void
+    public function aMalformedFilterValueRendersA400(): void
     {
-        self::markTestSkipped(
-            'Phase 2 (always-on validator bridge): a malformed filter value '
-            . '(e.g. filter[trackRange][min]=banana, or a calendar-invalid DateRange bound '
-            . 'like 1997-13-99) becomes a 400 FILTER_VALUE_INVALID before the provider '
-            . 'runs. Phase 1 covers only the applier/paginator-sourced 400s.',
-        );
+        // Phase 2 (always-on validator bridge): a malformed filter value is validated
+        // against the filter's declared value constraints BEFORE the provider runs, so it
+        // is a clean `400` FILTER_VALUE_INVALID (located by source.parameter) — identical
+        // on BOTH providers, never a silent non-match in memory or a driver error on SQL.
+
+        // A non-numeric bound of the numeric `trackRange` Range fails its numeric shape.
+        $range = $this->request('/api/artists?filter[trackRange][min]=banana');
+        $range->assertStatus(400);
+        $range->assertHeader('Content-Type', self::MEDIA_TYPE);
+        self::assertSame('400', $range->json('errors.0.status'));
+        self::assertSame('FILTER_VALUE_INVALID', $range->json('errors.0.code'));
+        self::assertSame('filter[trackRange]', $range->json('errors.0.source.parameter'));
+
+        // A calendar-invalid bound of the `releasedRange` DateRange (the shape Pattern is
+        // lenient on the calendar) is caught by the temporal-validity check.
+        $date = $this->request('/api/albums?filter[releasedRange][min]=1997-13-99T00:00:00Z');
+        $date->assertStatus(400);
+        self::assertSame('400', $date->json('errors.0.status'));
+        self::assertSame('FILTER_VALUE_INVALID', $date->json('errors.0.code'));
+        self::assertSame('filter[releasedRange]', $date->json('errors.0.source.parameter'));
     }
 
     #[Test]

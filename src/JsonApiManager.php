@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel;
 
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
+use haddowg\JsonApiLaravel\Validation\ConstraintTranslatorInterface;
 
 /**
  * The mutable registration surface behind the {@see \haddowg\JsonApiLaravel\Facades\JsonApi}
@@ -39,6 +40,11 @@ final class JsonApiManager
      * @var list<array{persister: DataPersisterInterface|class-string<DataPersisterInterface>, priority: int}>
      */
     private array $persisters = [];
+
+    /**
+     * @var list<ConstraintTranslatorInterface|class-string<ConstraintTranslatorInterface>>
+     */
+    private array $constraintTranslators = [];
 
     private bool $registerRoutes = true;
 
@@ -101,6 +107,21 @@ final class JsonApiManager
     }
 
     /**
+     * Registers a constraint translator (an instance, or a container-resolvable
+     * class-string) for the always-on validation bridge — the class-keyed extension point
+     * (PLAN decision 6) for an application's own {@see ConstraintInterface} value objects.
+     * Consulted after the built-in vocabulary, first-`supports()` match wins.
+     *
+     * @param ConstraintTranslatorInterface|class-string<ConstraintTranslatorInterface> $translator
+     */
+    public function constraintTranslator(ConstraintTranslatorInterface|string $translator): self
+    {
+        $this->constraintTranslators[] = $translator;
+
+        return $this;
+    }
+
+    /**
      * Suppresses automatic route registration, so routes are placed manually via the
      * `Route::jsonApi()` macro instead.
      */
@@ -157,5 +178,15 @@ final class JsonApiManager
     public function persisterRegistrations(): array
     {
         return $this->persisters;
+    }
+
+    /**
+     * The explicitly-registered constraint translators (instances or class-strings).
+     *
+     * @return list<ConstraintTranslatorInterface|class-string<ConstraintTranslatorInterface>>
+     */
+    public function constraintTranslatorRegistrations(): array
+    {
+        return $this->constraintTranslators;
     }
 }

@@ -14,13 +14,15 @@ namespace haddowg\JsonApiLaravel\Discovery;
 final readonly class DiscoveryResult
 {
     /**
-     * @param list<ResourceDescriptor> $resources  the discovered resources' descriptors
-     * @param list<class-string>       $providers  the discovered data-provider class-strings
-     * @param list<class-string>       $persisters the discovered data-persister class-strings
+     * @param list<ResourceDescriptor> $resources   the discovered resources' descriptors
+     * @param list<class-string>       $providers   the discovered data-provider class-strings
+     * @param list<class-string>       $persisters  the discovered data-persister class-strings
+     * @param list<class-string>       $translators the discovered constraint-translator class-strings
      */
     public function __construct(
         public array $resources,
         public array $providers,
         public array $persisters,
+        public array $translators = [],
     ) {}
 }

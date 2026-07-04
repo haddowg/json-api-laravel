@@ -12,7 +12,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * fields expect with zero adapter code: `available_from`/`released_at` are Carbon
  * (serialized by the Date/DateTime fields), `explicit` a bool, `average_rating` a float.
  *
- * @property int $id
+ * @property int                             $id
+ * @property int|null                        $artist_id
+ * @property string                          $title
+ * @property float|null                      $average_rating
+ * @property string                          $status
+ * @property bool                            $explicit
+ * @property \Illuminate\Support\Carbon|null $available_from
+ * @property \Illuminate\Support\Carbon      $released_at
  */
 final class Album extends Model
 {

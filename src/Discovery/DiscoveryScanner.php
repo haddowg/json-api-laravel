@@ -9,6 +9,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
 use haddowg\JsonApiLaravel\Operation\Operation;
+use haddowg\JsonApiLaravel\Validation\ConstraintTranslatorInterface;
 
 /**
  * The Laravel-native replacement for the Symfony bundle's autoconfiguration +
@@ -50,6 +51,7 @@ final class DiscoveryScanner
         $resources = [];
         $providers = [];
         $persisters = [];
+        $translators = [];
 
         foreach ($classes as $class) {
             if (isset($seen[$class])) {
@@ -83,10 +85,16 @@ final class DiscoveryScanner
 
             if ($reflection->implementsInterface(DataPersisterInterface::class)) {
                 $persisters[] = $class;
+
+                continue;
+            }
+
+            if ($reflection->implementsInterface(ConstraintTranslatorInterface::class)) {
+                $translators[] = $class;
             }
         }
 
-        return new DiscoveryResult($resources, $providers, $persisters);
+        return new DiscoveryResult($resources, $providers, $persisters, $translators);
     }
 
     /**
@@ -121,6 +129,8 @@ final class DiscoveryScanner
             $uriType,
             $this->servers($attribute),
             $this->operations($attribute),
+            $attribute?->policy,
+            $attribute !== null ? $attribute->abilities : [],
         );
     }
 

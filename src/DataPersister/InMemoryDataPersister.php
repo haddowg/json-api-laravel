@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\DataPersister;
 
+use haddowg\JsonApi\Exception\ClientGeneratedIdAlreadyExists;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\Resource\Field\Mode;
@@ -80,6 +81,16 @@ final class InMemoryDataPersister implements DataPersisterInterface, Transaction
 
     public function create(string $type, object $entity): object
     {
+        // A client-supplied id already present on the entity that collides with a stored
+        // resource is a `409` CLIENT_GENERATED_ID_ALREADY_EXISTS (core defines the
+        // exception; the write layer enforces it) rather than a silent overwrite. A
+        // server-generated create carries no id yet (idOf() is null — the store mints one
+        // in save()), so it never trips this.
+        $id = $this->store->idOf($entity);
+        if ($id !== null && $this->store->find($id) !== null) {
+            throw new ClientGeneratedIdAlreadyExists($id);
+        }
+
         $this->store->save($entity);
 
         return $entity;

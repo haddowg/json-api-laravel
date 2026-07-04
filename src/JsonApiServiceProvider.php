@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel;
 
+use haddowg\JsonApiLaravel\Authorization\Authorizer;
+use haddowg\JsonApiLaravel\Authorization\ResourceAuthorization;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
@@ -12,11 +14,16 @@ use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\DiscoveryScanner;
 use haddowg\JsonApiLaravel\Exception\ExceptionMapperInterface;
 use haddowg\JsonApiLaravel\Exception\JsonApiExceptionRenderer;
-use haddowg\JsonApiLaravel\Operation\FetchResourceHandler;
+use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
 use haddowg\JsonApiLaravel\Routing\RouteRegistrar;
 use haddowg\JsonApiLaravel\Server\ServerFactory;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
+use haddowg\JsonApiLaravel\Validation\ConstraintTranslator;
+use haddowg\JsonApiLaravel\Validation\ConstraintTranslatorInterface;
+use haddowg\JsonApiLaravel\Validation\FilterValueValidator;
+use haddowg\JsonApiLaravel\Validation\JsonPointerBuilder;
+use haddowg\JsonApiLaravel\Validation\ResourceValidator;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Foundation\CachesRoutes;
@@ -37,6 +44,13 @@ use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
  */
 final class JsonApiServiceProvider extends ServiceProvider
 {
+    /**
+     * The container tag a {@see ConstraintTranslatorInterface} binding can carry to join
+     * the always-on validation bridge's extension point (alongside `JsonApi::constraintTranslator()`
+     * and discovery scanning).
+     */
+    public const string CONSTRAINT_TRANSLATOR_TAG = 'jsonapi.constraint_translator';
+
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/jsonapi.php', 'jsonapi');
@@ -46,10 +60,12 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->registerPsrBridge();
         $this->registerDiscovery();
         $this->registerRegistries();
+        $this->registerValidation();
+        $this->registerAuthorization();
         $this->registerServers();
 
         $this->app->singleton(TargetResolver::class);
-        $this->app->singleton(FetchResourceHandler::class);
+        $this->app->singleton(CrudOperationHandler::class);
 
         $this->registerExceptionRenderer();
 
@@ -199,6 +215,100 @@ final class JsonApiServiceProvider extends ServiceProvider
     }
 
     /**
+     * Binds the always-on validation bridge (PLAN decision 6): the pointer builder, the
+     * {@see ConstraintTranslator} (its class-keyed extension point assembled from the
+     * explicit {@see JsonApiManager} registrations, the discovered translators, and the
+     * tagged container bindings), and the {@see ResourceValidator} / {@see FilterValueValidator}
+     * that give a resource's constraint metadata teeth as `422`/`400` respectively.
+     */
+    private function registerValidation(): void
+    {
+        $this->app->singleton(JsonPointerBuilder::class);
+
+        $this->app->singleton(ConstraintTranslator::class, function (Container $app): ConstraintTranslator {
+            return new ConstraintTranslator($this->constraintTranslators($app));
+        });
+
+        $this->app->singleton(ResourceValidator::class);
+        $this->app->singleton(FilterValueValidator::class);
+    }
+
+    /**
+     * The registered constraint translators, in resolution order: the explicit
+     * {@see JsonApiManager} registrations, then the discovered translator classes, then
+     * the tagged container bindings — each resolved to an instance and instanceof-guarded.
+     *
+     * @return list<ConstraintTranslatorInterface>
+     */
+    private function constraintTranslators(Container $app): array
+    {
+        /** @var JsonApiManager $manager */
+        $manager = $app->make(JsonApiManager::class);
+        /** @var Discovery $discovery */
+        $discovery = $app->make(Discovery::class);
+
+        /** @var list<ConstraintTranslatorInterface|class-string<ConstraintTranslatorInterface>> $candidates */
+        $candidates = $manager->constraintTranslatorRegistrations();
+        foreach ($discovery->translators() as $class) {
+            $candidates[] = $class;
+        }
+        /** @var iterable<ConstraintTranslatorInterface> $tagged */
+        $tagged = $app->tagged(self::CONSTRAINT_TRANSLATOR_TAG);
+        foreach ($tagged as $translator) {
+            $candidates[] = $translator;
+        }
+
+        $translators = [];
+        foreach ($candidates as $candidate) {
+            $translator = $candidate instanceof ConstraintTranslatorInterface ? $candidate : $app->make($candidate);
+            if (!$translator instanceof ConstraintTranslatorInterface) {
+                throw new \LogicException(\sprintf(
+                    'A registered JSON:API constraint translator must implement %s; got %s.',
+                    ConstraintTranslatorInterface::class,
+                    \is_string($candidate) ? $candidate : \get_debug_type($candidate),
+                ));
+            }
+            $translators[] = $translator;
+        }
+
+        return $translators;
+    }
+
+    /**
+     * Binds the policy-first {@see Authorizer} (PLAN decision 7): the per-type
+     * authorization overrides (dedicated `policy:` class + ability renames/disables) are
+     * projected off the discovered {@see \haddowg\JsonApiLaravel\Discovery\ResourceDescriptor}s
+     * once, at first resolution (after discovery + application service providers have
+     * run), and paired with the application's {@see Gate}. Types with no override still
+     * flow through the Gate path (honouring any `Gate::policy()`/`Gate::define()` the
+     * application registered), inert when neither exists.
+     */
+    private function registerAuthorization(): void
+    {
+        $this->app->singleton(Authorizer::class, static function (Container $app): Authorizer {
+            /** @var Discovery $discovery */
+            $discovery = $app->make(Discovery::class);
+
+            $config = [];
+            foreach ($discovery->resources() as $descriptor) {
+                // The resource class is carried as the class-level subject token so a
+                // declared policy can enforce viewAny/create even for a read-only type that
+                // mints no list instance (see Authorizer::authorizeViaPolicy).
+                $config[$descriptor->type] = new ResourceAuthorization(
+                    $descriptor->policy,
+                    $descriptor->abilities,
+                    $descriptor->class,
+                );
+            }
+
+            /** @var \Illuminate\Contracts\Auth\Access\Gate $gate */
+            $gate = $app->make(\Illuminate\Contracts\Auth\Access\Gate::class);
+
+            return new Authorizer($gate, $config);
+        });
+    }
+
+    /**
      * Binds the {@see ServerRegistry}: one {@see ServerFactory} per configured server,
      * each holding that server's resource class-strings and building its immutable core
      * {@see \haddowg\JsonApi\Server\Server} lazily on first dispatch.
@@ -209,7 +319,7 @@ final class JsonApiServiceProvider extends ServiceProvider
             /** @var Discovery $discovery */
             $discovery = $app->make(Discovery::class);
             $psr17 = $app->make(Psr17Factory::class);
-            $handler = $app->make(FetchResourceHandler::class);
+            $handler = $app->make(CrudOperationHandler::class);
 
             $resolver = static function (string $class) use ($app): object {
                 $instance = $app->make($class);
