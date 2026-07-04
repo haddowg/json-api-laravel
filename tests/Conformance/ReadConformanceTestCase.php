@@ -30,14 +30,21 @@ use PHPUnit\Framework\Attributes\Test;
  * seed data is edge-heavy on purpose (null attributes, repeated sort keys broken by a
  * unique secondary, mixed-case strings, numeric/string/date/bool types).
  *
- * Relationship-scope behaviour (`?include`, related/relationship endpoints,
- * relationship-existence filters `WhereHas`/`WhereDoesntHave`/`WhereThrough`) is
- * Phase 3 and the filter-value-constraint 400 is Phase 2; both are kept VISIBLE here
- * as explicitly skipped tests rather than silently omitted.
+ * Relationship-scope behaviour (`?include` compound documents, related/relationship
+ * endpoints, relationship-existence filters `WhereHas`/`WhereDoesntHave`/`WhereThrough`)
+ * landed in Phase 3a and is asserted here dual-provider; the fuller relationship-read
+ * matrix (batch-window edges, load-state, `?withCount`, linkage shapes) lives in the
+ * dedicated {@see RelationshipReadConformanceTestCase}. The client-driven `?withCount=_self_`
+ * opt-in is now recognized (the Countable profile is wired) and asserted here as core's `400`
+ * safe-default until a resource opts in via CountableSelfInterface; relationship WRITES and
+ * the known null-in-comparison divergence (ADR 0003) remain VISIBLE as explicitly skipped
+ * markers rather than omitted.
  */
 abstract class ReadConformanceTestCase extends Orchestra
 {
     public const string MEDIA_TYPE = 'application/vnd.api+json';
+
+    protected const string COUNTABLE_PROFILE = 'https://haddowg.github.io/json-api/profiles/countable/';
 
     /**
      * The workbench service provider that wires exactly ONE provider (in-memory or
@@ -646,41 +653,123 @@ abstract class ReadConformanceTestCase extends Orchestra
 
     // --- explicitly deferred (kept visible, not deleted) ---------------------
 
+    // --- Phase 3a: relationship reads land (formerly deferred, now asserted) -------
+    //
+    // These four blocks were the Phase-1/2 placeholders for the relationship-read
+    // surface. Phase 3a wires the `albums`/`artist` relations on BOTH providers over the
+    // SAME object graph (the FK the Eloquent hasMany/belongsTo keys on; the wired POPO
+    // properties the witness reads), so the SAME assertion runs against SQL and the
+    // witness — a divergence localizes to one provider (the referee premise). The fuller
+    // relationship-read matrix (batch-window edges, load-state, withCount, linkage
+    // shapes) lives in the dedicated {@see RelationshipReadConformanceTestCase}.
+
     #[Test]
     #[Group('spec:fetching-filtering')]
-    public function relationshipExistenceFiltersAreDeferredToPhase3(): void
+    public function relationshipExistenceFiltersMatchIdenticallyOnBothProviders(): void
     {
-        self::markTestSkipped(
-            'Phase 3 (relationships): WhereHas/WhereDoesntHave compile to an EXISTS '
-            . 'subquery on Eloquent, but the in-memory conformance POPOs declare no '
-            . 'relations, so identical-result parity cannot be asserted until the '
-            . 'related fixtures land. The Eloquent SQL push-down is covered by '
-            . 'EloquentFilterHandlerTest::itMapsRelationshipExistenceToAnExistsSubquery.',
-        );
+        // `filter[withAlbums]`/`filter[withoutAlbums]` are the WhereHas / WhereDoesntHave
+        // semi-join: Radiohead (1), Portishead (2) and Massive Attack (3) own albums;
+        // aphex twin (4), Boards of Canada (5) and ARCA (6) own none. The Eloquent
+        // provider compiles an EXISTS / NOT EXISTS subquery; the witness runs the
+        // reference predicate over the object graph — identical sets on both.
+        self::assertSame(['1', '2', '3'], $this->sortedIds('/api/artists?filter[withAlbums]', 'artists'));
+        self::assertSame(['4', '5', '6'], $this->sortedIds('/api/artists?filter[withoutAlbums]', 'artists'));
     }
 
     #[Test]
     #[Group('spec:fetching-filtering')]
-    public function whereThroughDottedPathFilterIsDeferredToPhase3(): void
+    public function aWhereThroughDottedPathFilterIsAnExistsAnySemiJoin(): void
     {
-        self::markTestSkipped(
-            'Phase 3 (relationships): WhereThrough traverses a dotted relation path; '
-            . 'the in-memory POPOs carry no object graph to traverse yet.',
-        );
+        // `filter[albumTitled]` traverses `albums.title` and keeps an artist who has SOME
+        // album with that title. Radiohead owns four albums including `amnesiac`, so the
+        // semi-join returns it ONCE (never row-multiplied by the four-album fan-out) —
+        // the same result whether Eloquent nests the leaf predicate in the EXISTS or the
+        // witness walks the object graph.
+        self::assertSame(['1'], $this->ids($this->fetch('/api/artists?filter[albumTitled]=amnesiac'), 'artists'));
+        // A title owned by a single-album artist.
+        self::assertSame(['2'], $this->ids($this->fetch('/api/artists?filter[albumTitled]=Dummy'), 'artists'));
+        // A title nobody owns matches nothing.
+        self::assertSame([], $this->ids($this->fetch('/api/artists?filter[albumTitled]=Nonexistent'), 'artists'));
     }
 
     #[Test]
     #[Group('spec:fetching-includes')]
-    public function compoundDocumentsViaIncludeAreDeferredToPhase3(): void
+    public function compoundDocumentsViaIncludeExpandTheRelatedResources(): void
     {
-        self::markTestSkipped('Phase 3 (relationships): ?include compound documents.');
+        // to-one: ?include=artist carries the owner's linkage data AND expands it into the
+        // compound `included` array.
+        $toOne = $this->fetch('/api/albums/1?include=artist');
+        self::assertSame(['type' => 'artists', 'id' => '1'], $this->relationshipData($toOne, 'artist'));
+        self::assertSame(['1'], $this->includedIds($toOne, 'artists'));
+
+        // to-many: ?include=albums expands all four of Radiohead's albums.
+        $toMany = $this->fetch('/api/artists/1?include=albums');
+        $linkage = $this->relationshipData($toMany, 'albums');
+        self::assertIsArray($linkage);
+        self::assertCount(4, $linkage);
+        self::assertSame(['1', '3', '6', '7'], $this->includedIds($toMany, 'albums'));
+
+        // deep (depth 2, within the max_include_depth of 3): ?include=artist.albums walks
+        // album 1 → its artist → that artist's albums. The primary album 1 is NOT repeated
+        // in `included` (compound-document dedup), so it is artist 1 + albums 3/6/7.
+        $deep = $this->fetch('/api/albums/1?include=artist.albums');
+        self::assertSame(['1'], $this->includedIds($deep, 'artists'));
+        self::assertSame(['3', '6', '7'], $this->includedIds($deep, 'albums'));
+
+        // sparse fieldset on an included type: only the requested attribute renders.
+        $sparse = $this->fetch('/api/artists/1?include=albums&fields[albums]=title');
+        $album = $this->firstIncluded($sparse, 'albums');
+        $attributes = $album['attributes'] ?? null;
+        self::assertIsArray($attributes);
+        self::assertSame(['title'], \array_keys($attributes));
+
+        // a path deeper than the max include depth (3) is a 400 before any fetch.
+        $tooDeep = $this->request('/api/albums/1?include=artist.albums.artist.albums');
+        $tooDeep->assertStatus(400);
+        self::assertSame('INCLUSION_DEPTH_EXCEEDED', $this->firstError($tooDeep)['code'] ?? null);
     }
 
     #[Test]
     #[Group('spec:fetching')]
-    public function relatedAndRelationshipEndpointsAreDeferredToPhase3(): void
+    public function theRelatedAndRelationshipEndpointsRenderTheRelation(): void
     {
-        self::markTestSkipped('Phase 3 (relationships): GET /{type}/{id}/{rel} + /relationships/{rel}.');
+        // related to-many: GET /artists/1/albums renders the albums collection under the
+        // albums resource's own default sort (released_at DESC) + counting paginator.
+        $related = $this->fetch('/api/artists/1/albums');
+        self::assertSame(['6', '7', '3', '1'], $this->ids($related, 'albums'));
+        self::assertSame(4, $this->topLevelMeta($related)['total'] ?? null);
+
+        // related to-many, empty: artist 4 owns none.
+        $empty = $this->fetch('/api/artists/4/albums');
+        self::assertSame([], $this->ids($empty, 'albums'));
+        self::assertSame(0, $this->topLevelMeta($empty)['total'] ?? null);
+
+        // related to-one: GET /albums/1/artist renders the single owner resource.
+        $toOne = $this->fetch('/api/albums/1/artist');
+        $data = $toOne['data'] ?? null;
+        self::assertIsArray($data);
+        self::assertSame('artists', $data['type'] ?? null);
+        self::assertSame('1', $data['id'] ?? null);
+
+        // relationship to-many: GET /artists/1/relationships/albums renders linkage only.
+        $linkage = $this->fetch('/api/artists/1/relationships/albums');
+        $identifiers = $linkage['data'] ?? null;
+        self::assertIsArray($identifiers);
+        self::assertCount(4, $identifiers);
+        foreach ($identifiers as $identifier) {
+            self::assertIsArray($identifier);
+            self::assertSame(['type', 'id'], \array_keys($identifier));
+            self::assertSame('albums', $identifier['type']);
+        }
+
+        // relationship to-one linkage.
+        $toOneLinkage = $this->fetch('/api/albums/1/relationships/artist');
+        self::assertSame(['type' => 'artists', 'id' => '1'], $toOneLinkage['data'] ?? null);
+
+        // 404 arms: missing parent, unknown related relation, unknown relationship.
+        $this->request('/api/artists/9999/albums')->assertStatus(404);
+        $this->request('/api/artists/1/nonsense')->assertStatus(404);
+        $this->request('/api/artists/1/relationships/nonsense')->assertStatus(404);
     }
 
     #[Test]
@@ -712,17 +801,25 @@ abstract class ReadConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:fetching-pagination')]
-    public function clientDrivenWithCountSelfIsDeferredToTheSurfacePhase(): void
+    public function clientDrivenWithCountSelfIsRejectedUntilTheResourceOptsIn(): void
     {
-        self::markTestSkipped(
-            'Phase 4 (the surface): the CLIENT-driven `?withCount=_self_` opt-in rides '
-            . "core's Countable profile, which is negotiated only when registered on the "
-            . 'Server. The Phase-1 ServerFactory wires no profiles (profiles/OpenAPI/'
-            . 'events are the surface phase), so the withCount family is not yet '
-            . 'recognized. The AUTHOR-side counted total (PagePaginator::withCount()) is '
-            . 'fully refereed on both providers by the counted `albums` arm above; only '
-            . 'the request-driven opt-in awaits profile wiring.',
-        );
+        // Phase 3a registers core's Countable profile on every Server (ServerFactory), so the
+        // CLIENT-driven `?withCount=_self_` opt-in IS now recognized once the client
+        // negotiates the profile — the capability the old Phase-1 marker said was unwired is
+        // live (this un-skips it). But `_self_` counts the primary collection ITSELF, which
+        // core gates on the resource opting in via CountableSelfInterface; the workbench
+        // `artists` resource does not, so core's safe default rejects it with a `400`
+        // (RELATIONSHIP_COUNT_NOT_ALLOWED) BEFORE the provider runs — identical on both
+        // providers. The AUTHOR-side counted total (PagePaginator::withCount()) is fully
+        // refereed by the counted `albums` arm; a resource-level `_self_` opt-in is a
+        // Phase-4 surface concern.
+        $response = $this->get('/api/artists?withCount=_self_', [
+            'Accept' => self::MEDIA_TYPE . ';profile="' . self::COUNTABLE_PROFILE . '"',
+        ]);
+
+        $response->assertStatus(400);
+        self::assertSame('400', $response->json('errors.0.status'));
+        self::assertSame('RELATIONSHIP_COUNT_NOT_ALLOWED', $response->json('errors.0.code'));
     }
 
     #[Test]
@@ -956,5 +1053,76 @@ abstract class ReadConformanceTestCase extends Orchestra
         self::assertIsString($link);
 
         return $link;
+    }
+
+    /**
+     * The `data` of the primary single resource's `$name` relationship object (a to-one
+     * identifier or a list of to-many identifiers), asserted present.
+     *
+     * @param array<string, mixed> $document
+     */
+    protected function relationshipData(array $document, string $name): mixed
+    {
+        $data = $document['data'] ?? null;
+        self::assertIsArray($data);
+
+        $relationships = $data['relationships'] ?? null;
+        self::assertIsArray($relationships);
+
+        $relationship = $relationships[$name] ?? null;
+        self::assertIsArray($relationship);
+        self::assertArrayHasKey('data', $relationship);
+
+        return $relationship['data'];
+    }
+
+    /**
+     * The numerically-sorted ids of the compound document's `included` resources of
+     * `$type` (empty when none, so a to-one/to-many expansion asserts a stable set).
+     *
+     * @param array<string, mixed> $document
+     *
+     * @return list<string>
+     */
+    protected function includedIds(array $document, string $type): array
+    {
+        $included = $document['included'] ?? [];
+        self::assertIsArray($included);
+
+        $ids = [];
+        foreach ($included as $resource) {
+            self::assertIsArray($resource);
+            if (($resource['type'] ?? null) === $type) {
+                $id = $resource['id'] ?? null;
+                self::assertIsString($id);
+                $ids[] = $id;
+            }
+        }
+        \sort($ids, \SORT_NUMERIC);
+
+        return $ids;
+    }
+
+    /**
+     * The first `included` resource of `$type`, asserted present.
+     *
+     * @param array<string, mixed> $document
+     *
+     * @return array<string, mixed>
+     */
+    protected function firstIncluded(array $document, string $type): array
+    {
+        $included = $document['included'] ?? [];
+        self::assertIsArray($included);
+
+        foreach ($included as $resource) {
+            self::assertIsArray($resource);
+            if (($resource['type'] ?? null) === $type) {
+                /** @var array<string, mixed> $resource */
+                return $resource;
+            }
+        }
+
+        self::fail("No included resource of type '{$type}'.");
     }
 }

@@ -1,0 +1,45 @@
+<?php
+
+declare(strict_types=1);
+
+namespace haddowg\JsonApiLaravel\Serializer;
+
+use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Serializer\RelationshipCountInterface;
+
+/**
+ * The package's fill of core's {@see RelationshipCountInterface} count seam: a
+ * render-time lookup over a map the
+ * {@see \haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher} pre-computed for the
+ * fetched page of parents, so the per-relationship `meta.total` core renders for a
+ * `?withCount`-named countable relation reads a batched count rather than triggering a
+ * per-object query.
+ *
+ * The map is keyed by the parent's object identity ({@see \spl_object_id()}) then by
+ * relation name, because the very object instances the batcher counted are the ones the
+ * serializer renders (the response value object holds them) — so the lookup needs no
+ * wire-id re-resolution and is exact even for two distinct parents that happen to share a
+ * wire id across types. A parent/relation absent from the map (not counted, or not a
+ * countable `?withCount` relation) returns `null`, and core then omits `meta.total`.
+ *
+ * Injected per request through core's {@see \haddowg\JsonApi\Server\Server::withRelationshipCount()}
+ * (via the swappable {@see RequestScopedRelationshipCount} holder, since the Server is
+ * immutable and memoized), so a built map lives only for the render of the page it was
+ * built from.
+ */
+final class BatchedRelationshipCount implements RelationshipCountInterface
+{
+    /**
+     * @param array<int, array<string, int>> $counts `spl_object_id(parent) => [relationName => count]`
+     */
+    public function __construct(private readonly array $counts) {}
+
+    public function countRelationship(mixed $model, RelationInterface $relation): ?int
+    {
+        if (!\is_object($model)) {
+            return null;
+        }
+
+        return $this->counts[\spl_object_id($model)][$relation->name()] ?? null;
+    }
+}

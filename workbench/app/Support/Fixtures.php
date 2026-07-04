@@ -46,13 +46,18 @@ final class Fixtures
     }
 
     /**
-     * @return list<array{id: int, title: string, average_rating: ?float, status: string, explicit: bool, available_from: ?\DateTimeImmutable, released_at: ?\DateTimeImmutable}>
+     * `artist_id` links each album to its {@see artists()} owner (the FK the Eloquent
+     * `belongsTo`/`hasMany` and the in-memory object graph both key on): OK Computer →
+     * Radiohead, Dummy → Portishead.
+     *
+     * @return list<array{id: int, artist_id: ?int, title: string, average_rating: ?float, status: string, explicit: bool, available_from: ?\DateTimeImmutable, released_at: ?\DateTimeImmutable}>
      */
     public static function albums(): array
     {
         return [
             [
                 'id' => 1,
+                'artist_id' => 1,
                 'title' => 'OK Computer',
                 'average_rating' => 9.8,
                 'status' => 'released',
@@ -62,6 +67,7 @@ final class Fixtures
             ],
             [
                 'id' => 2,
+                'artist_id' => 2,
                 'title' => 'Dummy',
                 'average_rating' => 9.1,
                 'status' => 'released',

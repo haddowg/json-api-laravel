@@ -9,9 +9,11 @@ use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\Models\Album;
+use Workbench\App\Models\Artist;
 use Workbench\App\Models\Genre;
 use Workbench\App\Security\AlbumResource;
 use Workbench\App\Security\GenreResource;
+use Workbench\App\Security\SecureArtistResource;
 
 /**
  * The **Eloquent** half of the authorization conformance wiring (PLAN decision 7): it
@@ -25,10 +27,11 @@ final class SecurityEloquentServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([AlbumResource::class, GenreResource::class]);
+        JsonApi::register([AlbumResource::class, GenreResource::class, SecureArtistResource::class]);
 
         $modelByType = [
             'albums' => Album::class,
+            'artists' => Artist::class,
             'genres' => Genre::class,
         ];
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Workbench\App\Security;
 
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\BelongsTo;
 use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Str;
@@ -24,6 +25,15 @@ use Workbench\App\Security\Policies\AlbumApiPolicy;
  *  - `abilities`: `create` renamed to `publish` (the API-distinct ability) and `delete`
  *    set to `false` (the check is disabled — an authenticated user may delete regardless
  *    of the policy).
+ *
+ * It also carries three to-one relations (all backed by the album's `artist`) that pin the
+ * per-relation READ gate ({@see \haddowg\JsonApiLaravel\Operation\CrudOperationHandler::gateRead()}):
+ *  - `artist` — no read override, so the related / relationship endpoints inherit the
+ *    parent's `view` policy (denied → `403`);
+ *  - `publicArtist` — `security(read: false)`, so the endpoints are ungated (readable even
+ *    when the parent's `view` would deny);
+ *  - `guardedArtist` — `security(read: 'inspectArtist')`, so the endpoints authorize the
+ *    RENAMED `inspectArtist` ability against the parent (via {@see \haddowg\JsonApiLaravel\Authorization\Authorizer::authorizeAbility()}).
  *
  * It lives outside the scanned `app/JsonApi` path (registered explicitly by the security
  * wiring) so it never collides with the music-suite `albums` resource.
@@ -47,6 +57,12 @@ final class AlbumResource extends AbstractResource
             Str::make('title')->required(),
             Str::make('status'),
             DateTime::make('releasedAt')->storedAs('released_at'),
+            // Three views of the album's `artist` to-one, differing only in read security —
+            // the fixtures for the per-relation gate matrix. All resolve off the album's
+            // `artist` member/relation (storedAs), so the secured `artists` type renders them.
+            BelongsTo::make('artist', 'artists'),
+            BelongsTo::make('publicArtist', 'artists')->storedAs('artist')->security(read: false),
+            BelongsTo::make('guardedArtist', 'artists')->storedAs('artist')->security(read: 'inspectArtist'),
         ];
     }
 }

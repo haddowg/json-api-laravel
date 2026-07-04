@@ -7,6 +7,12 @@ namespace haddowg\JsonApiLaravel\Server;
 use haddowg\JsonApi\Operation\OperationHandlerInterface;
 use haddowg\JsonApi\Pagination\PagePaginator;
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Schema\Profile\CountableProfile;
+use haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile;
+use haddowg\JsonApi\Serializer\RelationshipCountInterface;
+use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
+use haddowg\JsonApi\Serializer\RelationshipLoadStateInterface;
+use haddowg\JsonApi\Serializer\RelationshipPaginationInterface;
 use haddowg\JsonApi\Server\Server;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
@@ -48,6 +54,21 @@ final class ServerFactory
         private readonly int $maxPerPage = PagePaginator::DEFAULT_MAX_PER_PAGE,
         private readonly int $maxIncludeDepth = 0,
         private readonly bool $strictQueryParameters = true,
+        // The per-request `?withCount` count seam holder, threaded into the memoized Server
+        // once; the handler swaps its batched backing in on each read. Null leaves the count
+        // seam unwired (core omits `meta.total`).
+        private readonly ?RelationshipCountInterface $relationshipCount = null,
+        // The storage-aware load-state predicate (the Eloquent reference wires one; the
+        // in-memory witness leaves it null, so every relation is treated as loaded and
+        // renders linkage data eagerly — the standalone default).
+        private readonly ?RelationshipLoadStateInterface $relationshipLoadState = null,
+        // The per-request Relationship Queries profile seam holders (the pagination + linkage
+        // twins of the count holder), threaded into the memoized Server once; the handler swaps
+        // each read's windowed backing in and clears them otherwise. Null leaves the profile
+        // seams unwired (core emits no relationship pagination links and reads linkage off the
+        // model — the profile-not-negotiated default).
+        private readonly ?RelationshipPaginationInterface $relationshipPagination = null,
+        private readonly ?RelationshipLinkageInterface $relationshipLinkage = null,
     ) {}
 
     /**
@@ -66,6 +87,18 @@ final class ServerFactory
             ->withDefaultPaginator($this->maxPerPage > 0 ? PagePaginator::make()->withMaxPerPage($this->maxPerPage) : null)
             ->withMaxIncludeDepth($this->maxIncludeDepth > 0 ? $this->maxIncludeDepth : null)
             ->withStrictQueryParameters($this->strictQueryParameters)
+            // Register the Countable profile so `?withCount=<rel>` is recognized when the
+            // client negotiates it (core gates `parseWithCount()` on the profile); the
+            // relationship-object `meta.total` then reads the request-scoped count seam.
+            ->withProfile(new CountableProfile())
+            // Register the Relationship Queries profile so `relatedQuery[<path>][sort|filter]`
+            // (and the `rQ` shorthand) is recognized when the client negotiates it; the windowed
+            // per-relationship linkage/pagination then rides the two request-scoped holders.
+            ->withProfile(new RelationshipQueriesProfile())
+            ->withRelationshipCount($this->relationshipCount)
+            ->withRelationshipLoadState($this->relationshipLoadState)
+            ->withRelationshipPagination($this->relationshipPagination)
+            ->withRelationshipLinkage($this->relationshipLinkage)
             ->withContainer($this->resolver);
 
         foreach ($this->resourceClasses as $resourceClass) {

@@ -38,6 +38,97 @@ final class JsonPointerBuilder
     }
 
     /**
+     * The pointer for a violation on a relationship **linkage** `type` in a
+     * whole-resource write body: the to-one linkage points at
+     * `/data/relationships/<rel>/data/type`, a to-many member at
+     * `/data/relationships/<rel>/data/<index>/type` (the index supplied for a to-many
+     * element, omitted for a to-one). Locates the offending linkage when its resource
+     * `type` is not an accepted related type of the relation.
+     */
+    public function forLinkageType(string $relation, ?int $index = null): string
+    {
+        $base = '/data/relationships/' . $this->encodeSegment($relation) . '/data';
+        if ($index !== null) {
+            $base .= '/' . $index;
+        }
+
+        return $base . '/type';
+    }
+
+    /**
+     * The pointer for a violation on a relationship **linkage** id in a whole-resource write
+     * body: the to-one linkage points at `/data/relationships/<rel>/data/id`, a to-many member
+     * at `/data/relationships/<rel>/data/<index>/id`. Locates a linkage whose id violates the
+     * related type's declared id format.
+     */
+    public function forLinkageId(string $relation, ?int $index = null): string
+    {
+        $base = '/data/relationships/' . $this->encodeSegment($relation) . '/data';
+        if ($index !== null) {
+            $base .= '/' . $index;
+        }
+
+        return $base . '/id';
+    }
+
+    /**
+     * The pointer for a violation on a relationship linkage member's pivot `meta` field in a
+     * **whole-resource write**: the to-one member points at
+     * `/data/relationships/<rel>/data/meta/pivot/<field>`, a to-many member at
+     * `/data/relationships/<rel>/data/<index>/meta/pivot/<field>` (the index omitted for a
+     * to-one). Pivot values nest under `meta.pivot` (symmetric with reads); an empty `$field`
+     * (a member-level violation) yields `…/meta/pivot`.
+     */
+    public function forLinkageMeta(string $relation, string $field, ?int $index = null): string
+    {
+        $base = '/data/relationships/' . $this->encodeSegment($relation) . '/data';
+        if ($index !== null) {
+            $base .= '/' . $index;
+        }
+        $base .= '/meta/pivot';
+
+        return $field === '' ? $base : $base . '/' . $this->encodeSegment($field);
+    }
+
+    /**
+     * The pointer for a violation on a linkage `type` at a **relationship-mutation
+     * endpoint** (`PATCH`/`POST`/`DELETE …/relationships/<rel>`), where the request body
+     * root *is* the relationship object: a to-one points at `/data/type`, a to-many member
+     * at `/data/<index>/type` (the index omitted for a to-one).
+     */
+    public function forRelationshipEndpointLinkageType(?int $index = null): string
+    {
+        return $index === null ? '/data/type' : '/data/' . $index . '/type';
+    }
+
+    /**
+     * The pointer for a violation on a linkage id at a **relationship-mutation endpoint**
+     * (`PATCH`/`POST`/`DELETE …/relationships/<rel>`), where the request body root *is* the
+     * relationship object: a to-one points at `/data/id`, a to-many member at
+     * `/data/<index>/id` (the index omitted for a to-one).
+     */
+    public function forRelationshipEndpointLinkageId(?int $index = null): string
+    {
+        return $index === null ? '/data/id' : '/data/' . $index . '/id';
+    }
+
+    /**
+     * The pointer for a violation on a linkage member's pivot `meta` field at a
+     * **relationship-mutation endpoint** (`PATCH`/`POST …/relationships/<rel>`), where the
+     * request body root *is* the relationship object: a to-one member points at
+     * `/data/meta/pivot/<field>`, a to-many member at `/data/<index>/meta/pivot/<field>`
+     * (the index omitted for a to-one). Writable pivot values nest under `meta.pivot`
+     * (symmetric with how pivot renders on reads); an empty `$field` (a member-level
+     * violation) yields `…/meta/pivot`.
+     */
+    public function forRelationshipEndpointLinkageMeta(string $field, ?int $index = null): string
+    {
+        $base = ($index === null ? '/data' : '/data/' . $index) . '/meta/pivot';
+
+        return $field === '' ? $base : $base . '/' . $this->encodeSegment($field);
+    }
+
+    /**
      * Escapes a single JSON Pointer reference token per RFC 6901: `~` → `~0`,
      * `/` → `~1`.
      */

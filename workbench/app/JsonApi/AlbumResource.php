@@ -7,6 +7,7 @@ namespace Workbench\App\JsonApi;
 use haddowg\JsonApi\Pagination\PagePaginator;
 use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\BelongsTo;
 use haddowg\JsonApi\Resource\Field\Boolean;
 use haddowg\JsonApi\Resource\Field\Date;
 use haddowg\JsonApi\Resource\Field\DateTime;
@@ -58,8 +59,12 @@ final class AlbumResource extends AbstractResource
             Decimal::make('averageRating')->storedAs('average_rating')->readOnly()->nullable(),
             Str::make('status')->sortable(),
             Boolean::make('explicit'),
-            Date::make('availableFrom')->storedAs('available_from')->nullable(),
+            Date::make('availableFrom')->storedAs('available_from')->nullable()->sortable(),
             DateTime::make('releasedAt')->storedAs('released_at')->sortable(),
+            // The album's artist (Phase 3a): an owner-side to-one — eager (renders linkage
+            // data by default), `data: null` for an unowned album. The relation name IS the
+            // Eloquent relation method / in-memory POPO property (`artist`).
+            BelongsTo::make('artist', 'artists'),
         ];
     }
 

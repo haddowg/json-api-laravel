@@ -289,6 +289,71 @@ abstract class SecurityConformanceTestCase extends Orchestra
         $this->deleteJsonApi('/api/genres/trip-hop')->assertStatus(204);
     }
 
+    // --- the per-relation READ gate (related + relationship endpoints) ---
+
+    #[Test]
+    #[Group('spec:authorization')]
+    public function theRelatedReadGateInheritsTheParentViewPolicy(): void
+    {
+        // The `artist` relation declares no read override, so its related and relationship
+        // endpoints inherit the parent album's `view` policy — the SAME gate the single-
+        // resource read applies. Unauthenticated is the middleware 401; an authenticated
+        // user the policy denies `view` is a 403 on BOTH endpoints; a read-capable user is
+        // allowed (a proper 401→403→200 matrix on both providers).
+        $this->readJsonApi('/secure-api/albums/1/artist')->assertStatus(401);
+        $this->readJsonApi('/secure-api/albums/1/relationships/artist')->assertStatus(401);
+
+        $this->actingAs($this->noAccessUser());
+        $this->readJsonApi('/secure-api/albums/1/artist')
+            ->assertStatus(403)
+            ->assertJsonPath('errors.0.status', '403');
+        $this->readJsonApi('/secure-api/albums/1/relationships/artist')
+            ->assertStatus(403)
+            ->assertJsonPath('errors.0.status', '403');
+
+        $this->actingAs($this->reader());
+        $this->readJsonApi('/secure-api/albums/1/artist')->assertOk();
+        $this->readJsonApi('/secure-api/albums/1/relationships/artist')->assertOk();
+    }
+
+    #[Test]
+    #[Group('spec:authorization')]
+    public function aRelationWithReadSecurityFalseIsReadableDespiteADenyingViewPolicy(): void
+    {
+        // `publicArtist` declares `security(read: false)` — the read gate is disabled, so a
+        // user the parent `view` policy WOULD deny reads it anyway (the middleware still
+        // requires authentication, so a guest is still a 401).
+        $this->readJsonApi('/secure-api/albums/1/relationships/publicArtist')->assertStatus(401);
+
+        $this->actingAs($this->noAccessUser());
+        $this->readJsonApi('/secure-api/albums/1/relationships/publicArtist')->assertOk();
+        $this->readJsonApi('/secure-api/albums/1/publicArtist')->assertOk();
+    }
+
+    #[Test]
+    #[Group('spec:authorization')]
+    public function aRelationWithAReadAbilityOverrideIsGatedByThatAbility(): void
+    {
+        // `guardedArtist` declares `security(read: 'inspectArtist')` — the gate authorizes the
+        // RENAMED ability against the parent (Authorizer::authorizeAbility → AlbumApiPolicy::
+        // inspectArtist), NOT the default `view`. A read-capable user passes, a no-access user
+        // is denied, and the admin bypasses through the policy's before() hook.
+        $this->readJsonApi('/secure-api/albums/1/relationships/guardedArtist')->assertStatus(401);
+
+        $this->actingAs($this->noAccessUser());
+        $this->readJsonApi('/secure-api/albums/1/relationships/guardedArtist')
+            ->assertStatus(403)
+            ->assertJsonPath('errors.0.status', '403');
+
+        $this->actingAs($this->reader());
+        $this->readJsonApi('/secure-api/albums/1/relationships/guardedArtist')->assertOk();
+        $this->readJsonApi('/secure-api/albums/1/guardedArtist')->assertOk();
+
+        // The admin has no read access, so inspectArtist() would deny — but before() bypasses.
+        $this->actingAs($this->admin());
+        $this->readJsonApi('/secure-api/albums/1/relationships/guardedArtist')->assertOk();
+    }
+
     /**
      * @return array<string, mixed>
      */

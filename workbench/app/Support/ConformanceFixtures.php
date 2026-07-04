@@ -109,13 +109,20 @@ final class ConformanceFixtures
      * (WhereNull + null-attribute rendering); `explicit` carries both booleans;
      * `available_from` is null on one; titles mix case (`in rainbows`, `amnesiac`).
      *
-     * @return list<array{id: int, title: string, average_rating: ?float, status: string, explicit: bool, available_from: ?\DateTimeImmutable, released_at: \DateTimeImmutable}>
+     * `artist_id` links each album to its {@see artists()} owner, shaped for the Phase-3a
+     * relationship-read batch edge cases: Radiohead (1) owns FOUR albums (1/3/6/7 — the
+     * many/window case), Portishead (2) owns ONE (2 — the singleton), Massive Attack (3)
+     * owns TWO (4/5), and artists 4/5/6 own NONE (the empty to-many). It is the FK the
+     * Eloquent `belongsTo`/`hasMany` and the in-memory object graph both key on.
+     *
+     * @return list<array{id: int, artist_id: ?int, title: string, average_rating: ?float, status: string, explicit: bool, available_from: ?\DateTimeImmutable, released_at: \DateTimeImmutable}>
      */
     public static function albums(): array
     {
         return [
             [
                 'id' => 1,
+                'artist_id' => 1,
                 'title' => 'OK Computer',
                 'average_rating' => 9.8,
                 'status' => 'released',
@@ -125,6 +132,7 @@ final class ConformanceFixtures
             ],
             [
                 'id' => 2,
+                'artist_id' => 2,
                 'title' => 'Dummy',
                 'average_rating' => 9.1,
                 'status' => 'released',
@@ -134,6 +142,7 @@ final class ConformanceFixtures
             ],
             [
                 'id' => 3,
+                'artist_id' => 1,
                 'title' => 'Kid A',
                 'average_rating' => 9.5,
                 'status' => 'released',
@@ -143,6 +152,7 @@ final class ConformanceFixtures
             ],
             [
                 'id' => 4,
+                'artist_id' => 3,
                 'title' => 'Mezzanine',
                 'average_rating' => null,
                 'status' => 'archived',
@@ -152,6 +162,7 @@ final class ConformanceFixtures
             ],
             [
                 'id' => 5,
+                'artist_id' => 3,
                 'title' => 'Blue Lines',
                 'average_rating' => 8.7,
                 'status' => 'archived',
@@ -161,6 +172,7 @@ final class ConformanceFixtures
             ],
             [
                 'id' => 6,
+                'artist_id' => 1,
                 'title' => 'in rainbows',
                 'average_rating' => 9.0,
                 'status' => 'released',
@@ -170,6 +182,7 @@ final class ConformanceFixtures
             ],
             [
                 'id' => 7,
+                'artist_id' => 1,
                 'title' => 'amnesiac',
                 'average_rating' => null,
                 'status' => 'draft',
@@ -208,6 +221,61 @@ final class ConformanceFixtures
             ['id' => 6, 'category' => 'news', 'priority' => null, 'released_at' => null],
             ['id' => 7, 'category' => 'guide', 'priority' => 10, 'released_at' => new \DateTimeImmutable('2024-05-01T00:00:00+00:00')],
             ['id' => 8, 'category' => 'news', 'priority' => 20, 'released_at' => new \DateTimeImmutable('2024-04-15T00:00:00+00:00')],
+        ];
+    }
+
+    /**
+     * Five tracks — the far side of the Phase-3b playlist pivot relation. Titles are
+     * distinct (the `orderedTrackTitled` WhereThrough leaf) and `released_at` is a sortable
+     * key for windowed related fetches.
+     *
+     * @return list<array{id: int, title: string, released_at: \DateTimeImmutable}>
+     */
+    public static function tracks(): array
+    {
+        return [
+            ['id' => 1, 'title' => 'Airbag', 'released_at' => new \DateTimeImmutable('1997-05-21T00:00:00+00:00')],
+            ['id' => 2, 'title' => 'Paranoid Android', 'released_at' => new \DateTimeImmutable('1997-05-21T00:00:00+00:00')],
+            ['id' => 3, 'title' => 'Karma Police', 'released_at' => new \DateTimeImmutable('1997-05-21T00:00:00+00:00')],
+            ['id' => 4, 'title' => 'Everything In Its Right Place', 'released_at' => new \DateTimeImmutable('2000-10-02T00:00:00+00:00')],
+            ['id' => 5, 'title' => 'Idioteque', 'released_at' => new \DateTimeImmutable('2000-10-02T00:00:00+00:00')],
+        ];
+    }
+
+    /**
+     * Three playlists shaped for the pivot + existence + window edges:
+     *  - `1` (Best Of) owns FOUR ordered tracks — the many/window case, with a TIED `position`
+     *    (tracks 2 and 3 both at position 2) so the appended `id` tiebreak is exercised;
+     *  - `2` (Solo) owns ONE — the singleton;
+     *  - `3` (Empty) owns NONE — the empty partition + `withoutOrderedTracks` case.
+     *
+     * @return list<array{id: int, title: string, public: bool}>
+     */
+    public static function playlists(): array
+    {
+        return [
+            ['id' => 1, 'title' => 'Best Of', 'public' => true],
+            ['id' => 2, 'title' => 'Solo', 'public' => true],
+            ['id' => 3, 'title' => 'Empty', 'public' => false],
+        ];
+    }
+
+    /**
+     * The `playlist_track` pivot rows: `position` distinct per playlist except playlist 1's
+     * tied pair (tracks 2 and 3 at position 2), `weight >= position` throughout, and a
+     * server-owned `added_at`. Track 1 (Airbag) is shared across playlists 1 AND 2 — the
+     * belongsToMany fan-out proving a semi-join returns each parent once.
+     *
+     * @return list<array{playlist_id: int, track_id: int, position: int, weight: int, added_at: \DateTimeImmutable}>
+     */
+    public static function playlistTracks(): array
+    {
+        return [
+            ['playlist_id' => 1, 'track_id' => 1, 'position' => 1, 'weight' => 1, 'added_at' => new \DateTimeImmutable('2024-01-01T00:00:00+00:00')],
+            ['playlist_id' => 1, 'track_id' => 2, 'position' => 2, 'weight' => 2, 'added_at' => new \DateTimeImmutable('2024-01-02T00:00:00+00:00')],
+            ['playlist_id' => 1, 'track_id' => 3, 'position' => 2, 'weight' => 3, 'added_at' => new \DateTimeImmutable('2024-01-03T00:00:00+00:00')],
+            ['playlist_id' => 1, 'track_id' => 4, 'position' => 4, 'weight' => 4, 'added_at' => new \DateTimeImmutable('2024-01-04T00:00:00+00:00')],
+            ['playlist_id' => 2, 'track_id' => 1, 'position' => 1, 'weight' => 5, 'added_at' => new \DateTimeImmutable('2024-02-01T00:00:00+00:00')],
         ];
     }
 

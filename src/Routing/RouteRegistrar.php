@@ -34,9 +34,20 @@ use Illuminate\Routing\Router;
  * `jsonapi.{type}.{action}` for the default server, `jsonapi.{server}.{type}.{action}`
  * for a named server.
  *
+ * A fetchable-by-id type ({@see Operation::FetchOne}) additionally gets the two parametric
+ * relation GET routes — `GET /{uriType}/{id}/relationships/{relationship}` (linkage,
+ * `{type}.relationship.show`) and `GET /{uriType}/{id}/{relationship}` (related resource(s),
+ * `{type}.related.show`) — the linkage route first so its literal `relationships` segment is
+ * never captured as a `{relationship}`. A writable type ({@see Operation::Update}) also gets
+ * the three parametric relationship-MUTATION routes on the shared
+ * `.../relationships/{relationship}` path — `PATCH` (`{type}.relationship.update`), `POST`
+ * (`{type}.relationship.add`) and `DELETE` (`{type}.relationship.remove`). All stay
+ * parametric; the handler enforces per-relation exposure/existence as a `404` and the
+ * mutability flags as a `403`.
+ *
  * Because registration is a pure function of the (memoized/cacheable) descriptor list,
- * `route:cache` is safe. The relationship + custom-action + atomic routes, and the
- * `{id}` route-pattern constraint, arrive in later phases.
+ * `route:cache` is safe. The custom-action + atomic routes and the `{id}` route-pattern
+ * constraint arrive in later phases.
  */
 final class RouteRegistrar
 {
@@ -106,6 +117,47 @@ final class RouteRegistrar
         if ($descriptor->exposes(Operation::Delete)) {
             $this->configure($router->delete($resourcePath, JsonApiController::class), $server, $type)
                 ->name($namePrefix . $type . '.delete');
+        }
+
+        // The two parametric relation GET routes, emitted for any fetchable-by-id resource
+        // (the relationship endpoints hang off `/{id}`). They stay parametric (`{relationship}`);
+        // the handler enforces per-relation exposure + existence as a `404`
+        // (RelationshipNotExists), so a relation-less type simply 404s every relationship
+        // name. The relationship-linkage route is registered FIRST (its literal
+        // `relationships` segment) so the related route's `{relationship}` never captures it.
+        // The relationship MUTATION routes (PATCH/POST/DELETE on `/relationships/{rel}`) are
+        // registered in the `exposes(Operation::Update)` block below.
+        if ($descriptor->exposes(Operation::FetchOne)) {
+            $this->configure($router->get($resourcePath . '/relationships/{relationship}', JsonApiController::class), $server, $type)
+                ->defaults(TargetResolver::RELATIONSHIP_ENDPOINT_ATTRIBUTE, true)
+                ->name($namePrefix . $type . '.relationship.show');
+
+            $this->configure($router->get($resourcePath . '/{relationship}', JsonApiController::class), $server, $type)
+                ->name($namePrefix . $type . '.related.show');
+        }
+
+        // The three parametric relationship-MUTATION routes, emitted for any writable
+        // resource (`exposes(Operation::Update)`): the router selects the arm by HTTP method
+        // on the shared `/relationships/{relationship}` path, and core's `OperationFactory`
+        // maps PATCH→replace / POST→add / DELETE→remove. They stay parametric and stamp the
+        // relationship-endpoint marker; the handler enforces per-relation exposure (`404`) +
+        // the request-aware `cannotReplace/cannotAdd/cannotRemove` flags (`403`). Gating on
+        // `Update` (not a new Operation enum case) keeps the discovery snapshot / descriptor
+        // `exposes()` map unchanged.
+        if ($descriptor->exposes(Operation::Update)) {
+            $relationshipPath = $resourcePath . '/relationships/{relationship}';
+
+            $this->configure($router->patch($relationshipPath, JsonApiController::class), $server, $type)
+                ->defaults(TargetResolver::RELATIONSHIP_ENDPOINT_ATTRIBUTE, true)
+                ->name($namePrefix . $type . '.relationship.update');
+
+            $this->configure($router->post($relationshipPath, JsonApiController::class), $server, $type)
+                ->defaults(TargetResolver::RELATIONSHIP_ENDPOINT_ATTRIBUTE, true)
+                ->name($namePrefix . $type . '.relationship.add');
+
+            $this->configure($router->delete($relationshipPath, JsonApiController::class), $server, $type)
+                ->defaults(TargetResolver::RELATIONSHIP_ENDPOINT_ATTRIBUTE, true)
+                ->name($namePrefix . $type . '.relationship.remove');
         }
     }
 
