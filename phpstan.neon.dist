@@ -1,0 +1,8 @@
+parameters:
+    level: 9
+    paths:
+        - src
+        - tests
+        - workbench
+    tmpDir: .phpstan.cache
+    treatPhpDocTypesAsCertain: false

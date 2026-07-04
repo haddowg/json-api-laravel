@@ -1,8 +1,11 @@
 /vendor/
 composer.lock
 /.phpunit.cache/
+/.phpstan.cache/
 .php-cs-fixer.cache
+coverage.xml
 .DS_Store
+/.claude/settings.local.json
 
 # Local working plan — removed when the build is complete (see CLAUDE.md)
 /PLAN.md
