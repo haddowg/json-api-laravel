@@ -109,13 +109,20 @@ final class ConformanceFixtures
      * (WhereNull + null-attribute rendering); `explicit` carries both booleans;
      * `available_from` is null on one; titles mix case (`in rainbows`, `amnesiac`).
      *
-     * @return list<array{id: int, title: string, average_rating: ?float, status: string, explicit: bool, available_from: ?\DateTimeImmutable, released_at: \DateTimeImmutable}>
+     * `artist_id` links each album to its {@see artists()} owner, shaped for the Phase-3a
+     * relationship-read batch edge cases: Radiohead (1) owns FOUR albums (1/3/6/7 — the
+     * many/window case), Portishead (2) owns ONE (2 — the singleton), Massive Attack (3)
+     * owns TWO (4/5), and artists 4/5/6 own NONE (the empty to-many). It is the FK the
+     * Eloquent `belongsTo`/`hasMany` and the in-memory object graph both key on.
+     *
+     * @return list<array{id: int, artist_id: ?int, title: string, average_rating: ?float, status: string, explicit: bool, available_from: ?\DateTimeImmutable, released_at: \DateTimeImmutable}>
      */
     public static function albums(): array
     {
         return [
             [
                 'id' => 1,
+                'artist_id' => 1,
                 'title' => 'OK Computer',
                 'average_rating' => 9.8,
                 'status' => 'released',
@@ -125,6 +132,7 @@ final class ConformanceFixtures
             ],
             [
                 'id' => 2,
+                'artist_id' => 2,
                 'title' => 'Dummy',
                 'average_rating' => 9.1,
                 'status' => 'released',
@@ -134,6 +142,7 @@ final class ConformanceFixtures
             ],
             [
                 'id' => 3,
+                'artist_id' => 1,
                 'title' => 'Kid A',
                 'average_rating' => 9.5,
                 'status' => 'released',
@@ -143,6 +152,7 @@ final class ConformanceFixtures
             ],
             [
                 'id' => 4,
+                'artist_id' => 3,
                 'title' => 'Mezzanine',
                 'average_rating' => null,
                 'status' => 'archived',
@@ -152,6 +162,7 @@ final class ConformanceFixtures
             ],
             [
                 'id' => 5,
+                'artist_id' => 3,
                 'title' => 'Blue Lines',
                 'average_rating' => 8.7,
                 'status' => 'archived',
@@ -161,6 +172,7 @@ final class ConformanceFixtures
             ],
             [
                 'id' => 6,
+                'artist_id' => 1,
                 'title' => 'in rainbows',
                 'average_rating' => 9.0,
                 'status' => 'released',
@@ -170,6 +182,7 @@ final class ConformanceFixtures
             ],
             [
                 'id' => 7,
+                'artist_id' => 1,
                 'title' => 'amnesiac',
                 'average_rating' => null,
                 'status' => 'draft',

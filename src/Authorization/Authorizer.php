@@ -80,6 +80,25 @@ final class Authorizer
     }
 
     /**
+     * Authorizes an explicit `$ability` against the loaded `$subject` instance, honouring
+     * the type's declared `policy:` class exactly as {@see authorize()} does — the seam a
+     * per-relation read-security override (`security(read: 'ability')`) gates a related /
+     * relationship read through, since that ability is not one of the five CRUD operations.
+     */
+    public function authorizeAbility(string $type, string $ability, object $subject): void
+    {
+        $config = $this->config[$type] ?? null;
+
+        if ($config?->policy !== null) {
+            $this->authorizeViaPolicy($config->policy, $ability, $subject, true, $config->subjectClass);
+
+            return;
+        }
+
+        $this->authorizeViaGate($ability, $subject, true);
+    }
+
+    /**
      * The model's Gate-registered policy (or a defined ability) path — the inert
      * default. Only enforces when the model actually has a policy OR the ability is a
      * defined Gate closure; a type with neither is inert (PLAN decision 7), so the

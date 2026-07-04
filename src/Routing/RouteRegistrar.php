@@ -34,9 +34,16 @@ use Illuminate\Routing\Router;
  * `jsonapi.{type}.{action}` for the default server, `jsonapi.{server}.{type}.{action}`
  * for a named server.
  *
+ * A fetchable-by-id type ({@see Operation::FetchOne}) additionally gets the two parametric
+ * relation GET routes — `GET /{uriType}/{id}/relationships/{relationship}` (linkage,
+ * `{type}.relationship.show`) and `GET /{uriType}/{id}/{relationship}` (related resource(s),
+ * `{type}.related.show`) — the linkage route first so its literal `relationships` segment is
+ * never captured as a `{relationship}`. Both stay parametric; the handler enforces
+ * per-relation exposure/existence as a `404`.
+ *
  * Because registration is a pure function of the (memoized/cacheable) descriptor list,
- * `route:cache` is safe. The relationship + custom-action + atomic routes, and the
- * `{id}` route-pattern constraint, arrive in later phases.
+ * `route:cache` is safe. The relationship MUTATION routes, custom-action + atomic routes,
+ * and the `{id}` route-pattern constraint, arrive in later phases.
  */
 final class RouteRegistrar
 {
@@ -106,6 +113,22 @@ final class RouteRegistrar
         if ($descriptor->exposes(Operation::Delete)) {
             $this->configure($router->delete($resourcePath, JsonApiController::class), $server, $type)
                 ->name($namePrefix . $type . '.delete');
+        }
+
+        // The two parametric relation GET routes, emitted for any fetchable-by-id resource
+        // (the relationship endpoints hang off `/{id}`). They stay parametric (`{relationship}`);
+        // the handler enforces per-relation exposure + existence as a `404`
+        // (RelationshipNotExists), so a relation-less type simply 404s every relationship
+        // name. The relationship-linkage route is registered FIRST (its literal
+        // `relationships` segment) so the related route's `{relationship}` never captures it.
+        // Relationship MUTATION routes (PATCH/POST/DELETE on `/relationships/{rel}`) are 3b.
+        if ($descriptor->exposes(Operation::FetchOne)) {
+            $this->configure($router->get($resourcePath . '/relationships/{relationship}', JsonApiController::class), $server, $type)
+                ->defaults(TargetResolver::RELATIONSHIP_ENDPOINT_ATTRIBUTE, true)
+                ->name($namePrefix . $type . '.relationship.show');
+
+            $this->configure($router->get($resourcePath . '/{relationship}', JsonApiController::class), $server, $type)
+                ->name($namePrefix . $type . '.related.show');
         }
     }
 

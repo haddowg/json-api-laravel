@@ -72,4 +72,16 @@ final class AlbumApiPolicy
     {
         return $user->can_write;
     }
+
+    /**
+     * The RENAMED read ability the `guardedArtist` relation gates its related / relationship
+     * endpoints on (`security(read: 'inspectArtist')`), routed here through
+     * {@see \haddowg\JsonApiLaravel\Authorization\Authorizer::authorizeAbility()}. Only a
+     * read-capable user may inspect the album's artist (an admin still bypasses via
+     * before()), proving the per-relation ability override reaches a distinct policy method.
+     */
+    public function inspectArtist(User $user, object $album): bool
+    {
+        return $user->can_read;
+    }
 }

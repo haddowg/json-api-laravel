@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Workbench\App\Providers;
 
+use haddowg\JsonApi\Serializer\RelationshipLoadStateInterface;
 use haddowg\JsonApiLaravel\DataPersister\Eloquent\EloquentDataPersister;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentRelationshipLoadState;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\Models\Album;
@@ -45,5 +47,11 @@ final class EloquentWorkbenchServiceProvider extends ServiceProvider
 
         JsonApi::provider(new EloquentDataProvider($modelByType), priority: -128);
         JsonApi::persister(new EloquentDataPersister($modelByType), priority: -128);
+
+        // The storage-aware load-state predicate (PLAN decision 8): core consults it for a
+        // lazy relation so a preloaded (setRelation) relation renders without a re-fetch and
+        // an unloaded one renders links-only without a query. The package's ServerFactory
+        // wires whatever is bound to RelationshipLoadStateInterface into every Server.
+        $this->app->singleton(RelationshipLoadStateInterface::class, EloquentRelationshipLoadState::class);
     }
 }

@@ -42,11 +42,16 @@ final class WorkbenchServiceProvider extends ServiceProvider
     {
         JsonApi::discover([\dirname(__DIR__) . '/JsonApi']);
 
-        JsonApi::provider(new InMemoryDataProvider('artists', $this->artists()));
+        // Build the artist ↔ album object graph once so the `HasMany('albums')` and
+        // `BelongsTo('artist')` relations resolve off the SAME instances both stores hold
+        // (a cross-store shared reference — the in-memory analogue of the Eloquent FK).
+        [$artists, $albums] = $this->musicCatalog();
 
-        $albums = new InMemoryDataProvider('albums', $this->albums(), identify: self::identify(), assignId: self::assignId());
-        JsonApi::provider($albums);
-        JsonApi::persister(new InMemoryDataPersister('albums', $albums->store(), static fn(): Album => new Album()));
+        JsonApi::provider(new InMemoryDataProvider('artists', $artists));
+
+        $albumProvider = new InMemoryDataProvider('albums', $albums, identify: self::identify(), assignId: self::assignId());
+        JsonApi::provider($albumProvider);
+        JsonApi::persister(new InMemoryDataPersister('albums', $albumProvider->store(), static fn(): Album => new Album()));
 
         $genres = new InMemoryDataProvider('genres', $this->genres(), identify: self::identify());
         JsonApi::provider($genres);
@@ -79,9 +84,14 @@ final class WorkbenchServiceProvider extends ServiceProvider
     }
 
     /**
-     * @return array<int|string, Artist>
+     * Builds the linked artist ↔ album object graph from the shared {@see Fixtures}: each
+     * {@see Album}'s `$artist` points at its owner {@see Artist} instance, and each artist's
+     * `$albums` collects the albums that point back — the same instances both stores hold,
+     * so the two relations resolve off one graph.
+     *
+     * @return array{0: array<int|string, Artist>, 1: array<int|string, Album>}
      */
-    private function artists(): array
+    private function musicCatalog(): array
     {
         $artists = [];
         foreach (Fixtures::artists() as $row) {
@@ -96,17 +106,11 @@ final class WorkbenchServiceProvider extends ServiceProvider
             );
         }
 
-        return $artists;
-    }
-
-    /**
-     * @return array<int|string, Album>
-     */
-    private function albums(): array
-    {
         $albums = [];
         foreach (Fixtures::albums() as $row) {
-            $albums[(string) $row['id']] = new Album(
+            $artist = $row['artist_id'] !== null ? ($artists[(string) $row['artist_id']] ?? null) : null;
+
+            $album = new Album(
                 id: (string) $row['id'],
                 title: $row['title'],
                 average_rating: $row['average_rating'],
@@ -114,10 +118,16 @@ final class WorkbenchServiceProvider extends ServiceProvider
                 explicit: $row['explicit'],
                 available_from: $row['available_from'],
                 released_at: $row['released_at'],
+                artist: $artist,
             );
+
+            $albums[(string) $row['id']] = $album;
+            if ($artist !== null) {
+                $artist->albums[] = $album;
+            }
         }
 
-        return $albums;
+        return [$artists, $albums];
     }
 
     /**

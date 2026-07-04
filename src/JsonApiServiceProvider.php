@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel;
 
+use haddowg\JsonApi\Serializer\RelationshipLoadStateInterface;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
 use haddowg\JsonApiLaravel\Authorization\ResourceAuthorization;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
+use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
+use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\DiscoveryScanner;
 use haddowg\JsonApiLaravel\Exception\ExceptionMapperInterface;
@@ -17,8 +21,10 @@ use haddowg\JsonApiLaravel\Exception\JsonApiExceptionRenderer;
 use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
 use haddowg\JsonApiLaravel\Routing\RouteRegistrar;
+use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
 use haddowg\JsonApiLaravel\Server\ServerFactory;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
+use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\ConstraintTranslator;
 use haddowg\JsonApiLaravel\Validation\ConstraintTranslatorInterface;
 use haddowg\JsonApiLaravel\Validation\FilterValueValidator;
@@ -62,6 +68,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->registerRegistries();
         $this->registerValidation();
         $this->registerAuthorization();
+        $this->registerRelationships();
         $this->registerServers();
 
         $this->app->singleton(TargetResolver::class);
@@ -309,6 +316,40 @@ final class JsonApiServiceProvider extends ServiceProvider
     }
 
     /**
+     * Binds the relationship-read machinery (PLAN decisions 8): the thin
+     * {@see TypeMetadataResolver} (relation metadata off the Server), the provider-agnostic
+     * {@see RelationCriteriaFactory}, the {@see RelatedIncludeBatcher} (the `?include`
+     * eager-load orchestrator) and {@see RelationCountBatcher} (the `?withCount` count
+     * orchestrator), and the request-scoped {@see RequestScopedRelationshipCount} count-seam
+     * holder threaded into every Server and swapped per read by the handler.
+     */
+    private function registerRelationships(): void
+    {
+        $this->app->singleton(TypeMetadataResolver::class);
+        $this->app->singleton(RelationCriteriaFactory::class);
+
+        // The count-seam holder is a stable singleton (injected into the memoized Server
+        // once); the handler swaps its per-request backing in. For a long-lived worker
+        // (Octane/queue) rebind it `scoped()` — per-request FPM/CLI is unaffected.
+        $this->app->singleton(RequestScopedRelationshipCount::class);
+
+        $this->app->singleton(RelatedIncludeBatcher::class, static function (Container $app): RelatedIncludeBatcher {
+            return new RelatedIncludeBatcher(
+                $app->make(DataProviderRegistry::class),
+                $app->make(TypeMetadataResolver::class),
+            );
+        });
+
+        $this->app->singleton(RelationCountBatcher::class, static function (Container $app): RelationCountBatcher {
+            return new RelationCountBatcher(
+                $app->make(DataProviderRegistry::class),
+                $app->make(TypeMetadataResolver::class),
+                $app->make(RelationCriteriaFactory::class),
+            );
+        });
+    }
+
+    /**
      * Binds the {@see ServerRegistry}: one {@see ServerFactory} per configured server,
      * each holding that server's resource class-strings and building its immutable core
      * {@see \haddowg\JsonApi\Server\Server} lazily on first dispatch.
@@ -342,6 +383,17 @@ final class JsonApiServiceProvider extends ServiceProvider
             /** @var array<string, mixed> $serversConfig */
             $serversConfig = config('jsonapi.servers', []);
 
+            // The stable count-seam holder is shared across every server and the handler.
+            $relationshipCount = $app->make(RequestScopedRelationshipCount::class);
+
+            // The storage-aware load-state predicate is optional: the Eloquent reference
+            // binds one (so a lazy relation renders links-only), the in-memory witness leaves
+            // it unbound (every relation treated as loaded — the standalone default).
+            $loadState = $app->bound(RelationshipLoadStateInterface::class)
+                ? $app->make(RelationshipLoadStateInterface::class)
+                : null;
+            \assert($loadState === null || $loadState instanceof RelationshipLoadStateInterface);
+
             $factories = [];
             foreach (\array_keys($serversConfig) as $server) {
                 $server = (string) $server;
@@ -361,6 +413,8 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $maxPerPage,
                     $maxIncludeDepth,
                     $strict,
+                    $relationshipCount,
+                    $loadState,
                 );
             }
 

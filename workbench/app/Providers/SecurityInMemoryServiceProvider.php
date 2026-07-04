@@ -13,6 +13,7 @@ use Workbench\App\Domain\Album;
 use Workbench\App\Domain\Genre;
 use Workbench\App\Security\AlbumResource;
 use Workbench\App\Security\GenreResource;
+use Workbench\App\Security\SecureArtistResource;
 use Workbench\App\Support\Fixtures;
 
 /**
@@ -28,11 +29,17 @@ final class SecurityInMemoryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([AlbumResource::class, GenreResource::class]);
+        JsonApi::register([AlbumResource::class, GenreResource::class, SecureArtistResource::class]);
 
         $albums = new InMemoryDataProvider('albums', $this->albums(), identify: self::identify(), assignId: self::assignId());
         JsonApi::provider($albums);
         JsonApi::persister(new InMemoryDataPersister('albums', $albums->store(), static fn(): Album => new Album()));
+
+        // The `artists` type is the RELATED target of AlbumResource's `artist` to-one gate
+        // fixtures — registered as an (empty) provider so the secure server resolves its
+        // serializer. The album's `artist` is unseeded in memory (renders `data: null`), which
+        // is enough to referee the per-relation READ gate (the assertions are status-only).
+        JsonApi::provider(new InMemoryDataProvider('artists', [], identify: self::identify()));
 
         $genres = new InMemoryDataProvider('genres', $this->genres(), identify: self::identify());
         JsonApi::provider($genres);

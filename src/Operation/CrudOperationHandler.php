@@ -6,9 +6,14 @@ namespace haddowg\JsonApiLaravel\Operation;
 
 use haddowg\JsonApi\Collection\CollectionResult;
 use haddowg\JsonApi\Collection\CursorCollectionResult;
+use haddowg\JsonApi\Exception\FilterParamUnrecognized;
+use haddowg\JsonApi\Exception\RelationshipCountNotAllowed;
+use haddowg\JsonApi\Exception\RelationshipNotExists;
 use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\Operation\CreateResourceOperation;
 use haddowg\JsonApi\Operation\DeleteResourceOperation;
+use haddowg\JsonApi\Operation\FetchRelatedOperation;
+use haddowg\JsonApi\Operation\FetchRelationshipOperation;
 use haddowg\JsonApi\Operation\FetchResourceOperation;
 use haddowg\JsonApi\Operation\JsonApiOperationInterface;
 use haddowg\JsonApi\Operation\OperationContext;
@@ -17,11 +22,16 @@ use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Operation\UpdateResourceOperation;
 use haddowg\JsonApi\Pagination\CursorPaginator;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\SupportsSingular;
 use haddowg\JsonApi\Response\DataResponse;
 use haddowg\JsonApi\Response\ErrorResponse;
+use haddowg\JsonApi\Response\IdentifierResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
+use haddowg\JsonApi\Response\RelatedResponse;
+use haddowg\JsonApi\Serializer\PolymorphicSerializer;
+use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApi\Server\RequestBaseUri;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
@@ -30,6 +40,11 @@ use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
+use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
+use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
+use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
+use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\FilterValueValidator;
 use haddowg\JsonApiLaravel\Validation\ResourceValidator;
 
@@ -61,13 +76,19 @@ use haddowg\JsonApiLaravel\Validation\ResourceValidator;
  * `404`), hydrates the incoming partial onto it, commits, and renders `200`. Delete loads
  * the target (a miss is a `404`), removes it, and renders `204`.
  *
+ * **Relationship reads** (Phase 3a): {@see fetchRelated()} (`GET /{type}/{id}/{rel}`) and
+ * {@see fetchRelationship()} (`GET …/relationships/{rel}`) render the related resource(s) /
+ * linkage per cardinality (monomorphic + polymorphic to-one AND to-many), gated by the
+ * parent's read policy; the {@see fetch()} arms grow the `?include` batch-eager-load
+ * ({@see RelatedIncludeBatcher}) and `?withCount` count ({@see RelationCountBatcher}) render
+ * hooks. Relationship MUTATIONS, pivot writes, existence filters and the Relationship
+ * Queries profile's windowed linkage are Phase 3b (their seams are left in place).
+ *
  * The document-semantic validation (the always-on illuminate/validation bridge) and the
- * policy authorization gate hook into the create/update/delete arms at the marked seams in
- * the follow-on Phase 2 work; `?include`/`?withCount` batching, lifecycle events + hooks,
- * relationship writes and the relationship read endpoints are later phases — every
- * unhandled operation falls to the default arm, which returns a `404`
- * {@see ResourceNotFound} exactly like the bundle's `CrudOperationHandler` default arm
- * (never a `500`).
+ * policy authorization gate hook into the create/update/delete arms; lifecycle events +
+ * hooks are a later phase — every unhandled operation falls to the default arm, which
+ * returns a `404` {@see ResourceNotFound} exactly like the bundle's `CrudOperationHandler`
+ * default arm (never a `500`).
  */
 final class CrudOperationHandler implements OperationHandlerInterface
 {
@@ -77,12 +98,29 @@ final class CrudOperationHandler implements OperationHandlerInterface
         private readonly ResourceValidator $validator,
         private readonly FilterValueValidator $filterValidator,
         private readonly Authorizer $authorizer,
+        private readonly TypeMetadataResolver $types,
+        private readonly RelationCriteriaFactory $relationCriteria,
+        private readonly RelatedIncludeBatcher $includeBatcher,
+        private readonly RelationCountBatcher $countBatcher,
+        private readonly RequestScopedRelationshipCount $relationshipCount,
     ) {}
 
-    public function handle(JsonApiOperationInterface $operation): DataResponse|NoContentResponse|ErrorResponse
+    public function handle(JsonApiOperationInterface $operation): DataResponse|RelatedResponse|IdentifierResponse|NoContentResponse|ErrorResponse
     {
+        // Clear the request-scoped `?withCount` seam at the very start of EVERY dispatch, so a
+        // prior request's batched counts can never bleed into an arm that does not itself
+        // install them (fetchRelationship, the to-one fetchRelated branch, every write). Each
+        // read arm re-installs it below with the page it just fetched. The handler is a
+        // singleton, so this per-dispatch reset holds regardless of the count holder's
+        // container lifetime (the Symfony bundle's twin resets via kernel.reset; this is the
+        // Laravel-side equivalent, not the — for a memoized Server, ineffective — scoped()
+        // binding its own docblock once floated).
+        $this->relationshipCount->set(null);
+
         return match (true) {
             $operation instanceof FetchResourceOperation => $this->fetch($operation),
+            $operation instanceof FetchRelatedOperation => $this->fetchRelated($operation),
+            $operation instanceof FetchRelationshipOperation => $this->fetchRelationship($operation),
             $operation instanceof CreateResourceOperation => $this->create($operation),
             $operation instanceof UpdateResourceOperation => $this->update($operation),
             $operation instanceof DeleteResourceOperation => $this->delete($operation),
@@ -113,6 +151,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // before it is rendered — a denial is a `403` (thrown, rendered by the
             // exception renderer).
             $this->authorizer->authorize($type, Operation::FetchOne, $model);
+
+            // Batch eager-load the effective ?include tree (explicit or the resource's
+            // default-include fallback) so includes do not N+1; a single resource is
+            // preloaded as a one-element list. Then install the ?withCount batched counts
+            // for this resource so its relationship objects render meta.total.
+            $this->preloadIncludes($server, [$model], $type, $request);
+            $this->applyRelationshipCounts($server, $type, [$model], $request);
 
             return DataResponse::fromResource($model, $serializer);
         }
@@ -173,6 +218,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         $items = $this->materialize($result);
 
+        // Batch eager-load the effective ?include tree across the whole page (so includes
+        // do not N+1) and install the ?withCount batched counts in ONE grouped count per
+        // relation, before rendering — covering the singular first match too.
+        $this->preloadIncludes($server, $items, $type, $request);
+        $this->applyRelationshipCounts($server, $type, $items, $request);
+
         if ($singular) {
             return DataResponse::fromResource($items[0] ?? null, $serializer);
         }
@@ -221,6 +272,310 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         return DataResponse::fromCollection($items, $serializer);
+    }
+
+    /**
+     * `GET /{type}/{id}/{relationship}` — the related-resource(s) document. Loads the
+     * parent, resolves the named relation (a `404` if absent or its related endpoint is
+     * suppressed), gates the read (the parent's `view` policy, or the relation's own
+     * `securityRead` override), then renders through the related type's serializer per
+     * cardinality:
+     *  - a **to-many** resolves the related resource's filter/sort/pagination vocabulary
+     *    merged with the relation's own scoped filters/sorts into a {@see CollectionCriteria},
+     *    asks the related provider's {@see \haddowg\JsonApiLaravel\DataProvider\DataProviderInterface::fetchRelatedCollection()}
+     *    to execute it (scoped to the parent), preloads the related page's own `?include`s,
+     *    and renders a paginated {@see RelatedResponse::fromPage()} (counted / count-free per
+     *    the relation's `countable()`) or a fetch-all {@see RelatedResponse::fromCollection()};
+     *  - a **polymorphic to-many** has no single related type — no shared filter/sort
+     *    vocabulary, no related-resource paginator — and renders its mixed members through a
+     *    {@see PolymorphicSerializer}; its includes are not batch-preloaded (it renders lazily);
+     *  - a **to-one** reads the related object off the parent, resolves the serializer FROM
+     *    that object (so a polymorphic to-one renders the object's own type), and renders a
+     *    single resource (`data:null` for an empty to-one); a `?filter` may null a monomorphic
+     *    to-one via {@see \haddowg\JsonApiLaravel\DataProvider\DataProviderInterface::relatedToOneMatches()}.
+     *
+     * The Relationship Queries profile's windowed linkage + pivot `meta.pivot` are phase 3b.
+     */
+    private function fetchRelated(FetchRelatedOperation $operation): RelatedResponse|ErrorResponse
+    {
+        $server = $operation->context()->server;
+        \assert($server instanceof Server);
+
+        $target = $operation->target();
+        $type = $target->type;
+        $relationshipName = (string) $target->relationship;
+
+        $parent = $this->loadParent($type, $target->id);
+        if ($parent === null) {
+            return ErrorResponse::fromException(new ResourceNotFound());
+        }
+
+        $relation = $this->resolveRelation($server, $type, $relationshipName);
+        if ($relation === null || !$relation->exposesRelatedEndpoint()) {
+            return ErrorResponse::fromException(new RelationshipNotExists($relationshipName));
+        }
+
+        $this->gateRead($type, $parent, $relation);
+
+        $relatedTypes = $relation->relatedTypes();
+        $polymorphic = \count($relatedTypes) > 1;
+        $relatedType = $relatedTypes[0] ?? $type;
+
+        $request = $this->jsonApiRequest($operation->context());
+
+        if ($relation->isToMany()) {
+            $relatedResource = $polymorphic ? null : $this->types->resourceFor($server, $relatedType);
+            $paginator = $this->relationCriteria->paginatorFor($relation, $relatedResource, $server);
+            $window = $paginator?->window($request);
+
+            // The related endpoint renders via CollectionDocument, which does not run core's
+            // primary-collection `_self_` gate — so `?withCount=_self_` on a non-countable
+            // relation is enforced here as a 400.
+            if ($request->countsRelationship('_self_') && !$relation->isCountable()) {
+                return ErrorResponse::fromException(new RelationshipCountNotAllowed(['_self_']));
+            }
+
+            $relWantsCount = $paginator !== null
+                && !($paginator instanceof CursorPaginator)
+                && ($paginator->wantsCount() || $request->countsRelationship('_self_'));
+
+            $relatedProvider = $this->providers->forType($relatedType);
+
+            $criteria = $this->relationCriteria->criteriaFor(
+                $operation->queryParameters(),
+                $relatedResource,
+                $relation,
+                $window,
+                wantsCount: $relWantsCount,
+            );
+
+            // Validate a client-supplied filter value against the merged vocabulary (related
+            // resource ⊕ relation-scoped), so a mistyped value is the same 400 as elsewhere.
+            $this->filterValidator->validate($operation->queryParameters()->filter, $criteria->filters);
+
+            $result = $relatedProvider->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
+
+            $serializer = $polymorphic
+                ? $this->polymorphicSerializer($relation, $server)
+                : $server->serializerFor($relatedType);
+
+            $items = $this->materialize($result);
+
+            // A polymorphic page spans types (no single related type), so its includes are
+            // not batch-preloaded and it carries no single related type to count.
+            if (!$polymorphic) {
+                $this->preloadIncludes($server, $items, $relatedType, $request);
+                $this->applyRelationshipCounts($server, $relatedType, $items, $request);
+            }
+
+            // Counted page: the single total fans to BOTH meta.page.total (inside the
+            // count-based page) AND the universal top-level meta.total (G21 §6b).
+            if ($paginator !== null && $result->total !== null) {
+                return RelatedResponse::fromPage($paginator->paginate($request, $items, $result->total), $serializer, $relation->isCountable())
+                    ->withMeta(['total' => $result->total]);
+            }
+
+            // A count-free page: a non-countable relation's windowed fetch carries no total,
+            // only `hasMore` — render self/first/prev/next, no total/last.
+            if ($paginator !== null && $result->windowed) {
+                return RelatedResponse::fromPage($paginator->paginateWithoutCount($request, $items, $result->hasMore), $serializer, $relation->isCountable());
+            }
+
+            // Fetch-all (no paginator): the whole related set is materialized, so its size is
+            // free — render meta.total unconditionally (G21 §5).
+            return RelatedResponse::fromCollection($items, $serializer, $relation->isCountable())
+                ->withMeta(['total' => \count($items)]);
+        }
+
+        // A to-one related endpoint has no collection, so `?withCount=_self_` is invalid here.
+        if ($request->countsRelationship('_self_')) {
+            throw new RelationshipCountNotAllowed(['_self_']);
+        }
+
+        $related = $relation->readValue($parent, $request);
+
+        // A polymorphic to-one (MorphTo) has no single related resource and so no shared
+        // filter vocabulary — any requested filter key is unrecognised (a 400), gated on the
+        // requested filter being present so a filter on an empty polymorphic to-one still 400s.
+        if ($polymorphic) {
+            $filter = $this->toOneRequestedFilter($operation->queryParameters(), $relation, $request);
+            if ($filter !== []) {
+                throw new FilterParamUnrecognized((string) \array_key_first($filter));
+            }
+        }
+
+        // A relation filter that excludes the single related object nulls the to-one, so it
+        // renders `data: null` — the to-one twin of the to-many endpoint's filtered
+        // collection. Monomorphic only. The local `$related` is nulled (no parent mutation).
+        if (\is_object($related) && !$polymorphic) {
+            $filter = $this->toOneRequestedFilter($operation->queryParameters(), $relation, $request);
+            if ($filter !== []) {
+                $relatedResource = $this->types->resourceFor($server, $relatedType);
+                $criteria = $this->relationCriteria->criteriaFor(
+                    new QueryParameters(fields: [], includes: [], sort: [], filter: $filter, pagination: $request->getPagination()),
+                    $relatedResource,
+                    $relation,
+                    null,
+                );
+                $this->filterValidator->validate($filter, $criteria->filters);
+
+                if (!$this->providers->forType($relatedType)->relatedToOneMatches($relatedType, $related, $relation, $criteria, $request)) {
+                    $related = null;
+                }
+            }
+        }
+
+        $serializer = $relation->resolveSerializer($related, $server) ?? $server->serializerFor($relatedType);
+
+        // Preload the related resource's own ?include tree (a single related object as a
+        // one-element list) and install its `?withCount` counts, so a `?withCount=<rel>` named
+        // against the rendered to-one target emits `meta.total` on its relationship object —
+        // parity with the single-resource fetch, and (with the per-dispatch clear above) never
+        // a stale count. The related type may have no provider of its own (only ever resolved
+        // through the parent), so guard the resolution.
+        if (\is_object($related) && !$polymorphic && $this->providers->supportsType($relatedType)) {
+            $this->preloadIncludes($server, [$related], $relatedType, $request);
+            $this->applyRelationshipCounts($server, $relatedType, [$related], $request);
+        }
+
+        return RelatedResponse::fromResource($related, $serializer);
+    }
+
+    /**
+     * `GET /{type}/{id}/relationships/{relationship}` — the relationship-linkage document
+     * (resource identifiers only). Loads the parent, resolves the named relation (a `404` if
+     * absent or its relationship endpoint is suppressed), gates the read, and routes the
+     * parent through the *parent* type's serializer with the relationship name set so the
+     * transformer emits linkage.
+     *
+     * The queryable/windowed to-many linkage, the to-one filter-null, and pivot `meta.pivot`
+     * all ride the Relationship Queries profile (phase 3b); a plain 3a relationship GET reads
+     * linkage off the loaded parent.
+     */
+    private function fetchRelationship(FetchRelationshipOperation $operation): IdentifierResponse|ErrorResponse
+    {
+        $server = $operation->context()->server;
+        \assert($server instanceof Server);
+
+        $target = $operation->target();
+        $type = $target->type;
+        $relationshipName = (string) $target->relationship;
+
+        $parent = $this->loadParent($type, $target->id);
+        if ($parent === null) {
+            return ErrorResponse::fromException(new ResourceNotFound());
+        }
+
+        $relation = $this->resolveRelation($server, $type, $relationshipName);
+        if ($relation === null || !$relation->exposesRelationshipEndpoint()) {
+            return ErrorResponse::fromException(new RelationshipNotExists($relationshipName));
+        }
+
+        $this->gateRead($type, $parent, $relation);
+
+        return IdentifierResponse::forRelationship($parent, $server->serializerFor($type), $relationshipName);
+    }
+
+    /**
+     * Batch eager-loads the effective `?include` tree rooted at `$entities` so an included
+     * relationship does not N+1. A no-op with no request or no entities.
+     *
+     * @param list<object> $entities
+     */
+    private function preloadIncludes(Server $server, array $entities, string $type, ?JsonApiRequestInterface $request): void
+    {
+        if ($request === null || $entities === []) {
+            return;
+        }
+
+        $this->includeBatcher->preload($server, $entities, $type, $request);
+    }
+
+    /**
+     * Installs the per-render `?withCount` count seam for a read of `$type` over its fetched
+     * `$items`, in ONE grouped count per named countable relation (no N+1), so core emits
+     * `meta.total` on each relationship object the request named. Called on every read so it
+     * also CLEARS the holder (installs `null`) when the request named no `?withCount`.
+     *
+     * @param list<object> $items
+     */
+    private function applyRelationshipCounts(Server $server, string $type, array $items, ?JsonApiRequestInterface $request): void
+    {
+        $this->relationshipCount->set(
+            $request === null ? null : $this->countBatcher->batch($server, $type, $items, $request),
+        );
+    }
+
+    /**
+     * Loads the parent resource of a related / relationship read through the read provider,
+     * or `null` when there is no id (the handler maps `null` to a `404`).
+     */
+    private function loadParent(string $type, ?string $id): ?object
+    {
+        if ($id === null) {
+            return null;
+        }
+
+        return $this->providers->forType($type)->fetchOne($type, $id);
+    }
+
+    /**
+     * Resolves the declared, non-hidden relation named `$name` on `$type`, or `null` when
+     * the type declares no such relationship — the handler maps a `null` to a `404`.
+     */
+    private function resolveRelation(Server $server, string $type, string $name): ?RelationInterface
+    {
+        return $this->types->relationNamed($server, $type, $name);
+    }
+
+    /**
+     * Gates a related / relationship read (PLAN decision 7, re-idiomized from the bundle's
+     * event gate to a policy gate): the parent's `view` policy (the same gate the primary
+     * single fetch applies) authorizes the loaded parent, UNLESS the relation declares its
+     * own read security — a `false` opts the relation out of any read gate, a string
+     * overrides the ability the parent is authorized against.
+     */
+    private function gateRead(string $type, object $parent, RelationInterface $relation): void
+    {
+        $read = $relation->securityRead();
+        if ($read === false) {
+            return;
+        }
+
+        if (\is_string($read)) {
+            $this->authorizer->authorizeAbility($type, $read, $parent);
+
+            return;
+        }
+
+        $this->authorizer->authorize($type, Operation::FetchOne, $parent);
+    }
+
+    /**
+     * A {@see PolymorphicSerializer} that renders a polymorphic to-many's mixed-type
+     * members: for each member object it resolves the serializer among the relation's
+     * declared types, throwing when no declared type serializes a related object.
+     */
+    private function polymorphicSerializer(RelationInterface $relation, Server $server): PolymorphicSerializer
+    {
+        return new PolymorphicSerializer(
+            fn(mixed $object): SerializerInterface => $relation->resolveSerializer($object, $server)
+                ?? throw new \LogicException(\sprintf('No declared type of the "%s" relationship serializes a related object.', $relation->name())),
+        );
+    }
+
+    /**
+     * The requested `filter[…]` for a to-one related endpoint: the operation's own `?filter`
+     * merged with any `relatedQuery[<rel>][filter]` addressed to this relation's path under
+     * the negotiated Relationship Queries profile, the relatedQuery taking precedence on a
+     * key clash. Empty when neither is present (the common case — the to-one renders
+     * unconditionally).
+     *
+     * @return array<string, mixed>
+     */
+    private function toOneRequestedFilter(QueryParameters $queryParameters, RelationInterface $relation, JsonApiRequestInterface $request): array
+    {
+        return [...$queryParameters->filter, ...$request->getRelatedQuery($relation->name())->filter];
     }
 
     /**

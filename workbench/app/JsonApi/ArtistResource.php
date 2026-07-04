@@ -7,6 +7,7 @@ namespace Workbench\App\JsonApi;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Resource\Field\DateTime;
+use haddowg\JsonApi\Resource\Field\HasMany;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Integer;
 use haddowg\JsonApi\Resource\Field\Str;
@@ -17,10 +18,13 @@ use haddowg\JsonApi\Resource\Filter\GreaterThanOrEqual;
 use haddowg\JsonApi\Resource\Filter\Range;
 use haddowg\JsonApi\Resource\Filter\StartsWith;
 use haddowg\JsonApi\Resource\Filter\Where;
+use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
+use haddowg\JsonApi\Resource\Filter\WhereHas;
 use haddowg\JsonApi\Resource\Filter\WhereIdIn;
 use haddowg\JsonApi\Resource\Filter\WhereIdNotIn;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
+use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
@@ -62,6 +66,11 @@ final class ArtistResource extends AbstractResource
                     return \is_numeric($value) ? (int) $value : 0;
                 }),
             DateTime::make('createdAt')->storedAs('created_at')->readOnlyOnUpdate()->sortable(),
+            // The artist's albums (Phase 3a): a lazy to-many rendering linkage + convention
+            // self/related links, `countable()` so `?withCount=albums` emits `meta.total` and
+            // the related-collection endpoint carries a page total. The relation name IS the
+            // Eloquent relation method / in-memory POPO property (`albums`).
+            HasMany::make('albums', 'albums')->countable(),
         ];
     }
 
@@ -93,6 +102,19 @@ final class ArtistResource extends AbstractResource
             // witness coerces null→0, SQL excludes NULLs — mirrors the bundle ranging
             // only its non-null `id`).
             Range::make('trackRange', 'track_count'),
+            // Relationship-existence over the `albums` HasMany (Phase 3a conformance): a
+            // presence-only semi-join — `filter[withAlbums]` keeps artists owning ≥1 album,
+            // `filter[withoutAlbums]` those owning none. The Eloquent provider compiles an
+            // EXISTS / NOT EXISTS subquery; the in-memory witness runs the reference
+            // predicate over the object graph — identical result sets on both.
+            WhereHas::make('withAlbums', 'albums'),
+            WhereDoesntHave::make('withoutAlbums', 'albums'),
+            // Dotted-path traversal (Phase 3a conformance): `filter[albumTitled]=<title>`
+            // keeps an artist who has SOME album with that title (an EXISTS-ANY semi-join —
+            // a multi-album artist is returned once, never row-multiplied). Eloquent nests
+            // the leaf predicate inside the relationship EXISTS; the witness traverses
+            // `albums.title` over the object graph.
+            WhereThrough::make('albumTitled', 'albums.title'),
         ];
     }
 

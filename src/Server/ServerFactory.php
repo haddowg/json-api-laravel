@@ -7,6 +7,9 @@ namespace haddowg\JsonApiLaravel\Server;
 use haddowg\JsonApi\Operation\OperationHandlerInterface;
 use haddowg\JsonApi\Pagination\PagePaginator;
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Schema\Profile\CountableProfile;
+use haddowg\JsonApi\Serializer\RelationshipCountInterface;
+use haddowg\JsonApi\Serializer\RelationshipLoadStateInterface;
 use haddowg\JsonApi\Server\Server;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
@@ -48,6 +51,14 @@ final class ServerFactory
         private readonly int $maxPerPage = PagePaginator::DEFAULT_MAX_PER_PAGE,
         private readonly int $maxIncludeDepth = 0,
         private readonly bool $strictQueryParameters = true,
+        // The per-request `?withCount` count seam holder, threaded into the memoized Server
+        // once; the handler swaps its batched backing in on each read. Null leaves the count
+        // seam unwired (core omits `meta.total`).
+        private readonly ?RelationshipCountInterface $relationshipCount = null,
+        // The storage-aware load-state predicate (the Eloquent reference wires one; the
+        // in-memory witness leaves it null, so every relation is treated as loaded and
+        // renders linkage data eagerly — the standalone default).
+        private readonly ?RelationshipLoadStateInterface $relationshipLoadState = null,
     ) {}
 
     /**
@@ -66,6 +77,12 @@ final class ServerFactory
             ->withDefaultPaginator($this->maxPerPage > 0 ? PagePaginator::make()->withMaxPerPage($this->maxPerPage) : null)
             ->withMaxIncludeDepth($this->maxIncludeDepth > 0 ? $this->maxIncludeDepth : null)
             ->withStrictQueryParameters($this->strictQueryParameters)
+            // Register the Countable profile so `?withCount=<rel>` is recognized when the
+            // client negotiates it (core gates `parseWithCount()` on the profile); the
+            // relationship-object `meta.total` then reads the request-scoped count seam.
+            ->withProfile(new CountableProfile())
+            ->withRelationshipCount($this->relationshipCount)
+            ->withRelationshipLoadState($this->relationshipLoadState)
             ->withContainer($this->resolver);
 
         foreach ($this->resourceClasses as $resourceClass) {

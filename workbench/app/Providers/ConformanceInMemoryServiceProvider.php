@@ -33,15 +33,25 @@ final class ConformanceInMemoryServiceProvider extends ServiceProvider
     {
         JsonApi::discover([\dirname(__DIR__) . '/JsonApi']);
 
-        JsonApi::provider(new InMemoryDataProvider('artists', $this->artists()));
-        JsonApi::provider(new InMemoryDataProvider('albums', $this->albums()));
+        // Build the artist ↔ album object graph once so the `HasMany('albums')` and
+        // `BelongsTo('artist')` relations resolve off the SAME instances both stores hold —
+        // the in-memory analogue of the FK the {@see \Workbench\Database\Seeders\ConformanceSeeder}
+        // loads, so the two conformance suites read like-linked data.
+        [$artists, $albums] = $this->musicCatalog();
+
+        JsonApi::provider(new InMemoryDataProvider('artists', $artists));
+        JsonApi::provider(new InMemoryDataProvider('albums', $albums));
         JsonApi::provider(new InMemoryDataProvider('genres', $this->genres()));
     }
 
     /**
-     * @return array<int|string, Artist>
+     * Builds the linked artist ↔ album object graph from the shared {@see ConformanceFixtures}
+     * (0/1/many albums per artist), each album pointing at its owner and each artist
+     * collecting its albums — the same instances both stores hold.
+     *
+     * @return array{0: array<int|string, Artist>, 1: array<int|string, Album>}
      */
-    private function artists(): array
+    private function musicCatalog(): array
     {
         $artists = [];
         foreach (ConformanceFixtures::artists() as $row) {
@@ -56,17 +66,11 @@ final class ConformanceInMemoryServiceProvider extends ServiceProvider
             );
         }
 
-        return $artists;
-    }
-
-    /**
-     * @return array<int|string, Album>
-     */
-    private function albums(): array
-    {
         $albums = [];
         foreach (ConformanceFixtures::albums() as $row) {
-            $albums[(string) $row['id']] = new Album(
+            $artist = $row['artist_id'] !== null ? ($artists[(string) $row['artist_id']] ?? null) : null;
+
+            $album = new Album(
                 id: (string) $row['id'],
                 title: $row['title'],
                 average_rating: $row['average_rating'],
@@ -74,10 +78,16 @@ final class ConformanceInMemoryServiceProvider extends ServiceProvider
                 explicit: $row['explicit'],
                 available_from: $row['available_from'],
                 released_at: $row['released_at'],
+                artist: $artist,
             );
+
+            $albums[(string) $row['id']] = $album;
+            if ($artist !== null) {
+                $artist->albums[] = $album;
+            }
         }
 
-        return $albums;
+        return [$artists, $albums];
     }
 
     /**

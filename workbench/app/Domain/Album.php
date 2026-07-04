@@ -12,6 +12,14 @@ namespace Workbench\App\Domain;
  */
 final class Album
 {
+    /**
+     * @param ?Artist $artist the album's artist — the object-graph backing for the
+     *                        `BelongsTo('artist')` relation the {@see \Workbench\App\JsonApi\AlbumResource}
+     *                        declares (null for an unowned album → `data: null` linkage);
+     *                        the in-memory service provider wires it to the same {@see Artist}
+     *                        instance the artists store holds, resolving exactly as the
+     *                        Eloquent `artist()` BelongsTo does off the model
+     */
     public function __construct(
         public string $id = '',
         public string $title = '',
@@ -20,5 +28,6 @@ final class Album
         public bool $explicit = false,
         public ?\DateTimeImmutable $available_from = null,
         public ?\DateTimeImmutable $released_at = null,
+        public ?Artist $artist = null,
     ) {}
 }
