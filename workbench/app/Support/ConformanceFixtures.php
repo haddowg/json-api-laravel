@@ -225,6 +225,61 @@ final class ConformanceFixtures
     }
 
     /**
+     * Five tracks — the far side of the Phase-3b playlist pivot relation. Titles are
+     * distinct (the `orderedTrackTitled` WhereThrough leaf) and `released_at` is a sortable
+     * key for windowed related fetches.
+     *
+     * @return list<array{id: int, title: string, released_at: \DateTimeImmutable}>
+     */
+    public static function tracks(): array
+    {
+        return [
+            ['id' => 1, 'title' => 'Airbag', 'released_at' => new \DateTimeImmutable('1997-05-21T00:00:00+00:00')],
+            ['id' => 2, 'title' => 'Paranoid Android', 'released_at' => new \DateTimeImmutable('1997-05-21T00:00:00+00:00')],
+            ['id' => 3, 'title' => 'Karma Police', 'released_at' => new \DateTimeImmutable('1997-05-21T00:00:00+00:00')],
+            ['id' => 4, 'title' => 'Everything In Its Right Place', 'released_at' => new \DateTimeImmutable('2000-10-02T00:00:00+00:00')],
+            ['id' => 5, 'title' => 'Idioteque', 'released_at' => new \DateTimeImmutable('2000-10-02T00:00:00+00:00')],
+        ];
+    }
+
+    /**
+     * Three playlists shaped for the pivot + existence + window edges:
+     *  - `1` (Best Of) owns FOUR ordered tracks — the many/window case, with a TIED `position`
+     *    (tracks 2 and 3 both at position 2) so the appended `id` tiebreak is exercised;
+     *  - `2` (Solo) owns ONE — the singleton;
+     *  - `3` (Empty) owns NONE — the empty partition + `withoutOrderedTracks` case.
+     *
+     * @return list<array{id: int, title: string, public: bool}>
+     */
+    public static function playlists(): array
+    {
+        return [
+            ['id' => 1, 'title' => 'Best Of', 'public' => true],
+            ['id' => 2, 'title' => 'Solo', 'public' => true],
+            ['id' => 3, 'title' => 'Empty', 'public' => false],
+        ];
+    }
+
+    /**
+     * The `playlist_track` pivot rows: `position` distinct per playlist except playlist 1's
+     * tied pair (tracks 2 and 3 at position 2), `weight >= position` throughout, and a
+     * server-owned `added_at`. Track 1 (Airbag) is shared across playlists 1 AND 2 — the
+     * belongsToMany fan-out proving a semi-join returns each parent once.
+     *
+     * @return list<array{playlist_id: int, track_id: int, position: int, weight: int, added_at: \DateTimeImmutable}>
+     */
+    public static function playlistTracks(): array
+    {
+        return [
+            ['playlist_id' => 1, 'track_id' => 1, 'position' => 1, 'weight' => 1, 'added_at' => new \DateTimeImmutable('2024-01-01T00:00:00+00:00')],
+            ['playlist_id' => 1, 'track_id' => 2, 'position' => 2, 'weight' => 2, 'added_at' => new \DateTimeImmutable('2024-01-02T00:00:00+00:00')],
+            ['playlist_id' => 1, 'track_id' => 3, 'position' => 2, 'weight' => 3, 'added_at' => new \DateTimeImmutable('2024-01-03T00:00:00+00:00')],
+            ['playlist_id' => 1, 'track_id' => 4, 'position' => 4, 'weight' => 4, 'added_at' => new \DateTimeImmutable('2024-01-04T00:00:00+00:00')],
+            ['playlist_id' => 2, 'track_id' => 1, 'position' => 1, 'weight' => 5, 'added_at' => new \DateTimeImmutable('2024-02-01T00:00:00+00:00')],
+        ];
+    }
+
+    /**
      * Three genres on a natural string key — the non-numeric-id fetch-one path and an
      * empty sort vocabulary (a `?sort` against `genres` is `SORTING_UNSUPPORTED`).
      *

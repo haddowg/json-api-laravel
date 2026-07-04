@@ -10,6 +10,7 @@ use haddowg\JsonApi\Collection\WindowExecutor;
 use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Pagination\CursorCodec;
 use haddowg\JsonApi\Pagination\CursorWindow;
+use haddowg\JsonApi\Pagination\OffsetWindow;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\BelongsToMany as PivotRelation;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
@@ -263,11 +264,13 @@ final class EloquentDataProvider extends AbstractDataProvider
      * load-state seam report loaded) happens here; the orchestrator's subsequent write-back
      * is then idempotent.
      *
-     * **No PHP-window fallback (PLAN decision 9).** The include batcher only ever calls this
-     * in fast-path (empty-criteria, **null-window**) mode; a windowed multi-parent batch is
-     * the Relationship Queries profile's SQL push-down (`groupLimit`/ROW_NUMBER), built in
-     * Phase 3b. Reaching this seam with any window throws rather than silently windowing in
-     * PHP — the referee is the in-memory witness's `withPkTiebreak`, ported ready.
+     * **No PHP-window fallback (PLAN decision 9, ADR 0006).** A windowed multi-parent batch
+     * is the Relationship Queries profile's SQL push-down ({@see fetchWindowedBatch()}): one
+     * `groupLimit`/`ROW_NUMBER() OVER (PARTITION BY <parent FK> ORDER BY <relation order>, <pk>)`
+     * query bounds each parent's partition to page 1, deterministic on ties through the
+     * appended primary-key tiebreak that the in-memory witness's `withPkTiebreak` mirrors. A
+     * case that cannot push down (a computed/`extractUsing` relation with no Eloquent method,
+     * a polymorphic relation the batcher never windows) throws rather than windowing in PHP.
      *
      * A relation this provider cannot batch (a computed/`extractUsing` column with no
      * Eloquent relation method, a polymorphic relation the include orchestrator already
@@ -282,13 +285,7 @@ final class EloquentDataProvider extends AbstractDataProvider
         JsonApiRequestInterface $request,
     ): RelatedBatch {
         if ($criteria->window !== null) {
-            throw new \LogicException(
-                'A windowed multi-parent relation batch is a Phase 3b capability (the '
-                . 'Relationship Queries profile\'s SQL push-down: groupLimit/ROW_NUMBER OVER '
-                . '(PARTITION BY …)). The Eloquent provider never windows a batch in PHP '
-                . '(PLAN decision 9: SQL push-down only, no fallback); the Phase 3a include '
-                . 'batcher only ever fast-paths this seam with a null window.',
-            );
+            return $this->fetchWindowedBatch($parentType, $parents, $relation, $criteria, $request);
         }
 
         $models = $this->eloquentModels($parents);
@@ -320,6 +317,162 @@ final class EloquentDataProvider extends AbstractDataProvider
             }
 
             $results[$this->wireId($model)] = new CollectionResult($items);
+        }
+
+        return new RelatedBatch($results);
+    }
+
+    /**
+     * The windowed multi-parent relation batch — the Relationship Queries profile's SQL
+     * push-down (PLAN decision 9, ADR 0006). It bounds each parent's related partition to page
+     * 1 of the relation's order in ONE query via Eloquent's own group-limit
+     * (`ROW_NUMBER() OVER (PARTITION BY <parent FK> ORDER BY <sort>, <pk>)`), then partitions
+     * the bounded rows per parent through the eager pipeline's dictionary `match()`. The order
+     * is the requested/default sort followed by the primary key ASC — the SAME final tiebreak
+     * the in-memory witness's `withPkTiebreak` appends, so the two providers resolve a tie to
+     * byte-identical pages (the ADR 0006 determinism referee). NULL ordering is the shared
+     * applier's plain `ORDER BY`, which on SQLite (and MySQL) places NULLs first on ASC / last
+     * on DESC — byte-identical to the witness's `<=>` comparator (ADR 0006 addendum).
+     *
+     * The window is applied through the relation's own `limit()`: a multi-parent eager relation
+     * has a non-existing parent, so `HasOneOrMany::limit()` / `BelongsToMany::limit()` route to
+     * `Builder::groupLimit($value, $existenceCompareKey)` — the qualified foreign key (or, for
+     * a `belongsToMany`, the qualified foreign pivot key) becomes the `PARTITION BY` column. A
+     * countable relation bounds to `limit` rows and takes the per-parent total from the SAME
+     * grouped `COUNT` {@see countRelated()} builds (zero-filled); a count-free relation bounds
+     * to `limit + 1` and reads the surplus row as the `hasMore` probe. The group-limit derived
+     * table re-exposes every inner column via its outer `SELECT *`, so both `match()` (reading
+     * the FK) and the `belongsToMany` pivot hydration survive the wrap.
+     *
+     * There is NO PHP-window fallback (PLAN decision 9): a relation with no Eloquent method (a
+     * computed/`extractUsing` column) or a polymorphic relation (which the batcher never
+     * windows) cannot push down and throws with a signposted message.
+     *
+     * @param list<object> $parents
+     *
+     * @return RelatedBatch
+     */
+    private function fetchWindowedBatch(
+        string $parentType,
+        array $parents,
+        RelationInterface $relation,
+        CollectionCriteria $criteria,
+        JsonApiRequestInterface $request,
+    ): RelatedBatch {
+        $window = $criteria->window;
+        if (!$window instanceof OffsetWindow) {
+            throw new \LogicException(
+                'The Eloquent windowed relation batch pushes down only an offset window (the '
+                . 'Relationship Queries profile pins the included page to page 1); a cursor '
+                . '(keyset) window over a batched relation is not supported on either provider '
+                . '— a shared parent-scoped keyset capability, refereed by the witness, is the '
+                . 'follow-up, never an Eloquent-only workaround.',
+            );
+        }
+
+        // A polymorphic relation spans related types with no single scoped query — the window
+        // batcher never routes one here (it skips relatedTypes > 1); guard defensively.
+        if (\count($relation->relatedTypes()) !== 1) {
+            throw new \LogicException(\sprintf(
+                'The Eloquent windowed relation batch cannot push down the polymorphic relationship "%s": '
+                . 'its members span types with no shared scoped query, and the Relationship Queries profile '
+                . 'never windows a polymorphic to-many.',
+                $relation->name(),
+            ));
+        }
+
+        $models = $this->eloquentModels($parents);
+        if ($models === []) {
+            return new RelatedBatch([]);
+        }
+
+        $eager = $this->eagerRelation($models[0], $relation);
+        if ($eager === null) {
+            throw new \LogicException(\sprintf(
+                'The Eloquent windowed relation batch cannot push down "%s": it resolves to no Eloquent '
+                . 'relation method, so there is no query to window. PLAN decision 9 (ADR 0006) forbids a '
+                . 'PHP-window fallback — supply a custom DataProvider or an Eloquent relation method.',
+                $relation->name(),
+            ));
+        }
+
+        $method = $this->relationMethod($relation);
+
+        // Filters + sort push down through the shared applier onto the relation's own eager
+        // query (the SAME handlers the related endpoint uses, so an unknown filter/sort key is
+        // the endpoint's same 400). The relation's own get() adds the correct projection
+        // (related.* plus, for a belongsToMany, the aliased pivot columns), so the SELECT is
+        // left untouched here — overriding it would drop the FK/pivot the partition needs.
+        $this->applier->apply($criteria, $eager->getQuery(), $this->filterHandler, $this->sortHandler);
+
+        // The deterministic primary-key tiebreak, appended AFTER the relation order so ties
+        // resolve by id ASC — byte-identical to the witness's `withPkTiebreak`, so the SQL
+        // ROW_NUMBER order and the witness's PHP stable sort select the SAME members on a tie.
+        $related = $eager->getRelated();
+        $eager->getQuery()->orderBy($related->qualifyColumn($related->getKeyName()), 'asc');
+
+        $countable = $criteria->wantsCount;
+        $limit = $window->limit;
+
+        // A real offset (a non-include caller) rides the group-limit's own `laravel_row >
+        // offset` bound; the profile pins page 1, so offset is 0 in practice.
+        if ($window->offset > 0) {
+            $eager->getQuery()->offset($window->offset);
+        }
+
+        // The window as a group-limit: a multi-parent eager relation's parent does not exist,
+        // so limit() routes to groupLimit(PARTITION BY <existence compare key>). A count-free
+        // relation probes one extra row per partition for the hasMore signal.
+        $eager->limit($countable ? $limit : $limit + 1);
+
+        // Eloquent's own eager pipeline: ONE group-limit query for the whole page, then the
+        // ORM-correct dictionary partition — run over lightweight CLONES of the parents, NOT the
+        // real ones. A clone keeps the key attributes `match()` reads, so the partition is
+        // identical, but the windowed page (including the count-free `limit + 1` probe row) is
+        // `setRelation()`'d onto the clones' relation cache — never the caller's models. Writing
+        // it back onto the real parents (`initRelation`/`match` on `$models`) would flip their
+        // `relationLoaded()` true and leave the shared relation cache holding the trimmed probe
+        // page, corrupting a column-sharing sibling relation and contradicting the out-of-band
+        // contract the batcher + WindowedRelationshipLinkage stake (ADR 0006). The page reaches
+        // the wire through the relationship-linkage seam; the parents stay untouched.
+        $clones = \array_map(static fn(Model $model): Model => clone $model, $models);
+        $eager->addEagerConstraints($clones);
+        $clones = $eager->initRelation($clones, $method);
+        $eager->match($clones, $eager->getEager(), $method);
+
+        // A countable relation's per-parent total is the SAME grouped, filtered COUNT the
+        // ?withCount path builds (zero-filled for an empty partition).
+        $totals = $countable
+            ? $this->countRelated($parentType, $parents, $relation, $criteria, $request)
+            : [];
+
+        $results = [];
+        foreach ($clones as $model) {
+            $matched = $model->getRelation($method);
+            $items = $matched instanceof EloquentCollection ? \array_values($matched->all()) : [];
+            $wireId = $this->wireId($model);
+
+            if ($countable) {
+                // The group-limit already bounded the partition to `limit` rows.
+                $results[$wireId] = new CollectionResult(
+                    \array_slice($items, 0, $limit),
+                    total: $totals[$wireId] ?? 0,
+                    windowed: true,
+                );
+
+                continue;
+            }
+
+            // Count-free: the (limit + 1)-th row past the window proves a further page — drop it
+            // and report hasMore.
+            $hasMore = \count($items) > $limit;
+
+            $results[$wireId] = new CollectionResult(
+                $hasMore ? \array_slice($items, 0, $limit) : $items,
+                total: null,
+                windowed: true,
+                hasMore: $hasMore,
+            );
         }
 
         return new RelatedBatch($results);

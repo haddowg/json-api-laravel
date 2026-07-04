@@ -260,18 +260,22 @@ final class EloquentRelationBatchTest extends EloquentTestCase
         );
     }
 
-    // --- the Phase-3b windowed-batch guard (no PHP-window fallback) ------------
+    // --- the windowed-batch guard (SQL push-down only, no PHP-window fallback) --
 
     #[Test]
     public function aWindowedBatchThrowsRatherThanWindowingInPhp(): void
     {
+        // The windowed multi-parent batch is a SQL push-down ONLY (PLAN decision 9 / ADR 0006):
+        // a relation that resolves to no Eloquent method has no query to group-limit, so the
+        // batch THROWS rather than falling back to a PHP window. The pushable case (the real
+        // groupLimit/ROW_NUMBER push-down) is exercised in EloquentWindowedRelationBatchTest.
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('Phase 3b');
+        $this->expectExceptionMessage('PHP-window fallback');
 
         $this->provider()->fetchRelatedCollectionBatch(
             'artists',
             $this->allArtists(),
-            HasMany::make('albums', 'albums'),
+            HasMany::make('phantom', 'albums'),
             new CollectionCriteria($this->query(), window: new OffsetWindow(0, 2)),
             $this->request(),
         );

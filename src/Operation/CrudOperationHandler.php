@@ -6,10 +6,18 @@ namespace haddowg\JsonApiLaravel\Operation;
 
 use haddowg\JsonApi\Collection\CollectionResult;
 use haddowg\JsonApi\Collection\CursorCollectionResult;
+use haddowg\JsonApi\Exception\AdditionProhibited;
 use haddowg\JsonApi\Exception\FilterParamUnrecognized;
+use haddowg\JsonApi\Exception\FullReplacementProhibited;
+use haddowg\JsonApi\Exception\QueryParamUnrecognized;
 use haddowg\JsonApi\Exception\RelationshipCountNotAllowed;
 use haddowg\JsonApi\Exception\RelationshipNotExists;
+use haddowg\JsonApi\Exception\RelationshipTypeInappropriate;
+use haddowg\JsonApi\Exception\RemovalProhibited;
 use haddowg\JsonApi\Exception\ResourceNotFound;
+use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
+use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
+use haddowg\JsonApi\Operation\AddToRelationshipOperation;
 use haddowg\JsonApi\Operation\CreateResourceOperation;
 use haddowg\JsonApi\Operation\DeleteResourceOperation;
 use haddowg\JsonApi\Operation\FetchRelatedOperation;
@@ -19,9 +27,19 @@ use haddowg\JsonApi\Operation\JsonApiOperationInterface;
 use haddowg\JsonApi\Operation\OperationContext;
 use haddowg\JsonApi\Operation\OperationHandlerInterface;
 use haddowg\JsonApi\Operation\QueryParameters;
+use haddowg\JsonApi\Operation\RemoveFromRelationshipOperation;
+use haddowg\JsonApi\Operation\UpdateRelationshipOperation;
 use haddowg\JsonApi\Operation\UpdateResourceOperation;
 use haddowg\JsonApi\Pagination\CursorPaginator;
+use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Request\RelatedQuery;
+use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\BelongsTo;
+use haddowg\JsonApi\Resource\Field\BelongsToMany;
+use haddowg\JsonApi\Resource\Field\HasOne;
+use haddowg\JsonApi\Resource\Field\Mode;
+use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\SupportsSingular;
@@ -30,6 +48,8 @@ use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Response\IdentifierResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
 use haddowg\JsonApi\Response\RelatedResponse;
+use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
+use haddowg\JsonApi\Schema\Relationship\RelationshipPagination;
 use haddowg\JsonApi\Serializer\PolymorphicSerializer;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApi\Server\RequestBaseUri;
@@ -43,7 +63,14 @@ use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
+use haddowg\JsonApiLaravel\DataProvider\RelationshipWindowBatcher;
+use haddowg\JsonApiLaravel\Serializer\PivotMetaSerializer;
+use haddowg\JsonApiLaravel\Serializer\PivotParentSerializer;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
+use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
+use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipPagination;
+use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipLinkage;
+use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipPagination;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\FilterValueValidator;
 use haddowg\JsonApiLaravel\Validation\ResourceValidator;
@@ -102,7 +129,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
         private readonly RelationCriteriaFactory $relationCriteria,
         private readonly RelatedIncludeBatcher $includeBatcher,
         private readonly RelationCountBatcher $countBatcher,
+        private readonly RelationshipWindowBatcher $windowBatcher,
         private readonly RequestScopedRelationshipCount $relationshipCount,
+        private readonly RequestScopedRelationshipPagination $relationshipPagination,
+        private readonly RequestScopedRelationshipLinkage $relationshipLinkage,
     ) {}
 
     public function handle(JsonApiOperationInterface $operation): DataResponse|RelatedResponse|IdentifierResponse|NoContentResponse|ErrorResponse
@@ -114,8 +144,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // singleton, so this per-dispatch reset holds regardless of the count holder's
         // container lifetime (the Symfony bundle's twin resets via kernel.reset; this is the
         // Laravel-side equivalent, not the — for a memoized Server, ineffective — scoped()
-        // binding its own docblock once floated).
+        // binding its own docblock once floated). The Relationship Queries profile's pagination
+        // + linkage holders are cleared here too, so a prior profile read's windowed
+        // pages/linkage can never leak into a render that does not re-install them (each
+        // windowing arm re-sets them below).
         $this->relationshipCount->set(null);
+        $this->relationshipPagination->set(null);
+        $this->relationshipLinkage->set(null);
 
         return match (true) {
             $operation instanceof FetchResourceOperation => $this->fetch($operation),
@@ -124,6 +159,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $operation instanceof CreateResourceOperation => $this->create($operation),
             $operation instanceof UpdateResourceOperation => $this->update($operation),
             $operation instanceof DeleteResourceOperation => $this->delete($operation),
+            $operation instanceof UpdateRelationshipOperation => $this->mutateRelationship($operation, $operation->body(), Mode::Replace),
+            $operation instanceof AddToRelationshipOperation => $this->mutateRelationship($operation, $operation->body(), Mode::Add),
+            $operation instanceof RemoveFromRelationshipOperation => $this->mutateRelationship($operation, $operation->body(), Mode::Remove),
             default => ErrorResponse::fromException(new ResourceNotFound()),
         };
     }
@@ -154,9 +192,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
             // Batch eager-load the effective ?include tree (explicit or the resource's
             // default-include fallback) so includes do not N+1; a single resource is
-            // preloaded as a one-element list. Then install the ?withCount batched counts
-            // for this resource so its relationship objects render meta.total.
+            // preloaded as a one-element list. Window each rendered to-many relation under the
+            // Relationship Queries profile (page 1 of its relatedQuery-ordered/filtered set,
+            // supplied out-of-band) BEFORE the count hook (windows → counts), then install the
+            // ?withCount batched counts for this resource so its relationship objects render
+            // meta.total.
             $this->preloadIncludes($server, [$model], $type, $request);
+            $this->applyRelationshipWindows($server, $type, [$model], $request);
             $this->applyRelationshipCounts($server, $type, [$model], $request);
 
             return DataResponse::fromResource($model, $serializer);
@@ -219,9 +261,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $items = $this->materialize($result);
 
         // Batch eager-load the effective ?include tree across the whole page (so includes
-        // do not N+1) and install the ?withCount batched counts in ONE grouped count per
-        // relation, before rendering — covering the singular first match too.
+        // do not N+1), window each rendered to-many relation under the Relationship Queries
+        // profile in ONE batched push-down per relation (windows → counts), and install the
+        // ?withCount batched counts in ONE grouped count per relation, before rendering —
+        // covering the singular first match too.
         $this->preloadIncludes($server, $items, $type, $request);
+        $this->applyRelationshipWindows($server, $type, $items, $request);
         $this->applyRelationshipCounts($server, $type, $items, $request);
 
         if ($singular) {
@@ -359,12 +404,25 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 ? $this->polymorphicSerializer($relation, $server)
                 : $server->serializerFor($relatedType);
 
+            // A belongsToMany with declared pivot fields renders each related member's stored
+            // pivot values as `meta.pivot` (ADR 0008): wrap the related serializer with the
+            // per-member pivot map read off the parent (Eloquent renders it; the in-memory
+            // witness returns none, so the wrap is a no-op there — pivot READ is Eloquent-only).
+            if (!$polymorphic) {
+                $pivotMap = $this->pivotMap($type, $parent, $relation);
+                if ($pivotMap !== []) {
+                    $serializer = new PivotMetaSerializer($serializer, $pivotMap);
+                }
+            }
+
             $items = $this->materialize($result);
 
             // A polymorphic page spans types (no single related type), so its includes are
-            // not batch-preloaded and it carries no single related type to count.
+            // not batch-preloaded, its relations are not windowed, and it carries no single
+            // related type to count.
             if (!$polymorphic) {
                 $this->preloadIncludes($server, $items, $relatedType, $request);
+                $this->applyRelationshipWindows($server, $relatedType, $items, $request);
                 $this->applyRelationshipCounts($server, $relatedType, $items, $request);
             }
 
@@ -448,9 +506,16 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * parent through the *parent* type's serializer with the relationship name set so the
      * transformer emits linkage.
      *
-     * The queryable/windowed to-many linkage, the to-one filter-null, and pivot `meta.pivot`
-     * all ride the Relationship Queries profile (phase 3b); a plain 3a relationship GET reads
-     * linkage off the loaded parent.
+     * A monomorphic to-many relationship endpoint is a queryable, paginated collection at
+     * parity with its related twin (`GET /{type}/{id}/{rel}`): when the client supplies
+     * `?page`/`?sort`/`?filter` (or `?withCount=_self_`) it is windowed to page 1, whose
+     * linkage + relationship-object pagination ride the request-scoped seams OUT-OF-BAND (never
+     * a destructive write onto the parent property, which would corrupt a column-sharing sibling
+     * relation). With no query parameters it renders the whole association off the loaded parent
+     * exactly as before (the plain relationship GET — a deliberate divergence from the bundle's
+     * always-paginate, preserving the Phase-3a full-linkage contract). A windowed *pivot*
+     * relationship endpoint (the pivot page + its `meta.pivot`) rides the pivot machinery and
+     * stays on its full-set path here.
      */
     private function fetchRelationship(FetchRelationshipOperation $operation): IdentifierResponse|ErrorResponse
     {
@@ -473,7 +538,160 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         $this->gateRead($type, $parent, $relation);
 
-        return IdentifierResponse::forRelationship($parent, $server->serializerFor($type), $relationshipName);
+        // When the client addressed the relationship (linkage) endpoint with query parameters
+        // (`?page`/`?sort`/`?filter`/`?withCount=_self_`), honour or reject them — NEVER silently
+        // ignore them (the worst outcome: a client believing its sort/filter/page applied).
+        $request = $this->jsonApiRequest($operation->context());
+        if ($this->relationshipEndpointQueried($operation->queryParameters(), $request)) {
+            $monomorphic = \count($relation->relatedTypes()) === 1;
+            $isPivot = $relation instanceof BelongsToMany && $relation->pivotFields() !== [];
+
+            if ($relation->isToMany() && $monomorphic && !$isPivot) {
+                // A monomorphic, non-pivot to-many: window it, supplying the page-1 linkage +
+                // pagination out-of-band. A miss (unknown filter/sort key, a `_self_` count on a
+                // non-countable relation) surfaces the related endpoint's same error.
+                $error = $this->windowRelationshipEndpoint($server, $type, $parent, $relation, $operation->queryParameters(), $request);
+                if ($error !== null) {
+                    return $error;
+                }
+            } else {
+                // The endpoint cannot honour the client's query on THIS relation shape, so it is a
+                // 400 rather than a silent full-set render: a to-one has no collection to
+                // sort/page/count; a polymorphic to-many has no single related provider or shared
+                // sort/filter vocabulary; a pivot to-many's windowed linkage (bundle ADR 0096 — the
+                // pivot page + its `meta.pivot`) is a deliberately-deferred tail. See docs/adr/0010.
+                return $this->rejectRelationshipEndpointQuery($operation->queryParameters(), $request);
+            }
+        }
+
+        return IdentifierResponse::forRelationship(
+            $parent,
+            $this->relationshipLinkageSerializer($server, $type, $parent, $relation, $relationshipName),
+            $relationshipName,
+        );
+    }
+
+    /**
+     * Whether the client addressed a relationship (linkage) endpoint with query parameters that
+     * make it a windowed collection: an explicit `?page`/`?sort`/`?filter`, or a
+     * `?withCount=_self_` naming this relationship's collection total. With none of these the
+     * endpoint renders the whole association off the loaded parent (the plain relationship GET).
+     */
+    private function relationshipEndpointQueried(QueryParameters $queryParameters, JsonApiRequestInterface $request): bool
+    {
+        return $queryParameters->pagination !== []
+            || $queryParameters->sort !== []
+            || $queryParameters->filter !== []
+            || $request->countsRelationship('_self_');
+    }
+
+    /**
+     * Windows a monomorphic to-many relationship (linkage) endpoint to page 1 of the request's
+     * `?sort`/`?filter` over the merged related-collection vocabulary (mirroring
+     * {@see fetchRelated()}'s to-many arm), then supplies that page-1 linkage + its pagination
+     * out-of-band via the request-scoped seams. Returns an {@see ErrorResponse} for a
+     * `?withCount=_self_` on a non-countable relation (the linkage twin of the related
+     * endpoint's `_self_` gate); `null` on success.
+     */
+    private function windowRelationshipEndpoint(
+        Server $server,
+        string $type,
+        object $parent,
+        RelationInterface $relation,
+        QueryParameters $queryParameters,
+        JsonApiRequestInterface $request,
+    ): ?ErrorResponse {
+        $relatedType = $relation->relatedTypes()[0] ?? $type;
+        $relatedResource = $this->types->resourceFor($server, $relatedType);
+        $paginator = $this->relationCriteria->paginatorFor($relation, $relatedResource, $server);
+        $window = $paginator?->window($request);
+
+        // `_self_` names THIS relationship's collection — a 400 on a non-countable relation (the
+        // to-many linkage twin of fetchRelated's gate; the relationship document does not run
+        // core's primary-collection `_self_` gate).
+        if ($request->countsRelationship('_self_') && !$relation->isCountable()) {
+            return ErrorResponse::fromException(new RelationshipCountNotAllowed(['_self_']));
+        }
+
+        $wantsCount = $paginator !== null
+            && !($paginator instanceof CursorPaginator)
+            && ($paginator->wantsCount() || $request->countsRelationship('_self_'));
+
+        $criteria = $this->relationCriteria->criteriaFor($queryParameters, $relatedResource, $relation, $window, wantsCount: $wantsCount);
+        $this->filterValidator->validate($queryParameters->filter, $criteria->filters);
+
+        $result = $this->providers->forType($relatedType)->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
+        $items = $this->materialize($result);
+
+        $this->supplyWindowedRelationship($parent, $relation->name(), $items, $paginator, $result, $wantsCount, $request, $queryParameters);
+
+        return null;
+    }
+
+    /**
+     * Rejects a query the relationship (linkage) endpoint cannot honour on the addressed
+     * relation shape — a to-one, a polymorphic to-many, or a pivot to-many (docs/adr/0010) — with
+     * a `400` rather than silently rendering the full association. `?withCount=_self_` is the
+     * related endpoint's same {@see RelationshipCountNotAllowed}; a filter mirrors
+     * {@see fetchRelated()}'s polymorphic-to-one {@see FilterParamUnrecognized}; a `?sort`/`?page`
+     * is an unsupported query parameter on this endpoint.
+     */
+    private function rejectRelationshipEndpointQuery(QueryParameters $queryParameters, JsonApiRequestInterface $request): ErrorResponse
+    {
+        if ($request->countsRelationship('_self_')) {
+            return ErrorResponse::fromException(new RelationshipCountNotAllowed(['_self_']));
+        }
+
+        if ($queryParameters->filter !== []) {
+            return ErrorResponse::fromException(new FilterParamUnrecognized((string) \array_key_first($queryParameters->filter)));
+        }
+
+        return ErrorResponse::fromException(new QueryParamUnrecognized($queryParameters->sort !== [] ? 'sort' : 'page'));
+    }
+
+    /**
+     * Supplies the page-1 linkage and its pagination for a windowed to-many relationship
+     * (linkage) endpoint OUT-OF-BAND through the request-scoped linkage/pagination seams, keyed
+     * by the one rendered parent + relation (single-entry maps) — never a destructive write onto
+     * the parent's relation property (which would corrupt a column-sharing sibling relation). A
+     * paginated relation supplies its page so core emits the relationship object's
+     * `first`/`prev`/`next`(/`last`) links in the spec's plain form; a relation with no paginator
+     * is filtered/sorted but not sliced (no pagination entry).
+     *
+     * @param list<object>             $items  the page-1 linkage members
+     * @param CollectionResult<object> $result the provider's windowed fetch result
+     */
+    private function supplyWindowedRelationship(
+        object $parent,
+        string $relationshipName,
+        array $items,
+        ?PaginatorInterface $paginator,
+        CollectionResult $result,
+        bool $wantsCount,
+        JsonApiRequestInterface $request,
+        QueryParameters $queryParameters,
+    ): void {
+        $objectId = \spl_object_id($parent);
+        $this->relationshipLinkage->set(new WindowedRelationshipLinkage(
+            [$objectId => [$relationshipName => new RelationshipLinkage($items)]],
+        ));
+
+        if ($paginator === null || ($result->total === null && !$result->windowed)) {
+            return;
+        }
+
+        $queryString = (new RelatedQuery(
+            $request->getSorting() === [] ? null : \implode(',', $request->getSorting()),
+            $queryParameters->filter,
+        ))->toPlainQueryString();
+
+        $page = $wantsCount && $result->total !== null
+            ? $paginator->paginate($request, $items, $result->total)
+            : $paginator->paginateWithoutCount($request, $items, $result->hasMore);
+
+        $this->relationshipPagination->set(new WindowedRelationshipPagination(
+            [$objectId => [$relationshipName => new RelationshipPagination($page, $queryString)]],
+        ));
     }
 
     /**
@@ -507,6 +725,31 @@ final class CrudOperationHandler implements OperationHandlerInterface
     }
 
     /**
+     * Installs the per-render relationship-window seam for a read of `$type` over its fetched
+     * `$items` under the Relationship Queries profile: the {@see RelationshipWindowBatcher}
+     * windows each rendered to-many relation to page 1 of its `relatedQuery`-ordered/filtered
+     * set — on the Eloquent reference through the `groupLimit`/ROW_NUMBER SQL push-down
+     * (ADR 0006) — and supplies that page-1 LINKAGE + relationship-object PAGINATION out-of-band
+     * (NOT written back onto each parent), both maps swapped into the request-scoped holders the
+     * memoized Server renders through, so core emits the windowed linkage and the relationship
+     * object's pagination links in plain form while a column-sharing bystander relation still
+     * renders its own membership.
+     *
+     * Called on every read (and write) so it also CLEARS the holders (installs `null`) when the
+     * request did not negotiate the profile — a prior profile request's pages never leak into
+     * this render. A no-op with no request to read the profile/relatedQuery from.
+     *
+     * @param list<object> $items the fetched page whose rendered to-many relations to window
+     */
+    private function applyRelationshipWindows(Server $server, string $type, array $items, ?JsonApiRequestInterface $request): void
+    {
+        $result = $request === null ? null : $this->windowBatcher->batch($server, $type, $items, $request);
+
+        $this->relationshipPagination->set($result?->pagination);
+        $this->relationshipLinkage->set($result?->linkage);
+    }
+
+    /**
      * Loads the parent resource of a related / relationship read through the read provider,
      * or `null` when there is no id (the handler maps `null` to a `404`).
      */
@@ -526,6 +769,21 @@ final class CrudOperationHandler implements OperationHandlerInterface
     private function resolveRelation(Server $server, string $type, string $name): ?RelationInterface
     {
         return $this->types->relationNamed($server, $type, $name);
+    }
+
+    /**
+     * A `(type) => ?AbstractResource` resolver over the server, threaded into the linkage
+     * validator so it can look up a related type's declared id format (the linkage-id-format
+     * pass). Returns `null` for a type the server declares no resource for (a bare
+     * serializer/hydrator pair — its id is then unconstrained).
+     *
+     * @return \Closure(string): ?AbstractResource
+     */
+    private function resourceResolver(Server $server): \Closure
+    {
+        return static fn(string $relatedType): ?AbstractResource => $server->hasResourceFor($relatedType)
+            ? $server->resourceFor($relatedType)
+            : null;
     }
 
     /**
@@ -562,6 +820,51 @@ final class CrudOperationHandler implements OperationHandlerInterface
             fn(mixed $object): SerializerInterface => $relation->resolveSerializer($object, $server)
                 ?? throw new \LogicException(\sprintf('No declared type of the "%s" relationship serializes a related object.', $relation->name())),
         );
+    }
+
+    /**
+     * The parent-type serializer for a relationship-linkage render ({@see fetchRelationship()}
+     * and the pivot mutation echo), decorated so a `belongsToMany` pivot relation's linkage
+     * identifiers carry their stored pivot values as `meta.pivot` (ADR 0008). A non-pivot
+     * relation (or a provider that stores no pivot — the in-memory witness) renders through the
+     * bare parent serializer unchanged, so `meta.pivot` is Eloquent-only.
+     */
+    private function relationshipLinkageSerializer(Server $server, string $type, object $parent, RelationInterface $relation, string $relationshipName): SerializerInterface
+    {
+        $serializer = $server->serializerFor($type);
+
+        $pivotMap = $this->pivotMap($type, $parent, $relation);
+        if ($pivotMap === []) {
+            return $serializer;
+        }
+
+        $relatedType = $relation->relatedTypes()[0] ?? $type;
+
+        return new PivotParentSerializer(
+            $serializer,
+            $relationshipName,
+            $relation,
+            $server,
+            new PivotMetaSerializer($server->serializerFor($relatedType), $pivotMap),
+        );
+    }
+
+    /**
+     * The stored per-member pivot map (`relatedId => [field => value]`) for a `belongsToMany`
+     * relation declaring pivot fields, read through the parent's provider seam
+     * ({@see \haddowg\JsonApiLaravel\DataProvider\DataProviderInterface::fetchRelationshipPivot()}),
+     * or `[]` when the relation is not a pivot relation / declares no pivot fields / the
+     * provider stores none (the in-memory boundary — pivot READ is Eloquent-only).
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function pivotMap(string $type, object $parent, RelationInterface $relation): array
+    {
+        if (!$relation instanceof BelongsToMany || $relation->pivotFields() === []) {
+            return [];
+        }
+
+        return $this->providers->forType($type)->fetchRelationshipPivot($type, $parent, $relation);
     }
 
     /**
@@ -618,10 +921,39 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // recorded divergence from the bundle — see docs/adr/0004.
         $this->authorizer->authorize($type, Operation::Create, $entity);
 
+        // Whole-resource writes embedding `data.relationships` (Phase 3b): core's hydrator
+        // would assign a scalar linkage id to a typed association property (a TypeError /
+        // NOT-NULL 500), so the relationships are stripped from the body before hydration
+        // and set through the persister's relationship seam instead — a full replacement,
+        // the flush deferred to the single create() commit (bundle ADR 0018). Each embedded
+        // linkage is validated with the same pass the dedicated endpoint uses (a `409`
+        // resource-type conflict / `422` malformed linkage or pivot meta), before persist.
+        // A to-one (owner-side FK) applies inline before the create; a to-many (join /
+        // inverse FK) is DEFERRED to after the parent is keyed — an Eloquent belongsToMany
+        // join insert needs the parent PK, a reference-storage divergence from the bundle's
+        // uniform pre-create apply (docs/adr/0009). The `cannot*` gate is NOT applied on a
+        // create (there is nothing to replace; a create sets the initial state).
+        $relationships = $this->extractRelationships($server, $type, $body, true);
+        $resolveResource = $this->resourceResolver($server);
+        foreach ($relationships as $relationship) {
+            $this->validator->validateRelationshipLinkage(
+                $relationship['relation'],
+                $relationship['linkage'],
+                Mode::Replace,
+                [],
+                $body,
+                embeddedRelationName: $relationship['relation']->name(),
+                resolveResource: $resolveResource,
+            );
+        }
+        [$beforeCreate, $deferred] = $this->partitionForCreateOrder($relationships);
+        $this->applyRelationships($persister, $type, $entity, $beforeCreate, $body, true, flush: false);
+
         // Core's hydrator applies the id policy (client vs server-generated; a wrong
         // `type` 409s, a forbidden client id 403s) then allow-list-hydrates the
-        // attributes; the throws propagate to the exception renderer.
-        $entity = $server->hydratorFor($type)->hydrate($body, $entity);
+        // attributes; the throws propagate to the exception renderer. The
+        // relationships are stripped so core never scalar-hydrates an association.
+        $entity = $server->hydratorFor($type)->hydrate($this->withoutRelationships($body), $entity);
         \assert(\is_object($entity));
 
         // The post-hydration entity seam (uniqueness's custom cousin): a resource's
@@ -632,9 +964,31 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->validator->validateEntity($resource, $entity, true);
         }
 
-        // The persister commits and returns the entity with any store-generated id
-        // populated (Eloquent auto-increment / the in-memory store's minted id).
-        $entity = $persister->create($type, $entity);
+        // The create() and the deferred (join / inverse-FK) relationship applies commit as
+        // ONE unit: create() opens its own transaction, which nests as a savepoint under this
+        // outer boundary, so a failing deferred apply (a QueryException on a join insert, an FK
+        // violation) rolls the parent row back too — no orphaned, partially-related resource.
+        // This restores the atomicity the bundle's single flush guarantees, despite the
+        // Eloquent PK-before-join reordering (docs/adr/0009); a non-transactional persister
+        // runs the closure directly (it owns its own atomicity).
+        $entity = $this->writeTransactionally($persister, function () use ($persister, $type, $entity, $deferred, $body): object {
+            // The persister commits and returns the entity with any store-generated id
+            // populated (Eloquent auto-increment / the in-memory store's minted id). The
+            // deferred embeds then apply now the parent carries its key (an Eloquent join
+            // insert / inverse-FK reparent both need the parent PK), their per-op transactions
+            // nesting as savepoints under this boundary.
+            $created = $persister->create($type, $entity);
+            $this->applyRelationships($persister, $type, $created, $deferred, $body, true, flush: true);
+
+            return $created;
+        });
+
+        // A write response is the same resource document, so it honours `?include`, the
+        // Relationship Queries profile (windowed linkage/pagination), and `?withCount` exactly
+        // as a read does — preload → window → count over the created entity, before rendering.
+        $this->preloadIncludes($server, [$entity], $type, $request);
+        $this->applyRelationshipWindows($server, $type, [$entity], $request);
+        $this->applyRelationshipCounts($server, $type, [$entity], $request);
 
         // The Location uses the resource's URI segment (its uriType), so it matches the
         // route a client GETs; a bare pair falls back to the type. It is resolved from
@@ -689,6 +1043,29 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // bundle's post-hydrate timing). See docs/adr/0004.
         $this->authorizer->authorize($type, Operation::Update, $entity);
 
+        // Whole-resource writes embedding `data.relationships` (Phase 3b): stripped from the
+        // body before hydration and set through the persister's relationship seam (bundle
+        // ADR 0018), a full replacement per named association (never an incremental
+        // add/remove). Each is validated with the endpoint's pass — folding the loaded
+        // parent's stored pivot rows in for the merge-before-validate (an existing member's
+        // omitted required pivot field keeps its stored value, no false 422). The apply is
+        // deferred (`flush: false`) so the single update() commit below owns the flush.
+        $relationships = $this->extractRelationships($server, $type, $body, false);
+        $existingPivots = $this->existingPivots($server, $type, $body, $entity);
+        $resolveResource = $this->resourceResolver($server);
+        foreach ($relationships as $relationship) {
+            $pivot = $existingPivots[$relationship['relation']->name()] ?? [];
+            $this->validator->validateRelationshipLinkage(
+                $relationship['relation'],
+                $relationship['linkage'],
+                Mode::Replace,
+                $pivot,
+                $body,
+                embeddedRelationName: $relationship['relation']->name(),
+                resolveResource: $resolveResource,
+            );
+        }
+
         // Hydration mutates the loaded target in place (the in-memory witness returns the
         // stored instance by reference), so a mid-hydration throw or a post-hydration
         // validateEntity 422 would otherwise leave a partial write visible to reads. Wrap
@@ -696,8 +1073,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // back to its pre-hydration state — the in-memory analogue of Eloquent's
         // rollback-on-throw, keeping the two providers' failed-write semantics identical.
         $hydrator = $server->hydratorFor($type);
-        $entity = $this->writeTransactionally($persister, function () use ($hydrator, $body, $resource, $type, $persister, $entity): object {
-            $entity = $hydrator->hydrate($body, $entity);
+        $entity = $this->writeTransactionally($persister, function () use ($hydrator, $body, $resource, $type, $persister, $entity, $relationships): object {
+            // The embedded associations apply on the loaded (keyed) parent BEFORE hydration,
+            // each gated by the relation's request-aware `cannot*` flags in Mode::Replace —
+            // the same `403` a PATCH …/relationships/{rel} would raise.
+            $this->applyRelationships($persister, $type, $entity, $relationships, $body, false, flush: false);
+
+            $entity = $hydrator->hydrate($this->withoutRelationships($body), $entity);
             \assert(\is_object($entity));
 
             if ($resource !== null) {
@@ -706,6 +1088,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
             return $persister->update($type, $entity);
         });
+
+        // A write response honours `?include`, the Relationship Queries profile (windowed
+        // linkage/pagination), and `?withCount` exactly as a read does — preload → window →
+        // count over the updated entity, before rendering.
+        $this->preloadIncludes($server, [$entity], $type, $request);
+        $this->applyRelationshipWindows($server, $type, [$entity], $request);
+        $this->applyRelationshipCounts($server, $type, [$entity], $request);
 
         return DataResponse::fromResource($entity, $serializer);
     }
@@ -732,6 +1121,361 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->persisters->forType($type)->delete($type, $entity);
 
         return NoContentResponse::create();
+    }
+
+    /**
+     * `PATCH`/`POST`/`DELETE /{type}/{id}/relationships/{relationship}` — the relationship
+     * mutation arms (full-replacement / add / remove), one shape (the Laravel twin of the
+     * bundle's `mutateRelationship`, re-idiomised to a policy gate + the Eloquent persister):
+     *  1. load the parent through the read provider (a `404` when absent);
+     *  2. resolve the named relation (a `404` {@see RelationshipNotExists} when unknown or its
+     *     relationship endpoint is suppressed);
+     *  3. cardinality gate — an add/remove to a to-one is a `400`
+     *     {@see RelationshipTypeInappropriate};
+     *  4. parse the linkage with core's relationship-endpoint body parser;
+     *  5. {@see guardMutability()} — the relation's request-aware mutability flags
+     *     ({@see FullReplacementProhibited}/{@see AdditionProhibited}/{@see RemovalProhibited},
+     *     `403`);
+     *  6. validate the linkage — a `409` resource-type conflict / `422` malformed linkage;
+     *  7. {@see gateMutate()} — the policy gate (PLAN decision 7): the parent's `update`
+     *     policy, or the relation's `securityMutate` ability override;
+     *  8. apply through the persister's storage-owning relationship seam (transactional per
+     *     mutation), and render the resulting linkage ({@see IdentifierResponse::forRelationship()},
+     *     `200` — the spec allows `200`/`204`; the bundle returns `200`, matched here).
+     *
+     * Lifecycle events + the atomic post-commit hook are a later phase (the handler has no
+     * dispatcher yet); the windowed linkage + pivot `meta.pivot` echo ride the Relationship
+     * Queries profile / pivot machinery.
+     */
+    private function mutateRelationship(
+        AddToRelationshipOperation|UpdateRelationshipOperation|RemoveFromRelationshipOperation $operation,
+        JsonApiRequestInterface $body,
+        Mode $mode,
+    ): IdentifierResponse|ErrorResponse {
+        $server = $operation->context()->server;
+        \assert($server instanceof Server);
+
+        $target = $operation->target();
+        $type = $target->type;
+        $relationshipName = (string) $target->relationship;
+
+        $parent = $this->loadParent($type, $target->id);
+        if ($parent === null) {
+            return ErrorResponse::fromException(new ResourceNotFound());
+        }
+
+        $relation = $this->resolveRelation($server, $type, $relationshipName);
+        if ($relation === null || !$relation->exposesRelationshipEndpoint()) {
+            return ErrorResponse::fromException(new RelationshipNotExists($relationshipName));
+        }
+
+        // Add / remove are to-many operations: a POST / DELETE to a to-one relationship
+        // endpoint is a cardinality error (400).
+        if ($mode !== Mode::Replace && $relation->isToMany() === false) {
+            throw new RelationshipTypeInappropriate($relationshipName, 'to-one', 'to-many');
+        }
+
+        $linkage = $relation->isToMany()
+            ? $body->getRelationshipDataToMany($relationshipName)
+            : $body->getRelationshipDataToOne($relationshipName);
+
+        // The relation's request-aware mutability flags (cannotReplace/cannotAdd/cannotRemove)
+        // — a 403 family, distinct from the policy gate below (core ADR 0079).
+        $this->guardMutability($relation, $relationshipName, $linkage, $mode, $body, $parent);
+
+        // A pivot relation folds its stored pivot rows in for the merge-before-validate pass:
+        // a member already in the relationship validates its MERGED pivot (stored row overlaid
+        // by the incoming meta) in the update context, a genuinely-new member its incoming meta
+        // in the create context. Eloquent supplies the real map; the in-memory witness returns
+        // none (every member is then new). A Remove carries no pivot meta.
+        $existingPivot = $mode !== Mode::Remove && $relation instanceof BelongsToMany && $relation->pivotFields() !== []
+            ? $this->providers->forType($type)->fetchRelationshipPivot($type, $parent, $relation)
+            : [];
+
+        // A linkage carrying an unacceptable resource type is a 409 (the linkage twin of a
+        // create's wrong data.type); a malformed linkage id / pivot meta a 422 — validated
+        // before the persister applies, so a bad linkage never reaches storage. The endpoint
+        // surface leaves `embeddedRelationName` null (pointers root at `/data/…`); the resolver
+        // enables the linkage-id-format pass.
+        $this->validator->validateRelationshipLinkage($relation, $linkage, $mode, $existingPivot, $body, resolveResource: $this->resourceResolver($server));
+
+        // The policy gate (PLAN decision 7, NEW vs the bundle's event gate): a relationship
+        // mutation authorizes the parent — `update` by default, or the relation's own
+        // `securityMutate` ability override — after validation (422/409 before the policy 403).
+        $this->gateMutate($type, $parent, $relation);
+
+        $parent = $this->persisters->forType($type)->mutateRelationship($type, $parent, $relation, $linkage, $mode);
+
+        // The 200 linkage echo carries `meta.pivot` for a pivot relation (Eloquent-only),
+        // exactly as the relationship-read endpoint does.
+        return IdentifierResponse::forRelationship(
+            $parent,
+            $this->relationshipLinkageSerializer($server, $type, $parent, $relation, $relationshipName),
+            $relationshipName,
+        );
+    }
+
+    /**
+     * Enforces the relation's request-aware mutability flags for the requested mutation,
+     * throwing core's typed `403`s (core ADR 0079 — each gate resolves its `cannotReplace/
+     * cannotAdd/cannotRemove` closure against the inbound `$body` + `$parent`, so "only admins
+     * may replace this relationship" is enforced HERE, distinct from the policy gate):
+     *  - a to-one clear (`data: null`) is a removal ({@see RemovalProhibited}); a non-null
+     *    to-one `PATCH` is a replacement ({@see FullReplacementProhibited});
+     *  - a to-many `PATCH` is a replacement ({@see FullReplacementProhibited}); a `POST` add
+     *    is gated by `allowsAddFor` ({@see AdditionProhibited}); a `DELETE` remove by
+     *    `allowsRemoveFor` ({@see RemovalProhibited}).
+     */
+    private function guardMutability(
+        RelationInterface $relation,
+        string $relationshipName,
+        ToOneRelationship|ToManyRelationship $linkage,
+        Mode $mode,
+        JsonApiRequestInterface $body,
+        object $parent,
+    ): void {
+        if ($linkage instanceof ToOneRelationship) {
+            if ($linkage->isEmpty()) {
+                if ($relation->allowsRemoveFor($body, $parent) === false) {
+                    throw new RemovalProhibited($relationshipName);
+                }
+
+                return;
+            }
+
+            if ($relation->allowsReplaceFor($body, $parent) === false) {
+                throw new FullReplacementProhibited($relationshipName);
+            }
+
+            return;
+        }
+
+        if ($mode === Mode::Replace && $relation->allowsReplaceFor($body, $parent) === false) {
+            throw new FullReplacementProhibited($relationshipName);
+        }
+
+        if ($mode === Mode::Add && $relation->allowsAddFor($body, $parent) === false) {
+            throw new AdditionProhibited($relationshipName);
+        }
+
+        if ($mode === Mode::Remove && $relation->allowsRemoveFor($body, $parent) === false) {
+            throw new RemovalProhibited($relationshipName);
+        }
+    }
+
+    /**
+     * Gates a relationship mutation (PLAN decision 7): the parent's `update` policy
+     * authorizes the loaded parent, UNLESS the relation declares its own mutate security —
+     * a `false` opts the relation out of any mutate gate, a string overrides the ability the
+     * parent is authorized against (the `securityMutate` twin of {@see gateRead()}'s
+     * `securityRead`). A denial throws {@see \Illuminate\Auth\Access\AuthorizationException}
+     * (rendered `403`).
+     */
+    private function gateMutate(string $type, object $parent, RelationInterface $relation): void
+    {
+        $mutate = $relation->securityMutate();
+        if ($mutate === false) {
+            return;
+        }
+
+        if (\is_string($mutate)) {
+            $this->authorizer->authorizeAbility($type, $mutate, $parent);
+
+            return;
+        }
+
+        $this->authorizer->authorize($type, Operation::Update, $parent);
+    }
+
+    /**
+     * Collects the writable relationships named in a whole-resource write body's
+     * `data.relationships`, resolved to their declared relation + parsed linkage. A
+     * relationship that is unknown, or read-only for this operation, is skipped — the
+     * read-only gate is request-aware (core ADR 0079) and mirrors core's own
+     * `AbstractResource::hydrateRelationships()`, which never sees these because the
+     * handler strips relationships from the body before core hydrates.
+     *
+     * @return list<array{relation: RelationInterface, linkage: ToOneRelationship|ToManyRelationship}>
+     */
+    private function extractRelationships(Server $server, string $type, JsonApiRequestInterface $body, bool $creating): array
+    {
+        $collected = [];
+        foreach ($this->bodyRelationshipNames($body) as $name) {
+            $relation = $this->resolveRelation($server, $type, $name);
+            if ($relation === null || $relation->isReadOnlyFor($creating, $body)) {
+                continue;
+            }
+
+            if ($relation->isToMany()) {
+                if ($body->hasToManyRelationship($name)) {
+                    $collected[] = ['relation' => $relation, 'linkage' => $body->getToManyRelationship($name)];
+                }
+
+                continue;
+            }
+
+            if ($body->hasToOneRelationship($name)) {
+                $collected[] = ['relation' => $relation, 'linkage' => $body->getToOneRelationship($name)];
+            }
+        }
+
+        return $collected;
+    }
+
+    /**
+     * Applies each collected relationship to the entity through the persister's
+     * relationship seam in {@see Mode::Replace}. An embedded relationship is a FULL
+     * replacement of the named association, so on an UPDATE each one is gated by
+     * {@see guardMutability()} in Mode::Replace (the same gate the `/relationships/{rel}`
+     * endpoint applies, so a `cannotReplace(fn)` relation embedded in a PATCH raises the
+     * same typed `403`); the gate is SKIPPED on a create (a create sets the initial state,
+     * there is nothing to replace).
+     *
+     * @param list<array{relation: RelationInterface, linkage: ToOneRelationship|ToManyRelationship}> $relationships
+     */
+    private function applyRelationships(
+        DataPersisterInterface $persister,
+        string $type,
+        object $entity,
+        array $relationships,
+        JsonApiRequestInterface $body,
+        bool $creating,
+        bool $flush,
+    ): void {
+        foreach ($relationships as $relationship) {
+            if ($creating === false) {
+                $this->guardMutability($relationship['relation'], $relationship['relation']->name(), $relationship['linkage'], Mode::Replace, $body, $entity);
+            }
+
+            $persister->mutateRelationship($type, $entity, $relationship['relation'], $relationship['linkage'], Mode::Replace, flush: $flush);
+        }
+    }
+
+    /**
+     * Splits collected relationships into `[beforeCreate, deferred]` by STORAGE SIDE, not
+     * cardinality (docs/adr/0009). Only an **owner-side FK** relation — a {@see BelongsTo}
+     * (but NOT its {@see HasOne} subclass) or a {@see MorphTo} — carries its foreign key on the
+     * parent row, so it can be applied before the create and committed by the create's own
+     * insert. Every OTHER relation is an inverse FK on the related rows (a {@see HasOne}/
+     * {@see HasMany}) or a join table ({@see BelongsToMany}/{@see MorphToMany}) whose write
+     * needs the parent's primary key, so it is DEFERRED to after `create()` returns the keyed
+     * parent. Partitioning a `HasOne` (an inverse-FK to-one) by cardinality would land it in
+     * the pre-create bucket and save the related row with a NULL foreign key on the not-yet-keyed
+     * parent — silently dropping the association (or 500ing a NOT-NULL FK); the storage-side
+     * split closes that.
+     *
+     * @param list<array{relation: RelationInterface, linkage: ToOneRelationship|ToManyRelationship}> $relationships
+     *
+     * @return array{0: list<array{relation: RelationInterface, linkage: ToOneRelationship|ToManyRelationship}>, 1: list<array{relation: RelationInterface, linkage: ToOneRelationship|ToManyRelationship}>}
+     */
+    private function partitionForCreateOrder(array $relationships): array
+    {
+        $beforeCreate = [];
+        $deferred = [];
+        foreach ($relationships as $relationship) {
+            if ($this->appliesBeforeCreate($relationship['relation'])) {
+                $beforeCreate[] = $relationship;
+
+                continue;
+            }
+
+            $deferred[] = $relationship;
+        }
+
+        return [$beforeCreate, $deferred];
+    }
+
+    /**
+     * Whether a relation stores its foreign key on the PARENT row (an owner-side to-one), so
+     * it may be applied inline before `create()`. True only for a {@see BelongsTo} that is not
+     * a {@see HasOne} (core's {@see HasOne} extends {@see BelongsTo}, but is an INVERSE FK on
+     * the related row) or a {@see MorphTo} (an owner-side polymorphic FK). Everything else —
+     * inverse-FK to-ones/to-manys and join tables — must be deferred to after the parent is
+     * keyed.
+     */
+    private function appliesBeforeCreate(RelationInterface $relation): bool
+    {
+        return ($relation instanceof BelongsTo && !$relation instanceof HasOne)
+            || $relation instanceof MorphTo;
+    }
+
+    /**
+     * The relationship names present in the write body's `data.relationships` member, or
+     * an empty list when the document carries none.
+     *
+     * @return list<string>
+     */
+    private function bodyRelationshipNames(JsonApiRequestInterface $body): array
+    {
+        $data = $body->getResource();
+        if (!\is_array($data)) {
+            return [];
+        }
+
+        $relationships = $data['relationships'] ?? null;
+        if (!\is_array($relationships)) {
+            return [];
+        }
+
+        /** @var list<string> $names */
+        $names = \array_values(\array_filter(\array_keys($relationships), '\is_string'));
+
+        return $names;
+    }
+
+    /**
+     * A copy of the write body with `data.relationships` removed, so core's hydrator
+     * hydrates only the id + attributes and never assigns a scalar linkage id to a typed
+     * association property — the associations apply through the persister seam instead
+     * (bundle ADR 0018).
+     */
+    private function withoutRelationships(JsonApiRequestInterface $body): JsonApiRequestInterface
+    {
+        /** @var array<string, mixed> $document */
+        $document = (array) $body->getParsedBody();
+        $data = $document['data'] ?? null;
+        if (!\is_array($data) || !isset($data['relationships'])) {
+            return $body;
+        }
+
+        unset($data['relationships']);
+        $document['data'] = $data;
+
+        $stripped = $body->withParsedBody($document);
+        \assert($stripped instanceof JsonApiRequestInterface);
+
+        return $stripped;
+    }
+
+    /**
+     * The existing pivot rows of each `belongsToMany` pivot relation carried in the write
+     * body, keyed by relation name then related id — read off the loaded parent through
+     * {@see DataProviderInterface::fetchRelationshipPivot()}. The validator folds these
+     * under the incoming linkage meta per member for the merge-before-validate pass (an
+     * existing member validates its merged pivot in the update context, a new member its
+     * incoming meta in create context). A non-pivot relation, or a provider storing no
+     * pivot, contributes nothing.
+     *
+     * @return array<string, array<string, array<string, mixed>>>
+     */
+    private function existingPivots(Server $server, string $type, JsonApiRequestInterface $body, object $parent): array
+    {
+        $provider = $this->providers->forType($type);
+
+        $existingPivots = [];
+        foreach ($this->bodyRelationshipNames($body) as $name) {
+            $relation = $this->resolveRelation($server, $type, $name);
+            if (!$relation instanceof BelongsToMany || $relation->pivotFields() === []) {
+                continue;
+            }
+
+            $pivot = $provider->fetchRelationshipPivot($type, $parent, $relation);
+            if ($pivot !== []) {
+                $existingPivots[$name] = $pivot;
+            }
+        }
+
+        return $existingPivots;
     }
 
     /**

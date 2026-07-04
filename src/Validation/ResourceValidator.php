@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Validation;
 
+use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
+use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Constraint\CompareField;
@@ -12,10 +14,12 @@ use haddowg\JsonApi\Resource\Constraint\ConstraintInterface;
 use haddowg\JsonApi\Resource\Constraint\Nullable;
 use haddowg\JsonApi\Resource\Constraint\Required;
 use haddowg\JsonApi\Resource\Constraint\When;
+use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Map;
+use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\Error\Error;
 use haddowg\JsonApi\Schema\Error\ErrorSource;
@@ -181,6 +185,340 @@ final class ResourceValidator
         }
 
         throw new ValidationFailed($errors);
+    }
+
+    /**
+     * Validates a **relationship-endpoint** linkage
+     * (`PATCH`/`POST`/`DELETE …/relationships/<rel>`) before the persister applies it.
+     *
+     * The linkage's resource `type` is checked against the relation's declared related
+     * types: a `type` that is not an accepted inverse type is a `409` resource-type conflict
+     * ({@see RelationshipTypeUnacceptable}, mirroring core's create-path
+     * {@see \haddowg\JsonApi\Exception\ResourceTypeUnacceptable}), the linkage twin of a
+     * wrong `data.type` on a create — pointed at the endpoint linkage (`/data/type` for a
+     * to-one, `/data/<index>/type` for a to-many member). A polymorphic relation accepts any
+     * of its declared inverse types. An empty (clearing) to-one linkage carries no
+     * identifier to check.
+     *
+     * Every linkage id is validated against the related type's declared id format (a `422` at
+     * the linkage id — the create-direction of {@see ownIdError()}, ported from the bundle's
+     * `endpointLinkageError`/whole-resource id pass; the related type is the member's OWN
+     * linkage type, so polymorphic linkage resolves the right constraints), and a
+     * `belongsToMany`'s pivot-`meta` merge-before-validate pass runs (fed by
+     * `$mode`/`$existingPivot`).
+     *
+     * The same pass serves BOTH surfaces: with `$embeddedRelationName === null` (the default) it
+     * validates a **relationship-mutation endpoint** body (`/data/type`, `/data/<n>/id`,
+     * `/data/<n>/meta/pivot/<field>`); with a relationship name supplied it validates a linkage
+     * embedded in a **whole-resource write**, pointing every error at
+     * `/data/relationships/<rel>/data[/<n>]/…` — so an embedded violation locates the offending
+     * linkage, not the resource's own `data.type`.
+     *
+     * @param array<string, array<string, mixed>>       $existingPivot        the relation's stored pivot rows by related id (the
+     *                                                                         merge base for a pivot relation; unused by the type guard)
+     * @param string|null                               $embeddedRelationName null = relationship-endpoint pointers; a name = the
+     *                                                                         embedded `/data/relationships/<rel>/…` pointers
+     * @param (\Closure(string): ?AbstractResource)|null $resolveResource      resolves a related type to its resource (for the id-format
+     *                                                                         pass); null leaves id-format unchecked
+     *
+     * @throws RelationshipTypeUnacceptable when a linkage names an unacceptable resource type
+     * @throws ValidationFailed             when a linkage id violates the related type's id format or a pivot meta is invalid
+     */
+    public function validateRelationshipLinkage(
+        RelationInterface $relation,
+        ToOneRelationship|ToManyRelationship $linkage,
+        Mode $mode = Mode::Replace,
+        array $existingPivot = [],
+        ?JsonApiRequestInterface $request = null,
+        ?string $embeddedRelationName = null,
+        ?\Closure $resolveResource = null,
+    ): void {
+        if ($relation->relatedTypes() === []) {
+            return; // defensive: every relation declares at least one type via make()
+        }
+
+        // A linkage naming an unacceptable resource type is a `409` and PRE-EMPTS the id-format
+        // + pivot pass (a wrong type has no meaningful id/pivot to validate) — the linkage twin
+        // of a create's wrong `data.type`.
+        $typeErrors = [];
+        if ($linkage instanceof ToOneRelationship) {
+            $identifier = $linkage->resourceIdentifier;
+            if ($identifier !== null) {
+                $error = $this->linkageTypeConflict($relation, $identifier->type, $this->linkageTypePointer($embeddedRelationName, null));
+                if ($error !== null) {
+                    $typeErrors[] = $error;
+                }
+            }
+        } else {
+            foreach ($linkage->resourceIdentifiers as $index => $identifier) {
+                $error = $this->linkageTypeConflict($relation, $identifier->type, $this->linkageTypePointer($embeddedRelationName, $index));
+                if ($error !== null) {
+                    $typeErrors[] = $error;
+                }
+            }
+        }
+
+        if ($typeErrors !== []) {
+            throw new RelationshipTypeUnacceptable($typeErrors);
+        }
+
+        // The id-format bag + the pivot merge-before-validate bag (a `belongsToMany` with
+        // declared pivot fields): each linkage id is checked against the related type's format,
+        // and each member's writable pivot `meta` against the pivot fields' constraints in the
+        // per-member new/existing context. `Mode::Remove` / a request-less call skip the pivot
+        // pass; the id-format pass runs whenever a resource resolver is supplied.
+        $isPivot = $mode !== Mode::Remove && $relation instanceof BelongsToMany && $relation->pivotFields() !== [] && $request !== null;
+
+        $errors = [];
+        if ($linkage instanceof ToOneRelationship) {
+            $identifier = $linkage->resourceIdentifier;
+            if ($identifier !== null) {
+                $idError = $this->linkageIdError($relation, $identifier->type, $identifier->id, $this->linkageIdPointer($embeddedRelationName, null), $resolveResource);
+                if ($idError !== null) {
+                    $errors[] = $idError;
+                }
+                if ($isPivot && $request !== null && $relation instanceof BelongsToMany) {
+                    foreach ($this->memberPivotErrors($relation, $identifier->id, $this->pivotMetaIn($identifier->meta), null, $existingPivot, $request, $embeddedRelationName) as $metaError) {
+                        $errors[] = $metaError;
+                    }
+                }
+            }
+        } else {
+            foreach ($linkage->resourceIdentifiers as $index => $identifier) {
+                $idError = $this->linkageIdError($relation, $identifier->type, $identifier->id, $this->linkageIdPointer($embeddedRelationName, $index), $resolveResource);
+                if ($idError !== null) {
+                    $errors[] = $idError;
+                }
+                if ($isPivot && $request !== null && $relation instanceof BelongsToMany) {
+                    foreach ($this->memberPivotErrors($relation, $identifier->id, $this->pivotMetaIn($identifier->meta), $index, $existingPivot, $request, $embeddedRelationName) as $metaError) {
+                        $errors[] = $metaError;
+                    }
+                }
+            }
+        }
+
+        if ($errors !== []) {
+            throw new ValidationFailed($errors);
+        }
+    }
+
+    /**
+     * The `422` {@see Error} for a linkage id that violates the related type's declared id
+     * format, or `null` when it passes / there is nothing to check. The related type is the
+     * linkage's OWN `type` (polymorphic safe), falling back to the relation's single declared
+     * type; its id format is the {@see Id} field's translated constraints (the same rules
+     * {@see ownIdError()} runs the create-direction). An absent/empty id, an unresolvable
+     * related type, an id field with no format constraints, or a null `$resolveResource` all
+     * yield `null` (presence/shape is core's concern, not the format bridge's).
+     */
+    private function linkageIdError(RelationInterface $relation, string $linkageType, ?string $id, string $pointer, ?\Closure $resolveResource): ?Error
+    {
+        if ($resolveResource === null || !\is_string($id) || $id === '') {
+            return null;
+        }
+
+        $relatedType = $linkageType !== '' ? $linkageType : ($relation->relatedTypes()[0] ?? null);
+        if ($relatedType === null) {
+            return null;
+        }
+
+        $resource = $resolveResource($relatedType);
+        if (!$resource instanceof AbstractResource) {
+            return null;
+        }
+
+        $idField = null;
+        foreach ($resource->fields() as $field) {
+            if ($field instanceof Id) {
+                $idField = $field;
+
+                break;
+            }
+        }
+
+        if ($idField === null) {
+            return null;
+        }
+
+        $rules = [];
+        foreach ($idField->constraints() as $constraint) {
+            foreach ($this->translator->translate($constraint) as $rule) {
+                $rules[] = $rule;
+            }
+        }
+
+        if ($rules === []) {
+            return null; // the related type's id is unconstrained — any id passes
+        }
+
+        $bag = $this->validatorFactory->make(['id' => $id], ['id' => $rules])->errors();
+        if (!$bag->has('id')) {
+            return null;
+        }
+
+        return new Error(
+            status: '422',
+            code: 'VALIDATION_FAILED',
+            title: 'Unprocessable Entity',
+            detail: (string) $bag->first('id'),
+            source: ErrorSource::fromPointer($pointer),
+        );
+    }
+
+    /**
+     * The linkage `type` pointer for the active surface: the embedded
+     * `/data/relationships/<rel>/data[/<n>]/type` when a relation name is supplied, else the
+     * relationship-endpoint `/data[/<n>]/type`.
+     */
+    private function linkageTypePointer(?string $embeddedRelationName, ?int $index): string
+    {
+        return $embeddedRelationName === null
+            ? $this->pointers->forRelationshipEndpointLinkageType($index)
+            : $this->pointers->forLinkageType($embeddedRelationName, $index);
+    }
+
+    /**
+     * The linkage `id` pointer for the active surface (embedded vs relationship endpoint).
+     */
+    private function linkageIdPointer(?string $embeddedRelationName, ?int $index): string
+    {
+        return $embeddedRelationName === null
+            ? $this->pointers->forRelationshipEndpointLinkageId($index)
+            : $this->pointers->forLinkageId($embeddedRelationName, $index);
+    }
+
+    /**
+     * The linkage pivot-`meta` pointer for the active surface (embedded vs relationship
+     * endpoint).
+     */
+    private function linkageMetaPointer(?string $embeddedRelationName, string $field, ?int $index): string
+    {
+        return $embeddedRelationName === null
+            ? $this->pointers->forRelationshipEndpointLinkageMeta($field, $index)
+            : $this->pointers->forLinkageMeta($embeddedRelationName, $field, $index);
+    }
+
+    /**
+     * The writable pivot values from a linkage member's `meta`, read from the nested
+     * `meta.pivot` (symmetric with how pivot renders on reads). A missing or non-array
+     * `pivot` yields an empty map.
+     *
+     * @param array<string, mixed> $meta the linkage member's full meta
+     *
+     * @return array<string, mixed>
+     */
+    private function pivotMetaIn(array $meta): array
+    {
+        $pivot = $meta['pivot'] ?? [];
+
+        /** @var array<string, mixed> $pivot */
+        return \is_array($pivot) ? $pivot : [];
+    }
+
+    /**
+     * Validates ONE relationship-endpoint member's pivot `meta` in the per-member
+     * new/existing context (the merge-before-validate pass): a member whose related id is in
+     * `$existingPivot` is an existing row, so its stored pivot row is merged UNDER the
+     * incoming meta and validated in the UPDATE context (a writable field absent from meta
+     * keeps its stored value, so a partial reorder never spuriously fails a required field);
+     * a member whose id is absent is a new row, validated in the CREATE context (a required
+     * writable pivot field absent on a new row is a `422` before persist, never a DB NOT-NULL
+     * `500`). Runs both the per-field pivot rules and the cross-pivot-field comparisons over
+     * the merged meta, pointed at the endpoint linkage meta (`/data[/<index>]/meta/pivot/<field>`).
+     *
+     * @param array<string, mixed>                 $incoming      the parsed per-member pivot meta
+     * @param array<string, array<string, mixed>>  $existingPivot the relation's stored pivot rows, by related id
+     *
+     * @return list<Error>
+     */
+    private function memberPivotErrors(
+        BelongsToMany $relation,
+        ?string $id,
+        array $incoming,
+        ?int $index,
+        array $existingPivot,
+        JsonApiRequestInterface $request,
+        ?string $embeddedRelationName,
+    ): array {
+        $stored = $id !== null ? ($existingPivot[$id] ?? null) : null;
+        $creating = $stored === null;
+        $meta = $stored === null ? $incoming : \array_merge($stored, $incoming);
+
+        $writable = $relation->writablePivotFields($creating);
+        if ($writable === []) {
+            return []; // no writable pivot field → nothing to validate
+        }
+
+        /** @var array<string, list<string|\Stringable|\Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\Rule>> $rules */
+        $rules = [];
+        /** @var list<array{0: string, 1: CompareField}> $compares */
+        $compares = [];
+        foreach ($writable as $field) {
+            /** @var mixed $value */
+            $value = $meta[$field->name()] ?? null;
+            $rules[$field->name()] = $this->fieldRules($field, $creating, $request, $value);
+            foreach ($this->compareConstraints($field, $creating) as $compare) {
+                $compares[] = [$field->name(), $compare];
+            }
+        }
+
+        $errors = [];
+        $bag = $this->validatorFactory->make($meta, $rules)->errors();
+        foreach ($bag->keys() as $key) {
+            foreach ($bag->get($key) as $message) {
+                $errors[] = $this->pivotError(\is_string($message) ? $message : '', (string) $key, $index, $embeddedRelationName);
+            }
+        }
+
+        // Cross-pivot-field comparisons over the MERGED meta (the pivot analogue of the
+        // attribute compare loop), so an incoming `weight` compares against the merged
+        // `position` even when the partial did not re-send it.
+        foreach ($compares as [$owner, $compare]) {
+            $detail = $this->compareViolation($owner, $compare, $meta);
+            if ($detail !== null) {
+                $errors[] = $this->pivotError($detail, $owner, $index, $embeddedRelationName);
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * A `422` {@see Error} for a pivot-`meta` violation, pointed at the linkage meta for the
+     * active surface (`/data/relationships/<rel>/data[/<index>]/meta/pivot/<field>` embedded,
+     * `/data[/<index>]/meta/pivot/<field>` at a relationship endpoint).
+     */
+    private function pivotError(string $detail, string $field, ?int $index, ?string $embeddedRelationName): Error
+    {
+        return new Error(
+            status: '422',
+            code: 'VALIDATION_FAILED',
+            title: 'Unprocessable Entity',
+            detail: $detail,
+            source: ErrorSource::fromPointer($this->linkageMetaPointer($embeddedRelationName, $field, $index)),
+        );
+    }
+
+    /**
+     * The `409` {@see Error} for a linkage `type` that is not in the relation's accepted
+     * related types, or `null` when it is acceptable / absent (an empty `type` is core's
+     * presence/shape concern). Mirrors core's create-path
+     * {@see \haddowg\JsonApi\Exception\ResourceTypeUnacceptable} status/code
+     * (`409` / `RESOURCE_TYPE_UNACCEPTABLE`), the pointer locating the offending linkage.
+     */
+    private function linkageTypeConflict(RelationInterface $relation, string $type, string $pointer): ?Error
+    {
+        if ($type === '' || \in_array($type, $relation->relatedTypes(), true)) {
+            return null;
+        }
+
+        return new Error(
+            status: '409',
+            code: 'RESOURCE_TYPE_UNACCEPTABLE',
+            title: 'Resource type is unacceptable',
+            detail: \sprintf("Resource type '%s' is unacceptable for relationship '%s'!", $type, $relation->name()),
+            source: ErrorSource::fromPointer($pointer),
+        );
     }
 
     /**

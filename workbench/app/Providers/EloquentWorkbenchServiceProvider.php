@@ -13,6 +13,10 @@ use Illuminate\Support\ServiceProvider;
 use Workbench\App\Models\Album;
 use Workbench\App\Models\Artist;
 use Workbench\App\Models\Genre;
+use Workbench\App\Models\Playlist;
+use Workbench\App\Models\Track;
+use Workbench\App\Pivot\PlaylistResource;
+use Workbench\App\Pivot\TrackResource;
 
 /**
  * The Eloquent workbench wiring: it points discovery at the SAME `app/JsonApi`
@@ -39,10 +43,20 @@ final class EloquentWorkbenchServiceProvider extends ServiceProvider
     {
         JsonApi::discover([\dirname(__DIR__) . '/JsonApi']);
 
+        // The Phase-3b pivot resources live OUTSIDE the scanned `app/JsonApi` dir (so the
+        // shared feature/scanner fixtures stay a stable inventory) and are registered
+        // explicitly on the conformance wirings that serve them.
+        JsonApi::register([PlaylistResource::class, TrackResource::class]);
+
         $modelByType = [
             'artists' => Artist::class,
             'albums' => Album::class,
             'genres' => Genre::class,
+            // Phase 3b: the pivot + relationship-mutation surface. `playlists` is writable
+            // (its relationship-mutation routes upsert the `orderedTracks` pivot); `tracks`
+            // is the far side, read as the related members.
+            'playlists' => Playlist::class,
+            'tracks' => Track::class,
         ];
 
         JsonApi::provider(new EloquentDataProvider($modelByType), priority: -128);

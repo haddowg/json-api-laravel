@@ -34,12 +34,15 @@ use PHPUnit\Framework\Attributes\Test;
  * linkage eagerly (the standalone default). The N+1 query-count guard is likewise
  * Eloquent-only (the witness issues no SQL).
  *
- * Polymorphic (morphTo / morphToMany) reads and the belongsToMany `meta.pivot` READ are
- * exercised over their own isolated blog fixtures in
- * {@see \haddowg\JsonApiLaravel\Tests\Feature\InMemoryPolymorphicRelationshipTest} /
+ * Polymorphic (morphTo / morphToMany) reads are exercised over their own isolated blog
+ * fixtures in {@see \haddowg\JsonApiLaravel\Tests\Feature\InMemoryPolymorphicRelationshipTest} /
  * {@see \haddowg\JsonApiLaravel\Tests\Feature\EloquentPolymorphicRelationshipTest}, so the
  * heterogeneous-morph surface stays dual-provider without a morph map in the music-catalog
- * dataset.
+ * dataset. The belongsToMany `meta.pivot` READ (Eloquent-only by design) + pivot WRITES are
+ * exercised over the `playlists ⇄ tracks` pivot in
+ * {@see \haddowg\JsonApiLaravel\Tests\Feature\EloquentPivotTest} /
+ * {@see \haddowg\JsonApiLaravel\Tests\Feature\InMemoryPivotTest}; the relationship-existence
+ * filters over that same pivot relation are asserted dual-provider here.
  */
 abstract class RelationshipReadConformanceTestCase extends Orchestra
 {
@@ -370,6 +373,49 @@ abstract class RelationshipReadConformanceTestCase extends Orchestra
     public function theRelationshipEndpoint404sOnAnUnknownRelation(): void
     {
         $this->fetch('/api/artists/1/relationships/nonsense')->assertStatus(404);
+    }
+
+    // --- relationship-existence over a belongsToMany (pivot) relation ----------
+
+    #[Test]
+    #[Group('spec:fetching-filtering')]
+    public function existenceFiltersOverAPivotRelationMatchIdenticallyOnBothProviders(): void
+    {
+        // `filter[withOrderedTracks]`/`withoutOrderedTracks` are the WhereHas / WhereDoesntHave
+        // semi-join over the `orderedTracks` belongsToMany: playlists 1 (four tracks) and 2 (one)
+        // own tracks; playlist 3 owns none. The Eloquent provider compiles an EXISTS / NOT EXISTS
+        // subquery over the join; the in-memory witness runs the reference predicate over the
+        // object graph — identical sets on both, each parent returned ONCE (no join fan-out).
+        self::assertSame(['1', '2'], $this->existenceIds('/api/playlists?filter[withOrderedTracks]'));
+        self::assertSame(['3'], $this->existenceIds('/api/playlists?filter[withoutOrderedTracks]'));
+    }
+
+    #[Test]
+    #[Group('spec:fetching-filtering')]
+    public function aWhereThroughOverAPivotRelationIsAnExistsAnySemiJoin(): void
+    {
+        // `filter[orderedTrackTitled]` traverses `orderedTracks.title` and keeps a playlist with
+        // SOME track of that title. Track 1 (Airbag) is shared across playlists 1 AND 2, so the
+        // semi-join returns BOTH once (never row-multiplied); a single-playlist title returns one;
+        // an unowned title matches nothing — the same result whether Eloquent nests the leaf
+        // predicate in the EXISTS or the witness walks the object graph.
+        self::assertSame(['1', '2'], $this->existenceIds('/api/playlists?filter[orderedTrackTitled]=Airbag'));
+        self::assertSame(['1'], $this->existenceIds('/api/playlists?filter[orderedTrackTitled]=' . \rawurlencode('Karma Police')));
+        self::assertSame([], $this->existenceIds('/api/playlists?filter[orderedTrackTitled]=Nonexistent'));
+    }
+
+    /**
+     * The numerically-sorted primary `data.*.id` list of a filtered collection fetch — an
+     * order-independent set assertion for the existence filters.
+     *
+     * @return list<string>
+     */
+    protected function existenceIds(string $uri): array
+    {
+        $ids = $this->ids($this->fetch($uri));
+        \sort($ids, \SORT_NUMERIC);
+
+        return $ids;
     }
 
     /**

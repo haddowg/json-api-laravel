@@ -9,6 +9,7 @@ use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryStore;
 
 /**
@@ -117,15 +118,18 @@ final class InMemoryDataPersister implements DataPersisterInterface, Transaction
         bool $flush = true,
     ): object {
         $property = $relation->column() ?? $relation->name();
-        $relatedType = $relation->relatedTypes()[0] ?? '';
+        $fallbackType = $relation->relatedTypes()[0] ?? '';
 
         if ($linkage instanceof ToOneRelationship) {
-            // Replace (or, when the linkage is empty, clear) the to-one reference.
-            $entity->{$property} = $linkage->resourceIdentifier?->id !== null
-                ? $this->resolveRelated($relatedType, $linkage->resourceIdentifier->id)
+            // Replace (or, when the linkage is empty, clear) the to-one reference. A
+            // polymorphic to-one resolves the member by its OWN linkage type, not the
+            // relation's first declared type.
+            $identifier = $linkage->resourceIdentifier;
+            $entity->{$property} = $identifier?->id !== null
+                ? $this->resolveRelated($this->linkageType($identifier, $fallbackType), $identifier->id)
                 : null;
         } else {
-            $entity->{$property} = $this->applyToMany($entity, $property, $relatedType, $linkage, $mode);
+            $entity->{$property} = $this->applyToMany($entity, $property, $fallbackType, $linkage, $mode);
         }
 
         if ($flush) {
@@ -138,24 +142,23 @@ final class InMemoryDataPersister implements DataPersisterInterface, Transaction
     /**
      * Computes the new to-many object list for `$mode`: replace sets the whole resolved list,
      * add appends the resolved members (idempotent on id), remove subtracts the linkage ids
-     * from the current list.
+     * from the current list. Each member resolves by its OWN linkage type (polymorphic safe),
+     * falling back to the relation's first declared type.
      *
      * @return list<object>
      */
     private function applyToMany(
         object $entity,
         string $property,
-        string $relatedType,
+        string $fallbackType,
         ToManyRelationship $linkage,
         Mode $mode,
     ): array {
-        $incomingIds = \array_values(\array_filter(
-            $linkage->getResourceIdentifierIds(),
-            static fn(?string $id): bool => $id !== null,
-        ));
-
         if ($mode === Mode::Remove) {
-            $remove = \array_fill_keys($incomingIds, true);
+            $remove = \array_fill_keys(\array_values(\array_filter(
+                $linkage->getResourceIdentifierIds(),
+                static fn(?string $id): bool => $id !== null,
+            )), true);
 
             return \array_values(\array_filter(
                 $this->currentList($entity, $property),
@@ -164,10 +167,13 @@ final class InMemoryDataPersister implements DataPersisterInterface, Transaction
         }
 
         $resolved = [];
-        foreach ($incomingIds as $id) {
-            $related = $this->resolveRelated($relatedType, $id);
+        foreach ($linkage->resourceIdentifiers as $identifier) {
+            if ($identifier->id === null) {
+                continue;
+            }
+            $related = $this->resolveRelated($this->linkageType($identifier, $fallbackType), $identifier->id);
             if ($related !== null) {
-                $resolved[$id] = $related;
+                $resolved[$identifier->id] = $related;
             }
         }
 
@@ -201,6 +207,16 @@ final class InMemoryDataPersister implements DataPersisterInterface, Transaction
             \is_iterable($current) ? [...$current] : [],
             static fn(mixed $member): bool => \is_object($member),
         ));
+    }
+
+    /**
+     * The related JSON:API type for a linkage member: its own `type` when present (so a
+     * polymorphic member resolves to the right store), else the relation's first declared
+     * related type.
+     */
+    private function linkageType(ResourceIdentifier $identifier, string $fallbackType): string
+    {
+        return $identifier->type !== '' ? $identifier->type : $fallbackType;
     }
 
     private function resolveRelated(string $relatedType, string $id): ?object

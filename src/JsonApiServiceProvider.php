@@ -14,6 +14,7 @@ use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
+use haddowg\JsonApiLaravel\DataProvider\RelationshipWindowBatcher;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\DiscoveryScanner;
 use haddowg\JsonApiLaravel\Exception\ExceptionMapperInterface;
@@ -22,6 +23,8 @@ use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
 use haddowg\JsonApiLaravel\Routing\RouteRegistrar;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
+use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
+use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipPagination;
 use haddowg\JsonApiLaravel\Server\ServerFactory;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
@@ -328,10 +331,13 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->app->singleton(TypeMetadataResolver::class);
         $this->app->singleton(RelationCriteriaFactory::class);
 
-        // The count-seam holder is a stable singleton (injected into the memoized Server
-        // once); the handler swaps its per-request backing in. For a long-lived worker
-        // (Octane/queue) rebind it `scoped()` — per-request FPM/CLI is unaffected.
+        // The count/pagination/linkage seam holders are stable singletons (injected into the
+        // memoized Server once); the handler swaps each read's per-request backing in and clears
+        // them at the start of every dispatch. For a long-lived worker (Octane/queue) rebind
+        // them `scoped()` — per-request FPM/CLI is unaffected.
         $this->app->singleton(RequestScopedRelationshipCount::class);
+        $this->app->singleton(RequestScopedRelationshipPagination::class);
+        $this->app->singleton(RequestScopedRelationshipLinkage::class);
 
         $this->app->singleton(RelatedIncludeBatcher::class, static function (Container $app): RelatedIncludeBatcher {
             return new RelatedIncludeBatcher(
@@ -345,6 +351,19 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(DataProviderRegistry::class),
                 $app->make(TypeMetadataResolver::class),
                 $app->make(RelationCriteriaFactory::class),
+            );
+        });
+
+        // The Relationship Queries profile orchestrator: it windows each rendered to-many
+        // relation to page 1 of its relatedQuery-ordered/filtered set through the provider's
+        // batched fetch (the Eloquent groupLimit/ROW_NUMBER push-down) and supplies the linkage +
+        // pagination out-of-band via the two holders above.
+        $this->app->singleton(RelationshipWindowBatcher::class, static function (Container $app): RelationshipWindowBatcher {
+            return new RelationshipWindowBatcher(
+                $app->make(DataProviderRegistry::class),
+                $app->make(TypeMetadataResolver::class),
+                $app->make(RelationCriteriaFactory::class),
+                $app->make(FilterValueValidator::class),
             );
         });
     }
@@ -383,8 +402,10 @@ final class JsonApiServiceProvider extends ServiceProvider
             /** @var array<string, mixed> $serversConfig */
             $serversConfig = config('jsonapi.servers', []);
 
-            // The stable count-seam holder is shared across every server and the handler.
+            // The stable seam holders are shared across every server and the handler.
             $relationshipCount = $app->make(RequestScopedRelationshipCount::class);
+            $relationshipPagination = $app->make(RequestScopedRelationshipPagination::class);
+            $relationshipLinkage = $app->make(RequestScopedRelationshipLinkage::class);
 
             // The storage-aware load-state predicate is optional: the Eloquent reference
             // binds one (so a lazy relation renders links-only), the in-memory witness leaves
@@ -415,6 +436,8 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $strict,
                     $relationshipCount,
                     $loadState,
+                    $relationshipPagination,
+                    $relationshipLinkage,
                 );
             }
 

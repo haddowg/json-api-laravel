@@ -387,34 +387,113 @@ abstract class WriteConformanceTestCase extends Orchestra
         ])->assertStatus(404);
     }
 
-    // --- explicitly deferred / flagged (kept visible, not deleted) ------------
+    // --- relationships in writes (Phase 3b — un-skipped as relations landed) ---
 
     #[Test]
     #[Group('spec:crud')]
     #[Group('spec:relationships')]
-    public function embeddedRelationshipLinkageWritesAreDeferredToPhase3(): void
+    public function embeddedRelationshipLinkageWritesSetTheAssociationThroughTheSeam(): void
     {
-        // Ported from the bundle WriteConformanceTestCase::creatingWithALocalIdInEmbeddedLinkageReturns400.
-        self::markTestSkipped(
-            'Phase 3 (relationships): a create/update body carrying data.relationships '
-            . '(embedded linkage) — including the bundle assertion that an embedded linkage '
-            . '`lid` is a 400 LOCAL_ID_NOT_SUPPORTED at /data/relationships/<rel>/data/lid — '
-            . 'needs relations declared on a resource; the Phase 2 target types declare none.',
-        );
+        // A whole-resource write carrying `data.relationships` sets the association through the
+        // persister's relationship seam, not core's scalar-id hydration (which would assign a
+        // string id to a typed association property). The album `artist` BelongsTo is the
+        // owner-side to-one on both providers; the minimal fixtures own artists 1 (Radiohead)
+        // and 2 (Portishead), album 1 -> artist 1.
+        $create = $this->writeJsonApi('POST', '/api/albums', [
+            'data' => [
+                'type' => 'albums',
+                'attributes' => ['title' => 'A related album', 'status' => 'released', 'releasedAt' => '2020-02-02T00:00:00+00:00'],
+                'relationships' => ['artist' => ['data' => ['type' => 'artists', 'id' => '1']]],
+            ],
+        ]);
+        $create->assertStatus(201);
+        $id = $create->json('data.id');
+        self::assertIsString($id);
+        self::assertSame(['type' => 'artists', 'id' => '1'], $this->readJsonApi('/api/albums/' . $id . '/relationships/artist')->json('data'));
+
+        // A whole-resource PATCH replaces the association through the same seam.
+        $patch = $this->writeJsonApi('PATCH', '/api/albums/1', [
+            'data' => ['type' => 'albums', 'id' => '1', 'relationships' => ['artist' => ['data' => ['type' => 'artists', 'id' => '2']]]],
+        ]);
+        $patch->assertOk();
+        self::assertSame(['type' => 'artists', 'id' => '2'], $this->readJsonApi('/api/albums/1/relationships/artist')->json('data'));
+
+        // A PATCH that supplies no `data.relationships` leaves the association untouched.
+        $this->writeJsonApi('PATCH', '/api/albums/2', [
+            'data' => ['type' => 'albums', 'id' => '2', 'attributes' => ['title' => 'Only the title changes']],
+        ])->assertOk();
+        self::assertSame(['type' => 'artists', 'id' => '2'], $this->readJsonApi('/api/albums/2/relationships/artist')->json('data'));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    #[Group('spec:relationships')]
+    #[Group('spec:errors')]
+    public function anEmbeddedLinkageLocalIdIs400(): void
+    {
+        // Ported from the bundle WriteConformanceTestCase::creatingWithALocalIdInEmbeddedLinkageReturns400:
+        // an embedded linkage carrying a `lid` (a local id) is a 400 LOCAL_ID_NOT_SUPPORTED at
+        // the embedded pointer /data/relationships/artist/data/lid — local ids are an
+        // atomic-operations concept, not a standalone-request one.
+        $response = $this->writeJsonApi('POST', '/api/albums', [
+            'data' => [
+                'type' => 'albums',
+                'attributes' => ['title' => 'x', 'status' => 'released', 'releasedAt' => '2020-02-02T00:00:00+00:00'],
+                'relationships' => ['artist' => ['data' => ['type' => 'artists', 'lid' => 'temp']]],
+            ],
+        ]);
+
+        $response->assertStatus(400);
+        $response->assertJsonPath('errors.0.code', 'LOCAL_ID_NOT_SUPPORTED');
+        $response->assertJsonPath('errors.0.source.pointer', '/data/relationships/artist/data/lid');
     }
 
     #[Test]
     #[Group('spec:relationships')]
-    public function relationshipEndpointMutationsAreDeferredToPhase3(): void
+    public function relationshipEndpointMutationsReplaceClearAndPersist(): void
     {
-        // Ported from the bundle WriteConformanceTestCase::mutatingARelationshipWithALocalIdLinkageReturns400.
-        self::markTestSkipped(
-            'Phase 3 (relationships): PATCH/POST/DELETE …/relationships/{rel} linkage '
-            . 'mutation (with cannotReplace/cannotRemove semantics, and the bundle assertion '
-            . 'that a linkage `lid` is a 400 at /data/lid) needs relationship endpoints; none '
-            . 'are routed until relations land.',
-        );
+        // PATCH …/relationships/{rel} with a to-one linkage replaces it; `data: null` clears it;
+        // both persist through the mutateRelationship seam (re-read through the read endpoint).
+        $replace = $this->writeJsonApi('PATCH', '/api/albums/1/relationships/artist', ['data' => ['type' => 'artists', 'id' => '2']]);
+        $replace->assertOk();
+        self::assertSame(['type' => 'artists', 'id' => '2'], $replace->json('data'));
+        self::assertSame(['type' => 'artists', 'id' => '2'], $this->readJsonApi('/api/albums/1/relationships/artist')->json('data'));
+
+        $clear = $this->writeJsonApi('PATCH', '/api/albums/1/relationships/artist', ['data' => null]);
+        $clear->assertOk();
+        self::assertNull($clear->json('data'));
+        self::assertNull($this->readJsonApi('/api/albums/1/relationships/artist')->json('data'));
     }
+
+    #[Test]
+    #[Group('spec:relationships')]
+    #[Group('spec:errors')]
+    public function aRelationshipEndpointLinkageLocalIdIs400(): void
+    {
+        // Ported from the bundle WriteConformanceTestCase::mutatingARelationshipWithALocalIdLinkageReturns400:
+        // a relationship-endpoint linkage carrying a `lid` is a 400 LOCAL_ID_NOT_SUPPORTED at
+        // /data/lid.
+        $response = $this->writeJsonApi('PATCH', '/api/albums/1/relationships/artist', ['data' => ['type' => 'artists', 'lid' => 'temp']]);
+
+        $response->assertStatus(400);
+        $response->assertJsonPath('errors.0.code', 'LOCAL_ID_NOT_SUPPORTED');
+        $response->assertJsonPath('errors.0.source.pointer', '/data/lid');
+    }
+
+    #[Test]
+    #[Group('spec:relationships')]
+    #[Group('spec:errors')]
+    public function postingOrDeletingAToOneRelationshipEndpointIsACardinalityError(): void
+    {
+        // A POST / DELETE to a to-one relationship endpoint is a 400 (a to-one has no
+        // add/remove semantics).
+        $this->writeJsonApi('POST', '/api/albums/1/relationships/artist', ['data' => ['type' => 'artists', 'id' => '2']])
+            ->assertStatus(400);
+        $this->writeJsonApi('DELETE', '/api/albums/1/relationships/artist', ['data' => ['type' => 'artists', 'id' => '2']])
+            ->assertStatus(400);
+    }
+
+    // --- explicitly flagged core-owned gaps (kept visible, not deleted) --------
 
     #[Test]
     #[Group('spec:crud')]
