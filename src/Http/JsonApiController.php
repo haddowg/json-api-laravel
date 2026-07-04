@@ -26,7 +26,8 @@ use Symfony\Component\HttpFoundation\Response;
  *  3. convert the Laravel request to a PSR-7 request and wrap it in core's
  *     {@see JsonApiRequest} (the idempotent guard core uses everywhere);
  *  4. run content negotiation + query-parameter validation via core's
- *     {@see RequestValidator} (the read path — no body validation this phase);
+ *     {@see RequestValidator}, plus — for a mutating verb (POST/PATCH) — the write
+ *     body's JSON well-formedness + top-level-member structure;
  *  5. build the matching operation via core's {@see OperationFactory} and call
  *     `Server::dispatch()`;
  *  6. render the returned response value object to PSR-7 via the serializer-free
@@ -69,6 +70,24 @@ final class JsonApiController
         $validator = new RequestValidator();
         $validator->negotiate($jsonApiRequest);
         $validator->validateQueryParams($jsonApiRequest);
+
+        // A mutating verb carries a body core's hydrator will read, so it is validated
+        // up front — the belt core's RequestBodyParsingMiddleware would run, called
+        // directly, matching the bundle's RequestListener order (negotiate → query →
+        // JSON body → top-level members → dispatch). POST/PATCH always carry a resource
+        // document; a resource DELETE carries no body. `validateJsonBody()` gates
+        // malformed JSON (400 RequestBodyInvalidJson); `validateTopLevelMembers()` gates
+        // the resource-document structure — a required `data`, and a stray `lid` on a
+        // standalone write (400 LocalIdNotSupported). Relationship-endpoint bodies (Phase
+        // 3) carry linkage whose `data` is legitimately null/[], so they skip the
+        // required-top-level-member rule; there are no such endpoints yet.
+        $method = \strtoupper($jsonApiRequest->getMethod());
+        if ($method === 'POST' || $method === 'PATCH') {
+            $validator->validateJsonBody($jsonApiRequest);
+            if ($target->isRelationshipEndpoint === false) {
+                $validator->validateTopLevelMembers($jsonApiRequest);
+            }
+        }
 
         $operation = $this->operationFactory->fromRequest(
             $jsonApiRequest,

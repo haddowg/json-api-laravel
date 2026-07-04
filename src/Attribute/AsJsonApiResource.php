@@ -30,23 +30,39 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * importing the enum. It is mutually exclusive with a non-empty `operations` list;
  * declaring both is a constructor {@see \LogicException}.
  *
- * Further metadata (custom serializer/hydrator overrides, authorization, cache
- * headers, deprecation signalling, OpenAPI tags/descriptions) is added in later
- * phases, mirroring the Symfony bundle's attribute.
+ * **Authorization** (PLAN decision 7, policy-first). By default a type is authorized
+ * through the model's Gate-registered policy at each lifecycle point
+ * (list→`viewAny`, read→`view`, create→`create`, update→`update`, delete→`delete`);
+ * a type with no policy is inert (no check). Two additive overrides tune this:
+ *  - `policy` names a dedicated API policy class invoked directly (container-resolved,
+ *    honouring its `before()`), leaving the application's `Gate::policy()` mapping
+ *    untouched — the provider-agnostic seam a POPO-backed type uses.
+ *  - `abilities` renames the ability for one or more operations, keyed by
+ *    {@see Operation} case value: a `string` is the Gate ability name checked for that
+ *    operation (so `Gate::define()` works too), and `false` disables the check for
+ *    that operation entirely.
+ *
+ * Further metadata (custom serializer/hydrator overrides, cache headers, deprecation
+ * signalling, OpenAPI tags/descriptions) is added in later phases, mirroring the
+ * Symfony bundle's attribute.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final readonly class AsJsonApiResource
 {
     /**
-     * @param string|list<string>|null $server     the server name(s) exposing this type (null = the implicit `default`)
-     * @param list<Operation>          $operations the exposed operation allow-list (empty = all five); mutually exclusive with `readOnly`
-     * @param bool                     $readOnly   shorthand restricting the type to the two fetch operations; mutually exclusive with a non-empty `operations`
+     * @param string|list<string>|null   $server     the server name(s) exposing this type (null = the implicit `default`)
+     * @param list<Operation>            $operations the exposed operation allow-list (empty = all five); mutually exclusive with `readOnly`
+     * @param bool                       $readOnly   shorthand restricting the type to the two fetch operations; mutually exclusive with a non-empty `operations`
+     * @param class-string|null          $policy     a dedicated API policy class invoked directly for every operation (null = the model's Gate-registered policy, or inert if none)
+     * @param array<string, string|false> $abilities per-operation ability override keyed by {@see Operation} case value: a string renames the Gate ability, `false` disables the check for that operation
      */
     public function __construct(
         public ?string $type = null,
         public string|array|null $server = null,
         public array $operations = [],
         public bool $readOnly = false,
+        public ?string $policy = null,
+        public array $abilities = [],
     ) {
         if ($readOnly && $operations !== []) {
             throw new \LogicException(

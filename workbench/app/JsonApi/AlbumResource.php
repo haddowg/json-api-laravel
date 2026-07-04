@@ -38,8 +38,14 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
  * **counting** page paginator (`withCount()`) — so every album collection renders
  * `meta.page.total` + a `last` link (the counted pagination arm), the counterpart to
  * the count-free `artists` collection.
+ *
+ * Phase 2 makes it the **writable** reference type on both providers: the default
+ * `#[AsJsonApiResource]` exposes all five operations, so `POST`/`PATCH`/`DELETE` route
+ * to the CRUD handler. Its `Id` keeps the default policy — a client-supplied `data.id` is
+ * forbidden (`403`) and the store assigns the id — the server-generated-id counterpart to
+ * the client-id `genres` type.
  */
-#[AsJsonApiResource(readOnly: true)]
+#[AsJsonApiResource]
 final class AlbumResource extends AbstractResource
 {
     public static string $type = 'albums';

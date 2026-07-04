@@ -15,12 +15,14 @@ use Illuminate\Support\Facades\Facade;
  *  - `JsonApi::register([...classes])` — register capability classes explicitly;
  *  - `JsonApi::provider($provider, $priority)` — register a data provider;
  *  - `JsonApi::persister($persister, $priority)` — register a data persister;
+ *  - `JsonApi::constraintTranslator($translator)` — register a custom constraint translator;
  *  - `JsonApi::ignoreRoutes()` — opt out of automatic route registration.
  *
  * @method static JsonApiManager discover(string|list<string> $paths)
  * @method static JsonApiManager register(class-string|list<class-string> $classes)
  * @method static JsonApiManager provider(\haddowg\JsonApiLaravel\DataProvider\DataProviderInterface<object>|class-string<\haddowg\JsonApiLaravel\DataProvider\DataProviderInterface<object>> $provider, int $priority = 0)
  * @method static JsonApiManager persister(\haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface|class-string<\haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface> $persister, int $priority = 0)
+ * @method static JsonApiManager constraintTranslator(\haddowg\JsonApiLaravel\Validation\ConstraintTranslatorInterface|class-string<\haddowg\JsonApiLaravel\Validation\ConstraintTranslatorInterface> $translator)
  * @method static JsonApiManager ignoreRoutes()
  * @method static bool shouldRegisterRoutes()
  *

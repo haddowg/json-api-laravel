@@ -40,6 +40,11 @@ final class Discovery
     private ?array $persisters = null;
 
     /**
+     * @var list<class-string>|null
+     */
+    private ?array $translators = null;
+
+    /**
      * @param list<string>       $paths           the directories to scan
      * @param list<class-string> $explicitClasses classes registered via `JsonApi::register()`
      * @param string|null        $cachePath       an optional pre-built snapshot file (resources + provider/persister class-strings); loaded instead of scanning when present
@@ -103,7 +108,22 @@ final class Discovery
     }
 
     /**
-     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>}
+     * The discovered, container-constructible constraint-translator class-strings — the
+     * class-keyed validation extension point (PLAN decision 6).
+     *
+     * @return list<class-string>
+     */
+    public function translators(): array
+    {
+        if ($this->translators === null) {
+            $this->resolve();
+        }
+
+        return $this->translators ?? [];
+    }
+
+    /**
+     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>}
      */
     private function resolve(): array
     {
@@ -112,6 +132,7 @@ final class Discovery
             $this->resources = $snapshot['resources'];
             $this->providers = $snapshot['providers'];
             $this->persisters = $snapshot['persisters'];
+            $this->translators = $snapshot['translators'];
 
             return $snapshot;
         }
@@ -120,11 +141,13 @@ final class Discovery
         $this->resources = $result->resources;
         $this->providers = $result->providers;
         $this->persisters = $result->persisters;
+        $this->translators = $result->translators;
 
         return [
             'resources' => $result->resources,
             'providers' => $result->providers,
             'persisters' => $result->persisters,
+            'translators' => $result->translators,
         ];
     }
 
@@ -138,7 +161,7 @@ final class Discovery
      * configuration is behaviourally identical to a scanned one. Missing keys degrade
      * gracefully to empty lists (a resources-only file still loads its resources).
      *
-     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>}|null
+     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>}|null
      */
     private function loadSnapshot(): ?array
     {
@@ -156,6 +179,7 @@ final class Discovery
             'resources' => $this->readResources($data['resources'] ?? []),
             'providers' => $this->readClassStrings($data['providers'] ?? []),
             'persisters' => $this->readClassStrings($data['persisters'] ?? []),
+            'translators' => $this->readClassStrings($data['translators'] ?? []),
         ];
     }
 
