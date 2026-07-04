@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# No workflow-level permissions; each job requests only what it needs.
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: "Tests (PHP ${{ matrix.php }}, Laravel ${{ matrix.laravel }}, ${{ matrix.dependencies }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.4', '8.5']
+        laravel: ['12', '13']
+        dependencies: [lowest, highest]
+        include:
+          - laravel: '12'
+            testbench: '^10.0'
+          - laravel: '13'
+            testbench: '^11.0'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # 2.37.1
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: composer:v2
+
+      # Resolve the unpublished haddowg/json-api from GitHub (a global VCS
+      # repository, so the committed composer.json stays clean for local dev,
+      # where a global path repository symlinks a sibling checkout instead).
+      # Drop this and pin a tagged ^1.0 once core is published to Packagist.
+      - name: Configure Composer to resolve haddowg/json-api (dev-main)
+        run: |
+          composer config -g github-oauth.github.com "${{ secrets.GITHUB_TOKEN }}"
+          composer config -g repositories.haddowg-json-api '{"type":"vcs","url":"https://github.com/haddowg/json-api","no-api":true}'
+
+      # Pin the Laravel line by pinning orchestra/testbench (^10 => Laravel 12,
+      # ^11 => Laravel 13); testbench pulls the matching illuminate/* components.
+      - name: Pin the Laravel line
+        run: composer require --dev --no-update "orchestra/testbench:${{ matrix.testbench }}"
+
+      - name: Install dependencies
+        uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
+        with:
+          dependency-versions: ${{ matrix.dependencies }}
+
+      - name: Run tests
+        run: composer test
+
+  phpstan:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # 2.37.1
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+
+      - name: Configure Composer to resolve haddowg/json-api (dev-main)
+        run: |
+          composer config -g github-oauth.github.com "${{ secrets.GITHUB_TOKEN }}"
+          composer config -g repositories.haddowg-json-api '{"type":"vcs","url":"https://github.com/haddowg/json-api","no-api":true}'
+
+      - name: Install dependencies
+        uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
+
+      - name: Run PHPStan
+        run: composer phpstan
+
+  coding-standards:
+    name: Coding standards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # 2.37.1
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+
+      - name: Configure Composer to resolve haddowg/json-api (dev-main)
+        run: |
+          composer config -g github-oauth.github.com "${{ secrets.GITHUB_TOKEN }}"
+          composer config -g repositories.haddowg-json-api '{"type":"vcs","url":"https://github.com/haddowg/json-api","no-api":true}'
+
+      - name: Install dependencies
+        uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
+
+      - name: Check coding standards
+        run: composer cs-check

@@ -1,0 +1,7 @@
+providers:
+  - haddowg\JsonApiLaravel\JsonApiServiceProvider
+  - Workbench\App\Providers\WorkbenchServiceProvider
+
+workbench:
+  start: '/api/artists'
+  install: false

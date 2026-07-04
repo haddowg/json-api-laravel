@@ -1,0 +1,68 @@
+<?php
+
+declare(strict_types=1);
+
+namespace haddowg\JsonApiLaravel\DataPersister;
+
+/**
+ * Resolves the {@see DataPersisterInterface} for a resource type from the registered
+ * persisters — the write twin of
+ * {@see \haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry}. The operation handler asks
+ * it for a persister, then calls `create()` / `update()` / `delete()`.
+ *
+ * Resolution is first-`supports()`-match over the injected iteration order. Persisters are
+ * supplied sorted by descending priority, and the bundled Eloquent persister — which supports
+ * *every* Eloquent-mapped type — registers at the lowest priority (`-128`), so an application
+ * persister at the default priority (`0`) takes precedence for the types it supports.
+ *
+ * A type with no matching persister is a wiring error — a resource type writable by no data
+ * source — so it raises a {@see \LogicException}, never a JSON:API error document.
+ */
+final class DataPersisterRegistry
+{
+    /**
+     * @var list<DataPersisterInterface>
+     */
+    private readonly array $persisters;
+
+    /**
+     * @param iterable<DataPersisterInterface> $persisters in priority order, highest first
+     */
+    public function __construct(iterable $persisters)
+    {
+        $this->persisters = \is_array($persisters) ? \array_values($persisters) : \iterator_to_array($persisters, false);
+    }
+
+    /**
+     * The highest-priority persister whose {@see DataPersisterInterface::supports()}
+     * is true for `$type`.
+     *
+     * @throws \LogicException when no registered persister supports the type
+     */
+    public function forType(string $type): DataPersisterInterface
+    {
+        foreach ($this->persisters as $persister) {
+            if ($persister->supports($type)) {
+                return $persister;
+            }
+        }
+
+        throw new \LogicException(\sprintf('No JSON:API data persister is registered for type "%s".', $type));
+    }
+
+    /**
+     * Whether any registered persister supports `$type` — so a caller (e.g. the Atomic
+     * Operations pre-flight scan) can distinguish an unknown type, a client error, from a
+     * wiring error before {@see forType()} would throw a {@see \LogicException}.
+     */
+    public function supportsType(string $type): bool
+    {
+        foreach ($this->persisters as $persister) {
+            if ($persister->supports($type)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}

@@ -1,0 +1,86 @@
+{
+    "name": "haddowg/json-api-laravel",
+    "description": "Laravel package for haddowg/json-api: idiomatic routing, content negotiation, validation, and an Eloquent data layer for spec-compliant JSON:API 1.1 endpoints.",
+    "type": "library",
+    "keywords": [
+        "json-api",
+        "jsonapi",
+        "laravel",
+        "eloquent",
+        "api",
+        "rest"
+    ],
+    "homepage": "https://github.com/haddowg/json-api-laravel",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Gregory Haddow",
+            "homepage": "https://github.com/haddowg"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "haddowg/json-api": "dev-main",
+        "illuminate/auth": "^12.0 || ^13.0",
+        "illuminate/config": "^12.0 || ^13.0",
+        "illuminate/console": "^12.0 || ^13.0",
+        "illuminate/container": "^12.0 || ^13.0",
+        "illuminate/contracts": "^12.0 || ^13.0",
+        "illuminate/database": "^12.0 || ^13.0",
+        "illuminate/events": "^12.0 || ^13.0",
+        "illuminate/http": "^12.0 || ^13.0",
+        "illuminate/routing": "^12.0 || ^13.0",
+        "illuminate/support": "^12.0 || ^13.0",
+        "illuminate/validation": "^12.0 || ^13.0",
+        "nyholm/psr7": "^1.8",
+        "psr/http-factory": "^1.0",
+        "psr/http-message": "^2.0",
+        "symfony/psr-http-message-bridge": "^7.0 || ^8.0"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "orchestra/testbench": "^10.0 || ^11.0",
+        "phpstan/phpstan": "^2.0",
+        "phpunit/phpunit": "^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "haddowg\\JsonApiLaravel\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "haddowg\\JsonApiLaravel\\Tests\\": "tests/",
+            "Workbench\\App\\": "workbench/app/",
+            "Workbench\\Database\\Factories\\": "workbench/database/factories/",
+            "Workbench\\Database\\Seeders\\": "workbench/database/seeders/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "haddowg\\JsonApiLaravel\\JsonApiServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "preferred-install": "dist"
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test-coverage": "phpunit --coverage-clover coverage.xml",
+        "phpstan": "phpstan analyse --memory-limit=1G",
+        "cs-check": "php-cs-fixer fix --dry-run --diff",
+        "cs-fix": "php-cs-fixer fix"
+    },
+    "scripts-descriptions": {
+        "test": "Run the PHPUnit test suite",
+        "test-coverage": "Run the test suite and emit a Clover coverage report",
+        "phpstan": "Run PHPStan static analysis",
+        "cs-check": "Check code style without modifying files",
+        "cs-fix": "Apply code style fixes"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
