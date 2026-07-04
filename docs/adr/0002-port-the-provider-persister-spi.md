@@ -42,3 +42,17 @@ read path slim) so the Eloquent implementation and writes slot into a stable con
 in Phases 1–2. Symfony's tagged-iterator resolution becomes Laravel container tagging
 (a priority-sorted, tagged binding); the *semantics* — first `supports()` wins,
 `-128` fallback — are identical to the bundle (bundle ADR 0007).
+
+**Deferred: attribute-driven auto-registration of the reference pair (the "zero
+configuration" promise).** In the bundle, `#[AsJsonApiResource(entity: …)]` plus a
+compile-time `DoctrineEntityMapPass` builds the `type → entity` map and auto-registers
+the reference provider at `-128`, so an app writes no wiring. Phase 1 ships the
+`EloquentDataProvider` and its `type → model` map, but that map is still constructed
+**by hand** (`new EloquentDataProvider([...])`, as the workbench does) — the Laravel
+twin of `DoctrineEntityMapPass` (a `model:` param on `#[AsJsonApiResource]`, recorded by
+discovery, accumulated into one `-128` provider in `JsonApiServiceProvider::boot()`,
+with the duplicate-type/different-model guard) lands in **Phase 2**, alongside the
+persister half that completes the "reference pair". Until then the `-128` priority and
+first-`supports()` semantics are faithful — an application provider at the default `0`
+still shadows a hand-wired reference provider — but the *zero-config* headline is not
+yet delivered. Tracked for the Phase 5 parity audit.

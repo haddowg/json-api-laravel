@@ -1,3 +1,6 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
 parameters:
     level: 9
     paths:
@@ -6,3 +9,24 @@ parameters:
         - workbench
     tmpDir: .phpstan.cache
     treatPhpDocTypesAsCertain: false
+    ignoreErrors:
+        # Laravel types orderByRaw() $sql as `literal-string` to guard against SQL
+        # injection. The forced NULL=largest keyset ORDER BY (`CASE WHEN col IS NULL
+        # …`) has no query-builder equivalent — Laravel has no `orderByNullsLast`, and
+        # `NULLS LAST` is not portable (MySQL/SQLite lack it) — so it must interpolate a
+        # column into a raw CASE. That column is a regex-validated identifier qualified
+        # off the model's own table (never client input) and no value is interpolated,
+        # so the guard is a false positive here. Scoped to this one call so any other
+        # raw-SQL argument.type error still surfaces.
+        -
+            message: '#^Parameter \#1 \$sql of method Illuminate\\Database\\Eloquent\\Builder<.*>::orderByRaw\(\) expects .*literal-string.*$#'
+            path: src/DataProvider/Eloquent/EloquentKeyset.php
+        # Laravel types whereRaw() $sql as `literal-string` for the same SQL-injection
+        # guard. The wildcard-LIKE fragment (`lower(col) LIKE ? ESCAPE '!'`, blueprint
+        # R1) interpolates only a regex-validated identifier qualified off the model's
+        # own table (never client input) and binds the search value — so the guard is a
+        # false positive. Scoped to this one call so any other raw-SQL argument.type
+        # error still surfaces.
+        -
+            message: '#^Parameter \#1 \$sql of method Illuminate\\Database\\Eloquent\\Builder<.*>::whereRaw\(\) expects .*literal-string.*$#'
+            path: src/DataProvider/Eloquent/EloquentFilterHandler.php
