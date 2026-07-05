@@ -211,8 +211,6 @@ final class EloquentFilterHandlerTest extends EloquentTestCase
     #[Test]
     public function itRaisesUnsupportedFilterForAnUnknownVoWithNoArm(): void
     {
-        $this->expectException(UnsupportedFilter::class);
-
         $filter = new class implements FilterInterface {
             public function key(): string
             {
@@ -225,7 +223,15 @@ final class EloquentFilterHandlerTest extends EloquentTestCase
             }
         };
 
-        $this->handler->apply($filter, $this->newQuery(), 'x');
+        try {
+            $this->handler->apply($filter, $this->newQuery(), 'x');
+            self::fail('Expected UnsupportedFilter.');
+        } catch (UnsupportedFilter $e) {
+            // The data-layer remediation hint names the Eloquent arm-seam interface (ARM_HINT),
+            // so the 500 tells an author exactly which extension point runs a custom filter —
+            // mirroring the bundle's DoctrineUnsupportedArmHintTest.
+            self::assertStringContainsString('EloquentFilterArmInterface', $e->getMessage());
+        }
     }
 
     /**

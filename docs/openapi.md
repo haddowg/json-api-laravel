@@ -46,6 +46,37 @@ php artisan jsonapi:jsonschema:export --server=default --output=build/schemas
 `--output` writes to a file/directory (omit for stdout). The document renders byte-clean
 (`toJsonString(true)."\n"`).
 
+## Profile-gated parameters (`x-profile`)
+
+Some query parameters are recognised by the runtime **only when a JSON:API
+[profile](https://jsonapi.org/format/#profiles) is negotiated** on the request (its URI
+supplied via the `profile` media-type parameter of `Accept` / `Content-Type`). `withCount`
+is the built-in case — the count tokens are honoured only under the Countable profile.
+
+The projected document advertises this constraint honestly: every such parameter carries an
+**`x-profile`** vendor extension whose value is the profile URI that must be negotiated for
+the parameter to take effect. A client (or a codegen tool) that does not negotiate that
+profile should treat the parameter as inert. The `withCount` parameter on a countable
+collection (`HasMany::make('albums')->countable()`) is emitted as:
+
+```json
+{
+  "name": "withCount",
+  "in": "query",
+  "schema": { "type": "array", "items": { "type": "string", "enum": ["tracks"] } },
+  "style": "form",
+  "explode": false,
+  "x-profile": "https://haddowg.github.io/json-api/profiles/countable/"
+}
+```
+
+The extension is produced by **core's projection**, so it is present on every served build
+path — the [warmed artifact](#warming-for-production), the document/viewer controllers, and
+the [CLI export](#the-cli-exporters) alike; the package serves the projected document
+verbatim. Because it rides the shared projection, it is part of the
+[byte-compatible](#byte-compatibility-with-the-symfony-bundle) output — you can grep any
+exported document (e.g. `build/laravel-default.json`) for `x-profile` to see it.
+
 ## The `info`, `tags`, and `security` blocks {#security}
 
 Fill the document metadata under `jsonapi.openapi`:
