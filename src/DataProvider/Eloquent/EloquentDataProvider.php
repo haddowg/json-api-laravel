@@ -233,12 +233,14 @@ final class EloquentDataProvider extends AbstractDataProvider
      *    execution the in-memory witness runs (so an unknown `filter`/`sort` still `400`s and
      *    the two providers stay byte-identical). Doctrine throws here; this supports it.
      *
-     * A **cursor** (keyset) related page is not yet supported on either provider: the relation
-     * paginator chain can resolve a {@see \haddowg\JsonApi\Pagination\CursorPaginator} declared
-     * on the related resource, whose window reaches the shared {@see WindowExecutor} (offset-only)
-     * and throws — a deliberate parity gap shared with the in-memory witness AND the bundle's
-     * Doctrine provider, flagged for a shared cursor-over-relation capability (a keyset scoped to
-     * the parent, refereed by the witness) rather than an Eloquent-only workaround (Phase 3b).
+     * A **cursor** (keyset) window declared on the relation (`->paginate(CursorPaginator …)`)
+     * runs the SAME {@see runCursor()} push-down the primary collection runs — the relation
+     * query is already scoped to the parent, so the keyset (the forced NULL=largest ORDER BY
+     * + the strictly-after WHERE) simply composes on top of the FK/pivot constraint. Shared
+     * with the in-memory witness and the bundle's Doctrine provider, so the parent-scoped
+     * keyset page stays refereed byte-for-byte (bundle ADR 0063). The polymorphic PHP-window
+     * path does not window a cursor (no single related keyset vocabulary); the pivot related
+     * path is a deliberate follow-up.
      *
      * @return CollectionResult<object>
      */
@@ -272,6 +274,14 @@ final class EloquentDataProvider extends AbstractDataProvider
         // `related.*` is exactly what Eloquent's own relation get() does; for a non-joined
         // relation (HasMany/BelongsTo) it is a harmless `table.*`.
         $builder = $relationQuery->getQuery()->select($relationQuery->getRelated()->qualifyColumn('*'));
+
+        // A cursor (keyset) window is its own pushed-down execution, exactly as on the
+        // primary collection: the builder is already parent-scoped, so the keyset WHERE
+        // + the forced NULL=largest ORDER BY compose on top of the relation constraint.
+        if ($criteria->window instanceof CursorWindow) {
+            return $this->runCursor($builder, $criteria, $criteria->window);
+        }
+
         $builder = $this->applier->apply($criteria, $builder, $this->filterHandler, $this->sortHandler);
 
         // Count-free by default (G21): count the pre-window total only when the handler

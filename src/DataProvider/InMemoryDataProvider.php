@@ -173,6 +173,15 @@ final class InMemoryDataProvider extends AbstractDataProvider
             ? \array_values($related)
             : \iterator_to_array($this->asIterator($related), false);
 
+        // A cursor (keyset) window declared on the relation runs the SAME keyset
+        // execution as the primary collection over the parent-scoped member set —
+        // the ground truth the Eloquent parent-scoped push-down must match. A
+        // to-many member is always an object; anything else cannot carry a keyset
+        // boundary, so it is dropped before the walk.
+        if ($criteria->window instanceof CursorWindow) {
+            return $this->runCursor($criteria, \array_values(\array_filter($items, \is_object(...))));
+        }
+
         return $this->applyAndWindow($criteria, $items, $criteria->wantsCount);
     }
 

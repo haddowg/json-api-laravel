@@ -489,8 +489,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
      *    merged with the relation's own scoped filters/sorts into a {@see CollectionCriteria},
      *    asks the related provider's {@see \haddowg\JsonApiLaravel\DataProvider\DataProviderInterface::fetchRelatedCollection()}
      *    to execute it (scoped to the parent), preloads the related page's own `?include`s,
-     *    and renders a paginated {@see RelatedResponse::fromPage()} (counted / count-free per
-     *    the relation's `countable()`) or a fetch-all {@see RelatedResponse::fromCollection()};
+     *    and renders a paginated {@see RelatedResponse::fromPage()} (a cursor (keyset) page
+     *    through the paginator's `fromBoundaries()` carrying the provider-minted tokens,
+     *    otherwise counted / count-free per the relation's `countable()`) or a fetch-all
+     *    {@see RelatedResponse::fromCollection()};
      *  - a **polymorphic to-many** has no single related type — no shared filter/sort
      *    vocabulary, no related-resource paginator — and renders its mixed members through a
      *    {@see PolymorphicSerializer}; its includes are not batch-preloaded (it renders lazily);
@@ -596,6 +598,31 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $this->preloadIncludes($server, $items, $relatedType, $request);
                 $this->applyRelationshipWindows($server, $relatedType, $items, $request);
                 $this->applyRelationshipCounts($server, $relatedType, $items, $request);
+            }
+
+            // A cursor (keyset) related page: the provider minted the boundary tokens
+            // over the parent-scoped set, so render through the paginator's cursor path
+            // (CursorPaginator::fromBoundaries) exactly as the primary collection does —
+            // core scopes the prev/next links to the related URL, emits no `last`, and
+            // carries meta.page{perPage,from,to,hasMore}.
+            if ($result instanceof CursorCollectionResult && $paginator instanceof CursorPaginator) {
+                $from = $items === [] ? null : $serializer->getId($items[0]);
+                $to = $items === [] ? null : $serializer->getId($items[\array_key_last($items)]);
+
+                return RelatedResponse::fromPage(
+                    $paginator->fromBoundaries(
+                        $request,
+                        $items,
+                        $result->cursorBefore ?? '',
+                        $result->cursorAfter ?? '',
+                        $result->hasMore,
+                        $result->hasPrevious,
+                        from: $from,
+                        to: $to,
+                    ),
+                    $serializer,
+                    $relation->isCountable(),
+                );
             }
 
             // Counted page: the single total fans to BOTH meta.page.total (inside the

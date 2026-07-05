@@ -69,6 +69,13 @@ HasMany::make('tracks', 'tracks')->paginate(PagePaginator::make()->withDefaultPe
 The default resolves relation → related resource → server default. The example's `albums.tracks`
 and `playlists.tracks`/`orderedTracks` all page two-per-page.
 
+A relation may declare a `CursorPaginator` too — the related endpoint then serves keyset pages
+scoped to the parent, with the cursor links built on the related URL:
+
+```php
+HasMany::make('widgets', 'cursorWidgets')->paginate(CursorPaginator::make()->withDefaultSize(2));
+```
+
 ## Pagination links and meta
 
 The paginator emits the standard `links.first`/`prev`/`next`/`last` (as the strategy allows —
