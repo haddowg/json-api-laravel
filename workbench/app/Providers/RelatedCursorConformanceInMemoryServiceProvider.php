@@ -19,7 +19,7 @@ use Workbench\App\Support\ConformanceFixtures;
  * {@see ConformanceFixtures::cursorGroups()} partition holding the SAME widget POPO
  * instances the widgets store carries. `GET /cursorGroups/{id}/widgets` reads the
  * member set off the parent and runs the ground-truth keyset the Eloquent parent-scoped
- * push-down must match byte-for-byte (docs/adr/0015, bundle ADR 0063).
+ * push-down must match byte-for-byte (docs/adr/0016, bundle ADR 0063).
  */
 final class RelatedCursorConformanceInMemoryServiceProvider extends ServiceProvider
 {

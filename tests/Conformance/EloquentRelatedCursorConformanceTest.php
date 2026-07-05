@@ -17,7 +17,7 @@ use Workbench\Database\Seeders\CursorWidgetSeeder;
  * {@see \Workbench\App\Support\ConformanceFixtures::cursorGroups()} partition the
  * in-memory witness carries ({@see CursorWidgetSeeder} then {@see CursorGroupSeeder}),
  * so every inherited assertion must produce the IDENTICAL parent-scoped keyset page
- * (docs/adr/0015, bundle ADR 0063).
+ * (docs/adr/0016, bundle ADR 0063).
  *
  * @internal
  */

@@ -17,7 +17,7 @@ use Workbench\App\Models\CursorWidget;
  * reference {@see EloquentDataProvider} at `-128` over a `type → model` map covering
  * the parent AND the related type — so `GET /cursorGroups/{id}/widgets` runs the
  * keyset push-down on the HasMany's parent-scoped query and every inherited assertion
- * must produce the IDENTICAL page the witness renders (docs/adr/0015).
+ * must produce the IDENTICAL page the witness renders (docs/adr/0016).
  */
 final class RelatedCursorConformanceEloquentServiceProvider extends ServiceProvider
 {
