@@ -25,6 +25,7 @@ use Workbench\App\MusicCatalog\JsonApi\LibraryResource;
 use Workbench\App\MusicCatalog\JsonApi\PlaylistResource;
 use Workbench\App\MusicCatalog\JsonApi\ProductResource;
 use Workbench\App\MusicCatalog\JsonApi\PublicProfileResource;
+use Workbench\App\MusicCatalog\JsonApi\ReleaseResource;
 use Workbench\App\MusicCatalog\JsonApi\TrackResource;
 use Workbench\App\MusicCatalog\JsonApi\UserResource;
 use Workbench\App\MusicCatalog\Models\Album;
@@ -35,6 +36,7 @@ use Workbench\App\MusicCatalog\Models\Genre;
 use Workbench\App\MusicCatalog\Models\Library;
 use Workbench\App\MusicCatalog\Models\Playlist;
 use Workbench\App\MusicCatalog\Models\Product;
+use Workbench\App\MusicCatalog\Models\Release;
 use Workbench\App\MusicCatalog\Models\Track;
 use Workbench\App\MusicCatalog\Models\User;
 use Workbench\App\MusicCatalog\Provider\ChartProvider;
@@ -84,6 +86,7 @@ final class MusicCatalogEloquentServiceProvider extends ServiceProvider
             PlaylistResource::class,
             ProductResource::class,
             PublicProfileResource::class,
+            ReleaseResource::class,
             TrackResource::class,
             UserResource::class,
             ReissueAlbum::class,
@@ -110,6 +113,7 @@ final class MusicCatalogEloquentServiceProvider extends ServiceProvider
             'favorites' => Favorite::class,
             'libraries' => Library::class,
             'playlists' => Playlist::class,
+            'releases' => Release::class,
         ];
 
         JsonApi::provider(new EloquentDataProvider($modelByType, filterArms: [new EloquentFullTextSearchArm()]), priority: -128);
