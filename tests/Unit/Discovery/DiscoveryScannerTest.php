@@ -14,6 +14,11 @@ use haddowg\JsonApiLaravel\Tests\Fixtures\Action\MetaHandlerMissingOutputMeta;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\MetaHandlerWithOutputMeta;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\NoContentHandlerMissingReturns204;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\UnionReturnHandler;
+use haddowg\JsonApiLaravel\Tests\Fixtures\Overrides\BadSerializerOverrideResource;
+use haddowg\JsonApiLaravel\Tests\Fixtures\Overrides\MemoHydrator;
+use haddowg\JsonApiLaravel\Tests\Fixtures\Overrides\MemoResource;
+use haddowg\JsonApiLaravel\Tests\Fixtures\Overrides\NoteResource;
+use haddowg\JsonApiLaravel\Tests\Fixtures\Overrides\NoteSerializer;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Workbench\App\JsonApi\AlbumResource;
@@ -120,6 +125,60 @@ final class DiscoveryScannerTest extends TestCase
         self::assertTrue($charts->exposes(Operation::FetchCollection));
         self::assertFalse($charts->exposes(Operation::Create));
         self::assertTrue($charts->exposedOn('default'));
+    }
+
+    public function test_it_carries_the_serializer_and_hydrator_overrides_off_the_attribute(): void
+    {
+        // #[AsJsonApiResource(serializer:/hydrator:)] overrides land on the descriptor as
+        // plain class-strings (ADR 0014), each concern independently — the descriptor for
+        // a serializer-only override keeps a null hydrator, and vice versa.
+        $result = (new DiscoveryScanner())->scan([], [NoteResource::class, MemoResource::class]);
+
+        self::assertCount(2, $result->resources);
+        [$notes, $memos] = $result->resources;
+
+        self::assertSame('notes', $notes->type);
+        self::assertSame(NoteSerializer::class, $notes->serializer);
+        self::assertNull($notes->hydrator);
+
+        self::assertSame('memos', $memos->type);
+        self::assertNull($memos->serializer);
+        self::assertSame(MemoHydrator::class, $memos->hydrator);
+    }
+
+    public function test_an_override_not_implementing_its_contract_fails_discovery(): void
+    {
+        // A serializer: override naming a class without core's SerializerInterface must
+        // fail the scan loudly (the Laravel twin of the bundle compiler pass's guard),
+        // not surface later as a runtime resolver error.
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('serializer');
+
+        (new DiscoveryScanner())->scan([], [BadSerializerOverrideResource::class]);
+    }
+
+    public function test_a_descriptor_with_overrides_round_trips_through_its_array_form(): void
+    {
+        // The overrides must survive the optimize snapshot (toArray/fromArray), and a
+        // legacy snapshot without the keys degrades to no override.
+        $descriptor = new ResourceDescriptor(
+            NoteResource::class,
+            'notes',
+            'notes',
+            ['default'],
+            [Operation::FetchOne->value],
+            serializer: NoteSerializer::class,
+            hydrator: MemoHydrator::class,
+        );
+
+        self::assertEquals($descriptor, ResourceDescriptor::fromArray($descriptor->toArray()));
+
+        $legacy = $descriptor->toArray();
+        unset($legacy['serializer'], $legacy['hydrator']);
+        $degraded = ResourceDescriptor::fromArray($legacy);
+
+        self::assertNull($degraded->serializer);
+        self::assertNull($degraded->hydrator);
     }
 
     public function test_a_serializer_descriptor_round_trips_through_its_array_form(): void

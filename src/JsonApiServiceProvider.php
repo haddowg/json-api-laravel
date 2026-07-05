@@ -622,10 +622,21 @@ final class JsonApiServiceProvider extends ServiceProvider
             $factories = [];
             foreach (\array_keys($serversConfig) as $server) {
                 $server = (string) $server;
-                $resourceClasses = \array_map(
-                    static fn($descriptor): string => $descriptor->class,
-                    $discovery->resourcesFor($server),
-                );
+                $resourceClasses = [];
+                // The per-resource serializer/hydrator overrides (ADR 0015), keyed by
+                // resource class — threaded into core's register() by the factory so the
+                // overridden concern wins while the other stays field-driven.
+                $serializerOverrides = [];
+                $hydratorOverrides = [];
+                foreach ($discovery->resourcesFor($server) as $descriptor) {
+                    $resourceClasses[] = $descriptor->class;
+                    if ($descriptor->serializer !== null) {
+                        $serializerOverrides[$descriptor->class] = $descriptor->serializer;
+                    }
+                    if ($descriptor->hydrator !== null) {
+                        $hydratorOverrides[$descriptor->class] = $descriptor->hydrator;
+                    }
+                }
 
                 // The standalone serializers this server exposes, keyed by JSON:API type
                 // (PLAN decision 3, bundle ADR 0024) — a resource-less type served through
@@ -654,6 +665,8 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $app->make(\Illuminate\Contracts\Events\Dispatcher::class),
                     $server,
                     $standaloneSerializers,
+                    $serializerOverrides,
+                    $hydratorOverrides,
                 );
             }
 
