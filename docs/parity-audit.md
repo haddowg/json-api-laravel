@@ -60,7 +60,7 @@ The only two `markTestSkipped` in the suite are **opis-gating** (`SchemaConforma
 | configuration | config tree | `config/jsonapi.php` (Laravel tree, not YAML) | [configuration](configuration.md) | 🟰 idiom |
 | data-layer + doctrine | reference provider/persister, filters, EXISTS | merged into **eloquent** page; where/whereHas/whereThrough/window push-down | [eloquent](eloquent.md), `EloquentFilterHandler` | ✅ (reshaped) |
 | custom-data-providers | SPI | ported SPI + `AbstractDataProvider` + in-memory witness + custom providers | [custom-data-providers](custom-data-providers.md), `src/DataProvider` | ✅ |
-| custom-serializers-hydrators | standalone serializer/hydrator; **resource-level override** | standalone serializer **ported**; per-**resource** `serializer:`/`hydrator:` attribute override **carried** (ADR 0014) | [custom-serializers-hydrators](custom-serializers-hydrators.md); `AsJsonApiSerializer`; `ResourceSerializerHydratorOverrideTest` | ✅ (F1 resolved 2026-07-05) |
+| custom-serializers-hydrators | standalone serializer/hydrator; **resource-level override** | standalone serializer **ported**; per-**resource** `serializer:`/`hydrator:` attribute override **carried** (ADR 0015) | [custom-serializers-hydrators](custom-serializers-hydrators.md); `AsJsonApiSerializer`; `ResourceSerializerHydratorOverrideTest` | ✅ (F1 resolved 2026-07-05) |
 | relationships | related/relationship endpoints, mutation, include, pivot, RQ profile, countable | full; SQL push-down windowing; polymorphic to-many **over-parity** | [relationships](relationships.md); `Playlist`/`Album`/`Favorite`/`Library` resources | ✅ / 🟰 (over-parity) |
 | pagination | page/offset/cursor, max-per-page | all three; keyset push-down; `max_per_page` clamp | [pagination](pagination.md), core `Pagination`, `CursorWidgetResource` | ✅ |
 | validation | constraint bridge | always-on; full vocab map; filter-value validation | [validation](validation.md), `src/Validation` | 🟰 (always-on) |
@@ -136,7 +136,7 @@ constructor argument surfaced in `meta`); this package's attribute did not carry
 parameters. Byte-compat was never affected — the workbench reached both example cases'
 projected shape via field closures + the [hook trait](lifecycle-hooks.md).
 
-**Resolved by [ADR 0014](adr/0014-per-resource-serializer-hydrator-override.md)**, mirroring
+**Resolved by [ADR 0015](adr/0015-per-resource-serializer-hydrator-override.md)**, mirroring
 bundle ADR 0023: the attribute now carries `serializer:`/`hydrator:`; discovery validates each
 override against its core contract and snapshots the class-strings on the `ResourceDescriptor`
 (so they survive `jsonapi:optimize`); the `ServerFactory` threads them into core's
@@ -185,7 +185,7 @@ The composite rollout (core #128–#131) landed in both packages after the origi
 Every bundle capability is either **ported (✅)**, **intentionally reshaped/diverged by a
 recorded PLAN decision or ADR (🟰)**, or **not shipped by the bundle itself (⏭)**. The audit
 surfaced two genuine, low-severity gaps: **F1**, the per-resource serializer/hydrator
-attribute override — since **resolved** (ADR 0014, 2026-07-05) — and **F2**, the example
+attribute override — since **resolved** (ADR 0015, 2026-07-05) — and **F2**, the example
 `AuditLogSubscriber` example-wiring omission (the underlying event machinery is fully
 ported), which remains contained and documented and does not block v1. The over-parity items
 (polymorphic to-many on the reference provider; `UniqueEntity` via `Rule::unique`; always-on

@@ -14,7 +14,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * operation allow-list (as plain {@see Operation} case-value strings), its
  * authorization overrides (an optional dedicated policy class + per-operation ability
  * renames/disables), and its optional serializer/hydrator override class-strings
- * (ADR 0014 — each container-constructed on first use, like the resource itself).
+ * (ADR 0015 — each container-constructed on first use, like the resource itself).
  *
  * It carries only scalars + lists, so a set of descriptors round-trips through
  * {@see toArray()} / {@see fromArray()} to a `var_export`-able discovery cache file

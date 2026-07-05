@@ -623,7 +623,7 @@ final class JsonApiServiceProvider extends ServiceProvider
             foreach (\array_keys($serversConfig) as $server) {
                 $server = (string) $server;
                 $resourceClasses = [];
-                // The per-resource serializer/hydrator overrides (ADR 0014), keyed by
+                // The per-resource serializer/hydrator overrides (ADR 0015), keyed by
                 // resource class — threaded into core's register() by the factory so the
                 // overridden concern wins while the other stays field-driven.
                 $serializerOverrides = [];

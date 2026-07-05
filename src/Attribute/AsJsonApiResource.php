@@ -26,7 +26,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * so it may have constructor dependencies) when the field DSL cannot express the wire
  * shape. The generic CRUD engine then drives reads/writes for the type through the
  * override instead of the resource's field inventory, while the *other* concern stays
- * field-driven — the twin of the Symfony bundle's escape hatch (its ADR 0023; ADR 0014
+ * field-driven — the twin of the Symfony bundle's escape hatch (its ADR 0023; ADR 0015
  * here).
  *
  * `operations` is the exposed operation allow-list: the {@see Operation} cases this
