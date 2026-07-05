@@ -41,6 +41,12 @@ so the dual-provider suite proves every type is served identically by both arms.
 its own namespace with its own wiring, so it never collides with the per-phase test suites
 under `workbench/app/{JsonApi,Surface,Security,Pivot,Validation,Cursor}`.
 
+Both arms also register the cross-cutting
+[`AuditLogSubscriber`](https://github.com/haddowg/json-api-laravel/blob/main/workbench/app/MusicCatalog/Listeners/AuditLogSubscriber.php)
+— the [lifecycle-events](lifecycle.md) worked example (an audit trail on every committed
+write plus an `X-Read-Only` gate), runtime-only so the projected OpenAPI document is
+untouched.
+
 ## Configuration
 
 [`CatalogConfig`](https://github.com/haddowg/json-api-laravel/blob/main/workbench/app/MusicCatalog/Support/CatalogConfig.php)

@@ -76,6 +76,8 @@ side effect).
 
 - **Hooks** — logic that belongs to one resource; the ergonomic default.
 - **[Events](lifecycle.md)** — cross-cutting concerns across many types (audit, metrics),
-  queued work, or `Event::fake()` in tests.
+  queued work, or `Event::fake()` in tests. The workbench's
+  [`AuditLogSubscriber`](https://github.com/haddowg/json-api-laravel/blob/main/workbench/app/MusicCatalog/Listeners/AuditLogSubscriber.php)
+  is the worked example — an audit trail plus a read-only gate from one subscriber.
 - **[Eloquent model events](eloquent.md#eloquent-model-events-still-fire)** — persistence
   concerns that must fire on any write path, not just API-driven ones.

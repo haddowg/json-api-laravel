@@ -10,6 +10,7 @@ use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentRelationshipLoadState;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\Models\User as AuthUser;
@@ -28,6 +29,7 @@ use Workbench\App\MusicCatalog\JsonApi\PublicProfileResource;
 use Workbench\App\MusicCatalog\JsonApi\ReleaseResource;
 use Workbench\App\MusicCatalog\JsonApi\TrackResource;
 use Workbench\App\MusicCatalog\JsonApi\UserResource;
+use Workbench\App\MusicCatalog\Listeners\AuditLogSubscriber;
 use Workbench\App\MusicCatalog\Models\Album;
 use Workbench\App\MusicCatalog\Models\Artist;
 use Workbench\App\MusicCatalog\Models\Device;
@@ -45,6 +47,7 @@ use Workbench\App\MusicCatalog\Query\EloquentFullTextSearchArm;
 use Workbench\App\MusicCatalog\Security\PlaylistApiPolicy;
 use Workbench\App\MusicCatalog\Serializer\ChartSerializer;
 use Workbench\App\MusicCatalog\Serializer\CountrySerializer;
+use Workbench\App\MusicCatalog\Support\AuditLog;
 
 /**
  * The Eloquent half of the unified music-catalog wiring (decision 14): it registers the
@@ -126,10 +129,19 @@ final class MusicCatalogEloquentServiceProvider extends ServiceProvider
         JsonApi::provider(new CountryProvider());
 
         $this->app->singleton(RelationshipLoadStateInterface::class, EloquentRelationshipLoadState::class);
+
+        // The audit trail is a singleton so every listener invocation appends to the one
+        // store the feature test reads back (see AuditLogSubscriber).
+        $this->app->singleton(AuditLog::class);
     }
 
     public function boot(): void
     {
+        // The cross-cutting listener set (audit trail + read-only gate) — one concern
+        // spanning every type from a single subscriber, no resource touched. Runtime-only:
+        // listeners never project to the OpenAPI document (byte-compat pins it).
+        Event::subscribe(AuditLogSubscriber::class);
+
         // The album `reissue` action ability (albums declares no dedicated policy). A
         // write-capable user may reissue; a read-only user / guest is a 403.
         Gate::define('reissueAlbum', static fn(?AuthUser $user, object $album): bool => $user?->can_write === true);

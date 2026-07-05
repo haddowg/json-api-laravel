@@ -65,7 +65,7 @@ The only two `markTestSkipped` in the suite are **opis-gating** (`SchemaConforma
 | pagination | page/offset/cursor, max-per-page | all three; keyset push-down; `max_per_page` clamp | [pagination](pagination.md), core `Pagination`, `CursorWidgetResource` | ✅ |
 | validation | constraint bridge | always-on; full vocab map; filter-value validation | [validation](validation.md), `src/Validation` | 🟰 (always-on) |
 | security + authorization | declarative authz | merged into **authorization**; policy-first + abilities + API-policy + per-relation | [authorization](authorization.md), `PlaylistApiPolicy` | 🟰 PLAN decision 7 |
-| lifecycle + lifecycle-hooks | events + hook seam | 18 Laravel events + `ResourceLifecycleHooksTrait`; example `AuditLogSubscriber` **not ported** | [lifecycle](lifecycle.md), `src/Event`, `src/Hook` | 🟰 PLAN decision 10 / ❌ **GAP** (see F2) |
+| lifecycle + lifecycle-hooks | events + hook seam | 18 Laravel events + `ResourceLifecycleHooksTrait`; example `AuditLogSubscriber` **ported** to the workbench | [lifecycle](lifecycle.md), `src/Event`, `src/Hook`, `MusicCatalog/Listeners/AuditLogSubscriber` | 🟰 PLAN decision 10 / ✅ (F2 resolved 2026-07-05) |
 | actions | custom `-actions/{name}` | `#[AsJsonApiAction]` + `ActionContext`; 3 example actions | [actions](actions.md), `MusicCatalog/Action/*` | ✅ |
 | atomic-operations | atomic extension, lid | `POST /operations`, `DB::transaction`, lid registry, After* deferral | [atomic-operations](atomic-operations.md), `src/Atomic` | ✅ |
 | errors | route-scoped rendering | invokable renderer; core/HTTP/authz/500 arms; **exception-mapper seam** | [errors](errors.md), `src/Exception/ExceptionMapperInterface` | ✅ |
@@ -149,24 +149,33 @@ deliberately: a standalone `#[AsJsonApiHydrator]` (no bundle example exercises i
 bundle `TrackSerializer`'s runtime extras (`meta.served_by`, `nowPlaying`) in the workbench —
 the capability is what parity required, and byte-compat pins the projected document.
 
-### F2 — The example's `AuditLogSubscriber` is not ported to the workbench
+### F2 — The example's `AuditLogSubscriber` is not ported to the workbench — ✅ RESOLVED (2026-07-05)
 
 **What:** the Symfony example ships an `AuditLogSubscriber` (a blueprint §1.14 "port to
 `Event::listen`" item): it gates a write on an `X-Read-Only: on` header via `ServingEvent`
 (a `403` on writes) and appends audit entries on `AfterSaveEvent`/`AfterDeleteEvent`. The
-Laravel workbench does not carry an equivalent listener set; the only mention was a sentence in
-[lifecycle](lifecycle.md), now reworded to attribute the subscriber to the Symfony example.
+Laravel workbench did not carry an equivalent listener set; the only mention was a sentence in
+[lifecycle](lifecycle.md) attributing the subscriber to the Symfony example.
 
-**Severity:** low / illustrative. The **event + hook machinery it would use is fully ported**
+**Severity:** low / illustrative. The **event + hook machinery it uses was already fully ported**
 (18 events, `Event::listen`, `ServingEvent`, `AfterSaveEvent`/`AfterDeleteEvent` — decision 10),
-so the omission is a missing *example wiring*, not a missing capability: an app writes exactly
-this subscriber as a plain `Event::listen` set today. It has no bearing on byte-compat (audit
-listeners never project to OpenAPI). `OverridingArtistProvider` (a blueprint-*recommended*,
-optional example) is likewise unported — lower stakes as it was optional.
+so the omission was a missing *example wiring*, not a missing capability. It has no bearing on
+byte-compat (audit listeners never project to OpenAPI).
 
-**Recommendation:** port `AuditLogSubscriber` (and optionally `OverridingArtistProvider`) into
-the MusicCatalog wiring as `Event::listen` listeners with a smoke test in a follow-up, so the
-workbench demonstrates the cross-cutting-listener pattern end-to-end. Not a v1 blocker.
+**Resolution (2026-07-05):** ported as `Workbench\App\MusicCatalog\Listeners\AuditLogSubscriber`
+(a plain Laravel event subscriber, `Event::subscribe()`-registered by **both** wiring providers)
+appending to the singleton `Support\AuditLog` store — one divergence from the bundle, recorded
+in the subscriber docblock: the deleted wire id is read directly off the entity in `AfterDelete`
+(Doctrine erases identifiers post-flush, Eloquent models and POPOs do not, so no `BeforeDelete`
+capture is needed). Exercised end to end on both provider arms by
+`tests/Feature/MusicCatalog/{Eloquent,InMemory}AuditListenerTest` (committed create/update/delete
+each append one entry; a `409`-guarded delete and a denied ability append none; the read-only
+header freezes writes while reads pass); the byte-compat gate stays green, proving the listeners
+are runtime-only. `OverridingArtistProvider` (a blueprint-*recommended*, optional example)
+remains unported by choice: provider priority-shadowing is already witnessed in this workbench —
+`ChartProvider`/`CountryProvider` at priority `0` over the `-128` reference fallback — plus
+`DataProviderRegistryTest` and the [custom-data-providers](custom-data-providers.md)
+"Priority and shadowing" section, so a delegating overlay provider would add no new evidence.
 
 ## E. Composite attribute types (post-audit addendum, 2026-07-05)
 
@@ -184,9 +193,9 @@ The composite rollout (core #128–#131) landed in both packages after the origi
 
 Every bundle capability is either **ported (✅)**, **intentionally reshaped/diverged by a
 recorded PLAN decision or ADR (🟰)**, or **not shipped by the bundle itself (⏭)**. The audit
-surfaced two genuine, low-severity gaps: **F1**, the per-resource serializer/hydrator
-attribute override — since **resolved** (ADR 0015, 2026-07-05) — and **F2**, the example
-`AuditLogSubscriber` example-wiring omission (the underlying event machinery is fully
-ported), which remains contained and documented and does not block v1. The over-parity items
+surfaced two genuine, low-severity gaps, both since **resolved (2026-07-05)**: **F1**, the
+per-resource serializer/hydrator attribute override (ADR 0015), and **F2**, the example
+`AuditLogSubscriber` example-wiring omission — now ported to the workbench and exercised on
+both provider arms. The over-parity items
 (polymorphic to-many on the reference provider; `UniqueEntity` via `Rule::unique`; always-on
 validation) exceed the bundle's surface by design.

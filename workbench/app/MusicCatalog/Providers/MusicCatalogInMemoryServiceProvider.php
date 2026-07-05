@@ -8,6 +8,7 @@ use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\Models\User as AuthUser;
@@ -38,12 +39,14 @@ use Workbench\App\MusicCatalog\JsonApi\PublicProfileResource;
 use Workbench\App\MusicCatalog\JsonApi\ReleaseResource;
 use Workbench\App\MusicCatalog\JsonApi\TrackResource;
 use Workbench\App\MusicCatalog\JsonApi\UserResource;
+use Workbench\App\MusicCatalog\Listeners\AuditLogSubscriber;
 use Workbench\App\MusicCatalog\Provider\ChartProvider;
 use Workbench\App\MusicCatalog\Provider\CountryProvider;
 use Workbench\App\MusicCatalog\Query\ArrayFullTextSearchArm;
 use Workbench\App\MusicCatalog\Security\PlaylistApiPolicy;
 use Workbench\App\MusicCatalog\Serializer\ChartSerializer;
 use Workbench\App\MusicCatalog\Serializer\CountrySerializer;
+use Workbench\App\MusicCatalog\Support\AuditLog;
 use Workbench\App\MusicCatalog\Support\Fixtures;
 
 /**
@@ -154,10 +157,18 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
         // both provider arms read them identically (decision 3, bundle ADR 0024).
         JsonApi::provider(new ChartProvider());
         JsonApi::provider(new CountryProvider());
+
+        // The audit trail is a singleton so every listener invocation appends to the one
+        // store the feature test reads back (see AuditLogSubscriber).
+        $this->app->singleton(AuditLog::class);
     }
 
     public function boot(): void
     {
+        // The cross-cutting listener set (audit trail + read-only gate) — the SAME
+        // subscriber the Eloquent arm registers, so both arms witness it identically.
+        Event::subscribe(AuditLogSubscriber::class);
+
         Gate::define('reissueAlbum', static fn(?AuthUser $user, object $album): bool => $user?->can_write === true);
 
         // The API-distinct playlist abilities (decision 7) — see the Eloquent provider.
