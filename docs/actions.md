@@ -99,6 +99,13 @@ POST /api/albums/1/-actions/artwork
 | `server` / `name` / `tags` | server exposure, route-name override, OpenAPI tags |
 | `asLink` | expose the action as an ability-aware `links` member on the mount type's resources (resource scope only) |
 
+> [!NOTE]
+> `asLink` visibility matches invocation **exactly**: `Authorizer::allowsAction()` (which
+> decides whether to render the link) simply wraps `authorizeAction()` (which enforces it) in
+> a try/catch — so both are inert when the action declares no ability and none is registered,
+> and both are gated the moment one exists. A client never sees a link to an action it could
+> not invoke, and never loses a link to one it could.
+
 ## `ActionContext`
 
 The handler's single argument gives you the resolved entity (resource scope), the hydrated

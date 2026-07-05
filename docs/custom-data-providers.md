@@ -109,3 +109,15 @@ JsonApi::provider($eloquent, priority: -128);                 // the fallback
 This is how the example serves `charts`/`countries` from custom providers while every model
 type falls through to Eloquent, and how a `libraries` polymorphic-to-many can be served by a
 custom provider if you don't use the reference morph resolution.
+
+## Custom filters and sorts
+
+A `DataProviderInterface` owns how it translates core's filter/sort vocabulary for its store:
+`fetchCollection()` receives the parsed filters/sorts on the `CollectionCriteria` and applies
+them however the backend requires (or rejects an unsupported one with core's
+`UnsupportedFilter`/`UnsupportedSort`). The [reference Eloquent provider](eloquent.md)
+composes core's `FilterHandlerInterface` / `SortHandlerInterface` and extends that vocabulary
+through an **arm seam** — register an `EloquentFilterArmInterface` / `EloquentSortArmInterface`
+for a custom `FilterInterface` / `SortInterface` and the reference provider pushes it down
+without you replacing the provider. See
+[the Eloquent arm seam](eloquent.md#custom-filters-and-sorts-the-arm-seam).

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Discovery;
 
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Response\MetaResponse;
+use haddowg\JsonApi\Response\NoContentResponse;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApiLaravel\Action\ActionDescriptor;
 use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
@@ -278,6 +280,8 @@ final class DiscoveryScanner
         /** @var AsJsonApiAction $attribute */
         $attribute = $reflection->getAttributes(AsJsonApiAction::class)[0]->newInstance();
 
+        $this->guardActionHandlerOutput($reflection, $attribute);
+
         $output = match (true) {
             $attribute->returns204 => ActionOutput::None,
             $attribute->outputMeta => ActionOutput::Meta,
@@ -309,6 +313,53 @@ final class DiscoveryScanner
             $attribute->tags,
             $attribute->asLink,
         );
+    }
+
+    /**
+     * Guards a discovered action handler's declared output shape against its attribute
+     * flags (the Laravel twin of the bundle's `ResourceLocatorPass::guardActionHandlerOutput`):
+     * a handler whose `handle()` return type is narrowed to exactly {@see NoContentResponse}
+     * must declare `returns204`, and one narrowed to exactly {@see MetaResponse} must declare
+     * `outputMeta` — so the generated OpenAPI response can never drift from the shape the
+     * handler actually returns. A handler that keeps the interface's union return type (or
+     * any other single non-narrowed type) declares no single body shape, so it is not
+     * constrained here (the flags then govern the projection alone); discovery fails loudly
+     * only on a genuine narrowing/flag mismatch.
+     *
+     * @param \ReflectionClass<object> $reflection
+     */
+    private function guardActionHandlerOutput(\ReflectionClass $reflection, AsJsonApiAction $attribute): void
+    {
+        if (!$reflection->hasMethod('handle')) {
+            return;
+        }
+
+        $returnType = $reflection->getMethod('handle')->getReturnType();
+        if (!$returnType instanceof \ReflectionNamedType) {
+            return;
+        }
+
+        $name = $returnType->getName();
+
+        if ($name === NoContentResponse::class && !$attribute->returns204) {
+            throw new \LogicException(\sprintf(
+                'The JSON:API action "%s" on type "%s" has a handler (%s) returning NoContentResponse but does not '
+                . 'declare returns204; a body-less action must declare returns204 so the generated document advertises a 204.',
+                $attribute->path,
+                $attribute->type,
+                $reflection->getName(),
+            ));
+        }
+
+        if ($name === MetaResponse::class && !$attribute->outputMeta) {
+            throw new \LogicException(\sprintf(
+                'The JSON:API action "%s" on type "%s" has a handler (%s) returning MetaResponse but does not declare '
+                . 'outputMeta; a meta-only action must declare outputMeta so the generated document advertises a meta document.',
+                $attribute->path,
+                $attribute->type,
+                $reflection->getName(),
+            ));
+        }
     }
 
     /**

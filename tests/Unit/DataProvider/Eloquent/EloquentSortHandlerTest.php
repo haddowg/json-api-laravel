@@ -76,8 +76,6 @@ final class EloquentSortHandlerTest extends EloquentTestCase
     #[Test]
     public function itRaisesUnsupportedSortForANonFieldSortWithNoArm(): void
     {
-        $this->expectException(UnsupportedSort::class);
-
         $sort = new class implements SortInterface {
             public function key(): string
             {
@@ -85,7 +83,15 @@ final class EloquentSortHandlerTest extends EloquentTestCase
             }
         };
 
-        $this->handler->apply([new SortDirective($sort, descending: false)], $this->newQuery());
+        try {
+            $this->handler->apply([new SortDirective($sort, descending: false)], $this->newQuery());
+            self::fail('Expected UnsupportedSort.');
+        } catch (UnsupportedSort $e) {
+            // The data-layer remediation hint names the Eloquent arm-seam interface (ARM_HINT),
+            // so the 500 tells an author exactly which extension point runs a custom sort —
+            // mirroring the bundle's DoctrineUnsupportedArmHintTest.
+            self::assertStringContainsString('EloquentSortArmInterface', $e->getMessage());
+        }
     }
 
     /**

@@ -45,22 +45,63 @@ declare, and the provider translates:
 | `WhereHas::make('tracks')` | `whereHas('tracks')` (relationship existence) |
 | `WhereThrough::make('artist.name')` | a dotted-path correlated `EXISTS` |
 
+Need an operator or a sort the built-ins don't cover? Author a custom `FilterInterface` /
+`SortInterface` and teach the provider to push it down via the
+[**arm seam**](#custom-filters-and-sorts-the-arm-seam) — no need to replace the whole
+provider.
+
 Unknown `?filter`/`?sort` keys are a `400` (stricter than the spec's silent-ignore — see
 [configuration](configuration.md#strict_query_parameters)). Filter *values* that fail
 coercion are a `400`/`422`, not a database error (see [validation](validation.md)).
 
-### Custom filter arms
+## Custom filters and sorts (the arm seam)
 
-Extend the vocabulary with a filter arm — a class the provider consults for a filter it
-doesn't recognise. The example's `FullTextSearch` (`filter[q]` across several columns) ships
-an Eloquent arm and an in-memory arm, wired via the provider's `filterArms:`:
+The built-in handlers cover core's filter/sort vocabulary; for a **custom**
+`FilterInterface` or `SortInterface` of your own, register an **arm** — a small class the
+handler consults for value objects it does not recognise, before raising core's
+`UnsupportedFilter` / `UnsupportedSort`. (When a custom VO reaches the handler with no arm
+to run it, that `500` even names the seam: its message ends "…register an
+`EloquentFilterArmInterface` on the `EloquentDataProvider` (constructor `$filterArms`)".)
+The built-ins always win — an arm is a fallthrough, never an override of `Where`/`SortByField`.
+
+- An [`EloquentFilterArmInterface`](https://github.com/haddowg/json-api-laravel/blob/main/src/DataProvider/Eloquent/EloquentFilterArmInterface.php)
+  is `supports(FilterInterface): bool` plus
+  `apply(FilterInterface $filter, Builder $query, mixed $value): void` — push your predicate
+  down with `where(...)`, parameter-bound. Keyed on the filter's concrete type
+  (`$filter instanceof MyFilter`), one arm per filter class.
+- An [`EloquentSortArmInterface`](https://github.com/haddowg/json-api-laravel/blob/main/src/DataProvider/Eloquent/EloquentSortArmInterface.php)
+  is `supports(SortInterface): bool` plus
+  `apply(SortInterface $sort, Builder $query, bool $descending): void` — append your term
+  with `orderBy`/`orderByRaw` (which append), never a call that discards the earlier
+  directives, so a custom directive participates in the composite `ORDER BY`.
+
+Register arms on the reference provider via its `filterArms:` / `sortArms:` constructor
+arguments:
 
 ```php
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
+
 JsonApi::provider(
-    new EloquentDataProvider($modelByType, filterArms: [new EloquentFullTextSearchArm()]),
+    new EloquentDataProvider(
+        $modelByType,
+        filterArms: [new EloquentFullTextSearchArm()],
+        sortArms: [new OrderByRelevanceArm()],
+    ),
     priority: -128,
 );
 ```
+
+The example's `FullTextSearch` (`filter[q]` across several columns) ships an
+`EloquentFullTextSearchArm` (the SQL push-down) **and** an `ArrayFullTextSearchArm` (the
+in-memory twin), so the two stay behaviourally identical under the shared conformance suite.
+For a **portable** custom filter/sort that must also run on the in-memory witness, ship both:
+the Eloquent arm here and core's
+[`ArrayFilterArmInterface`](https://github.com/haddowg/json-api/blob/main/src/Resource/Filter/InMemory/ArrayFilterArmInterface.php)
+/ [`ArraySortArmInterface`](https://github.com/haddowg/json-api/blob/main/src/Resource/Sort/InMemory/ArraySortArmInterface.php)
+(passed to the `InMemoryDataProvider` constructor's `filterArms:`/`sortArms:`). An inherently
+Eloquent-specific filter (a raw scope) ships only the Eloquent arm. A custom provider that
+needs its own filter/sort translation is covered in
+[custom data providers](custom-data-providers.md#custom-filters-and-sorts).
 
 ## Sorting, sparse fieldsets, pagination
 
