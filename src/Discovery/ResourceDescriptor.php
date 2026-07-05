@@ -11,9 +11,10 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * assembly and the authorizer need to know about one discovered JSON:API resource,
  * resolved WITHOUT instantiating the resource: its class-string, its JSON:API `type`,
  * its URI path segment (`uriType`), the server(s) it is exposed on, its exposed
- * operation allow-list (as plain {@see Operation} case-value strings), and its
+ * operation allow-list (as plain {@see Operation} case-value strings), its
  * authorization overrides (an optional dedicated policy class + per-operation ability
- * renames/disables).
+ * renames/disables), and its optional serializer/hydrator override class-strings
+ * (ADR 0014 — each container-constructed on first use, like the resource itself).
  *
  * It carries only scalars + lists, so a set of descriptors round-trips through
  * {@see toArray()} / {@see fromArray()} to a `var_export`-able discovery cache file
@@ -32,6 +33,8 @@ final readonly class ResourceDescriptor
      * @param array<string, string|bool>                              $abilities  per-operation ability override keyed by {@see Operation} case value (string renames the ability, `false` disables the check)
      * @param array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>} $headers the declarative response-header config (cache + deprecation/sunset) projected from the `#[AsJsonApiResource]` attribute, as scalars so it round-trips through the discovery cache
      * @param list<string>                                              $tags       the explicit OpenAPI tag names the type's operations are grouped under (empty = the humanized-type default)
+     * @param class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null $serializer the custom serializer this type renders through (null = the resource's field inventory)
+     * @param class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null     $hydrator   the custom hydrator this type writes through (null = the resource's field inventory)
      */
     public function __construct(
         public string $class,
@@ -43,6 +46,8 @@ final readonly class ResourceDescriptor
         public array $abilities = [],
         public array $headers = [],
         public array $tags = [],
+        public ?string $serializer = null,
+        public ?string $hydrator = null,
     ) {}
 
     /**
@@ -62,7 +67,7 @@ final readonly class ResourceDescriptor
     }
 
     /**
-     * @return array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy: class-string|null, abilities: array<string, string|bool>, headers: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags: list<string>}
+     * @return array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy: class-string|null, abilities: array<string, string|bool>, headers: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags: list<string>, serializer: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null, hydrator: class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null}
      */
     public function toArray(): array
     {
@@ -76,15 +81,17 @@ final readonly class ResourceDescriptor
             'abilities' => $this->abilities,
             'headers' => $this->headers,
             'tags' => $this->tags,
+            'serializer' => $this->serializer,
+            'hydrator' => $this->hydrator,
         ];
     }
 
     /**
-     * A legacy snapshot missing the authorization / header / tag keys degrades gracefully
-     * to the inert default (no dedicated policy, no ability overrides, no response
-     * headers, no explicit tags).
+     * A legacy snapshot missing the authorization / header / tag / override keys degrades
+     * gracefully to the inert default (no dedicated policy, no ability overrides, no
+     * response headers, no explicit tags, no serializer/hydrator override).
      *
-     * @param array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy?: class-string|null, abilities?: array<string, string|bool>, headers?: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags?: list<string>} $data
+     * @param array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy?: class-string|null, abilities?: array<string, string|bool>, headers?: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags?: list<string>, serializer?: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null, hydrator?: class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null} $data
      */
     public static function fromArray(array $data): self
     {
@@ -98,6 +105,8 @@ final readonly class ResourceDescriptor
             $data['abilities'] ?? [],
             $data['headers'] ?? [],
             $data['tags'] ?? [],
+            $data['serializer'] ?? null,
+            $data['hydrator'] ?? null,
         );
     }
 }

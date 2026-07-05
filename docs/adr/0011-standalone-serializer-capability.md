@@ -39,7 +39,9 @@ both provider arms; `composer byte-compat` now diffs empty on every server.
 - **The URI segment is the type.** The descriptor's `uriType` is the JSON:API type; the
   serializer's own `UriTypeAwareInterface::uriType()` is a runtime link concern that must agree
   with it (both are `charts`/`countries` here), matching the bundle's descriptor rule.
-- **Serializer OVERRIDE on a resource is deferred (explicit non-goal for this port).** The
+- **Serializer OVERRIDE on a resource is deferred (explicit non-goal for this port).**
+  *(Superseded by [ADR 0014](0014-per-resource-serializer-hydrator-override.md), 2026-07-05:
+  the override is now carried on the attribute.)* The
   bundle's `#[AsJsonApiResource(serializer: …)]` escape hatch (its ADR 0023 — a hand-written
   serializer that wins serialization while the resource still hydrates writes, the bundle's
   `TrackSerializer`) is **not** ported here. It is not a cheap add: it needs an override map

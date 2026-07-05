@@ -20,6 +20,15 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * The resource `type` is normally read from the class's static `$type`; the optional
  * `type` here is a declaration-site override for the rare case that differs.
  *
+ * `serializer` / `hydrator` override how this type is serialized / hydrated: a
+ * resource declares a custom {@see \haddowg\JsonApi\Serializer\SerializerInterface}
+ * and/or {@see \haddowg\JsonApi\Hydrator\HydratorInterface} (each container-constructed,
+ * so it may have constructor dependencies) when the field DSL cannot express the wire
+ * shape. The generic CRUD engine then drives reads/writes for the type through the
+ * override instead of the resource's field inventory, while the *other* concern stays
+ * field-driven — the twin of the Symfony bundle's escape hatch (its ADR 0023; ADR 0014
+ * here).
+ *
  * `operations` is the exposed operation allow-list: the {@see Operation} cases this
  * type serves, one route emitted per case. An empty array means the default — all
  * five operations.
@@ -65,14 +74,16 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * default) — the same resolution the Symfony bundle applies — so the projected document is
  * byte-compatible with the bundle's for an identically-tagged domain.
  *
- * Further metadata (custom serializer/hydrator overrides, OpenAPI descriptions) is added
- * in later phases, mirroring the Symfony bundle's attribute.
+ * Further metadata (OpenAPI descriptions) is added in later phases, mirroring the
+ * Symfony bundle's attribute.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final readonly class AsJsonApiResource
 {
     /**
      * @param string|list<string>|null   $server       the server name(s) exposing this type (null = the implicit `default`)
+     * @param class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null $serializer a custom serializer for this type (container-constructed); reads render through it while writes stay field-driven
+     * @param class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null     $hydrator   a custom hydrator for this type (container-constructed); writes hydrate through it while reads stay field-driven
      * @param list<Operation>            $operations   the exposed operation allow-list (empty = all five); mutually exclusive with `readOnly`
      * @param bool                       $readOnly     shorthand restricting the type to the two fetch operations; mutually exclusive with a non-empty `operations`
      * @param class-string|null          $policy       a dedicated API policy class invoked directly for every operation (null = the model's Gate-registered policy, or inert if none)
@@ -86,6 +97,8 @@ final readonly class AsJsonApiResource
     public function __construct(
         public ?string $type = null,
         public string|array|null $server = null,
+        public ?string $serializer = null,
+        public ?string $hydrator = null,
         public array $operations = [],
         public bool $readOnly = false,
         public ?string $policy = null,

@@ -40,6 +40,7 @@ final class AlbumResource extends AbstractResource { /* … */ }
 | --- | --- |
 | `type` | declaration-site `$type` override (rare) |
 | `server` | server name, list of names, or `null` for the implicit `default` |
+| `serializer` / `hydrator` | per-concern override classes ([custom-serializers-hydrators](custom-serializers-hydrators.md)) |
 | `operations` | the exposed operation allow-list (`Operation` cases); empty = all five |
 | `readOnly` | shorthand for the two fetch operations (mutually exclusive with `operations`) |
 | `policy` | a dedicated API policy class ([authorization](authorization.md)) |

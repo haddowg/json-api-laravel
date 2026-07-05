@@ -48,6 +48,8 @@ final class ServerFactory
      * @param \Closure(class-string): object                                                        $resolver              the container resolver core builds registered resources through
      * @param list<class-string<AbstractResource>>                                                  $resourceClasses       this server's resource class-strings
      * @param array<string, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $standaloneSerializers this server's standalone serializers, keyed by JSON:API type (no resource; PLAN decision 3, bundle ADR 0024)
+     * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $serializerOverrides per-resource serializer overrides keyed by resource class (ADR 0014)
+     * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>>     $hydratorOverrides   per-resource hydrator overrides keyed by resource class (ADR 0014)
      */
     public function __construct(
         private readonly ResponseFactoryInterface $responseFactory,
@@ -91,6 +93,12 @@ final class ServerFactory
         // 3, the Laravel twin of bundle ADR 0024). Serialize-only unless the type's
         // operation allow-list opens read endpoints (charts/countries do).
         private readonly array $standaloneSerializers = [],
+        // Per-resource serializer/hydrator overrides (ADR 0014), keyed by resource
+        // class-string — threaded into core's register() so the overridden concern wins
+        // while the other stays field-driven; core resolves the override class through
+        // the same container resolver the resource itself is built with.
+        private readonly array $serializerOverrides = [],
+        private readonly array $hydratorOverrides = [],
     ) {}
 
     /**
@@ -124,8 +132,16 @@ final class ServerFactory
             ->withResourceLinkContributor($this->resourceLinkContributor)
             ->withContainer($this->resolver);
 
+        // A resource registers with its optional serializer/hydrator overrides (ADR
+        // 0014): the overridden concern is served through the hand-written class while
+        // the other stays field-driven — core's registry resolves both the resource and
+        // the override through the container resolver above.
         foreach ($this->resourceClasses as $resourceClass) {
-            $server = $server->register($resourceClass);
+            $server = $server->register(
+                $resourceClass,
+                $this->serializerOverrides[$resourceClass] ?? null,
+                $this->hydratorOverrides[$resourceClass] ?? null,
+            );
         }
 
         // Standalone serializer capabilities (PLAN decision 3, bundle ADR 0024): a type

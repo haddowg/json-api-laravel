@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Discovery;
 
+use haddowg\JsonApi\Hydrator\HydratorInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Response\MetaResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
@@ -219,7 +220,42 @@ final class DiscoveryScanner
             $attribute !== null ? $attribute->abilities : [],
             $this->headers($attribute),
             $attribute !== null ? \array_values($attribute->tags) : [],
+            $this->overrideClass($attribute?->serializer, SerializerInterface::class, 'serializer', $class),
+            $this->overrideClass($attribute?->hydrator, HydratorInterface::class, 'hydrator', $class),
         );
+    }
+
+    /**
+     * Validates a `#[AsJsonApiResource(serializer:/hydrator:)]` override class-string
+     * (ADR 0014): the named class must exist and implement its core contract, so a typo'd
+     * or mis-typed override fails discovery loudly instead of surfacing as a runtime
+     * resolver error — the Laravel twin of the bundle compiler pass's guard. The
+     * "registered service" half of that guard has no equivalent here: Laravel's container
+     * constructs any concrete class, resolving bound constructor dependencies as it goes.
+     *
+     * @template T of object
+     *
+     * @param class-string<T> $contract
+     *
+     * @return class-string<T>|null
+     */
+    private function overrideClass(?string $override, string $contract, string $concern, string $resource): ?string
+    {
+        if ($override === null) {
+            return null;
+        }
+
+        if (!\class_exists($override) || !\is_a($override, $contract, true)) {
+            throw new \LogicException(\sprintf(
+                'The %s "%s" declared by #[AsJsonApiResource] on "%s" must be a class implementing %s.',
+                $concern,
+                $override,
+                $resource,
+                $contract,
+            ));
+        }
+
+        return $override;
     }
 
     /**

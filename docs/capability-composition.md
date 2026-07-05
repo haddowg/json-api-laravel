@@ -75,7 +75,8 @@ Map::make('releaseInfo')->nullable()
 ```
 
 See [custom-serializers-hydrators](custom-serializers-hydrators.md) for the write side and
-the current status of a per-resource serializer/hydrator *override*.
+for handing one concern to a dedicated class with the per-resource
+`#[AsJsonApiResource(serializer: …, hydrator: …)]` override.
 
 ## One model, two types
 

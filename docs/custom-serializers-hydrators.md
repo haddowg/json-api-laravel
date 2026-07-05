@@ -2,8 +2,8 @@
 
 `AbstractResource` supplies both the read shape (it *is* the serializer) and the write shape
 (it *is* the hydrator), driven by the `fields()` DSL. Most customisation happens on the
-fields; when you need more, you drop to a hand-written serializer. This page covers both, and
-is honest about one capability still on the roadmap.
+fields; when you need more, you drop to a hand-written serializer or hydrator — standalone
+for a resource-less type, or as a per-resource override. This page covers all three.
 
 ## Shaping reads and writes on the fields
 
@@ -78,23 +78,39 @@ public function beforeCreate(object $entity, HookContext $context): void
 
 ## Overriding a resource's serializer or hydrator with a bound class
 
-> [!NOTE]
-> The Symfony bundle lets `#[AsJsonApiResource(serializer: …, hydrator: …)]` point a resource
-> at a hand-written serializer/hydrator class (e.g. to inject a constructor argument surfaced
-> in `meta`). **That per-resource override is not yet carried on this package's
-> `#[AsJsonApiResource]` attribute.** Today, achieve the same outcomes with:
->
-> - **per-field `serializeUsing`/`extractUsing`/`fillUsing`** closures (above) for wire-shape
->   changes — this covers the overwhelming majority of cases and keeps one declaration;
-> - **a standalone `#[AsJsonApiSerializer]`** for a type whose read shape is fully
->   hand-written and container-injected;
-> - **the [hook trait](lifecycle-hooks.md)** for write-side derivation that the bundle's
->   hydrator override would have done.
->
-> The example's `tracks` (a bundle serializer override) and `playlists` (a bundle hydrator
-> override) use these seams instead; the projected wire shape and OpenAPI document are
-> identical. Carrying the attribute-level override is tracked in the
-> [parity audit](https://github.com/haddowg/json-api-laravel/blob/main/docs/parity-audit.md).
+A resource can keep its field inventory and hand *one* concern to a dedicated class:
+`#[AsJsonApiResource(serializer: …)]` renders reads through a custom `SerializerInterface`
+while writes stay field-driven, and `#[AsJsonApiResource(hydrator: …)]` hydrates writes
+through a custom `HydratorInterface` while reads stay field-driven (declare both to override
+both). This is the escape hatch for a wire shape the field DSL cannot express — a
+request-aware attribute, a `meta` member surfaced from an injected dependency, or a write
+that fans one member out to several columns:
+
+```php
+use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
+
+#[AsJsonApiResource(serializer: TrackSerializer::class)]
+final class TrackResource extends AbstractResource { /* fields still hydrate writes */ }
+
+#[AsJsonApiResource(hydrator: PlaylistHydrator::class)]
+final class PlaylistResource extends AbstractResource { /* fields still render reads */ }
+```
+
+The override class is container-constructed on first use, so it can inject dependencies;
+bind scalar constructor arguments with `$app->when(...)->needs('$arg')->give(...)` — see
+[capability-composition](capability-composition.md#dependency-injection). A serializer
+override that needs to render the resource's relationships opts into core's
+`SerializerResolverAwareInterface`; the registry injects the resolver after construction.
+An override naming a class that does not implement its core contract fails discovery with a
+`LogicException`. Extending core's `AbstractSerializer` / `AbstractHydrator` is the practical
+starting point — the hydrator base supplies the create/update dispatch and the
+client-generated-id policy, leaving you the attribute fan-out.
+
+Reach for the override only when the cheaper seams fall short: **per-field
+`serializeUsing`/`extractUsing`/`fillUsing`** closures (above) cover most wire-shape changes
+in one declaration, a **standalone `#[AsJsonApiSerializer]`** serves a type with no resource
+at all, and the **[hook trait](lifecycle-hooks.md)** handles write-side derivation that
+belongs after hydration.
 
 ## Overriding the operation handler
 

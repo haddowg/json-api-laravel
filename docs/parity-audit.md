@@ -60,7 +60,7 @@ The only two `markTestSkipped` in the suite are **opis-gating** (`SchemaConforma
 | configuration | config tree | `config/jsonapi.php` (Laravel tree, not YAML) | [configuration](configuration.md) | 🟰 idiom |
 | data-layer + doctrine | reference provider/persister, filters, EXISTS | merged into **eloquent** page; where/whereHas/whereThrough/window push-down | [eloquent](eloquent.md), `EloquentFilterHandler` | ✅ (reshaped) |
 | custom-data-providers | SPI | ported SPI + `AbstractDataProvider` + in-memory witness + custom providers | [custom-data-providers](custom-data-providers.md), `src/DataProvider` | ✅ |
-| custom-serializers-hydrators | standalone serializer/hydrator; **resource-level override** | standalone serializer **ported**; per-**resource** `serializer:`/`hydrator:` attribute override **not carried** | [custom-serializers-hydrators](custom-serializers-hydrators.md); `AsJsonApiSerializer`; `TrackResource`/`PlaylistResource` docblocks | ❌ **GAP** (see Findings) |
+| custom-serializers-hydrators | standalone serializer/hydrator; **resource-level override** | standalone serializer **ported**; per-**resource** `serializer:`/`hydrator:` attribute override **carried** (ADR 0014) | [custom-serializers-hydrators](custom-serializers-hydrators.md); `AsJsonApiSerializer`; `ResourceSerializerHydratorOverrideTest` | ✅ (F1 resolved 2026-07-05) |
 | relationships | related/relationship endpoints, mutation, include, pivot, RQ profile, countable | full; SQL push-down windowing; polymorphic to-many **over-parity** | [relationships](relationships.md); `Playlist`/`Album`/`Favorite`/`Library` resources | ✅ / 🟰 (over-parity) |
 | pagination | page/offset/cursor, max-per-page | all three; keyset push-down; `max_per_page` clamp | [pagination](pagination.md), core `Pagination`, `CursorWidgetResource` | ✅ |
 | validation | constraint bridge | always-on; full vocab map; filter-value validation | [validation](validation.md), `src/Validation` | 🟰 (always-on) |
@@ -128,36 +128,26 @@ These are core/bundle gaps closed pre-1.0. The audit confirms the Laravel surfac
 
 ## Findings (❌ GAPs not covered by a recorded divergence)
 
-### F1 — Per-resource serializer/hydrator override on `#[AsJsonApiResource]`
+### F1 — Per-resource serializer/hydrator override on `#[AsJsonApiResource]` — ✅ RESOLVED (2026-07-05)
 
-**What:** the Symfony bundle lets `#[AsJsonApiResource(serializer: X::class, hydrator: Y::class)]`
+**Was:** the Symfony bundle lets `#[AsJsonApiResource(serializer: X::class, hydrator: Y::class)]`
 point a resource at a hand-written serializer/hydrator class (e.g. to inject a bound
-constructor argument surfaced in `meta`, or to make a request-aware attribute). This package's
-`#[AsJsonApiResource]` does **not** yet carry those parameters — the attribute docblock states
-"custom serializer/hydrator overrides … added in later phases", and the workbench `TrackResource`
-(a bundle serializer override) and `PlaylistResource` (a bundle hydrator override) note the
-absence explicitly.
+constructor argument surfaced in `meta`); this package's attribute did not carry those
+parameters. Byte-compat was never affected — the workbench reached both example cases'
+projected shape via field closures + the [hook trait](lifecycle-hooks.md).
 
-**Severity:** low / contained. Not authorized by any PLAN divergence row or ADR, so it is a
-genuine finding — but its impact is bounded:
-
-- The **standalone** serializer capability (`#[AsJsonApiSerializer]`, ADR 0011) is ported and
-  covers a resource-**less** type fully.
-- The workbench reproduces both example cases' **OpenAPI projection and attribute shape**
-  through supported seams — the `tracks` shape via the default serializer + per-field closures,
-  and the `playlists` derivations via the [hook trait](lifecycle-hooks.md) — so the
-  **byte-compat OpenAPI diff is unaffected**. The bundle's `TrackSerializer` additionally emits
-  two serializer-override *runtime extras* on `GET /tracks/*` — a resource `meta.served_by` (its
-  DI-bound catalogue tag) and a request-aware `nowPlaying` attribute for authenticated requests
-  — which the Laravel `TrackResource` does not reproduce; those extras are part of this gap
-  (neither projects to OpenAPI, so byte-compat still holds).
-- It is documented as a known gap in
-  [custom-serializers-hydrators](custom-serializers-hydrators.md).
-
-**Recommendation:** carry `serializer:`/`hydrator:` (and a standalone `#[AsJsonApiHydrator]`)
-on the attribute in a follow-up, mirroring bundle ADR 0023, so a DI-bound override is a
-first-class one-liner rather than a hook/closure workaround. This does not block v1: the
-capability is reachable today, and parity of the *rendered surface* holds.
+**Resolved by [ADR 0014](adr/0014-per-resource-serializer-hydrator-override.md)**, mirroring
+bundle ADR 0023: the attribute now carries `serializer:`/`hydrator:`; discovery validates each
+override against its core contract and snapshots the class-strings on the `ResourceDescriptor`
+(so they survive `jsonapi:optimize`); the `ServerFactory` threads them into core's
+`Server::register()`, which container-resolves the override — bound constructor arguments and
+`SerializerResolverAwareInterface` injection included. Proven end-to-end over HTTP (a DI-bound
+serializer read, a DI-bound hydrator write, the other concern staying field-driven each time,
+and the optimize snapshot) in `tests/Feature/ResourceSerializerHydratorOverrideTest`;
+documented in [custom-serializers-hydrators](custom-serializers-hydrators.md). Out of scope,
+deliberately: a standalone `#[AsJsonApiHydrator]` (no bundle example exercises it) and the
+bundle `TrackSerializer`'s runtime extras (`meta.served_by`, `nowPlaying`) in the workbench —
+the capability is what parity required, and byte-compat pins the projected document.
 
 ### F2 — The example's `AuditLogSubscriber` is not ported to the workbench
 
@@ -193,10 +183,10 @@ The composite rollout (core #128–#131) landed in both packages after the origi
 ## Summary
 
 Every bundle capability is either **ported (✅)**, **intentionally reshaped/diverged by a
-recorded PLAN decision or ADR (🟰)**, or **not shipped by the bundle itself (⏭)** — with two
-genuine, low-severity gaps: **F1**, the per-resource serializer/hydrator attribute override
-(byte-compat unaffected, reachable via other seams), and **F2**, the example
-`AuditLogSubscriber` example-wiring omission (the underlying event machinery is fully ported).
-Both are contained and documented; neither blocks v1. The over-parity items (polymorphic
-to-many on the reference provider; `UniqueEntity` via `Rule::unique`; always-on validation)
-exceed the bundle's surface by design.
+recorded PLAN decision or ADR (🟰)**, or **not shipped by the bundle itself (⏭)**. The audit
+surfaced two genuine, low-severity gaps: **F1**, the per-resource serializer/hydrator
+attribute override — since **resolved** (ADR 0014, 2026-07-05) — and **F2**, the example
+`AuditLogSubscriber` example-wiring omission (the underlying event machinery is fully
+ported), which remains contained and documented and does not block v1. The over-parity items
+(polymorphic to-many on the reference provider; `UniqueEntity` via `Rule::unique`; always-on
+validation) exceed the bundle's surface by design.
