@@ -519,9 +519,10 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->app->singleton(RelationCriteriaFactory::class);
 
         // The count/pagination/linkage seam holders are stable singletons (injected into the
-        // memoized Server once); the handler swaps each read's per-request backing in and clears
-        // them at the start of every dispatch. For a long-lived worker (Octane/queue) rebind
-        // them `scoped()` — per-request FPM/CLI is unaffected.
+        // memoized Server once); the handler clears all three at the start of every dispatch
+        // and swaps each read's per-request backing in, so a long-lived worker (Octane/queue)
+        // never inherits a prior request's backing. A scoped() rebind would be ineffective:
+        // the memoized Server and the singleton handler capture the instances at construction.
         $this->app->singleton(RequestScopedRelationshipCount::class);
         $this->app->singleton(RequestScopedRelationshipPagination::class);
         $this->app->singleton(RequestScopedRelationshipLinkage::class);

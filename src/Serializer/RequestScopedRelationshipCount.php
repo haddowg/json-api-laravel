@@ -23,14 +23,11 @@ use haddowg\JsonApi\Serializer\RelationshipCountInterface;
  * request's counts. With no backing set it answers `null` and core omits `meta.total`,
  * exactly as if no seam were wired.
  *
- * **Long-lived-worker caveat (Octane/queue).** The read arms re-set or clear the holder
- * on every read, but a write/linkage arm renders without touching it — so in a container
- * reused across requests a prior `?withCount` read could leave a backing set, and a later
- * render that does not re-set it could read a stale count. Bind this holder `scoped()` (a
- * fresh instance per request/job, Laravel 11+) or flush it on an Octane request boundary;
- * per-request FPM/CLI is unaffected (a fresh container nulls the holder). The Symfony
- * bundle's twin implements `ResetInterface` for the same reason — the Laravel idiom is a
- * scoped binding rather than a reset hook.
+ * The handler clears it (with the pagination and linkage holders) at the very start of
+ * EVERY dispatch, so a long-lived worker (Octane/queue) reusing the singleton never
+ * inherits a prior request's counts — the Laravel-side equivalent of the bundle twin's
+ * `ResetInterface` (`kernel.reset`). No `scoped()` rebind is needed (or effective: the
+ * memoized Server and the singleton handler capture the instance at construction).
  */
 final class RequestScopedRelationshipCount implements RelationshipCountInterface
 {
