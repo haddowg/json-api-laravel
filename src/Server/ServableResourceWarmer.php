@@ -53,8 +53,11 @@ use Illuminate\Database\Eloquent\Model;
  *    introspection is unavailable (no migrated DB at build time — a different concern that
  *    must not fail the deploy).
  *
- * Gating is on the per-type operation allow-list, so a relationship-only target (served
- * through its parent's provider) is not false-flagged.
+ * Standalone-serializer types (PLAN decision 3, bundle ADR 0024) are validated too — a
+ * fetch-opened standalone type without a provider is exactly the deploy-time
+ * misconfiguration this warmer exists to catch. Gating is on the per-type operation
+ * allow-list, so an embedded-only standalone serializer (no operations) and a
+ * relationship-only target (served through its parent's provider) are not false-flagged.
  */
 final class ServableResourceWarmer
 {
@@ -83,6 +86,23 @@ final class ServableResourceWarmer
 
         foreach ($this->serverNames as $serverName) {
             foreach ($this->discovery->resourcesFor($serverName) as $descriptor) {
+                $type = $descriptor->type;
+                if ($type === '') {
+                    continue;
+                }
+
+                $this->guardServability($type, $descriptor->operations, $problems);
+                $this->guardExactlyOneId($serverName, $type, $problems);
+                $this->guardPolymorphicDiscrimination($serverName, $type, $problems);
+                $this->guardEloquentRelationMethods($serverName, $type, $problems);
+                $this->guardSortableFilterableColumns($serverName, $type, $problems);
+            }
+
+            // The standalone-serializer types (PLAN decision 3, bundle ADR 0024) run the
+            // same guards: servability bites (a fetch-opened standalone type needs a
+            // provider), while the resource-shaped guards no-op — a resource-less type has
+            // no field inventory, so resourceFor() is null and relationsFor() is empty.
+            foreach ($this->discovery->serializersFor($serverName) as $descriptor) {
                 $type = $descriptor->type;
                 if ($type === '') {
                     continue;
