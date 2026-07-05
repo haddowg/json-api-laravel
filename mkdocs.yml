@@ -1,0 +1,109 @@
+site_name: haddowg/json-api-laravel
+site_description: Laravel package for haddowg/json-api — idiomatic routing, validation, and an Eloquent data layer for JSON:API 1.1.
+site_url: https://haddowg.github.io/json-api-laravel/
+repo_url: https://github.com/haddowg/json-api-laravel
+repo_name: haddowg/json-api-laravel
+edit_uri: edit/main/docs/
+copyright: Released under the MIT Licence.
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: red
+      accent: red
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: red
+      accent: red
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - navigation.indexes
+    - content.code.copy
+    - content.code.annotate
+    - search.highlight
+    - search.suggest
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.tabbed:
+      alternate_style: true
+
+plugins:
+  - search
+
+hooks:
+  - mkdocs_hooks.py
+
+validation:
+  nav:
+    # The ADRs and the parity audit are built (docs link to them by file) but
+    # deliberately not in the nav.
+    omitted_files: ignore
+  links:
+    anchors: warn
+
+# Working/analysis docs kept in the repo but not part of the published site.
+# The ADRs are linked from the pages by absolute GitHub URL, not built as site pages.
+exclude_docs: |
+  parity-audit.md
+  adr/
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - install.md
+      - getting-started.md
+      - configuration.md
+  - Resources & capabilities:
+      - resources.md
+      - capability-composition.md
+      - custom-serializers-hydrators.md
+  - The Eloquent data layer:
+      - eloquent.md
+      - custom-data-providers.md
+  - Querying & relationships:
+      - relationships.md
+      - pagination.md
+  - Writing, validation & authorization:
+      - validation.md
+      - authorization.md
+      - lifecycle.md
+      - lifecycle-hooks.md
+      - actions.md
+      - atomic-operations.md
+  - Routing, errors & operations:
+      - routing.md
+      - errors.md
+      - multi-server-and-testing.md
+  - OpenAPI & operations:
+      - openapi.md
+      - optimize.md
+  - The example app:
+      - workbench.md
+      - docker.md

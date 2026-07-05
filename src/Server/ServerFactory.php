@@ -45,8 +45,9 @@ final class ServerFactory
     private ?Server $server = null;
 
     /**
-     * @param \Closure(class-string): object                     $resolver        the container resolver core builds registered resources through
-     * @param list<class-string<AbstractResource>>               $resourceClasses this server's resource class-strings
+     * @param \Closure(class-string): object                                                        $resolver              the container resolver core builds registered resources through
+     * @param list<class-string<AbstractResource>>                                                  $resourceClasses       this server's resource class-strings
+     * @param array<string, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $standaloneSerializers this server's standalone serializers, keyed by JSON:API type (no resource; PLAN decision 3, bundle ADR 0024)
      */
     public function __construct(
         private readonly ResponseFactoryInterface $responseFactory,
@@ -85,6 +86,11 @@ final class ServerFactory
         // dispatcher leaves the serving seam unwired.
         private readonly ?Dispatcher $dispatcher = null,
         private readonly string $serverName = 'default',
+        // Standalone serializers (no resource), keyed by JSON:API type — registered
+        // through core's registerSerializerHydrator() after the resources (PLAN decision
+        // 3, the Laravel twin of bundle ADR 0024). Serialize-only unless the type's
+        // operation allow-list opens read endpoints (charts/countries do).
+        private readonly array $standaloneSerializers = [],
     ) {}
 
     /**
@@ -120,6 +126,16 @@ final class ServerFactory
 
         foreach ($this->resourceClasses as $resourceClass) {
             $server = $server->register($resourceClass);
+        }
+
+        // Standalone serializer capabilities (PLAN decision 3, bundle ADR 0024): a type
+        // registered with no resource. Core stores the pair; serializerFor() resolves the
+        // service through the same container resolver, so the read pipeline renders it
+        // exactly as a resource-backed type. Registered after the resources so a resource
+        // for the same type always wins (a standalone registration is the resource-less
+        // path). The hydrator arm is null here — the ported capability is serialize-only.
+        foreach ($this->standaloneSerializers as $type => $serializerClass) {
+            $server = $server->registerSerializerHydrator($type, $serializerClass, null);
         }
 
         // The serving bridge (PLAN decision 10): one core `serving` handler that turns

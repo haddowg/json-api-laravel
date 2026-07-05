@@ -36,9 +36,9 @@ use PHPUnit\Framework\Attributes\Test;
  * matrix (batch-window edges, load-state, `?withCount`, linkage shapes) lives in the
  * dedicated {@see RelationshipReadConformanceTestCase}. The client-driven `?withCount=_self_`
  * opt-in is now recognized (the Countable profile is wired) and asserted here as core's `400`
- * safe-default until a resource opts in via CountableSelfInterface; relationship WRITES and
- * the known null-in-comparison divergence (ADR 0003) remain VISIBLE as explicitly skipped
- * markers rather than omitted.
+ * safe-default until a resource opts in via CountableSelfInterface. The null-in-comparison
+ * divergence ADR 0003 once deferred is now RESOLVED (core ADR 0116) and asserted directly in
+ * {@see orderedComparisonAndRangeOverANullableColumnExcludeNullsIdentically}.
  */
 abstract class ReadConformanceTestCase extends Orchestra
 {
@@ -162,9 +162,9 @@ abstract class ReadConformanceTestCase extends Orchestra
     #[Group('spec:fetching-filtering')]
     public function aNumericRangeAppliesAnInclusiveMinAndMax(): void
     {
-        // Over the NON-NULL `track_count` (ids: 1→3, 2→2, 3→5, 4→0, 5→4, 6→1) so the
-        // full inclusive min / max / max-only matrix is refereed without the
-        // null-handling impedance (see comparisonFiltersOverNullableColumns…).
+        // Over the `track_count` column (ids: 1→3, 2→2, 3→5, 4→0, 5→4, 6→1): the full
+        // inclusive min / max / max-only matrix. The null-column arm of the same contract
+        // is refereed by orderedComparisonAndRangeOverANullableColumnExcludeNullsIdentically.
         self::assertSame(['1', '3', '5'], $this->sortedIds('/api/artists?filter[trackRange][min]=3', 'artists'));
         self::assertSame(['1', '2', '5'], $this->sortedIds('/api/artists?filter[trackRange][min]=2&filter[trackRange][max]=4', 'artists'));
         self::assertSame(['4', '6'], $this->sortedIds('/api/artists?filter[trackRange][max]=1', 'artists'));
@@ -824,21 +824,25 @@ abstract class ReadConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:fetching-filtering')]
-    public function comparisonFiltersOverNullableColumnsDivergeOnNullHandling(): void
+    public function orderedComparisonAndRangeOverANullableColumnExcludeNullsIdentically(): void
     {
-        self::markTestSkipped(
-            'KNOWN DIVERGENCE (recorded in docs/adr/0003-null-in-comparison-witness-'
-            . 'divergence-deferred-to-core.md): an ordered comparison / Range bound over '
-            . 'a NULL-bearing column disagrees — the in-memory witness coerces `null` in '
-            . 'the comparison (e.g. `null <= 9.0` MATCHES), while Eloquent/SQL '
-            . 'three-valued logic excludes NULLs. The workbench sidesteps it exactly as '
-            . 'the bundle does: ordered comparison/range filters are declared ONLY over '
-            . 'columns with no null rows (artists track_count, albums released_at), and '
-            . 'null presence is refereed with the explicit WhereNull/WhereNotNull filters '
-            . 'instead. Resolution belongs in core (define null-in-comparison semantics '
-            . 'for the witness) under the witness contract (PLAN decision 1), not a local '
-            . 'work-around — see ADR 0003.',
-        );
+        // Core ADR 0116 (an ordered comparison against `null` never matches) resolved the
+        // divergence docs/adr/0003 deferred to core: the in-memory witness now excludes
+        // null rows from an ordered `<`/`<=`/`>`/`>=` — and therefore a Range bound —
+        // exactly as Eloquent/SQL three-valued logic already did, instead of coercing
+        // `null` toward 0. So the `rating` Range over the NULLABLE `average_rating` column
+        // (albums 4 and 7 are unrated — see nullPresenceFiltersSelectIdentically) now
+        // returns the SAME set on BOTH providers, the null rows never coerced in.
+
+        // A min-bound (a `>=` arm): ratings >= 9.0 → 1 (9.8), 2 (9.1), 3 (9.5), 6 (9.0).
+        self::assertSame(['1', '2', '3', '6'], $this->sortedIds('/api/albums?filter[rating][min]=9.0', 'albums'));
+        // A bounded range excludes 1 (9.8): 9.0–9.5 → 2 (9.1), 3 (9.5), 6 (9.0).
+        self::assertSame(['2', '3', '6'], $this->sortedIds('/api/albums?filter[rating][min]=9.0&filter[rating][max]=9.5', 'albums'));
+        // The crucial null case — a MAX-only bound (a `<=` arm): `null <= 9.0` was the
+        // coercion the OLD in-memory witness matched (the ADR 0003 divergence); under core
+        // ADR 0116 both providers now EXCLUDE the unrated rows (4, 7), keeping only 5 (8.7)
+        // and 6 (9.0) — the null-comparison parity this suite could not prove before.
+        self::assertSame(['5', '6'], $this->sortedIds('/api/albums?filter[rating][max]=9.0', 'albums'));
     }
 
     #[Test]

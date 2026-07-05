@@ -4,8 +4,13 @@ composer.lock
 /.phpstan.cache/
 .php-cs-fixer.cache
 coverage.xml
+/build/
 .DS_Store
 /.claude/settings.local.json
+
+# Docs site build artifacts (mkdocs)
+/site/
+__pycache__/
 
 # Local working plan — removed when the build is complete (see CLAUDE.md)
 /PLAN.md

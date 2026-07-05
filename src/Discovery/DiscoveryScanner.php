@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Discovery;
 
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApiLaravel\Action\ActionDescriptor;
 use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
 use haddowg\JsonApiLaravel\Action\ActionInput;
 use haddowg\JsonApiLaravel\Action\ActionOutput;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
+use haddowg\JsonApiLaravel\Attribute\AsJsonApiSerializer;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
 use haddowg\JsonApiLaravel\Operation\Operation;
@@ -54,6 +56,7 @@ final class DiscoveryScanner
         /** @var array<class-string, true> $seen */
         $seen = [];
         $resources = [];
+        $serializers = [];
         $providers = [];
         $persisters = [];
         $translators = [];
@@ -78,6 +81,20 @@ final class DiscoveryScanner
                 $descriptor = $this->describeResource($reflection);
                 if ($descriptor !== null) {
                     $resources[] = $descriptor;
+                }
+
+                continue;
+            }
+
+            // A standalone serializer is a SerializerInterface carrying #[AsJsonApiSerializer]
+            // and no AbstractResource (checked above) — a type whose wire shape is hand-written
+            // (PLAN decision 3, the Laravel twin of bundle ADR 0024). A serializer-override class
+            // (referenced from #[AsJsonApiResource(serializer:)]) carries no attribute and so is
+            // never mis-classified here; it is resolved through its resource instead.
+            if ($reflection->getAttributes(AsJsonApiSerializer::class) !== [] && $reflection->implementsInterface(SerializerInterface::class)) {
+                $descriptor = $this->describeSerializer($reflection);
+                if ($descriptor !== null) {
+                    $serializers[] = $descriptor;
                 }
 
                 continue;
@@ -109,7 +126,59 @@ final class DiscoveryScanner
             }
         }
 
-        return new DiscoveryResult($resources, $providers, $persisters, $translators, $actions);
+        return new DiscoveryResult($resources, $providers, $persisters, $translators, $actions, $serializers);
+    }
+
+    /**
+     * Builds a {@see SerializerDescriptor} from a standalone serializer's
+     * {@see AsJsonApiSerializer} attribute, or `null` when it declares no non-empty
+     * `type` (a misconfigured capability with no discoverable type — skipped rather than
+     * fatal). The URI segment defaults to the type (the bundle's descriptor rule); the
+     * operation allow-list is taken verbatim — **empty stays empty** (serialize-only, no
+     * endpoints), the deliberate asymmetry against an `AbstractResource`.
+     *
+     * @param \ReflectionClass<object> $reflection
+     */
+    private function describeSerializer(\ReflectionClass $reflection): ?SerializerDescriptor
+    {
+        /** @var AsJsonApiSerializer $attribute */
+        $attribute = $reflection->getAttributes(AsJsonApiSerializer::class)[0]->newInstance();
+
+        if ($attribute->type === '') {
+            return null;
+        }
+
+        /** @var class-string<SerializerInterface> $class */
+        $class = $reflection->getName();
+
+        return new SerializerDescriptor(
+            $class,
+            $attribute->type,
+            $attribute->type,
+            $this->serializerServers($attribute),
+            \array_values(\array_map(static fn(Operation $op): string => $op->value, $attribute->operations)),
+            \array_values($attribute->tags),
+        );
+    }
+
+    /**
+     * The server name(s) a standalone serializer is exposed on: the attribute's `server`
+     * (a single name or a list), defaulting to the implicit `default` server.
+     *
+     * @return list<string>
+     */
+    private function serializerServers(AsJsonApiSerializer $attribute): array
+    {
+        $server = $attribute->server;
+        if ($server === null) {
+            return ['default'];
+        }
+
+        if (\is_string($server)) {
+            return [$server];
+        }
+
+        return \array_values($server);
     }
 
     /**

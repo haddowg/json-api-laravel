@@ -144,10 +144,11 @@ final class EloquentReadEndpointsTest extends EloquentTestCase
 
     public function test_a_range_filter_narrows_and_the_counted_total_reflects_the_filtered_collection(): void
     {
-        // The structured range over the NON-NULL `released_at` (releasedRange) on the
-        // counted albums arm: 1997+ keeps only OK Computer (1997), and meta.page.total
-        // reflects the FILTERED collection, not the full count. Ordered comparison/range
-        // filters sit only on non-null columns (witness-vs-SQL null parity — see ADR 0003).
+        // The structured range over the `released_at` (releasedRange) on the counted
+        // albums arm: 1997+ keeps only OK Computer (1997), and meta.page.total reflects the
+        // FILTERED collection, not the full count. (A null-bearing range now lives
+        // alongside it, filter[rating], since core ADR 0116 aligned the witness with SQL
+        // null-exclusion — see docs/adr/0003.)
         $response = $this->get('/api/albums?filter[releasedRange][min]=1997-01-01', ['Accept' => self::MEDIA_TYPE]);
 
         $response->assertOk();

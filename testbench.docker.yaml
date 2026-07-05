@@ -1,0 +1,23 @@
+## Testbench configuration for the `docker compose up` demo (PLAN Phase 5 docker item).
+## The Dockerfile copies this over `testbench.yaml` inside the image so `testbench serve`
+## boots the FULL music-catalog domain (decision 14) instead of the default workbench
+## suite — the two must never co-register (they reuse the same `$type` strings), so this
+## config lists the music-catalog providers and deliberately omits WorkbenchServiceProvider.
+
+providers:
+  - Workbench\App\MusicCatalog\Providers\MusicCatalogDemoServiceProvider
+  - haddowg\JsonApiLaravel\JsonApiServiceProvider
+  - Workbench\App\MusicCatalog\Providers\MusicCatalogEloquentServiceProvider
+
+migrations:
+  - workbench/database/migrations
+
+env:
+  - APP_ENV=local
+  - APP_DEBUG=true
+  - DB_CONNECTION=sqlite
+  - DB_DATABASE=/app/database/demo.sqlite
+
+workbench:
+  start: '/api/albums'
+  install: false
