@@ -20,6 +20,16 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * The resource `type` is normally read from the class's static `$type`; the optional
  * `type` here is a declaration-site override for the rare case that differs.
  *
+ * `model` names the Eloquent model this type maps to for the reference
+ * [Eloquent data layer]{@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider}
+ * — the twin of the Symfony bundle's `entity:` (read by its `DoctrineEntityMapPass`).
+ * It is the middle tier of the three-tier model resolution (ADR 0019): an explicit
+ * `JsonApi::provider()`/`persister()` registration shadows it, and a type declaring
+ * neither falls back to the convention guess (`albums` → `App\Models\Album` under the
+ * configurable `jsonapi.eloquent.model_namespace`). Declare it when the type and model
+ * names diverge — including the "two types, one model" pattern, where convention cannot
+ * guess the shared model.
+ *
  * `serializer` / `hydrator` override how this type is serialized / hydrated: a
  * resource declares a custom {@see \haddowg\JsonApi\Serializer\SerializerInterface}
  * and/or {@see \haddowg\JsonApi\Hydrator\HydratorInterface} (each container-constructed,
@@ -82,6 +92,7 @@ final readonly class AsJsonApiResource
 {
     /**
      * @param string|list<string>|null   $server       the server name(s) exposing this type (null = the implicit `default`)
+     * @param class-string<\Illuminate\Database\Eloquent\Model>|null $model the Eloquent model this type maps to for the reference Eloquent layer (null = the convention guess under `jsonapi.eloquent.model_namespace`)
      * @param class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null $serializer a custom serializer for this type (container-constructed); reads render through it while writes stay field-driven
      * @param class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null     $hydrator   a custom hydrator for this type (container-constructed); writes hydrate through it while reads stay field-driven
      * @param list<Operation>            $operations   the exposed operation allow-list (empty = all five); mutually exclusive with `readOnly`
@@ -97,6 +108,7 @@ final readonly class AsJsonApiResource
     public function __construct(
         public ?string $type = null,
         public string|array|null $server = null,
+        public ?string $model = null,
         public ?string $serializer = null,
         public ?string $hydrator = null,
         public array $operations = [],

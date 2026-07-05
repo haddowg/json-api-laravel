@@ -19,9 +19,11 @@ use haddowg\JsonApiLaravel\Console\OpenApiExportCommand;
 use haddowg\JsonApiLaravel\Console\OptimizeCommand;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
+use haddowg\JsonApiLaravel\DataPersister\Eloquent\EloquentDataPersister;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\InMemorySnapshotCoordinator;
 use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
@@ -29,6 +31,7 @@ use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\RelationshipWindowBatcher;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\DiscoveryScanner;
+use haddowg\JsonApiLaravel\Eloquent\ModelMapResolver;
 use haddowg\JsonApiLaravel\EventListener\ResourceHookSubscriber;
 use haddowg\JsonApiLaravel\Exception\ExceptionMapperInterface;
 use haddowg\JsonApiLaravel\Exception\JsonApiExceptionRenderer;
@@ -99,6 +102,28 @@ final class JsonApiServiceProvider extends ServiceProvider
      * tag a decorator to mutate the projected document wholesale.
      */
     public const string OPENAPI_FACTORY_TAG = 'jsonapi.openapi_factory';
+
+    /**
+     * The container tag an {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentFilterArmInterface}
+     * binding carries to join the auto-registered reference Eloquent provider (ADR 0019) —
+     * the push-down seam for a custom `FilterInterface` without hand-wiring the provider.
+     */
+    public const string ELOQUENT_FILTER_ARM_TAG = 'jsonapi.eloquent.filter_arm';
+
+    /**
+     * The container tag an {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentSortArmInterface}
+     * binding carries to join the auto-registered reference Eloquent provider (ADR 0019).
+     */
+    public const string ELOQUENT_SORT_ARM_TAG = 'jsonapi.eloquent.sort_arm';
+
+    /**
+     * The priority the auto-registered reference Eloquent pair joins the registries at
+     * (ADR 0019): below the documented explicit-wiring floor (`-128`), so ANY hand
+     * registration — an application provider at the default `0`, or the reference pair
+     * wired by hand at `-128` (docs/eloquent.md) — shadows the auto pair for the types
+     * it `supports()`.
+     */
+    public const int ELOQUENT_AUTO_PRIORITY = -256;
 
     public function register(): void
     {
@@ -325,12 +350,31 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $cachePath,
             );
         });
+
+        // The `type → model` map behind the auto-registered reference Eloquent pair
+        // (ADR 0019). Resolved lazily off the memoized discovery descriptors (a snapshot
+        // load or a live scan alike) at first registry use — never at boot — so
+        // `route:cache` / `jsonapi:optimize` timing is untouched.
+        $this->app->singleton(ModelMapResolver::class, static function (Container $app): ModelMapResolver {
+            /** @var Discovery $discovery */
+            $discovery = $app->make(Discovery::class);
+            /** @var string|null $namespace */
+            $namespace = config('jsonapi.eloquent.model_namespace', 'App\\Models');
+
+            return new ModelMapResolver($discovery->resources(), $namespace);
+        });
     }
 
     /**
      * Binds the data-provider and data-persister registries, each assembled from the
      * explicit {@see JsonApiManager} registrations plus the discovered SPI classes,
      * sorted by descending priority (highest first, ties keeping registration order).
+     *
+     * When the resolved `type → model` map (ADR 0019) is non-empty, the reference
+     * Eloquent provider/persister pair over that map joins each registry at
+     * {@see ELOQUENT_AUTO_PRIORITY} (`-256`) — below every hand registration, claiming
+     * only the mapped types, so the zero-config Eloquent flow works while any explicit
+     * wiring shadows it and an unmapped type keeps failing exactly as before.
      */
     private function registerRegistries(): void
     {
@@ -343,6 +387,24 @@ final class JsonApiServiceProvider extends ServiceProvider
             $registrations = $manager->providerRegistrations();
             foreach ($discovery->providers() as $class) {
                 $registrations[] = ['provider' => $class, 'priority' => 0];
+            }
+
+            $modelByType = $app->make(ModelMapResolver::class)->map();
+            if ($modelByType !== []) {
+                /** @var iterable<\haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentFilterArmInterface<\Illuminate\Database\Eloquent\Model>> $filterArms */
+                $filterArms = $app->tagged(self::ELOQUENT_FILTER_ARM_TAG);
+                /** @var iterable<\haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentSortArmInterface<\Illuminate\Database\Eloquent\Model>> $sortArms */
+                $sortArms = $app->tagged(self::ELOQUENT_SORT_ARM_TAG);
+
+                $registrations[] = [
+                    'provider' => new EloquentDataProvider(
+                        $modelByType,
+                        filterArms: $filterArms,
+                        sortArms: $sortArms,
+                        idEncoders: $app->make(IdEncoderResolver::class),
+                    ),
+                    'priority' => self::ELOQUENT_AUTO_PRIORITY,
+                ];
             }
 
             \usort($registrations, static fn(array $a, array $b): int => $b['priority'] <=> $a['priority']);
@@ -373,6 +435,16 @@ final class JsonApiServiceProvider extends ServiceProvider
             $registrations = $manager->persisterRegistrations();
             foreach ($discovery->persisters() as $class) {
                 $registrations[] = ['persister' => $class, 'priority' => 0];
+            }
+
+            // The write half of the auto-registered reference pair, over the SAME
+            // memoized map the read provider claims (ADR 0019).
+            $modelByType = $app->make(ModelMapResolver::class)->map();
+            if ($modelByType !== []) {
+                $registrations[] = [
+                    'persister' => new EloquentDataPersister($modelByType, idEncoders: $app->make(IdEncoderResolver::class)),
+                    'priority' => self::ELOQUENT_AUTO_PRIORITY,
+                ];
             }
 
             \usort($registrations, static fn(array $a, array $b): int => $b['priority'] <=> $a['priority']);

@@ -40,6 +40,7 @@ final class AlbumResource extends AbstractResource { /* … */ }
 | --- | --- |
 | `type` | declaration-site `$type` override (rare) |
 | `server` | server name, list of names, or `null` for the implicit `default` |
+| `model` | the Eloquent model backing this type when the name diverges from the convention guess ([eloquent](eloquent.md#the-model-map-three-tiers)) |
 | `serializer` / `hydrator` | per-concern override classes ([custom-serializers-hydrators](custom-serializers-hydrators.md)) |
 | `operations` | the exposed operation allow-list (`Operation` cases); empty = all five |
 | `readOnly` | shorthand for the two fetch operations (mutually exclusive with `operations`) |
@@ -178,5 +179,8 @@ Both are exercised by the example (`albums` default include; `users` include whi
 Two resource types may back the same Eloquent model — the example's admin-only `users` and
 the public, narrower `public-profiles` both map to `User`. The curation is the field
 inventory: `public-profiles` declares only `displayName`, so no sparse fieldset or include
-can resurface the private columns. See
+can resurface the private columns. Convention cannot guess a shared model (nothing named
+`PublicProfile` exists), so each such type declares it —
+`#[AsJsonApiResource(model: User::class)]` — or the
+[explicit map](eloquent.md#the-model-map-three-tiers) covers both. See
 [capability-composition](capability-composition.md#one-model-two-types).

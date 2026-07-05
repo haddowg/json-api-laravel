@@ -6,11 +6,35 @@ Laravel-native equivalent of the Symfony bundle's Doctrine layer. This page cove
 reference layer; the storage-agnostic SPI it implements is on
 [custom-data-providers](custom-data-providers.md).
 
-## Wiring the model map
+## The model map (three tiers)
 
-The reference pair is registered at the lowest priority (`-128`), so any application provider
-shadows it. Register it from a service provider's `register()`, mapping each JSON:API type to
-its model:
+Each type resolves to its model through three tiers — first match wins per type
+([ADR 0019](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0019-three-tier-model-mapping-with-an-auto-registered-reference-pair.md)):
+
+1. **Explicit wiring** — a `JsonApi::provider()`/`persister()` registration (below). It
+   always wins for the types it `supports()`, whatever its priority: the auto-registered
+   pair sits at `-256`, below the documented explicit floor of `-128`.
+2. **The `model:` declaration** — `#[AsJsonApiResource(model: Album::class)]`, for a type
+   whose model name diverges from convention (or two types sharing one model, which
+   convention can never guess). Validated at scan time (the class must exist and extend
+   `Model`) and carried through the [`jsonapi:optimize`](optimize.md) snapshot.
+3. **The convention guess** — the kebab/plural type, singularized and studly-cased under
+   `jsonapi.eloquent.model_namespace` (default `App\Models`): `albums` → `App\Models\Album`,
+   `public-profiles` → `App\Models\PublicProfile`. Claimed only when that class exists and
+   is an Eloquent model; set the namespace to `null` to disable the tier.
+
+The package builds one `type → model` map from tiers 2 + 3 and **auto-registers the
+reference provider/persister pair over it** — the zero-config path the
+[getting-started](getting-started.md) page walks; the Symfony bundle's
+`#[AsJsonApiResource(entity: …)]` twin. The pair claims *only* the mapped types: a type no
+tier resolves still fails with the no-provider wiring error, never a silent wrong guess.
+
+### Explicit wiring
+
+For full control (a non-default connection, constructor
+[arm](#custom-filters-and-sorts-the-arm-seam) instances, or shadowing the auto pair),
+register the pair from a service provider's `register()`, mapping each JSON:API type to its
+model:
 
 ```php
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
@@ -26,6 +50,9 @@ $modelByType = [
 JsonApi::provider(new EloquentDataProvider($modelByType), priority: -128);
 JsonApi::persister(new EloquentDataPersister($modelByType), priority: -128);
 ```
+
+`-128` keeps the reference-pair convention — any application provider at the default
+priority (`0`) shadows it, and it in turn shadows the `-256` auto pair.
 
 The provider owns the base query per type; the persister owns create/update/delete inside a
 `DB::transaction`, returning `201` + `Location` on create, `200` on update, `204` on delete.
@@ -89,6 +116,17 @@ JsonApi::provider(
     ),
     priority: -128,
 );
+```
+
+The [auto-registered pair](#the-model-map-three-tiers) picks arms up from tagged container
+bindings instead — no hand-constructed provider needed:
+
+```php
+use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+
+$this->app->singleton(EloquentFullTextSearchArm::class);
+$this->app->tag(EloquentFullTextSearchArm::class, JsonApiServiceProvider::ELOQUENT_FILTER_ARM_TAG);
+$this->app->tag(OrderByRelevanceArm::class, JsonApiServiceProvider::ELOQUENT_SORT_ARM_TAG);
 ```
 
 The example's `FullTextSearch` (`filter[q]` across several columns) ships an

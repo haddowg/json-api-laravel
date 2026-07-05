@@ -3,7 +3,9 @@
 Data access runs through a storage-agnostic **service-provider interface (SPI)**: a
 `DataProviderInterface` (read) and a `DataPersisterInterface` (write), resolved per type by a
 first-`supports()` match in descending priority order. The [Eloquent layer](eloquent.md) is
-the reference implementation at priority `-128`; register your own at a higher priority to
+the reference implementation (auto-registered at `-256` from the
+[model-map tiers](eloquent.md#the-model-map-three-tiers), or hand-wired at `-128`); register
+your own at a higher priority to
 serve a type from anything — an external API, a fixed list, `symfony/intl`, a legacy store
 (bundle ADR 0002, ported here as
 [ADR 0002](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0002-port-the-provider-persister-spi.md)).
@@ -98,8 +100,9 @@ over `DB::transaction`.
 ## Priority and shadowing
 
 Providers and persisters register with a priority; the first that `supports()` a type wins.
-The reference Eloquent pair sits at `-128`, so an application registration (default `0`)
-shadows it for its own types while everything else falls through to Eloquent:
+The reference Eloquent pair sits at the bottom (`-256` auto-registered, `-128` hand-wired),
+so an application registration (default `0`) shadows it for its own types while everything
+else falls through to Eloquent:
 
 ```php
 JsonApi::provider(new ChartProvider());                       // priority 0
