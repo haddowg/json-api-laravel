@@ -5,16 +5,20 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\DataPersister\Eloquent;
 
 use haddowg\JsonApi\Exception\ClientGeneratedIdAlreadyExists;
+use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\Resource\Field\AbstractField;
 use haddowg\JsonApi\Resource\Field\BelongsToMany as PivotRelation;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
+use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApiLaravel\DataPersister\AbstractDataPersister;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
+use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
+use Illuminate\Container\Container;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -70,12 +74,24 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
     private bool $connectionsVerified = false;
 
     /**
+     * The id-encoder resolver linkage wire ids decode through (ADR 0014) — injected, or
+     * resolved lazily from the container on first use so the hand-constructed reference
+     * wiring (`new EloquentDataPersister($modelByType)`) keeps working.
+     */
+    private ?IdEncoderResolver $idEncoders;
+
+    private bool $idEncodersResolved;
+
+    /**
      * @param array<string, class-string<Model>> $modelByType a `type → Eloquent model FQCN` map (the SAME map the read provider uses)
      * @param string|null                        $connection  the connection name the batch transaction controls run on (null = the default connection); the per-op writes use each model's own connection
+     * @param IdEncoderResolver|null             $idEncoders  resolves a related type's id encoder (linkage decode, ADR 0014); null resolves it lazily from the container
      */
-    public function __construct(array $modelByType, private readonly ?string $connection = null)
+    public function __construct(array $modelByType, private readonly ?string $connection = null, ?IdEncoderResolver $idEncoders = null)
     {
         $this->modelByType = $modelByType;
+        $this->idEncoders = $idEncoders;
+        $this->idEncodersResolved = $idEncoders !== null;
     }
 
     public function supports(string $type): bool
@@ -333,10 +349,19 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
             return; // a to-one linkage to a to-many relation is a cardinality error, caught upstream
         }
 
-        $ids = \array_values(\array_filter(
-            $linkage->getResourceIdentifierIds(),
-            static fn(?string $id): bool => $id !== null,
-        ));
+        // Linkage ids arrive as WIRE ids; decode each to its storage key (by the member's
+        // own related type) before it becomes a join-row key (ADR 0014) — an undecodable
+        // token raises the same 404 a missing target would. A type with no encoder decodes
+        // to itself, so the path is byte-identical to today for the common case.
+        $ids = [];
+        foreach ($linkage->resourceIdentifiers as $identifier) {
+            if ($identifier->id === null) {
+                continue;
+            }
+            /** @var mixed $storageId */
+            $storageId = $this->decodeLinkageId($this->relatedType($relation, $identifier), $identifier->id);
+            $ids[] = $storageId;
+        }
 
         // A Remove carries no pivot meta, and a bare join has no pivot columns — the id-only
         // sync/attach/detach form covers both.
@@ -352,7 +377,8 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
 
         // Which members are already attached — so each resolves its writable pivot set in the
         // right (create vs update) context, exactly as the validator's merge-before-validate
-        // pass determined it.
+        // pass determined it. `allRelatedIds()` reads the join rows, so the set holds STORAGE
+        // keys — the decoded linkage ids compare against it directly.
         $attached = [];
         foreach ($eloquentRelation->allRelatedIds() as $existing) {
             $attached[\is_scalar($existing) ? (string) $existing : ''] = true;
@@ -363,8 +389,13 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
             if ($identifier->id === null) {
                 continue;
             }
-            $creating = !isset($attached[$identifier->id]);
-            $payload[$identifier->id] = $this->pivotAttributes($relation, $identifier->meta, $creating);
+            /** @var mixed $storageId */
+            $storageId = $this->decodeLinkageId($this->relatedType($relation, $identifier), $identifier->id);
+            if (!\is_scalar($storageId)) {
+                continue;
+            }
+            $creating = !isset($attached[(string) $storageId]);
+            $payload[(string) $storageId] = $this->pivotAttributes($relation, $identifier->meta, $creating);
         }
 
         if ($mode === Mode::Add) {
@@ -468,16 +499,19 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
     /**
      * The persisted related model for an identifier, or `null` when the type is unmapped or
      * no row matches the id. The related type is the identifier's own `type` (polymorphic
-     * safe), falling back to the relation's single declared related type.
+     * safe), falling back to the relation's single declared related type. The identifier's
+     * `id` is a WIRE id, decoded to its storage key before the find when the related type
+     * declares an id encoder (ADR 0014).
      */
     private function findRelated(RelationInterface $relation, ResourceIdentifier $identifier): ?Model
     {
-        $class = $this->modelByType[$this->relatedType($relation, $identifier)] ?? null;
+        $relatedType = $this->relatedType($relation, $identifier);
+        $class = $this->modelByType[$relatedType] ?? null;
         if ($class === null || $identifier->id === null) {
             return null;
         }
 
-        $found = $class::query()->find($identifier->id);
+        $found = $class::query()->find($this->decodeLinkageId($relatedType, $identifier->id));
 
         return $found instanceof Model ? $found : null;
     }
@@ -503,7 +537,12 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
 
         $blank = new $class();
         if ($identifier->id !== null) {
-            $blank->setAttribute($blank->getKeyName(), $identifier->id);
+            // The FK holds the STORAGE key, so the wire id decodes first (ADR 0014) —
+            // never a raw wire token keyed into an integer column.
+            $blank->setAttribute(
+                $blank->getKeyName(),
+                $this->decodeLinkageId($this->relatedType($relation, $identifier), $identifier->id),
+            );
         }
 
         return $blank;
@@ -530,6 +569,44 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
             $member->setAttribute($morphType, null);
         }
         $member->save();
+    }
+
+    /**
+     * Decodes a linkage member's wire id to its storage key when the RELATED type declares
+     * an id encoder; otherwise (no encoder, wire == storage) returns it unchanged — the
+     * write twin of the provider's route-`{id}` decode (ADR 0014, mirroring the bundle's
+     * `DoctrineDataPersister::decodeLinkageId()`). An undecodable id can key no row, so it
+     * surfaces as the same `404` a missing target raises — never a raw wire token written
+     * into an integer FK/join column.
+     */
+    private function decodeLinkageId(string $relatedType, string $id): mixed
+    {
+        $encoder = $this->encoderFor($relatedType);
+        if ($encoder === null) {
+            return $id;
+        }
+
+        return $encoder->decode($id) ?? throw new ResourceNotFound();
+    }
+
+    /**
+     * The id encoder declared by `$type`'s resource, or `null` when wire == storage (no
+     * resource / no Id field / no encoder — today's behaviour, ADR 0014). The resolver is
+     * injected, or resolved lazily from the container once so the hand-constructed
+     * reference wiring keeps working; outside a container (a bare unit test) every type
+     * resolves encoder-less.
+     */
+    private function encoderFor(string $type): ?IdEncoderInterface
+    {
+        if (!$this->idEncodersResolved) {
+            $container = Container::getInstance();
+            $this->idEncoders = $container->bound(IdEncoderResolver::class)
+                ? $container->make(IdEncoderResolver::class)
+                : null;
+            $this->idEncodersResolved = true;
+        }
+
+        return $this->idEncoders?->encoderFor($type);
     }
 
     /**
