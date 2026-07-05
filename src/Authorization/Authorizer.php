@@ -55,11 +55,18 @@ final class Authorizer
     {
         $config = $this->config[$type] ?? null;
 
-        // The ability for this operation: a per-op rename, `false` to disable, or the
-        // policy-convention default. `??` only coalesces the null "no override" case,
-        // so an explicit `false` (disable) is preserved.
+        // The ability for this operation: a per-op rename, `false` to disable, `true` to
+        // document as externally-secured, or the policy-convention default. `??` only
+        // coalesces the null "no override" case, so an explicit `false`/`true` is preserved.
         $ability = $config?->ability($operation) ?? $this->defaultAbility($operation);
         if ($ability === false) {
+            return;
+        }
+
+        // `true` documents the operation as secured (an external firewall/middleware enforces
+        // it) and is projected into the OpenAPI document as secured + 401, but the package's
+        // Gate does NOT enforce it — so, for enforcement, it is inert.
+        if ($ability === true) {
             return;
         }
 
@@ -99,14 +106,69 @@ final class Authorizer
     }
 
     /**
+     * Authorizes a custom action's declared `ability` (PLAN decision 12) against its
+     * subject — the resolved entity for a resource-scope action, or `null` for a
+     * collection-scope action (then the ability authorizes the resource-class token, so
+     * a `publishAny($user)`-style method / `Gate::define()` closure is called). Honours
+     * the type's declared `policy:` class exactly as {@see authorize()} does; throws an
+     * {@see \Illuminate\Auth\Access\AuthorizationException} on denial. The action's before
+     * gate is enforced here directly (the handler has no event dispatcher yet — the
+     * parallel of how the CRUD arms call {@see authorize()} inline).
+     */
+    public function authorizeAction(string $type, string $ability, ?object $subject): void
+    {
+        $config = $this->config[$type] ?? null;
+        $carriesInstance = $subject !== null;
+
+        if ($config?->policy !== null) {
+            $this->authorizeViaPolicy($config->policy, $ability, $subject, $carriesInstance, $config->subjectClass);
+
+            return;
+        }
+
+        // A resource-scope action authorizes the resolved entity; a collection-scope action
+        // carries no instance, so the type's resource-class token stands in as the Gate
+        // subject — otherwise `Gate::has($ability)` / a class-registered policy is never
+        // consulted and the declared ability fails OPEN for any caller (including a guest).
+        // The ability was explicitly declared by the author, so the class token (always
+        // present for a discovered type) closes the hole rather than skipping the check.
+        $this->authorizeViaGate($ability, $subject, $carriesInstance, $config?->subjectClass);
+    }
+
+    /**
+     * Whether the current user would pass a custom action's `ability` gate for `$subject`
+     * — the boolean twin of {@see authorizeAction()} the ability-aware
+     * {@see \haddowg\JsonApiLaravel\Action\ActionLinkContributor} uses to decide whether
+     * to render an action's `links` member (so a client never sees a link to an action it
+     * could not invoke). An action with no policy / no defined ability is inert, so the
+     * link renders — matching invocation, which is likewise inert.
+     */
+    public function allowsAction(string $type, string $ability, ?object $subject): bool
+    {
+        try {
+            $this->authorizeAction($type, $ability, $subject);
+
+            return true;
+        } catch (\Illuminate\Auth\Access\AuthorizationException) {
+            return false;
+        }
+    }
+
+    /**
      * The model's Gate-registered policy (or a defined ability) path — the inert
      * default. Only enforces when the model actually has a policy OR the ability is a
      * defined Gate closure; a type with neither is inert (PLAN decision 7), so the
      * package adds no authorization an application did not ask for.
+     *
+     * `$classToken` is the resource-class fallback used when a class-level check carries
+     * no instance (a collection-scope custom action): it becomes the Gate subject so a
+     * `Gate::define()` closure / a class-registered policy is still consulted, closing
+     * the fail-open hole. `null` (a CRUD read-only collection with no instance) keeps the
+     * pre-instance inert behaviour.
      */
-    private function authorizeViaGate(string $ability, ?object $subject, bool $carriesInstance): void
+    private function authorizeViaGate(string $ability, ?object $subject, bool $carriesInstance, ?string $classToken = null): void
     {
-        $gateSubject = $carriesInstance ? $subject : ($subject !== null ? $subject::class : null);
+        $gateSubject = $carriesInstance ? $subject : ($subject !== null ? $subject::class : $classToken);
         if ($gateSubject === null) {
             return;
         }

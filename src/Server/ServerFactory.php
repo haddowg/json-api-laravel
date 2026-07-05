@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Server;
 
 use haddowg\JsonApi\Operation\OperationHandlerInterface;
 use haddowg\JsonApi\Pagination\PagePaginator;
+use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Schema\Profile\CountableProfile;
 use haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile;
@@ -13,7 +14,10 @@ use haddowg\JsonApi\Serializer\RelationshipCountInterface;
 use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
 use haddowg\JsonApi\Serializer\RelationshipLoadStateInterface;
 use haddowg\JsonApi\Serializer\RelationshipPaginationInterface;
+use haddowg\JsonApi\Serializer\ResourceLinkContributorInterface;
 use haddowg\JsonApi\Server\Server;
+use haddowg\JsonApiLaravel\Event\ServingEvent;
+use Illuminate\Contracts\Events\Dispatcher;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 
@@ -32,8 +36,9 @@ use Psr\Http\Message\StreamFactoryInterface;
  * throws without one). The built Server is an immutable value, so it is memoized and
  * shared.
  *
- * This is the Phase 0 subset of the Symfony bundle's `ServerFactory`; the relationship
- * seams, profiles, and the serving/events bridge are threaded in later phases.
+ * The relationship seams, profiles, and the serving/events bridge (a
+ * `Server::withServing()` handler dispatching a {@see ServingEvent}, PLAN decision 10)
+ * are all threaded here.
  */
 final class ServerFactory
 {
@@ -69,6 +74,17 @@ final class ServerFactory
         // model — the profile-not-negotiated default).
         private readonly ?RelationshipPaginationInterface $relationshipPagination = null,
         private readonly ?RelationshipLinkageInterface $relationshipLinkage = null,
+        // The out-of-band resource-link contributor (Phase 4): a per-server
+        // ActionLinkContributor merges each `asLink` custom action's URL onto its mount
+        // type's resources. Null leaves resource links exactly as the author's getLinks()
+        // + the convention self link produce (the no-asLink-actions default).
+        private readonly ?ResourceLinkContributorInterface $resourceLinkContributor = null,
+        // The lifecycle-event dispatcher + this server's name, threaded so `create()`
+        // installs a `Server::withServing()` handler that turns core's request-wide
+        // `serving` seam into a package {@see ServingEvent} (PLAN decision 10). Null
+        // dispatcher leaves the serving seam unwired.
+        private readonly ?Dispatcher $dispatcher = null,
+        private readonly string $serverName = 'default',
     ) {}
 
     /**
@@ -99,10 +115,27 @@ final class ServerFactory
             ->withRelationshipLoadState($this->relationshipLoadState)
             ->withRelationshipPagination($this->relationshipPagination)
             ->withRelationshipLinkage($this->relationshipLinkage)
+            ->withResourceLinkContributor($this->resourceLinkContributor)
             ->withContainer($this->resolver);
 
         foreach ($this->resourceClasses as $resourceClass) {
             $server = $server->register($resourceClass);
+        }
+
+        // The serving bridge (PLAN decision 10): one core `serving` handler that turns
+        // core's server-level seam (fired once per request inside `Server::dispatch()`,
+        // core ADR 0050) into a package {@see ServingEvent}. A ServingEvent listener that
+        // throws a JsonApiException aborts — the throw propagates out of the closure →
+        // out of `dispatch()` → the route-scoped exception renderer. Wired only when a
+        // dispatcher is present.
+        if ($this->dispatcher !== null) {
+            $dispatcher = $this->dispatcher;
+            $serverName = $this->serverName;
+            $server = $server->withServing(
+                static function (JsonApiRequestInterface $request) use ($dispatcher, $serverName): void {
+                    $dispatcher->dispatch(new ServingEvent($request, $serverName));
+                },
+            );
         }
 
         return $this->server = $server->withHandler($this->handler);

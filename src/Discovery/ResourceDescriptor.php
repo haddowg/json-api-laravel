@@ -29,7 +29,9 @@ final readonly class ResourceDescriptor
      * @param list<string>                                             $servers    the server name(s) exposing this type (at least `['default']`)
      * @param list<string>                                             $operations the exposed operations as {@see Operation} case-value strings
      * @param class-string|null                                        $policy     a dedicated API policy class invoked directly (null = the model's Gate-registered policy, or inert)
-     * @param array<string, string|false>                              $abilities  per-operation ability override keyed by {@see Operation} case value (string renames the ability, `false` disables the check)
+     * @param array<string, string|bool>                              $abilities  per-operation ability override keyed by {@see Operation} case value (string renames the ability, `false` disables the check)
+     * @param array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>} $headers the declarative response-header config (cache + deprecation/sunset) projected from the `#[AsJsonApiResource]` attribute, as scalars so it round-trips through the discovery cache
+     * @param list<string>                                              $tags       the explicit OpenAPI tag names the type's operations are grouped under (empty = the humanized-type default)
      */
     public function __construct(
         public string $class,
@@ -39,6 +41,8 @@ final readonly class ResourceDescriptor
         public array $operations,
         public ?string $policy = null,
         public array $abilities = [],
+        public array $headers = [],
+        public array $tags = [],
     ) {}
 
     /**
@@ -58,7 +62,7 @@ final readonly class ResourceDescriptor
     }
 
     /**
-     * @return array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy: class-string|null, abilities: array<string, string|false>}
+     * @return array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy: class-string|null, abilities: array<string, string|bool>, headers: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags: list<string>}
      */
     public function toArray(): array
     {
@@ -70,14 +74,17 @@ final readonly class ResourceDescriptor
             'operations' => $this->operations,
             'policy' => $this->policy,
             'abilities' => $this->abilities,
+            'headers' => $this->headers,
+            'tags' => $this->tags,
         ];
     }
 
     /**
-     * A legacy snapshot missing the authorization keys degrades gracefully to the
-     * inert default (no dedicated policy, no ability overrides).
+     * A legacy snapshot missing the authorization / header / tag keys degrades gracefully
+     * to the inert default (no dedicated policy, no ability overrides, no response
+     * headers, no explicit tags).
      *
-     * @param array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy?: class-string|null, abilities?: array<string, string|false>} $data
+     * @param array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy?: class-string|null, abilities?: array<string, string|bool>, headers?: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags?: list<string>} $data
      */
     public static function fromArray(array $data): self
     {
@@ -89,6 +96,8 @@ final readonly class ResourceDescriptor
             $data['operations'],
             $data['policy'] ?? null,
             $data['abilities'] ?? [],
+            $data['headers'] ?? [],
+            $data['tags'] ?? [],
         );
     }
 }

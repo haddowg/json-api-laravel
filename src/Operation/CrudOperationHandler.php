@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Operation;
 
+use haddowg\JsonApi\Atomic\AtomicLoop;
 use haddowg\JsonApi\Collection\CollectionResult;
 use haddowg\JsonApi\Collection\CursorCollectionResult;
 use haddowg\JsonApi\Exception\AdditionProhibited;
@@ -18,7 +19,9 @@ use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\Operation\AddToRelationshipOperation;
+use haddowg\JsonApi\Operation\AtomicOperationsOperation;
 use haddowg\JsonApi\Operation\CreateResourceOperation;
+use haddowg\JsonApi\Operation\CustomActionOperation;
 use haddowg\JsonApi\Operation\DeleteResourceOperation;
 use haddowg\JsonApi\Operation\FetchRelatedOperation;
 use haddowg\JsonApi\Operation\FetchRelationshipOperation;
@@ -43,9 +46,11 @@ use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\SupportsSingular;
+use haddowg\JsonApi\Response\AtomicResultsResponse;
 use haddowg\JsonApi\Response\DataResponse;
 use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Response\IdentifierResponse;
+use haddowg\JsonApi\Response\MetaResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
 use haddowg\JsonApi\Response\RelatedResponse;
 use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
@@ -54,16 +59,36 @@ use haddowg\JsonApi\Serializer\PolymorphicSerializer;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApi\Server\RequestBaseUri;
 use haddowg\JsonApi\Server\Server;
+use haddowg\JsonApiLaravel\Action\ActionInvoker;
+use haddowg\JsonApiLaravel\Atomic\AtomicLoopBackend;
+use haddowg\JsonApiLaravel\Atomic\AtomicOperationsUnavailable;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
+use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\RelationshipWindowBatcher;
+use haddowg\JsonApiLaravel\Discovery\Discovery;
+use haddowg\JsonApiLaravel\Event\AfterCreateEvent;
+use haddowg\JsonApiLaravel\Event\AfterDeleteEvent;
+use haddowg\JsonApiLaravel\Event\AfterFetchCollectionEvent;
+use haddowg\JsonApiLaravel\Event\AfterFetchOneEvent;
+use haddowg\JsonApiLaravel\Event\AfterRelationshipMutateEvent;
+use haddowg\JsonApiLaravel\Event\AfterSaveEvent;
+use haddowg\JsonApiLaravel\Event\AfterUpdateEvent;
+use haddowg\JsonApiLaravel\Event\BeforeCreateEvent;
+use haddowg\JsonApiLaravel\Event\BeforeDeleteEvent;
+use haddowg\JsonApiLaravel\Event\BeforeFetchCollectionEvent;
+use haddowg\JsonApiLaravel\Event\BeforeFetchRelatedEvent;
+use haddowg\JsonApiLaravel\Event\BeforeFetchRelationshipEvent;
+use haddowg\JsonApiLaravel\Event\BeforeRelationshipMutateEvent;
+use haddowg\JsonApiLaravel\Event\BeforeSaveEvent;
+use haddowg\JsonApiLaravel\Event\BeforeUpdateEvent;
 use haddowg\JsonApiLaravel\Serializer\PivotMetaSerializer;
 use haddowg\JsonApiLaravel\Serializer\PivotParentSerializer;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
@@ -71,9 +96,13 @@ use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipPagination;
 use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipPagination;
+use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\FilterValueValidator;
 use haddowg\JsonApiLaravel\Validation\ResourceValidator;
+use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Routing\Router;
+use Psr\Log\LoggerInterface;
 
 /**
  * The single generic operation handler, wired via `Server::withHandler()` so
@@ -133,9 +162,30 @@ final class CrudOperationHandler implements OperationHandlerInterface
         private readonly RequestScopedRelationshipCount $relationshipCount,
         private readonly RequestScopedRelationshipPagination $relationshipPagination,
         private readonly RequestScopedRelationshipLinkage $relationshipLinkage,
+        // Phase-4 surface collaborators, optional so a stripped-down programmatic wiring
+        // still constructs the handler: the custom-action invoker (its `CustomActionOperation`
+        // arm), and the Atomic Operations executor's collaborators (the request-scoped
+        // deferred-hook context, Laravel's router for `href` resolution, and an optional
+        // logger for a post-commit hook that throws). Null on a pre-surface wiring → the
+        // action arm 404s and the atomic arm is refused as unavailable.
+        private readonly ?ActionInvoker $actions = null,
+        private readonly ?WriteTransactionContext $txContext = null,
+        private readonly ?Router $router = null,
+        private readonly ?LoggerInterface $logger = null,
+        // Discovery, so an Atomic Operations batch can re-apply the per-type operation
+        // allow-list the router gates the direct HTTP surface with (a sub-operation never
+        // touches the router). Null on a pre-surface wiring → the atomic backend gets an
+        // empty allow-list and refuses every write, exactly as an unrouted type would.
+        private readonly ?Discovery $discovery = null,
+        // The lifecycle-event dispatcher (PLAN decision 10): Laravel's event
+        // Dispatcher, injected so every before/after lifecycle event fires through
+        // `Event::listen`/`Event::fake`/the resource hook subscriber. Null on a
+        // stripped-down programmatic wiring → every dispatch is a no-op (events are
+        // an opt-in seam, exactly like the bundle's optional dispatcher).
+        private readonly ?Dispatcher $dispatcher = null,
     ) {}
 
-    public function handle(JsonApiOperationInterface $operation): DataResponse|RelatedResponse|IdentifierResponse|NoContentResponse|ErrorResponse
+    public function handle(JsonApiOperationInterface $operation): DataResponse|RelatedResponse|IdentifierResponse|MetaResponse|NoContentResponse|AtomicResultsResponse|ErrorResponse
     {
         // Clear the request-scoped `?withCount` seam at the very start of EVERY dispatch, so a
         // prior request's batched counts can never bleed into an arm that does not itself
@@ -162,8 +212,78 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $operation instanceof UpdateRelationshipOperation => $this->mutateRelationship($operation, $operation->body(), Mode::Replace),
             $operation instanceof AddToRelationshipOperation => $this->mutateRelationship($operation, $operation->body(), Mode::Add),
             $operation instanceof RemoveFromRelationshipOperation => $this->mutateRelationship($operation, $operation->body(), Mode::Remove),
+            // The custom-action arm delegates to the (optional) invoker; a pre-surface
+            // wiring with no invoker 404s exactly like the default arm.
+            $operation instanceof CustomActionOperation => $this->actions?->invoke($operation) ?? ErrorResponse::fromException(new ResourceNotFound()),
+            $operation instanceof AtomicOperationsOperation => $this->atomic($operation),
             default => ErrorResponse::fromException(new ResourceNotFound()),
         };
+    }
+
+    /**
+     * `POST /operations` — the Atomic Operations batch. The single global handler grows
+     * this one arm so an {@see AtomicOperationsOperation} dispatches through the SAME handler
+     * as every CRUD operation: it builds a per-batch {@see AtomicLoopBackend} (which resolves
+     * each sub-operation's target, applies it through THIS handler's own per-op CRUD arms
+     * in-process, threads the shared local-id registry, and renders each result fragment) and
+     * runs it through core's framework-agnostic {@see AtomicLoop} — which owns the ordering,
+     * the all-or-nothing commit/rollback, and the failing-operation pointer prefixing.
+     *
+     * **Decoration wraps the batch, not each sub-op.** A handler decorator sees this one
+     * {@see AtomicOperationsOperation}; the sub-operations re-enter `$this` directly.
+     *
+     * The {@see WriteTransactionContext} is what makes the sub-operations' After* lifecycle
+     * hooks defer to post-commit; the router resolves an `href`-targeted operation. Absent
+     * either, the batch cannot run transactionally, so it is refused as unsupported (a 500 —
+     * a wiring fault, unreachable in a normally-built app).
+     */
+    private function atomic(AtomicOperationsOperation $operation): AtomicResultsResponse|ErrorResponse
+    {
+        $server = $operation->context()->server;
+        \assert($server instanceof Server);
+        $request = $this->jsonApiRequest($operation->context());
+
+        if ($this->txContext === null || $this->router === null) {
+            return ErrorResponse::fromException(new AtomicOperationsUnavailable());
+        }
+
+        $backend = new AtomicLoopBackend(
+            $operation->descriptors(),
+            $server,
+            $request,
+            $this,
+            $this->persisters,
+            $this->txContext,
+            $this->router,
+            $this->exposedOperations(),
+            $this->logger,
+        );
+
+        return (new AtomicLoop())->run($operation->descriptors(), $backend);
+    }
+
+    /**
+     * The per-type exposed CRUD operation allow-list ({@see Operation} case values keyed by
+     * JSON:API type) the atomic backend gates sub-operations against — the same allow-list
+     * the router emits direct routes from. Empty when no discovery is wired (a stripped-down
+     * programmatic handler), so the backend refuses every write, exactly as an unrouted type.
+     *
+     * @return array<string, list<string>>
+     */
+    private function exposedOperations(): array
+    {
+        if ($this->discovery === null) {
+            return [];
+        }
+
+        $exposed = [];
+        foreach ($this->discovery->resources() as $descriptor) {
+            if ($descriptor->type !== '') {
+                $exposed[$descriptor->type] = $descriptor->operations;
+            }
+        }
+
+        return $exposed;
     }
 
     private function fetch(FetchResourceOperation $operation): DataResponse|ErrorResponse
@@ -201,7 +321,27 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->applyRelationshipWindows($server, $type, [$model], $request);
             $this->applyRelationshipCounts($server, $type, [$model], $request);
 
-            return DataResponse::fromResource($model, $serializer);
+            $response = DataResponse::fromResource($model, $serializer);
+
+            // The after-fetch-one lifecycle hook (post-fetch) may replace the response
+            // — a custom-action shaping of the read. Skipped for a programmatic
+            // dispatch with no request to build the event from.
+            if ($request !== null) {
+                $event = new AfterFetchOneEvent($type, $request, $model, $this->serverName($request));
+                $this->dispatch($event);
+                $response = $event->response() ?? $response;
+            }
+
+            return $response;
+        }
+
+        // An all-or-nothing collection gate runs BEFORE the query: a listener may deny
+        // the whole `GET /{type}` read (a throw → 403/…) so a blocked caller never
+        // triggers a collection query. Skipped for a programmatic dispatch with no
+        // request. Row-level read authorization still belongs in the provider query
+        // scope; this gate blanket-blocks the whole collection.
+        if ($request !== null) {
+            $this->dispatch(new BeforeFetchCollectionEvent($type, $request, $this->serverName($request)));
         }
 
         // A bare serializer/hydrator pair declares no field inventory, so it has no
@@ -270,7 +410,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->applyRelationshipCounts($server, $type, $items, $request);
 
         if ($singular) {
-            return DataResponse::fromResource($items[0] ?? null, $serializer);
+            return $this->afterFetchCollection(DataResponse::fromResource($items[0] ?? null, $serializer), $type, $request, $items);
         }
 
         // A cursor (keyset) page: the provider minted the boundary tokens, so render
@@ -284,18 +424,23 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $from = $items === [] ? null : $serializer->getId($items[0]);
             $to = $items === [] ? null : $serializer->getId($items[\array_key_last($items)]);
 
-            return DataResponse::fromPage(
-                $paginator->fromBoundaries(
-                    $request,
-                    $items,
-                    $result->cursorBefore ?? '',
-                    $result->cursorAfter ?? '',
-                    $result->hasMore,
-                    $result->hasPrevious,
-                    from: $from,
-                    to: $to,
+            return $this->afterFetchCollection(
+                DataResponse::fromPage(
+                    $paginator->fromBoundaries(
+                        $request,
+                        $items,
+                        $result->cursorBefore ?? '',
+                        $result->cursorAfter ?? '',
+                        $result->hasMore,
+                        $result->hasPrevious,
+                        from: $from,
+                        to: $to,
+                    ),
+                    $serializer,
                 ),
-                $serializer,
+                $type,
+                $request,
+                $items,
             );
         }
 
@@ -304,19 +449,34 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // meta.page.total/links.last and echoes meta.total; a count-free page renders
         // self/first/prev/next (no total/last, next via hasMore) and NO meta.total.
         if ($paginator === null) {
-            return DataResponse::fromCollection($items, $serializer)->withMeta(['total' => \count($items)]);
+            return $this->afterFetchCollection(
+                DataResponse::fromCollection($items, $serializer)->withMeta(['total' => \count($items)]),
+                $type,
+                $request,
+                $items,
+            );
         }
 
         if ($request !== null && $result->total !== null) {
-            return DataResponse::fromPage($paginator->paginate($request, $items, $result->total), $serializer)
-                ->withMeta(['total' => $result->total]);
+            return $this->afterFetchCollection(
+                DataResponse::fromPage($paginator->paginate($request, $items, $result->total), $serializer)
+                    ->withMeta(['total' => $result->total]),
+                $type,
+                $request,
+                $items,
+            );
         }
 
         if ($request !== null && $result->windowed) {
-            return DataResponse::fromPage($paginator->paginateWithoutCount($request, $items, $result->hasMore), $serializer);
+            return $this->afterFetchCollection(
+                DataResponse::fromPage($paginator->paginateWithoutCount($request, $items, $result->hasMore), $serializer),
+                $type,
+                $request,
+                $items,
+            );
         }
 
-        return DataResponse::fromCollection($items, $serializer);
+        return $this->afterFetchCollection(DataResponse::fromCollection($items, $serializer), $type, $request, $items);
     }
 
     /**
@@ -367,6 +527,18 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $relatedType = $relatedTypes[0] ?? $type;
 
         $request = $this->jsonApiRequest($operation->context());
+
+        // Bundle parity: the parent reached this read through the SAME single-resource fetch
+        // the primary read fires AfterFetchOne on, so fire it here too — a resource's
+        // afterFetchOne hook runs on related reads exactly as it does in the bundle. The
+        // related path renders the related value(s), not the parent, so any response the hook
+        // returns is (harmlessly) ignored. Security is already enforced by gateRead() above.
+        $this->dispatch(new AfterFetchOneEvent($type, $request, $parent, $this->serverName($request)));
+
+        // The relation-scoped before-fetch-related lifecycle event (a Laravel addition, always
+        // fired as a pure lifecycle seam — read authorization is the policy gate above): a
+        // listener that throws a JsonApiException aborts the read.
+        $this->dispatch(new BeforeFetchRelatedEvent($type, $request, $parent, $relation, $this->serverName($request)));
 
         if ($relation->isToMany()) {
             $relatedResource = $polymorphic ? null : $this->types->resourceFor($server, $relatedType);
@@ -542,6 +714,19 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // (`?page`/`?sort`/`?filter`/`?withCount=_self_`), honour or reject them — NEVER silently
         // ignore them (the worst outcome: a client believing its sort/filter/page applied).
         $request = $this->jsonApiRequest($operation->context());
+
+        // Bundle parity: the parent reached this read through the SAME single-resource fetch
+        // the primary read fires AfterFetchOne on, so fire it here too (a resource's
+        // afterFetchOne hook runs on relationship reads). The linkage path renders the
+        // relationship, not the parent, so any response the hook returns is ignored. Security
+        // is already enforced by gateRead() above.
+        $this->dispatch(new AfterFetchOneEvent($type, $request, $parent, $this->serverName($request)));
+
+        // The relation-scoped before-fetch-relationship lifecycle event (a Laravel addition,
+        // always fired as a pure lifecycle seam — read authorization is the policy gate
+        // above): a listener that throws a JsonApiException aborts the read.
+        $this->dispatch(new BeforeFetchRelationshipEvent($type, $request, $parent, $relation, $this->serverName($request)));
+
         if ($this->relationshipEndpointQueried($operation->queryParameters(), $request)) {
             $monomorphic = \count($relation->relatedTypes()) === 1;
             $isPivot = $relation instanceof BelongsToMany && $relation->pivotFields() !== [];
@@ -964,6 +1149,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->validator->validateEntity($resource, $entity, true);
         }
 
+        // Before-save then before-create lifecycle gates: a listener/hook may mutate the
+        // entity (persisted by the commit below) or throw to abort — the throw propagates
+        // to the exception renderer, so the persister never runs and nothing commits.
+        $this->dispatch(new BeforeSaveEvent($type, $request, $entity, true, $this->serverName($request)));
+        $this->dispatch(new BeforeCreateEvent($type, $request, $entity, $this->serverName($request)));
+
         // The create() and the deferred (join / inverse-FK) relationship applies commit as
         // ONE unit: create() opens its own transaction, which nests as a savepoint under this
         // outer boundary, so a failing deferred apply (a QueryException on a join insert, an FK
@@ -997,9 +1188,24 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $uriType = $server->hasResourceFor($type) ? $server->resourceFor($type)->uriType() : $type;
         $baseUri = RequestBaseUri::resolve($server->baseUri(), $request->getUri());
 
-        return DataResponse::fromResource($entity, $serializer)
+        $response = DataResponse::fromResource($entity, $serializer)
             ->withStatus(201)
             ->withHeader('Location', $baseUri . '/' . $uriType . '/' . $serializer->getId($entity));
+
+        // After-create then after-save lifecycle hooks (post-commit) may replace the
+        // 201; after-save fires last, so it has the final word. Under an active Atomic
+        // Operations batch the dispatch is deferred to post-commit (the replacement is
+        // inert — the aggregate result wins); on the single-op path it fires inline.
+        return $this->deferOrFire(function () use ($type, $request, $entity, $response): DataResponse {
+            $afterCreate = new AfterCreateEvent($type, $request, $entity, $this->serverName($request));
+            $this->dispatch($afterCreate);
+            $response = $afterCreate->response() ?? $response;
+
+            $afterSave = new AfterSaveEvent($type, $request, $entity, true, $this->serverName($request));
+            $this->dispatch($afterSave);
+
+            return $afterSave->response() ?? $response;
+        }, $response);
     }
 
     /**
@@ -1023,6 +1229,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
         if ($entity === null) {
             return ErrorResponse::fromException(new ResourceNotFound());
         }
+
+        // A shallow clone of the loaded target taken before hydration, so a
+        // before-update hook can diff the incoming change against the prior state.
+        $original = clone $entity;
 
         $persister = $this->persisters->forType($type);
         $serializer = $server->serializerFor($type);
@@ -1073,7 +1283,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // back to its pre-hydration state — the in-memory analogue of Eloquent's
         // rollback-on-throw, keeping the two providers' failed-write semantics identical.
         $hydrator = $server->hydratorFor($type);
-        $entity = $this->writeTransactionally($persister, function () use ($hydrator, $body, $resource, $type, $persister, $entity, $relationships): object {
+        $entity = $this->writeTransactionally($persister, function () use ($hydrator, $body, $resource, $type, $persister, $entity, $original, $request, $relationships): object {
             // The embedded associations apply on the loaded (keyed) parent BEFORE hydration,
             // each gated by the relation's request-aware `cannot*` flags in Mode::Replace —
             // the same `403` a PATCH …/relationships/{rel} would raise.
@@ -1086,6 +1296,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $this->validator->validateEntity($resource, $entity, false);
             }
 
+            // Before-save then before-update lifecycle gates (the entity is mutable,
+            // `$original` is the pre-change snapshot): a throw aborts before the persister
+            // commits — inside this savepoint boundary, so writeTransactionally rolls back.
+            $this->dispatch(new BeforeSaveEvent($type, $request, $entity, false, $this->serverName($request)));
+            $this->dispatch(new BeforeUpdateEvent($type, $request, $entity, $original, $this->serverName($request)));
+
             return $persister->update($type, $entity);
         });
 
@@ -1096,7 +1312,21 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->applyRelationshipWindows($server, $type, [$entity], $request);
         $this->applyRelationshipCounts($server, $type, [$entity], $request);
 
-        return DataResponse::fromResource($entity, $serializer);
+        $response = DataResponse::fromResource($entity, $serializer);
+
+        // After-update then after-save lifecycle hooks (post-commit) may replace the 200;
+        // after-save fires last. Deferred to post-commit under an active Atomic Operations
+        // batch (replacement inert); fired inline on the single-op path.
+        return $this->deferOrFire(function () use ($type, $request, $entity, $response): DataResponse {
+            $afterUpdate = new AfterUpdateEvent($type, $request, $entity, $this->serverName($request));
+            $this->dispatch($afterUpdate);
+            $response = $afterUpdate->response() ?? $response;
+
+            $afterSave = new AfterSaveEvent($type, $request, $entity, false, $this->serverName($request));
+            $this->dispatch($afterSave);
+
+            return $afterSave->response() ?? $response;
+        }, $response);
     }
 
     /**
@@ -1104,10 +1334,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * (returned, not thrown); the loaded target is removed and the response is `204`
      * with no body.
      */
-    private function delete(DeleteResourceOperation $operation): NoContentResponse|ErrorResponse
+    private function delete(DeleteResourceOperation $operation): DataResponse|NoContentResponse|ErrorResponse
     {
         $type = $operation->target()->type;
         $id = $operation->target()->id;
+        $request = $this->jsonApiRequest($operation->context());
 
         $entity = $id !== null ? $this->providers->forType($type)->fetchOne($type, $id) : null;
         if ($entity === null) {
@@ -1118,9 +1349,24 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // removed.
         $this->authorizer->authorize($type, Operation::Delete, $entity);
 
+        // The before-delete lifecycle gate (a throw aborts before the persister deletes
+        // — a delete guard's natural seam, e.g. a 409 when the resource is referenced).
+        $this->dispatch(new BeforeDeleteEvent($type, $request, $entity, $this->serverName($request)));
+
         $this->persisters->forType($type)->delete($type, $entity);
 
-        return NoContentResponse::create();
+        $response = NoContentResponse::create();
+
+        // The after-delete lifecycle hook (post-commit) may replace the 204 — e.g. a
+        // soft-delete that renders the now-flagged resource. Deferred to post-commit
+        // under an active Atomic Operations batch (replacement inert); fired inline on
+        // the single-op path.
+        return $this->deferOrFire(function () use ($type, $request, $entity, $response): DataResponse|NoContentResponse {
+            $afterDelete = new AfterDeleteEvent($type, $request, $entity, $this->serverName($request));
+            $this->dispatch($afterDelete);
+
+            return $afterDelete->response() ?? $response;
+        }, $response);
     }
 
     /**
@@ -1204,15 +1450,32 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // `securityMutate` ability override — after validation (422/409 before the policy 403).
         $this->gateMutate($type, $parent, $relation);
 
+        $request = $this->jsonApiRequest($operation->context());
+
+        // The before-relationship-mutate lifecycle gate (a throw aborts before the
+        // persister applies the change), then the storage-correct apply, then the after
+        // hook which may replace the linkage response (post-commit).
+        $this->dispatch(new BeforeRelationshipMutateEvent($type, $request, $parent, $relation, $linkage, $mode, $this->serverName($request)));
+
         $parent = $this->persisters->forType($type)->mutateRelationship($type, $parent, $relation, $linkage, $mode);
 
         // The 200 linkage echo carries `meta.pivot` for a pivot relation (Eloquent-only),
         // exactly as the relationship-read endpoint does.
-        return IdentifierResponse::forRelationship(
+        $response = IdentifierResponse::forRelationship(
             $parent,
             $this->relationshipLinkageSerializer($server, $type, $parent, $relation, $relationshipName),
             $relationshipName,
         );
+
+        // The after-relationship-mutate lifecycle hook (post-commit) may replace the
+        // linkage response. Deferred to post-commit under an active Atomic Operations
+        // batch (replacement inert); fired inline on the single-op path.
+        return $this->deferOrFire(function () use ($type, $request, $parent, $relation, $linkage, $mode, $response): IdentifierResponse {
+            $afterMutate = new AfterRelationshipMutateEvent($type, $request, $parent, $relation, $linkage, $mode, $this->serverName($request));
+            $this->dispatch($afterMutate);
+
+            return $afterMutate->response() ?? $response;
+        }, $response);
     }
 
     /**
@@ -1559,5 +1822,82 @@ final class CrudOperationHandler implements OperationHandlerInterface
         return \is_array($result->items)
             ? \array_values($result->items)
             : \iterator_to_array($result->items, false);
+    }
+
+    /**
+     * Dispatches a lifecycle event through the injected Laravel {@see Dispatcher} — a
+     * no-op when no dispatcher is wired (a stripped-down programmatic wiring). A
+     * before-event listener that throws a {@see \haddowg\JsonApi\Exception\JsonApiExceptionInterface}
+     * propagates out of here to the route-scoped exception renderer; an after-event
+     * listener's replaced response is read back off the event by the caller.
+     */
+    private function dispatch(object $event): void
+    {
+        $this->dispatcher?->dispatch($event);
+    }
+
+    /**
+     * Fires the after-fetch-collection lifecycle event, letting a listener/hook
+     * replace the response. Returns the handler's response unchanged for a
+     * programmatic dispatch with no request to build the event from.
+     *
+     * @param list<object> $items the materialized collection
+     */
+    private function afterFetchCollection(DataResponse $response, string $type, ?JsonApiRequestInterface $request, array $items): DataResponse
+    {
+        if ($request === null) {
+            return $response;
+        }
+
+        $event = new AfterFetchCollectionEvent($type, $request, $items, $this->serverName($request));
+        $this->dispatch($event);
+
+        return $event->response() ?? $response;
+    }
+
+    /**
+     * Fires an After* lifecycle dispatch either inline (the single-op path) or
+     * deferred to post-commit (an active Atomic Operations batch).
+     *
+     * On the single-op path the {@see WriteTransactionContext} is inactive (or
+     * absent), so this runs `$fire` immediately and honours its response replacement.
+     * Under an active batch (opened by the {@see \haddowg\JsonApiLaravel\Atomic\AtomicLoopBackend})
+     * the dispatch is enqueued to run after the batch's transaction commits, and the
+     * pre-After* `$response` is returned unchanged: the After* response replacement is
+     * intentionally inert under atomic, because the aggregate batch result is
+     * authoritative. A rolled-back batch never drains the queue, so its hooks never
+     * fire.
+     *
+     * @template TResponse of object
+     *
+     * @param callable(): TResponse $fire     runs the After* dispatch and returns the (possibly replaced) response
+     * @param TResponse             $response  the pre-After* response, returned verbatim when deferred
+     *
+     * @return TResponse
+     */
+    private function deferOrFire(callable $fire, object $response): object
+    {
+        if ($this->txContext !== null && $this->txContext->isActive()) {
+            $this->txContext->enqueuePostCommit(static function () use ($fire): void {
+                $fire();
+            });
+
+            return $response;
+        }
+
+        return $fire();
+    }
+
+    /**
+     * The name of the server the request dispatched on, read from the `_jsonapi_server`
+     * request attribute the {@see \haddowg\JsonApiLaravel\Http\JsonApiController}
+     * stamps, defaulting to the implicit `default` server. Passed on each event so a
+     * listener can resolve the right server in a multi-server app.
+     */
+    private function serverName(JsonApiRequestInterface $request): string
+    {
+        $name = $request->getAttribute(TargetResolver::SERVER_ATTRIBUTE);
+
+        return \is_string($name) && $name !== '' ? $name : ServerRegistry::DEFAULT_SERVER;
     }
 }

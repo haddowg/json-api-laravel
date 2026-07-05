@@ -137,6 +137,19 @@ final class EloquentDataProvider extends AbstractDataProvider
         return isset($this->modelByType[$type]);
     }
 
+    /**
+     * The Eloquent model FQCN backing `$type`, or `null` when this provider does not
+     * serve it. Exposed so the deploy-time servability warmer can introspect the model
+     * (its relation methods, morph map) for an Eloquent-backed type without re-deriving
+     * the `type → model` map.
+     *
+     * @return class-string<Model>|null
+     */
+    public function modelClassFor(string $type): ?string
+    {
+        return $this->modelByType[$type] ?? null;
+    }
+
     public function fetchOne(string $type, string $id): ?object
     {
         return $this->newQuery($type)->whereKey($id)->first();

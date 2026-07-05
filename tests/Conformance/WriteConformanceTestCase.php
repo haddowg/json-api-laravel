@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+use haddowg\JsonApiLaravel\Testing\InteractsWithJsonApi;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\Group;
@@ -44,6 +45,8 @@ use PHPUnit\Framework\Attributes\Test;
  */
 abstract class WriteConformanceTestCase extends Orchestra
 {
+    use InteractsWithJsonApi;
+
     public const string MEDIA_TYPE = 'application/vnd.api+json';
 
     /**
@@ -611,8 +614,9 @@ abstract class WriteConformanceTestCase extends Orchestra
     }
 
     /**
-     * POST/PATCH a JSON:API document, negotiating the JSON:API media type on both the
-     * request `Content-Type` and the `Accept` header.
+     * POST/PATCH/DELETE a JSON:API document through the shipped {@see InteractsWithJsonApi}
+     * kit, which negotiates the JSON:API media type on both the request `Content-Type` and
+     * the `Accept` header. (Dogfoods the testing kit — PLAN decision 12.)
      *
      * @param array<string, mixed> $document
      *
@@ -620,10 +624,14 @@ abstract class WriteConformanceTestCase extends Orchestra
      */
     protected function writeJsonApi(string $method, string $uri, array $document): TestResponse
     {
-        return $this->json($method, $uri, $document, [
-            'Accept' => self::MEDIA_TYPE,
-            'CONTENT_TYPE' => self::MEDIA_TYPE,
-        ]);
+        $request = $this->jsonApi()->withDocument($document);
+
+        return match (\strtoupper($method)) {
+            'POST' => $request->post($uri),
+            'PATCH' => $request->patch($uri),
+            'DELETE' => $request->delete($uri),
+            default => throw new \InvalidArgumentException(\sprintf('Unsupported JSON:API write method "%s".', $method)),
+        };
     }
 
     /**
@@ -633,9 +641,7 @@ abstract class WriteConformanceTestCase extends Orchestra
      */
     protected function deleteJsonApi(string $uri): TestResponse
     {
-        return $this->call('DELETE', $uri, [], [], [], $this->transformHeadersToServerVars([
-            'Accept' => self::MEDIA_TYPE,
-        ]));
+        return $this->jsonApi()->delete($uri);
     }
 
     /**
@@ -645,6 +651,6 @@ abstract class WriteConformanceTestCase extends Orchestra
      */
     protected function readJsonApi(string $uri): TestResponse
     {
-        return $this->get($uri, ['Accept' => self::MEDIA_TYPE]);
+        return $this->jsonApi()->get($uri);
     }
 }

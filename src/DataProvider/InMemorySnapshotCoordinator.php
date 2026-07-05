@@ -53,6 +53,18 @@ final class InMemorySnapshotCoordinator
     private array $capturedNextIds = [];
 
     /**
+     * The open-transaction nesting depth. The atomic executor opens the OUTER batch
+     * transaction on every participating persister, and each sub-operation's own
+     * `writeTransactionally` opens an INNER one — exactly as the Eloquent persister nests a
+     * savepoint under its outer transaction (ADR 0009 addendum). Only the outermost
+     * open/commit captures/discards the pre-image; the inner commits are savepoint releases
+     * that must NOT discard the captured graph (else the batch's rollback would find nothing
+     * to restore). A {@see restore()} unwinds all nesting levels at once (a rollback of the
+     * outer transaction discards every savepoint).
+     */
+    private int $depth = 0;
+
+    /**
      * Registers a store so it participates in coordinated snapshots. Idempotent — a store
      * already registered is not added twice.
      */
@@ -72,6 +84,9 @@ final class InMemorySnapshotCoordinator
      */
     public function open(): bool
     {
+        // A nested (inner) open just deepens the nesting — the outer pre-image already
+        // captured stands (a sub-operation's savepoint captures nothing new).
+        $this->depth++;
         if ($this->captured !== null) {
             return false;
         }
@@ -98,6 +113,11 @@ final class InMemorySnapshotCoordinator
      */
     public function restore(): void
     {
+        // A rollback unwinds every nesting level at once (rolling back the outer transaction
+        // discards all its savepoints), so it is idempotent across the per-store rollback
+        // fan-out: the first call restores + clears, the rest are no-ops.
+        $this->depth = 0;
+
         if ($this->captured === null) {
             return;
         }
@@ -119,6 +139,17 @@ final class InMemorySnapshotCoordinator
      */
     public function commit(): void
     {
+        // Only the OUTERMOST commit discards the captured pre-image (the live writes stand);
+        // a nested (inner) commit is a savepoint release that must leave the outer batch's
+        // pre-image intact, so its rollback can still restore.
+        if ($this->depth > 0) {
+            $this->depth--;
+        }
+
+        if ($this->depth > 0) {
+            return;
+        }
+
         $this->captured = null;
         $this->capturedNextIds = [];
     }
@@ -144,5 +175,6 @@ final class InMemorySnapshotCoordinator
     {
         $this->captured = null;
         $this->capturedNextIds = [];
+        $this->depth = 0;
     }
 }

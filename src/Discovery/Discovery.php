@@ -45,6 +45,11 @@ final class Discovery
     private ?array $translators = null;
 
     /**
+     * @var list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>|null
+     */
+    private ?array $actions = null;
+
+    /**
      * @param list<string>       $paths           the directories to scan
      * @param list<class-string> $explicitClasses classes registered via `JsonApi::register()`
      * @param string|null        $cachePath       an optional pre-built snapshot file (resources + provider/persister class-strings); loaded instead of scanning when present
@@ -123,7 +128,34 @@ final class Discovery
     }
 
     /**
-     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>}
+     * The discovered custom-action descriptors.
+     *
+     * @return list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>
+     */
+    public function actions(): array
+    {
+        if ($this->actions === null) {
+            $this->resolve();
+        }
+
+        return $this->actions ?? [];
+    }
+
+    /**
+     * The discovered custom-action descriptors mounted on the named server.
+     *
+     * @return list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>
+     */
+    public function actionsFor(string $server): array
+    {
+        return \array_values(\array_filter(
+            $this->actions(),
+            static fn(\haddowg\JsonApiLaravel\Action\ActionDescriptor $descriptor): bool => $descriptor->server === $server,
+        ));
+    }
+
+    /**
+     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>}
      */
     private function resolve(): array
     {
@@ -133,6 +165,7 @@ final class Discovery
             $this->providers = $snapshot['providers'];
             $this->persisters = $snapshot['persisters'];
             $this->translators = $snapshot['translators'];
+            $this->actions = $snapshot['actions'];
 
             return $snapshot;
         }
@@ -142,12 +175,14 @@ final class Discovery
         $this->providers = $result->providers;
         $this->persisters = $result->persisters;
         $this->translators = $result->translators;
+        $this->actions = $result->actions;
 
         return [
             'resources' => $result->resources,
             'providers' => $result->providers,
             'persisters' => $result->persisters,
             'translators' => $result->translators,
+            'actions' => $result->actions,
         ];
     }
 
@@ -161,7 +196,7 @@ final class Discovery
      * configuration is behaviourally identical to a scanned one. Missing keys degrade
      * gracefully to empty lists (a resources-only file still loads its resources).
      *
-     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>}|null
+     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>}|null
      */
     private function loadSnapshot(): ?array
     {
@@ -180,7 +215,31 @@ final class Discovery
             'providers' => $this->readClassStrings($data['providers'] ?? []),
             'persisters' => $this->readClassStrings($data['persisters'] ?? []),
             'translators' => $this->readClassStrings($data['translators'] ?? []),
+            'actions' => $this->readActions($data['actions'] ?? []),
         ];
+    }
+
+    /**
+     * Rebuilds the custom-action descriptors from their snapshot array forms, skipping any
+     * malformed entry.
+     *
+     * @return list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>
+     */
+    private function readActions(mixed $entries): array
+    {
+        if (!\is_array($entries)) {
+            return [];
+        }
+
+        $actions = [];
+        foreach ($entries as $entry) {
+            if (\is_array($entry)) {
+                /** @var array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, output: string, ability?: ?string, handlerClass: class-string<\haddowg\JsonApiLaravel\Action\ActionHandlerInterface>, server: string, name?: ?string, tags?: list<string>, asLink?: bool} $entry */
+                $actions[] = \haddowg\JsonApiLaravel\Action\ActionDescriptor::fromArray($entry);
+            }
+        }
+
+        return $actions;
     }
 
     /**

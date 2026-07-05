@@ -39,22 +39,49 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  *    untouched — the provider-agnostic seam a POPO-backed type uses.
  *  - `abilities` renames the ability for one or more operations, keyed by
  *    {@see Operation} case value: a `string` is the Gate ability name checked for that
- *    operation (so `Gate::define()` works too), and `false` disables the check for
- *    that operation entirely.
+ *    operation (so `Gate::define()` works too), `false` disables the check for that
+ *    operation entirely, and `true` documents the operation as secured (an external
+ *    firewall/middleware enforces it) WITHOUT the package's Gate enforcing it — projected
+ *    into the OpenAPI document as secured + `401`, the byte-compat twin of the bundle's
+ *    documentation-only security marker.
  *
- * Further metadata (custom serializer/hydrator overrides, cache headers, deprecation
- * signalling, OpenAPI tags/descriptions) is added in later phases, mirroring the
- * Symfony bundle's attribute.
+ * **Response headers** (PLAN decision 12, declarative cache + RFC 8594
+ * deprecation/sunset). `cacheHeaders` declares HTTP cache directives for the type's
+ * safe (`GET`) reads — `max_age`/`s_maxage`/`public`/`private`/`no_cache`/
+ * `must_revalidate`/`vary` — with an optional nested `operations` map keying a
+ * per-read-shape override (`collection`/`read`/`related`/`relationship`) over the
+ * resource-level directives. They layer over the global
+ * `jsonapi.defaults.cache_headers` and are applied only to a successful `GET`
+ * (never a write or an error). `deprecation`/`sunset`/`sunsetLink` declare the IETF
+ * Deprecation header field + RFC 8594 `Sunset` (+ its companion `Link`), emitted on
+ * **every** response for the type (reads and writes alike): `deprecation: true`
+ * emits a bare `Deprecation: true`, `deprecation: '<date>'` the date; `sunset` the
+ * `Sunset` HTTP-date; `sunsetLink` the companion sunset `Link`.
+ *
+ * **OpenAPI tags** (PLAN decision 11). `tags` declares the OpenAPI tag names the type's
+ * operations are grouped under; an empty list falls back to the humanized-type default
+ * ({@see \haddowg\JsonApiLaravel\OpenApi\Metadata\TagNameResolver}). A custom action that
+ * declares no tags of its own inherits the mount type's explicit tags (then the humanized
+ * default) — the same resolution the Symfony bundle applies — so the projected document is
+ * byte-compatible with the bundle's for an identically-tagged domain.
+ *
+ * Further metadata (custom serializer/hydrator overrides, OpenAPI descriptions) is added
+ * in later phases, mirroring the Symfony bundle's attribute.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final readonly class AsJsonApiResource
 {
     /**
-     * @param string|list<string>|null   $server     the server name(s) exposing this type (null = the implicit `default`)
-     * @param list<Operation>            $operations the exposed operation allow-list (empty = all five); mutually exclusive with `readOnly`
-     * @param bool                       $readOnly   shorthand restricting the type to the two fetch operations; mutually exclusive with a non-empty `operations`
-     * @param class-string|null          $policy     a dedicated API policy class invoked directly for every operation (null = the model's Gate-registered policy, or inert if none)
-     * @param array<string, string|false> $abilities per-operation ability override keyed by {@see Operation} case value: a string renames the Gate ability, `false` disables the check for that operation
+     * @param string|list<string>|null   $server       the server name(s) exposing this type (null = the implicit `default`)
+     * @param list<Operation>            $operations   the exposed operation allow-list (empty = all five); mutually exclusive with `readOnly`
+     * @param bool                       $readOnly     shorthand restricting the type to the two fetch operations; mutually exclusive with a non-empty `operations`
+     * @param class-string|null          $policy       a dedicated API policy class invoked directly for every operation (null = the model's Gate-registered policy, or inert if none)
+     * @param array<string, string|bool> $abilities   per-operation ability override keyed by {@see Operation} case value: a string renames the Gate ability, `false` disables the check, `true` documents it as secured (external enforcement) without the package's Gate enforcing it
+     * @param array<string, mixed>       $cacheHeaders declarative HTTP cache directives for GET reads (`max_age`/`s_maxage`/`public`/`private`/`no_cache`/`must_revalidate`/`vary`), with an optional nested `operations` per-read-shape override map; empty = none
+     * @param bool|string|null           $deprecation  IETF Deprecation-header deprecation: `true` (bare header), a date string (`Deprecation: <date>`), or null (none)
+     * @param string|null                $sunset       RFC 8594 sunset HTTP-date (`Sunset: <date>`), or null
+     * @param string|null                $sunsetLink   a URI for the companion `Link: <uri>; rel="sunset"` (emitted only when `sunset` is set)
+     * @param list<string>               $tags         the OpenAPI tag names this type's operations are grouped under (empty = the humanized-type default)
      */
     public function __construct(
         public ?string $type = null,
@@ -63,6 +90,11 @@ final readonly class AsJsonApiResource
         public bool $readOnly = false,
         public ?string $policy = null,
         public array $abilities = [],
+        public array $cacheHeaders = [],
+        public bool|string|null $deprecation = null,
+        public ?string $sunset = null,
+        public ?string $sunsetLink = null,
+        public array $tags = [],
     ) {
         if ($readOnly && $operations !== []) {
             throw new \LogicException(
