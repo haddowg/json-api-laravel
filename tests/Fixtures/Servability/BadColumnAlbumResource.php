@@ -31,6 +31,9 @@ final class BadColumnAlbumResource extends AbstractResource
             Str::make('title')->sortable(),
             // A relation naming no method on the Album model → flagged by the relation-method guard.
             BelongsTo::make('ghostRelation', 'artists'),
+            // A storedAs alias naming no method either → the guard checks the ALIAS (the
+            // member the runtime actually reads), so this must flag too.
+            BelongsTo::make('aliasedGhost', 'artists')->storedAs('ghostStoredAsMethod'),
         ];
     }
 

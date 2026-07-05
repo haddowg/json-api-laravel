@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Server;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\Id;
+use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
@@ -40,10 +41,14 @@ use Illuminate\Database\Eloquent\Model;
  *    `static::$type` unconditionally and so silently claims (and mis-serializes) members
  *    of its siblings' types — this is also the morph-map safety net (a mis-registered
  *    morph alias surfaces here).
- *  - **(Eloquent-backed types) every declared relation names a real model method.** A
- *    typo'd relation name would otherwise 500 (or return an empty relation) at runtime;
- *    this catches it at deploy. Gated on the type resolving to an
- *    {@see EloquentDataProvider} model, so a POPO / in-memory type is not false-flagged.
+ *  - **(Eloquent-backed types) every relation read off the model names a real model
+ *    method.** The relation method is the runtime's `column() ?? name()` (a `storedAs()`
+ *    alias redirects it), and a relation carrying an `extractUsing()`/`serializeUsing()`
+ *    closure never touches a model method at all — so only a relation whose read path
+ *    actually needs the method is checked. A typo'd relation name would otherwise 500 (or
+ *    return an empty relation) at runtime; this catches it at deploy. Gated on the type
+ *    resolving to an {@see EloquentDataProvider} model, so a POPO / in-memory type is not
+ *    false-flagged.
  *  - **(Eloquent-backed types) every sortable field / column-backed filter resolves to a
  *    real table column.** A `->sortable()` field (or a column-backed filter) whose column
  *    was renamed in a migration would otherwise pass `php artisan optimize` cleanly and
@@ -222,12 +227,14 @@ final class ServableResourceWarmer
     }
 
     /**
-     * For an Eloquent-backed type, asserts that every declared relation names a real
-     * method on the model (the relation name is the Eloquent relation method). A typo'd
-     * relation name would otherwise fail at runtime. Gated on the type resolving to an
-     * {@see EloquentDataProvider} model, so a POPO / in-memory type is skipped, and
-     * wrapped so an unexpected reflection failure never aborts the deploy for an
-     * unrelated reason.
+     * For an Eloquent-backed type, asserts that every relation READ off the model names a
+     * real method on it. The method the runtime resolves is `column() ?? name()` — the
+     * same member the {@see EloquentDataProvider}'s batchers call — so a `storedAs()`
+     * alias is honoured, and a relation carrying an `extractUsing()`/`serializeUsing()`
+     * closure is skipped outright: its value comes from the closure, never from a model
+     * method, so a missing method is not a defect. A typo'd relation name on a plain
+     * relation would otherwise fail at runtime. Gated on the type resolving to an
+     * {@see EloquentDataProvider} model, so a POPO / in-memory type is skipped.
      *
      * @param list<string> $problems
      */
@@ -241,18 +248,49 @@ final class ServableResourceWarmer
         $server = $this->servers->get($serverName);
 
         foreach ($this->types->relationsFor($server, $type) as $relation) {
-            $name = $relation->name();
-            if (!\method_exists($modelClass, $name)) {
+            if ($this->hasValueClosure($relation)) {
+                continue; // extractUsing/serializeUsing supplies the value — no model method needed
+            }
+
+            $method = $relation->column() ?? $relation->name();
+            if (!\method_exists($modelClass, $method)) {
                 $problems[] = \sprintf(
-                    'The relationship "%s" on type "%s" has no matching method on its Eloquent model %s. '
-                    . 'The relation name must be the model\'s relation method; add %s() to the model or rename the relation.',
-                    $name,
+                    'The relationship "%s" on type "%s" resolves to method "%s", which does not exist on its '
+                    . 'Eloquent model %s. Add %s() to the model, rename the relation (or its storedAs alias) to '
+                    . 'an existing relation method, or resolve the value with extractUsing().',
+                    $relation->name(),
                     $type,
+                    $method,
                     $modelClass,
-                    $name,
+                    $method,
                 );
             }
         }
+    }
+
+    /**
+     * Whether the relation's read path is supplied by a value closure —
+     * {@see \haddowg\JsonApi\Resource\Field\AbstractField::extractUsing()} or
+     * {@see \haddowg\JsonApi\Resource\Field\AbstractField::serializeUsing()} — rather than
+     * a member read off the model. Core exposes no accessor for the (protected) closures,
+     * so they are read reflectively; a relation implementation without those properties
+     * reads its members normally and reports `false`.
+     */
+    private function hasValueClosure(RelationInterface $relation): bool
+    {
+        $reflection = new \ReflectionObject($relation);
+
+        foreach (['extractUsing', 'serializeUsing'] as $propertyName) {
+            if (!$reflection->hasProperty($propertyName)) {
+                continue;
+            }
+
+            if ($reflection->getProperty($propertyName)->getValue($relation) instanceof \Closure) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
