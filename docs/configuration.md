@@ -98,6 +98,23 @@ providers, persisters). Append more with `JsonApi::discover([...])`. `cache` is 
 path to a pre-built discovery snapshot; when the file exists it is loaded instead of scanning
 (`route:cache`-safe). The [`optimize`](optimize.md) pipeline writes it for production.
 
+## `eloquent`
+
+```php
+'eloquent' => [
+    'model_namespace' => 'App\\Models',
+],
+```
+
+`model_namespace` is where the convention tier of the
+[resource→model resolution](eloquent.md#the-model-map-three-tiers) guesses: the kebab/plural
+type, singularized and studly-cased under this namespace (`albums` → `App\Models\Album`),
+claimed only when that class exists and is an Eloquent model. The package auto-registers the
+reference Eloquent provider/persister pair for every type the convention or a
+`#[AsJsonApiResource(model: …)]` declaration maps; explicit `JsonApi::provider()`/
+`persister()` wiring always shadows it. Set to `null` to disable the convention tier
+(declared models still map).
+
 ## `servers`
 
 ```php

@@ -21,6 +21,7 @@ use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
 use haddowg\JsonApiLaravel\Operation\Operation;
 use haddowg\JsonApiLaravel\Validation\ConstraintTranslatorInterface;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * The Laravel-native replacement for the Symfony bundle's autoconfiguration +
@@ -270,7 +271,34 @@ final class DiscoveryScanner
             $attribute !== null ? \array_values($attribute->tags) : [],
             $this->overrideClass($attribute?->serializer, SerializerInterface::class, 'serializer', $class),
             $this->overrideClass($attribute?->hydrator, HydratorInterface::class, 'hydrator', $class),
+            $this->modelClass($attribute?->model, $class),
         );
+    }
+
+    /**
+     * Validates a `#[AsJsonApiResource(model:)]` class-string (ADR 0019): the named class
+     * must exist and extend Eloquent's {@see Model}, so a typo'd or mis-typed mapping fails
+     * discovery loudly instead of surfacing as a runtime provider error — the Laravel twin
+     * of the bundle `DoctrineEntityMapPass`'s missing-entity guard.
+     *
+     * @return class-string<Model>|null
+     */
+    private function modelClass(?string $model, string $resource): ?string
+    {
+        if ($model === null) {
+            return null;
+        }
+
+        if (!\class_exists($model) || !\is_a($model, Model::class, true)) {
+            throw new \LogicException(\sprintf(
+                'The model "%s" declared by #[AsJsonApiResource] on "%s" must be an Eloquent model class (extending %s).',
+                $model,
+                $resource,
+                Model::class,
+            ));
+        }
+
+        return $model;
     }
 
     /**

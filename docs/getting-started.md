@@ -58,8 +58,14 @@ PATCH  /api/albums/{id}
 DELETE /api/albums/{id}
 ```
 
-The package maps the `albums` type to your `Album` model by convention through the
-[Eloquent data layer](eloquent.md), so reads and writes work with no provider wired by hand.
+The package maps the `albums` type to your `Album` model by convention — the kebab/plural
+type, singularized and studly-cased under the `App\Models` namespace (configurable as
+`jsonapi.eloquent.model_namespace`) — and auto-registers the reference
+[Eloquent data layer](eloquent.md) for every type it can map, so reads and writes work with
+no provider wired by hand. When the names diverge, declare the model on the attribute —
+`#[AsJsonApiResource(model: Album::class)]` — and for full control register the
+provider/persister pair explicitly, which always wins
+([eloquent](eloquent.md#the-model-map-three-tiers)).
 
 ```bash
 curl -H 'Accept: application/vnd.api+json' http://localhost/api/albums

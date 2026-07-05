@@ -179,6 +179,25 @@ remains unported by choice: provider priority-shadowing is already witnessed in 
 `DataProviderRegistryTest` and the [custom-data-providers](custom-data-providers.md)
 "Priority and shadowing" section, so a delegating overlay provider would add no new evidence.
 
+### F3 — Attribute-driven auto-registration of the reference pair (the bundle's `entity:`) — ✅ RESOLVED (2026-07-05)
+
+**Was:** not an audit finding but a recorded deferral ([ADR 0002](adr/0002-port-the-provider-persister-spi.md),
+"Deferred: attribute-driven auto-registration" — "tracked for the Phase 5 parity audit"): the
+bundle's `#[AsJsonApiResource(entity: …)]` + `DoctrineEntityMapPass` builds the
+`type → entity` map and auto-registers its reference Doctrine provider, so a bundle app
+writes no data wiring; this package required the `type → model` map to be constructed by
+hand, so the getting-started "maps the type by convention" sentence was not yet true.
+
+**Resolved by [ADR 0019](adr/0019-three-tier-model-mapping-with-an-auto-registered-reference-pair.md)**:
+`#[AsJsonApiResource(model: …)]` (the `entity:` twin, scan-time guarded, snapshot-carried)
+plus a convention tier (`albums` → `App\Models\Album` under `jsonapi.eloquent.model_namespace`)
+feed a `ModelMapResolver` whose map auto-registers the reference Eloquent pair at `-256` —
+below the documented `-128` explicit floor, claiming only mapped types. Over-parity: the
+bundle has no convention tier (Doctrine entity naming carries no equivalent convention).
+Witnessed end-to-end by `tests/Feature/GettingStartedTest` (the documented flow verbatim,
+zero wiring) and `tests/Feature/ModelMappingTiersTest` (each tier + the untouched
+no-provider failure); documented in [eloquent](eloquent.md#the-model-map-three-tiers).
+
 ## E. Composite attribute types (post-audit addendum, 2026-07-05)
 
 The composite rollout (core #128–#131) landed in both packages after the original audit:

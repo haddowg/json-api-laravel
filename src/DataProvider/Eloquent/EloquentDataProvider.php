@@ -78,12 +78,14 @@ use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
  * {@see Model::relationLoaded()} true, which the {@see EloquentRelationshipLoadState}
  * reports so a preloaded lazy relation renders without a re-fetch (the load-state seam).
  *
- * **Wiring (Phase 1).** The `type → model` map is constructed by hand and registered
- * at `-128` (see the workbench provider). ADR 0002's zero-config promise — a `model:`
- * on `#[AsJsonApiResource]` accumulated into one auto-registered `-128` provider, the
- * Laravel twin of the bundle's `DoctrineEntityMapPass` — is **deferred to Phase 2**,
- * alongside the persister half that completes the reference pair (ADR 0002,
- * "Deferred: attribute-driven auto-registration").
+ * **Wiring.** The `type → model` map is either constructed by hand and registered at
+ * `-128` (see the workbench provider), or — the zero-config path ADR 0002 deferred, now
+ * delivered by ADR 0019 — resolved from the discovered resources (the
+ * `#[AsJsonApiResource(model:)]` declarations plus the convention guess under
+ * `jsonapi.eloquent.model_namespace`, via the
+ * {@see \haddowg\JsonApiLaravel\Eloquent\ModelMapResolver}) and auto-registered at
+ * `-256`, the Laravel twin of the bundle's `DoctrineEntityMapPass`. Hand wiring always
+ * sits above the auto pair, so it shadows per type.
  *
  * @extends AbstractDataProvider<object>
  */

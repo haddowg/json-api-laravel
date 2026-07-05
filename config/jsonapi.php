@@ -132,6 +132,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Eloquent (the reference data layer)
+    |--------------------------------------------------------------------------
+    |
+    | The package auto-registers the reference Eloquent provider/persister pair
+    | for every discovered type it can map to a model, below the documented
+    | explicit-wiring priority (`-128`), so hand wiring always shadows it. A type
+    | maps to a model by, in order: an explicit JsonApi::provider()/persister()
+    | registration; the `#[AsJsonApiResource(model: …)]` declaration; or the
+    | convention guess — the kebab/plural type studly-singularized under
+    | `model_namespace` (`albums` → `App\Models\Album`), claimed only when that
+    | class exists and extends Eloquent's Model. Set `model_namespace` to null to
+    | disable the convention tier (declared models still map).
+    |
+    */
+    'eloquent' => [
+        'model_namespace' => 'App\\Models',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Servers
     |--------------------------------------------------------------------------
     |

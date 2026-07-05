@@ -173,14 +173,14 @@ Two resource types may back the same model with different projections. The examp
 the admin-only `users` and the public `public-profiles` to the `User` model:
 
 ```php
-#[AsJsonApiResource(server: 'admin')]
+#[AsJsonApiResource(server: 'admin', model: User::class)]
 final class UserResource extends AbstractResource
 {
     public static string $type = 'users';
     // email, password (write-only), preferences, … — the full projection
 }
 
-#[AsJsonApiResource(operations: [Operation::FetchCollection, Operation::FetchOne])]
+#[AsJsonApiResource(operations: [Operation::FetchCollection, Operation::FetchOne], model: User::class)]
 final class PublicProfileResource extends AbstractResource
 {
     public static string $type = 'public-profiles';
@@ -191,18 +191,23 @@ final class PublicProfileResource extends AbstractResource
 The curation is the field inventory: a narrower type cannot leak a wider type's columns
 because it never declares them. This is the storage-agnostic way to do "proxy resources" — no
 new machinery. (The package forbids one *type* mapping to two *models*, not two types to one
-model.)
+model.) Note the `model:` declarations: the [convention guess](eloquent.md#the-model-map-three-tiers)
+maps `users` → `User` by name, but could never guess that `public-profiles` shares the same
+model — a shared or diverging model is declared per type, or covered by the explicit map,
+which shadows both.
 
 ## Registering providers and persisters
 
 The fetch/persist capabilities are registered by priority — higher wins the first
-`supports()` match. The reference Eloquent pair registers at `-128`, so any application
-provider (default priority `0`) shadows it for the types it serves:
+`supports()` match. The auto-registered reference Eloquent pair sits at `-256`
+([the model-map tiers](eloquent.md#the-model-map-three-tiers)); a hand-wired reference pair
+conventionally registers at `-128`; any application provider (default priority `0`) shadows
+both for the types it serves:
 
 ```php
 JsonApi::provider(new ChartProvider());                 // priority 0 — shadows Eloquent
-JsonApi::provider($eloquentProvider, priority: -128);   // the reference fallback
-JsonApi::persister($eloquentPersister, priority: -128);
+JsonApi::provider($eloquentProvider, priority: -128);   // the hand-wired reference fallback
+JsonApi::persister($eloquentPersister, priority: -128); // (the auto pair sits below, at -256)
 ```
 
 The SPI itself is on [custom-data-providers](custom-data-providers.md).
