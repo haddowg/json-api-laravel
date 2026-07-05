@@ -6,6 +6,9 @@ namespace haddowg\JsonApiLaravel\DataProvider\Eloquent;
 
 use haddowg\JsonApi\Collection\CollectionResult;
 use haddowg\JsonApi\Collection\CursorCollectionResult;
+use haddowg\JsonApi\Collection\Keyset\CursorTokenMinter;
+use haddowg\JsonApi\Collection\Keyset\KeysetColumn;
+use haddowg\JsonApi\Collection\Keyset\KeysetResolver;
 use haddowg\JsonApi\Collection\WindowExecutor;
 use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Pagination\CursorCodec;
@@ -20,9 +23,6 @@ use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortHandler;
 use haddowg\JsonApiLaravel\DataProvider\AbstractDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\CriteriaApplier;
-use haddowg\JsonApiLaravel\DataProvider\Keyset\CursorTokenMinter;
-use haddowg\JsonApiLaravel\DataProvider\Keyset\KeysetColumn;
-use haddowg\JsonApiLaravel\DataProvider\Keyset\KeysetResolver;
 use haddowg\JsonApiLaravel\DataProvider\RelatedBatch;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use Illuminate\Container\Container;
@@ -236,11 +236,13 @@ final class EloquentDataProvider extends AbstractDataProvider
      * A **cursor** (keyset) window declared on the relation (`->paginate(CursorPaginator …)`)
      * runs the SAME {@see runCursor()} push-down the primary collection runs — the relation
      * query is already scoped to the parent, so the keyset (the forced NULL=largest ORDER BY
-     * + the strictly-after WHERE) simply composes on top of the FK/pivot constraint. Shared
-     * with the in-memory witness and the bundle's Doctrine provider, so the parent-scoped
-     * keyset page stays refereed byte-for-byte (bundle ADR 0063). The polymorphic PHP-window
-     * path does not window a cursor (no single related keyset vocabulary); the pivot related
-     * path is a deliberate follow-up.
+     * + the strictly-after WHERE) simply composes on top of the FK/pivot constraint. That
+     * includes a pivot-carrying `belongsToMany`: the keyset columns qualify off the RELATED
+     * table (never the join's pivot columns), so the cursor page slots under the handler's
+     * `meta.pivot` wrap unchanged (docs/adr/0017). Shared with the in-memory witness and the
+     * bundle's Doctrine provider, so the parent-scoped keyset page stays refereed
+     * byte-for-byte (bundle ADR 0063). The polymorphic PHP-window path does not window a
+     * cursor (no single related keyset vocabulary).
      *
      * @return CollectionResult<object>
      */
@@ -929,7 +931,7 @@ final class EloquentDataProvider extends AbstractDataProvider
 
     /**
      * The cursor (keyset) execution pushed down to SQL — the twin of the in-memory
-     * witness ({@see \haddowg\JsonApiLaravel\DataProvider\Keyset\InMemoryKeyset}),
+     * witness ({@see \haddowg\JsonApi\Collection\Keyset\InMemoryKeyset}),
      * the ground truth (bundle ADR 0063). It resolves the keyset columns (the active
      * sort + the appended/deduped PK; validates `?sort`), applies the filters, checks
      * the cursor against the resolved columns (a stale cursor → 400), then via
@@ -948,7 +950,12 @@ final class EloquentDataProvider extends AbstractDataProvider
         $model = $builder->getModel();
         $pkColumn = $model->getKeyName();
 
-        $columns = $this->keysetResolver->resolve($criteria, $pkColumn);
+        $columns = $this->keysetResolver->resolve(
+            $criteria->queryParameters->sort,
+            $criteria->sorts,
+            $criteria->defaultSort,
+            $pkColumn,
+        );
 
         // Apply the FILTERS only (the keyset owns the order). A sort-stripped,
         // window-less criteria reuses the shared applier so the filter semantics are

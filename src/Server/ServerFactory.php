@@ -50,6 +50,7 @@ final class ServerFactory
      * @param array<string, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $standaloneSerializers this server's standalone serializers, keyed by JSON:API type (no resource; PLAN decision 3, bundle ADR 0024)
      * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $serializerOverrides per-resource serializer overrides keyed by resource class (ADR 0014)
      * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>>     $hydratorOverrides   per-resource hydrator overrides keyed by resource class (ADR 0014)
+     * @param list<\haddowg\JsonApi\Schema\Profile\ProfileInterface>                                                $profiles            additional profiles registered on the server (`jsonapi.profiles`)
      */
     public function __construct(
         private readonly ResponseFactoryInterface $responseFactory,
@@ -99,6 +100,11 @@ final class ServerFactory
         // the same container resolver the resource itself is built with.
         private readonly array $serializerOverrides = [],
         private readonly array $hydratorOverrides = [],
+        // Additional profiles registered on the server beyond the built-in pair —
+        // `jsonapi.profiles` config (e.g. core's CursorPaginationProfile, so a cursor
+        // page's profile is advertised; core drops a page profile the server has not
+        // registered).
+        private readonly array $profiles = [],
     ) {}
 
     /**
@@ -131,6 +137,14 @@ final class ServerFactory
             ->withRelationshipLinkage($this->relationshipLinkage)
             ->withResourceLinkContributor($this->resourceLinkContributor)
             ->withContainer($this->resolver);
+
+        // Consumer-registered profiles (`jsonapi.profiles`): e.g. core's
+        // CursorPaginationProfile, so a cursor page advertises the published
+        // cursor-pagination profile in `jsonapi.profile` + the Content-Type `profile`
+        // parameter (core drops a page profile the server has not registered).
+        foreach ($this->profiles as $profile) {
+            $server = $server->withProfile($profile);
+        }
 
         // A resource registers with its optional serializer/hydrator overrides (ADR
         // 0014): the overridden concern is served through the hand-written class while

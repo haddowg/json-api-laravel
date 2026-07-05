@@ -6,6 +6,10 @@ namespace haddowg\JsonApiLaravel\DataProvider;
 
 use haddowg\JsonApi\Collection\CollectionResult;
 use haddowg\JsonApi\Collection\CursorCollectionResult;
+use haddowg\JsonApi\Collection\Keyset\CursorTokenMinter;
+use haddowg\JsonApi\Collection\Keyset\InMemoryKeyset;
+use haddowg\JsonApi\Collection\Keyset\KeysetColumn;
+use haddowg\JsonApi\Collection\Keyset\KeysetResolver;
 use haddowg\JsonApi\Collection\WindowExecutor;
 use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Pagination\CursorCodec;
@@ -20,10 +24,6 @@ use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortArmInterface;
 use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortHandler;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
-use haddowg\JsonApiLaravel\DataProvider\Keyset\CursorTokenMinter;
-use haddowg\JsonApiLaravel\DataProvider\Keyset\InMemoryKeyset;
-use haddowg\JsonApiLaravel\DataProvider\Keyset\KeysetColumn;
-use haddowg\JsonApiLaravel\DataProvider\Keyset\KeysetResolver;
 
 /**
  * An in-memory read provider: a test double and conformance witness. It reads from a
@@ -446,7 +446,12 @@ final class InMemoryDataProvider extends AbstractDataProvider
         // against the vocabulary exactly as the plain path does. The PK direction
         // for a PK-only keyset follows the resource default-sort-on-PK; with none
         // it is ascending (the resolver's default).
-        $columns = $this->keysetResolver->resolve($criteria, $this->idColumn);
+        $columns = $this->keysetResolver->resolve(
+            $criteria->queryParameters->sort,
+            $criteria->sorts,
+            $criteria->defaultSort,
+            $this->idColumn,
+        );
 
         // Apply the FILTERS only — the keyset owns the order, so the plain sort is
         // never applied (a sort-stripped criteria leaves the filter application
