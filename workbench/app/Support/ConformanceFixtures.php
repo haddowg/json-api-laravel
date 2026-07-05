@@ -225,6 +225,26 @@ final class ConformanceFixtures
     }
 
     /**
+     * Two cursor groups partitioning the {@see cursorWidgets()} rows, shared by BOTH
+     * related-collection cursor (keyset) conformance concretes so the parent-scoped
+     * SQL push-down and the in-memory witness referee the SAME membership:
+     *  - group `1` owns SIX widgets spanning both categories, a null `priority` (id 3)
+     *    and a null `released_at` (id 4), so a parent-scoped walk still exercises the
+     *    ties/tiebreak and NULL=largest branches;
+     *  - group `2` owns the remaining TWO (ids 6, 8) — the leak referee: a page under
+     *    group 1 must never carry them.
+     *
+     * @return list<array{id: int, name: string, widget_ids: list<int>}>
+     */
+    public static function cursorGroups(): array
+    {
+        return [
+            ['id' => 1, 'name' => 'alpha', 'widget_ids' => [1, 2, 3, 4, 5, 7]],
+            ['id' => 2, 'name' => 'beta', 'widget_ids' => [6, 8]],
+        ];
+    }
+
+    /**
      * Five tracks — the far side of the Phase-3b playlist pivot relation. Titles are
      * distinct (the `orderedTrackTitled` WhereThrough leaf) and `released_at` is a sortable
      * key for windowed related fetches.
