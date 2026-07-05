@@ -60,7 +60,7 @@ The only two `markTestSkipped` in the suite are **opis-gating** (`SchemaConforma
 | configuration | config tree | `config/jsonapi.php` (Laravel tree, not YAML) | [configuration](configuration.md) | 🟰 idiom |
 | data-layer + doctrine | reference provider/persister, filters, EXISTS | merged into **eloquent** page; where/whereHas/whereThrough/window push-down | [eloquent](eloquent.md), `EloquentFilterHandler` | ✅ (reshaped) |
 | custom-data-providers | SPI | ported SPI + `AbstractDataProvider` + in-memory witness + custom providers | [custom-data-providers](custom-data-providers.md), `src/DataProvider` | ✅ |
-| custom-serializers-hydrators | standalone serializer/hydrator; **resource-level override** | standalone serializer **ported**; per-**resource** `serializer:`/`hydrator:` attribute override **carried** (ADR 0015) | [custom-serializers-hydrators](custom-serializers-hydrators.md); `AsJsonApiSerializer`; `ResourceSerializerHydratorOverrideTest` | ✅ (F1 resolved 2026-07-05) |
+| custom-serializers-hydrators | standalone serializer/hydrator; **resource-level override** | standalone serializer **and** hydrator **ported** (ADR 0011/0018); per-**resource** `serializer:`/`hydrator:` attribute override **carried** (ADR 0015) | [custom-serializers-hydrators](custom-serializers-hydrators.md); `AsJsonApiSerializer`/`AsJsonApiHydrator`; `ResourceSerializerHydratorOverrideTest`, `StandaloneHydratorWriteTest` | ✅ (F1 resolved 2026-07-05) |
 | relationships | related/relationship endpoints, mutation, include, pivot, RQ profile, countable | full; SQL push-down windowing; polymorphic to-many **over-parity** | [relationships](relationships.md); `Playlist`/`Album`/`Favorite`/`Library` resources | ✅ / 🟰 (over-parity) |
 | pagination | page/offset/cursor, max-per-page | all three; keyset push-down; `max_per_page` clamp | [pagination](pagination.md), core `Pagination`, `CursorWidgetResource` | ✅ |
 | validation | constraint bridge | always-on; full vocab map; filter-value validation | [validation](validation.md), `src/Validation` | 🟰 (always-on) |
@@ -145,9 +145,11 @@ override against its core contract and snapshots the class-strings on the `Resou
 serializer read, a DI-bound hydrator write, the other concern staying field-driven each time,
 and the optimize snapshot) in `tests/Feature/ResourceSerializerHydratorOverrideTest`;
 documented in [custom-serializers-hydrators](custom-serializers-hydrators.md). Out of scope,
-deliberately: a standalone `#[AsJsonApiHydrator]` (no bundle example exercises it) and the
-bundle `TrackSerializer`'s runtime extras (`meta.served_by`, `nowPlaying`) in the workbench —
-the capability is what parity required, and byte-compat pins the projected document.
+deliberately: a standalone `#[AsJsonApiHydrator]` (no bundle example exercises it — since
+carried anyway by [ADR 0018](adr/0018-standalone-hydrator-capability.md), 2026-07-05, with
+dedicated fixtures rather than a workbench change) and the bundle `TrackSerializer`'s runtime
+extras (`meta.served_by`, `nowPlaying`) in the workbench — the capability is what parity
+required, and byte-compat pins the projected document.
 
 ### F2 — The example's `AuditLogSubscriber` is not ported to the workbench
 

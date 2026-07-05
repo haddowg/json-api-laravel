@@ -115,35 +115,77 @@ final class RouteRegistrar
 
         // Standalone-serializer types (no resource; PLAN decision 3, bundle ADR 0024) are
         // emitted after the resources, matching the bundle's descriptor order (resources,
-        // then standalone types) so the projected OpenAPI paths stay byte-compatible.
+        // then standalone types) so the projected OpenAPI paths stay byte-compatible. A
+        // standalone hydrator for the same type (the decoupled write half) makes the
+        // allow-list's write verbs routable.
+        $hydratorTypes = [];
+        foreach ($this->discovery->hydratorsFor($server) as $descriptor) {
+            $hydratorTypes[$descriptor->type] = true;
+        }
         foreach ($this->discovery->serializersFor($server) as $descriptor) {
-            $this->addSerializerRoutes($router, $server, $namePrefix, $descriptor);
+            $this->addSerializerRoutes($router, $server, $namePrefix, $descriptor, isset($hydratorTypes[$descriptor->type]));
         }
     }
 
     /**
-     * Emits the operation-gated read routes for a standalone-serializer type — only the
-     * two fetch verbs its allow-list opens (a serialize-only type with an empty allow-list
-     * gets none). A resource-less type declares no relations and no writes, so it never
-     * gets the relation or mutation routes an `AbstractResource` does; its `{id}` uses the
-     * default single-segment requirement (no resource to read an Id route pattern from).
+     * Emits the operation-gated routes for a standalone type — exactly the verbs its
+     * allow-list opens (a serialize-only type with an empty allow-list gets none). The
+     * write verbs require the type's decoupled write half: a `Create`/`Update` in the
+     * allow-list without a standalone `#[AsJsonApiHydrator]` for the type is refused
+     * loudly at registration (the Laravel twin of the bundle's compile-time
+     * write-capability guard) — `Delete` needs no hydrator (nothing is hydrated), only a
+     * persister, which the servability warmer holds it to. A resource-less type declares
+     * no relations, so it never gets the relation or mutation routes an
+     * `AbstractResource` does; its `{id}` uses the default single-segment requirement
+     * (no resource to read an Id route pattern from).
      */
-    private function addSerializerRoutes(Router $router, string $server, string $namePrefix, SerializerDescriptor $descriptor): void
+    private function addSerializerRoutes(Router $router, string $server, string $namePrefix, SerializerDescriptor $descriptor, bool $hasHydrator): void
     {
         $type = $descriptor->type;
         $collectionPath = '/' . $descriptor->uriType;
         $resourcePath = $collectionPath . '/{id}';
         $idRequirement = $this->idRequirementFor(null);
 
+        $writes = \array_values(\array_intersect(
+            [Operation::Create->value, Operation::Update->value],
+            $descriptor->operations,
+        ));
+        if ($writes !== [] && !$hasHydrator) {
+            throw new \LogicException(\sprintf(
+                'The JSON:API type "%s" exposes a write operation (%s) but has no hydrator; '
+                . 'register #[AsJsonApiHydrator(type: "%s")] or use an AbstractResource.',
+                $type,
+                \implode(', ', $writes),
+                $type,
+            ));
+        }
+
         if ($descriptor->exposes(Operation::FetchCollection)) {
             $this->configure($router->get($collectionPath, JsonApiController::class), $server, $type)
                 ->name($namePrefix . $type . '.index');
+        }
+
+        if ($descriptor->exposes(Operation::Create)) {
+            $this->configure($router->post($collectionPath, JsonApiController::class), $server, $type)
+                ->name($namePrefix . $type . '.create');
         }
 
         if ($descriptor->exposes(Operation::FetchOne)) {
             $this->configure($router->get($resourcePath, JsonApiController::class), $server, $type)
                 ->where('id', $idRequirement)
                 ->name($namePrefix . $type . '.show');
+        }
+
+        if ($descriptor->exposes(Operation::Update)) {
+            $this->configure($router->patch($resourcePath, JsonApiController::class), $server, $type)
+                ->where('id', $idRequirement)
+                ->name($namePrefix . $type . '.update');
+        }
+
+        if ($descriptor->exposes(Operation::Delete)) {
+            $this->configure($router->delete($resourcePath, JsonApiController::class), $server, $type)
+                ->where('id', $idRequirement)
+                ->name($namePrefix . $type . '.delete');
         }
     }
 
@@ -299,7 +341,15 @@ final class RouteRegistrar
             return;
         }
 
-        foreach ($this->discovery->resourcesFor($server) as $descriptor) {
+        // Standalone-serializer types are guarded too: a hydrator-paired standalone type
+        // can open a collection POST Create the atomic path would silently shadow, exactly
+        // as a resource's.
+        $descriptors = [
+            ...$this->discovery->resourcesFor($server),
+            ...$this->discovery->serializersFor($server),
+        ];
+
+        foreach ($descriptors as $descriptor) {
             if ('/' . $descriptor->uriType !== $this->atomicPath) {
                 continue;
             }
@@ -315,11 +365,6 @@ final class RouteRegistrar
                 $this->atomicPath,
             ));
         }
-
-        // Standalone-serializer types need no arm here: {@see addSerializerRoutes} emits GET
-        // only (FetchCollection/FetchOne), so a standalone type never opens a collection POST
-        // that the atomic path could shadow — a Create in its allow-list is unrouteable, not a
-        // collision.
     }
 
     /**

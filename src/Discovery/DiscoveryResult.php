@@ -20,6 +20,7 @@ final readonly class DiscoveryResult
      * @param list<class-string>                                 $translators the discovered constraint-translator class-strings
      * @param list<\haddowg\JsonApiLaravel\Action\ActionDescriptor> $actions     the discovered custom-action descriptors
      * @param list<SerializerDescriptor>                         $serializers the discovered standalone-serializer descriptors (PLAN decision 3, bundle ADR 0024)
+     * @param list<HydratorDescriptor>                           $hydrators   the discovered standalone-hydrator descriptors (the decoupled write half, bundle ADR 0024)
      */
     public function __construct(
         public array $resources,
@@ -28,5 +29,6 @@ final readonly class DiscoveryResult
         public array $translators = [],
         public array $actions = [],
         public array $serializers = [],
+        public array $hydrators = [],
     ) {}
 }

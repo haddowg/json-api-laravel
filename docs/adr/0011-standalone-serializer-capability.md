@@ -25,7 +25,9 @@ operation allow-list / OpenAPI tags), lazily container-constructed like a resour
 the existing pipeline on **both** providers — the serializer renders the wire shape while a
 data provider (registered independently) supplies the objects. The `RouteRegistrar` emits
 operation-gated routes for it (no relation or write routes — a resource-less type declares
-neither), and the OpenAPI `MetadataSource` projects it fieldless (`hasFields: false`, empty
+neither; *since [ADR 0018](0018-standalone-hydrator-capability.md), 2026-07-05, a
+standalone `#[AsJsonApiHydrator]` makes the allow-list's write verbs routable — relations
+stay resource-only*), and the OpenAPI `MetadataSource` projects it fieldless (`hasFields: false`, empty
 fields/filters/sorts/relations), which core's projector renders as the inline attributes
 object byte-identically to the bundle. The workbench declares `charts` (a fixed in-memory
 provider) and `countries` (sourced from `symfony/intl`) exactly as the bundle example does, on

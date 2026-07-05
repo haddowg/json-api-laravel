@@ -14,6 +14,7 @@ use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
 use haddowg\JsonApiLaravel\Action\ActionInput;
 use haddowg\JsonApiLaravel\Action\ActionOutput;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
+use haddowg\JsonApiLaravel\Attribute\AsJsonApiHydrator;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiSerializer;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
@@ -60,6 +61,7 @@ final class DiscoveryScanner
         $seen = [];
         $resources = [];
         $serializers = [];
+        $hydrators = [];
         $providers = [];
         $persisters = [];
         $translators = [];
@@ -93,13 +95,30 @@ final class DiscoveryScanner
             // and no AbstractResource (checked above) — a type whose wire shape is hand-written
             // (PLAN decision 3, the Laravel twin of bundle ADR 0024). A serializer-override class
             // (referenced from #[AsJsonApiResource(serializer:)]) carries no attribute and so is
-            // never mis-classified here; it is resolved through its resource instead.
+            // never mis-classified here; it is resolved through its resource instead. The same
+            // applies to the standalone hydrator (the decoupled write half): both attributes may
+            // sit on ONE class implementing both interfaces, so the two checks are independent —
+            // a dual-attribute class lands in both buckets.
+            $standalone = false;
             if ($reflection->getAttributes(AsJsonApiSerializer::class) !== [] && $reflection->implementsInterface(SerializerInterface::class)) {
                 $descriptor = $this->describeSerializer($reflection);
                 if ($descriptor !== null) {
                     $serializers[] = $descriptor;
                 }
 
+                $standalone = true;
+            }
+
+            if ($reflection->getAttributes(AsJsonApiHydrator::class) !== [] && $reflection->implementsInterface(HydratorInterface::class)) {
+                $descriptor = $this->describeHydrator($reflection);
+                if ($descriptor !== null) {
+                    $hydrators[] = $descriptor;
+                }
+
+                $standalone = true;
+            }
+
+            if ($standalone) {
                 continue;
             }
 
@@ -129,7 +148,7 @@ final class DiscoveryScanner
             }
         }
 
-        return new DiscoveryResult($resources, $providers, $persisters, $translators, $actions, $serializers);
+        return new DiscoveryResult($resources, $providers, $persisters, $translators, $actions, $serializers, $hydrators);
     }
 
     /**
@@ -158,21 +177,50 @@ final class DiscoveryScanner
             $class,
             $attribute->type,
             $attribute->type,
-            $this->serializerServers($attribute),
+            $this->capabilityServers($attribute->server),
             \array_values(\array_map(static fn(Operation $op): string => $op->value, $attribute->operations)),
             \array_values($attribute->tags),
         );
     }
 
     /**
-     * The server name(s) a standalone serializer is exposed on: the attribute's `server`
+     * Builds a {@see HydratorDescriptor} from a standalone hydrator's
+     * {@see AsJsonApiHydrator} attribute, or `null` when it declares no non-empty `type`
+     * (a misconfigured capability with no discoverable type — skipped rather than fatal).
+     * A hydrator carries no operation allow-list of its own: endpoints are opened by the
+     * paired serializer's allow-list, which the hydrator's presence makes write-legal.
+     *
+     * @param \ReflectionClass<object> $reflection
+     */
+    private function describeHydrator(\ReflectionClass $reflection): ?HydratorDescriptor
+    {
+        /** @var AsJsonApiHydrator $attribute */
+        $attribute = $reflection->getAttributes(AsJsonApiHydrator::class)[0]->newInstance();
+
+        if ($attribute->type === '') {
+            return null;
+        }
+
+        /** @var class-string<HydratorInterface> $class */
+        $class = $reflection->getName();
+
+        return new HydratorDescriptor(
+            $class,
+            $attribute->type,
+            $this->capabilityServers($attribute->server),
+        );
+    }
+
+    /**
+     * The server name(s) a standalone capability is exposed on: the attribute's `server`
      * (a single name or a list), defaulting to the implicit `default` server.
+     *
+     * @param string|list<string>|null $server
      *
      * @return list<string>
      */
-    private function serializerServers(AsJsonApiSerializer $attribute): array
+    private function capabilityServers(string|array|null $server): array
     {
-        $server = $attribute->server;
         if ($server === null) {
             return ['default'];
         }

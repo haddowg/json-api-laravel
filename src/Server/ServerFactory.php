@@ -48,6 +48,7 @@ final class ServerFactory
      * @param \Closure(class-string): object                                                        $resolver              the container resolver core builds registered resources through
      * @param list<class-string<AbstractResource>>                                                  $resourceClasses       this server's resource class-strings
      * @param array<string, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $standaloneSerializers this server's standalone serializers, keyed by JSON:API type (no resource; PLAN decision 3, bundle ADR 0024)
+     * @param array<string, class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>>     $standaloneHydrators   this server's standalone hydrators, keyed by JSON:API type (the decoupled write half, bundle ADR 0024)
      * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $serializerOverrides per-resource serializer overrides keyed by resource class (ADR 0014)
      * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>>     $hydratorOverrides   per-resource hydrator overrides keyed by resource class (ADR 0014)
      * @param list<\haddowg\JsonApi\Schema\Profile\ProfileInterface>                                                $profiles            additional profiles registered on the server (`jsonapi.profiles`)
@@ -94,6 +95,12 @@ final class ServerFactory
         // 3, the Laravel twin of bundle ADR 0024). Serialize-only unless the type's
         // operation allow-list opens read endpoints (charts/countries do).
         private readonly array $standaloneSerializers = [],
+        // Standalone hydrators (no resource), keyed by JSON:API type — the decoupled
+        // write half of the same registration: core needs a type's serializer/hydrator
+        // pair registered TOGETHER (a second registration for the type throws), so the
+        // hydrator rides the same registerSerializerHydrator() call as its serializer
+        // (or registers alone for a hydrator-only type).
+        private readonly array $standaloneHydrators = [],
         // Per-resource serializer/hydrator overrides (ADR 0014), keyed by resource
         // class-string — threaded into core's register() so the overridden concern wins
         // while the other stays field-driven; core resolves the override class through
@@ -158,14 +165,21 @@ final class ServerFactory
             );
         }
 
-        // Standalone serializer capabilities (PLAN decision 3, bundle ADR 0024): a type
-        // registered with no resource. Core stores the pair; serializerFor() resolves the
-        // service through the same container resolver, so the read pipeline renders it
-        // exactly as a resource-backed type. Registered after the resources so a resource
-        // for the same type always wins (a standalone registration is the resource-less
-        // path). The hydrator arm is null here — the ported capability is serialize-only.
-        foreach ($this->standaloneSerializers as $type => $serializerClass) {
-            $server = $server->registerSerializerHydrator($type, $serializerClass, null);
+        // Standalone serializer/hydrator capabilities (PLAN decision 3, bundle ADR 0024):
+        // a type registered with no resource. Core stores the pair; serializerFor() /
+        // hydratorFor() resolve the services through the same container resolver, so the
+        // read AND write pipelines drive it exactly as a resource-backed type. Registered
+        // after the resources (a standalone registration is the resource-less path), and
+        // registered as a PAIR per type — core rejects a second registration for a type,
+        // so a serializer and hydrator of the same type must arrive in one call. A
+        // hydrator-only type registers too (write-shape only, e.g. a custom action's
+        // decoupled inputType); it exposes no endpoints of its own.
+        foreach ($this->standaloneTypes() as $type) {
+            $server = $server->registerSerializerHydrator(
+                $type,
+                $this->standaloneSerializers[$type] ?? null,
+                $this->standaloneHydrators[$type] ?? null,
+            );
         }
 
         // The serving bridge (PLAN decision 10): one core `serving` handler that turns
@@ -185,5 +199,18 @@ final class ServerFactory
         }
 
         return $this->server = $server->withHandler($this->handler);
+    }
+
+    /**
+     * The distinct types declared by a standalone serializer and/or hydrator.
+     *
+     * @return list<string>
+     */
+    private function standaloneTypes(): array
+    {
+        return \array_values(\array_unique([
+            ...\array_keys($this->standaloneSerializers),
+            ...\array_keys($this->standaloneHydrators),
+        ]));
     }
 }
