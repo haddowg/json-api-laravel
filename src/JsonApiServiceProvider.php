@@ -592,6 +592,14 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $discovery->resourcesFor($server),
                 );
 
+                // The standalone serializers this server exposes, keyed by JSON:API type
+                // (PLAN decision 3, bundle ADR 0024) — a resource-less type served through
+                // core's registerSerializerHydrator() pair.
+                $standaloneSerializers = [];
+                foreach ($discovery->serializersFor($server) as $descriptor) {
+                    $standaloneSerializers[$descriptor->type] = $descriptor->class;
+                }
+
                 $factories[$server] = new ServerFactory(
                     $psr17,
                     $psr17,
@@ -610,6 +618,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $this->actionLinkContributor($app, $server),
                     $app->make(\Illuminate\Contracts\Events\Dispatcher::class),
                     $server,
+                    $standaloneSerializers,
                 );
             }
 

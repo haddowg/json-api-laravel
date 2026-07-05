@@ -8,6 +8,7 @@ use haddowg\JsonApiLaravel\Action\ActionDescriptor;
 use haddowg\JsonApiLaravel\Action\ActionScope;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\ResourceDescriptor;
+use haddowg\JsonApiLaravel\Discovery\SerializerDescriptor;
 use haddowg\JsonApiLaravel\Exception\JsonApiExceptionRenderer;
 use haddowg\JsonApiLaravel\Http\JsonApiController;
 use haddowg\JsonApiLaravel\Http\ResponseHeadersMiddleware;
@@ -110,6 +111,39 @@ final class RouteRegistrar
 
         foreach ($this->discovery->resourcesFor($server) as $descriptor) {
             $this->addResourceRoutes($router, $server, $namePrefix, $descriptor);
+        }
+
+        // Standalone-serializer types (no resource; PLAN decision 3, bundle ADR 0024) are
+        // emitted after the resources, matching the bundle's descriptor order (resources,
+        // then standalone types) so the projected OpenAPI paths stay byte-compatible.
+        foreach ($this->discovery->serializersFor($server) as $descriptor) {
+            $this->addSerializerRoutes($router, $server, $namePrefix, $descriptor);
+        }
+    }
+
+    /**
+     * Emits the operation-gated read routes for a standalone-serializer type — only the
+     * two fetch verbs its allow-list opens (a serialize-only type with an empty allow-list
+     * gets none). A resource-less type declares no relations and no writes, so it never
+     * gets the relation or mutation routes an `AbstractResource` does; its `{id}` uses the
+     * default single-segment requirement (no resource to read an Id route pattern from).
+     */
+    private function addSerializerRoutes(Router $router, string $server, string $namePrefix, SerializerDescriptor $descriptor): void
+    {
+        $type = $descriptor->type;
+        $collectionPath = '/' . $descriptor->uriType;
+        $resourcePath = $collectionPath . '/{id}';
+        $idRequirement = $this->idRequirementFor(null);
+
+        if ($descriptor->exposes(Operation::FetchCollection)) {
+            $this->configure($router->get($collectionPath, JsonApiController::class), $server, $type)
+                ->name($namePrefix . $type . '.index');
+        }
+
+        if ($descriptor->exposes(Operation::FetchOne)) {
+            $this->configure($router->get($resourcePath, JsonApiController::class), $server, $type)
+                ->where('id', $idRequirement)
+                ->name($namePrefix . $type . '.show');
         }
     }
 
@@ -281,6 +315,11 @@ final class RouteRegistrar
                 $this->atomicPath,
             ));
         }
+
+        // Standalone-serializer types need no arm here: {@see addSerializerRoutes} emits GET
+        // only (FetchCollection/FetchOne), so a standalone type never opens a collection POST
+        // that the atomic path could shadow — a Create in its allow-list is unrouteable, not a
+        // collision.
     }
 
     /**

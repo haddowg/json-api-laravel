@@ -124,3 +124,50 @@ jobs:
 
       - name: Check coding standards
         run: composer cs-check
+
+  byte-compat:
+    name: OpenAPI byte-compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      # The music-catalog example document exported from the sibling bundle is diffed
+      # against this package's; the two MUST be byte-identical (PLAN decision 11).
+      JSON_API_SYMFONY_PATH: ${{ github.workspace }}/../json-api-symfony
+      # Carry the token + capped parallelism into every Composer resolution so the
+      # anonymous GitHub VCS lookups for core don't hit rate limits (429/400).
+      COMPOSER_MAX_PARALLEL_HTTP: '6'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # 2.37.1
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+
+      # Resolve the unpublished haddowg/json-api from GitHub in BOTH trees, at the same
+      # VCS ref, so the two projected documents are built from the identical core commit
+      # (a core skew would make the diff spurious — byte-compat.php guards against it too).
+      - name: Configure Composer to resolve haddowg/json-api (dev-main)
+        run: |
+          composer config -g github-oauth.github.com "${{ secrets.GITHUB_TOKEN }}"
+          composer config -g repositories.haddowg-json-api '{"type":"vcs","url":"https://github.com/haddowg/json-api","no-api":true}'
+
+      - name: Install dependencies (this package)
+        uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
+
+      - name: Clone the Symfony bundle (default branch)
+        run: git clone --depth 1 https://github.com/haddowg/json-api-symfony.git "${JSON_API_SYMFONY_PATH}"
+
+      - name: Install the bundle's dependencies (resolves the example app + core)
+        working-directory: ${{ env.JSON_API_SYMFONY_PATH }}
+        run: composer install --no-interaction --no-progress
+
+      - name: Diff the projected OpenAPI documents (must be byte-identical)
+        run: composer byte-compat

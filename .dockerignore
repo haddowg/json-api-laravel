@@ -1,0 +1,10 @@
+.git
+vendor
+build
+database
+node_modules
+.phpunit.cache
+.phpstan.cache
+.php-cs-fixer.cache
+coverage.xml
+.DS_Store

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
+use haddowg\JsonApi\Exception\AttributeValueInvalid;
+use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Testing\InteractsWithJsonApi;
 use Illuminate\Testing\TestResponse;
@@ -37,11 +40,12 @@ use PHPUnit\Framework\Attributes\Test;
  *
  * A **duplicate client-generated id** is now a `409` on both providers (the persisters
  * enforce core's `ClientGeneratedIdAlreadyExists`, closing the earlier
- * overwrite-vs-`500` divergence — see {@see aDuplicateClientGeneratedIdReturns409}). One
- * conflict-family cell stays FLAGGED as a gap (kept visible as a skipped test, never
- * papered over): a **PATCH body-id/URL-id mismatch** is not yet a `409` (core's update
- * hydration never compares them — a core-owned change). See
- * {@see aPatchBodyIdMismatchingTheUrlIsNotYetAConflict}.
+ * overwrite-vs-`500` divergence — see {@see aDuplicateClientGeneratedIdReturns409}). The
+ * two conflict-family cells once FLAGGED as core gaps are now RESOLVED (the core changes
+ * landed): a **PATCH body-id/URL-id mismatch** is a `409` RESOURCE_ID_CONFLICT
+ * ({@see aPatchBodyIdMismatchingTheUrlIsA409Conflict}), and an unparseable date reaching
+ * core's DateTime cast is a typed `422` ATTRIBUTE_VALUE_INVALID
+ * ({@see anUnparseableDateReachingCoreHydrationIsATyped422}).
  */
 abstract class WriteConformanceTestCase extends Orchestra
 {
@@ -580,37 +584,60 @@ abstract class WriteConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:crud')]
-    public function anUnparseableDateReachingCoreHydrationIsStillACoreOwned500(): void
+    public function anUnparseableDateReachingCoreHydrationIsATyped422(): void
     {
-        // FLAGGED CORE FRICTION (needs a core change under the witness contract).
-        self::markTestSkipped(
-            'GAP (needs core change): core\'s DateTime::deserializeValue does '
-            . '`new \DateTimeImmutable($value)` and throws a RAW \Exception on a calendar-'
-            . 'garbage string, which the exception renderer maps to a 500 rather than a typed '
-            . '4xx. The always-on validation bridge now guards every writable DateTime field '
-            . 'with a ParsableDate rule (a clean 422 at /data/attributes/<name> BEFORE '
-            . 'hydration — see ValidationConformanceTestCase), so the documented write surface '
-            . 'no longer 500s. But a resource reaching hydration WITHOUT the bridge (a bare '
-            . 'serializer/hydrator pair with no AbstractResource, hence no ResourceValidator) '
-            . 'still 500s: DateTime::deserializeValue should raise a typed JSON:API '
-            . '422/400 exception (core-owned change: ADR + core main first per PLAN '
-            . 'decision 1). Kept visible pending that fix.',
-        );
+        // The core-owned change the earlier GAP flagged has LANDED (core ADR: an
+        // uncoercible attribute value is a typed AttributeValueInvalid): core's DateTime
+        // cast (haddowg\JsonApi\Resource\Field\DateTime::deserializeValue) now raises a
+        // `422` ATTRIBUTE_VALUE_INVALID at /data/attributes/<name> on a calendar-garbage
+        // string, instead of letting the raw `new \DateTimeImmutable($value)` \Exception
+        // escape as an uncaught 500.
+        //
+        // The routed HTTP write surface never reaches this cast with garbage — the
+        // always-on validation bridge (PLAN decision 6) guards every writable DateTime
+        // field with a ParsableDate rule, a clean 422 BEFORE hydration (asserted
+        // dual-provider over HTTP in ValidationConformanceTestCase). And the only path that
+        // skips the bridge, a bare serializer/hydrator pair with no AbstractResource, is
+        // discovered but routed fetch-only (RouteRegistrar::addSerializerRoutes emits GET
+        // only), so no auto-registered write route reaches hydration without the bridge.
+        // So this pins the underlying core cast the bridge
+        // fronts by driving the exact field the fix touched — its typed error is the
+        // ground truth both persisters inherit (it throws in core, before either runs).
+        $field = DateTime::make('releasedAt');
+
+        try {
+            $field->hydrate(new \stdClass(), 'banana', [], $this->createStub(JsonApiRequestInterface::class), true);
+            self::fail('Expected a calendar-garbage date to raise AttributeValueInvalid.');
+        } catch (AttributeValueInvalid $e) {
+            self::assertSame(422, $e->getStatusCode());
+            $error = $e->getErrors()[0];
+            self::assertSame('422', $error->status);
+            self::assertSame('ATTRIBUTE_VALUE_INVALID', $error->code);
+            self::assertSame('/data/attributes/releasedAt', $error->source?->pointer);
+        }
     }
 
     #[Test]
     #[Group('spec:crud')]
-    public function aPatchBodyIdMismatchingTheUrlIsNotYetAConflict(): void
+    public function aPatchBodyIdMismatchingTheUrlIsA409Conflict(): void
     {
-        // FLAGGED GAP (needs a core change under the witness contract).
-        self::markTestSkipped(
-            'GAP (needs core change): a PATCH whose data.id differs from the URL id should be '
-            . 'a 409 per JSON:API, but core AbstractResource::hydrateForUpdate never compares '
-            . 'the body id to the target id (hydrateId runs only on create), so the body id '
-            . 'is silently ignored and both providers return 200. Enforcing it is a '
-            . 'core-owned change (ADR + core main first per PLAN decision 1), not '
-            . 'workaroundable in this package.',
-        );
+        // The core-owned change the earlier GAP flagged has LANDED: core now compares the
+        // PATCH document `data.id` to the endpoint id (the id half of the type/id conflict
+        // family). A mismatch is a `409` RESOURCE_ID_CONFLICT pointed at /data/id, thrown
+        // by core BEFORE the handler runs — so it is identical on both providers and
+        // nothing is persisted.
+        $patch = $this->writeJsonApi('PATCH', '/api/albums/1', [
+            'data' => ['type' => 'albums', 'id' => '999', 'attributes' => ['title' => 'Renamed']],
+        ]);
+
+        $patch->assertStatus(409);
+        $patch->assertHeader('Content-Type', self::MEDIA_TYPE);
+        $patch->assertJsonPath('errors.0.status', '409');
+        $patch->assertJsonPath('errors.0.code', 'RESOURCE_ID_CONFLICT');
+        $patch->assertJsonPath('errors.0.source.pointer', '/data/id');
+
+        // Rejected before persist: album 1 keeps its seeded title.
+        $this->readJsonApi('/api/albums/1')->assertJsonPath('data.attributes.title', 'OK Computer');
     }
 
     /**

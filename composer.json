@@ -43,7 +43,8 @@
         "opis/json-schema": "^2.6",
         "orchestra/testbench": "^10.0 || ^11.0",
         "phpstan/phpstan": "^2.0",
-        "phpunit/phpunit": "^12.0"
+        "phpunit/phpunit": "^12.0",
+        "symfony/intl": "^7.0"
     },
     "suggest": {
         "opis/json-schema": "Enables the testing kit's SchemaConformanceTrait (validate real responses against the generated OpenAPI component schemas in your test suite) and the TestResponse::assertJsonApiSpecCompliant() macro / the optional schema_validation document linter (^2.6)."
@@ -77,14 +78,16 @@
         "test-coverage": "phpunit --coverage-clover coverage.xml",
         "phpstan": "phpstan analyse --memory-limit=1G",
         "cs-check": "php-cs-fixer fix --dry-run --diff",
-        "cs-fix": "php-cs-fixer fix"
+        "cs-fix": "php-cs-fixer fix",
+        "byte-compat": "@php bin/byte-compat.php"
     },
     "scripts-descriptions": {
         "test": "Run the PHPUnit test suite",
         "test-coverage": "Run the test suite and emit a Clover coverage report",
         "phpstan": "Run PHPStan static analysis",
         "cs-check": "Check code style without modifying files",
-        "cs-fix": "Apply code style fixes"
+        "cs-fix": "Apply code style fixes",
+        "byte-compat": "Diff the projected OpenAPI document against the Symfony bundle's (must be byte-identical)"
     },
     "minimum-stability": "dev",
     "prefer-stable": true

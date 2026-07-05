@@ -50,6 +50,11 @@ final class Discovery
     private ?array $actions = null;
 
     /**
+     * @var list<SerializerDescriptor>|null
+     */
+    private ?array $serializers = null;
+
+    /**
      * @param list<string>       $paths           the directories to scan
      * @param list<class-string> $explicitClasses classes registered via `JsonApi::register()`
      * @param string|null        $cachePath       an optional pre-built snapshot file (resources + provider/persister class-strings); loaded instead of scanning when present
@@ -81,6 +86,33 @@ final class Discovery
         return \array_values(\array_filter(
             $this->resources(),
             static fn(ResourceDescriptor $descriptor): bool => $descriptor->exposedOn($server),
+        ));
+    }
+
+    /**
+     * The discovered standalone-serializer descriptors (PLAN decision 3, bundle ADR 0024).
+     *
+     * @return list<SerializerDescriptor>
+     */
+    public function serializers(): array
+    {
+        if ($this->serializers === null) {
+            $this->resolve();
+        }
+
+        return $this->serializers ?? [];
+    }
+
+    /**
+     * The discovered standalone-serializer descriptors exposed on the named server.
+     *
+     * @return list<SerializerDescriptor>
+     */
+    public function serializersFor(string $server): array
+    {
+        return \array_values(\array_filter(
+            $this->serializers(),
+            static fn(SerializerDescriptor $descriptor): bool => $descriptor->exposedOn($server),
         ));
     }
 
@@ -155,7 +187,7 @@ final class Discovery
     }
 
     /**
-     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>}
+     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>, serializers: list<SerializerDescriptor>}
      */
     private function resolve(): array
     {
@@ -166,6 +198,7 @@ final class Discovery
             $this->persisters = $snapshot['persisters'];
             $this->translators = $snapshot['translators'];
             $this->actions = $snapshot['actions'];
+            $this->serializers = $snapshot['serializers'];
 
             return $snapshot;
         }
@@ -176,6 +209,7 @@ final class Discovery
         $this->persisters = $result->persisters;
         $this->translators = $result->translators;
         $this->actions = $result->actions;
+        $this->serializers = $result->serializers;
 
         return [
             'resources' => $result->resources,
@@ -183,6 +217,7 @@ final class Discovery
             'persisters' => $result->persisters,
             'translators' => $result->translators,
             'actions' => $result->actions,
+            'serializers' => $result->serializers,
         ];
     }
 
@@ -196,7 +231,7 @@ final class Discovery
      * configuration is behaviourally identical to a scanned one. Missing keys degrade
      * gracefully to empty lists (a resources-only file still loads its resources).
      *
-     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>}|null
+     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>, serializers: list<SerializerDescriptor>}|null
      */
     private function loadSnapshot(): ?array
     {
@@ -216,7 +251,31 @@ final class Discovery
             'persisters' => $this->readClassStrings($data['persisters'] ?? []),
             'translators' => $this->readClassStrings($data['translators'] ?? []),
             'actions' => $this->readActions($data['actions'] ?? []),
+            'serializers' => $this->readSerializers($data['serializers'] ?? []),
         ];
+    }
+
+    /**
+     * Rebuilds the standalone-serializer descriptors from their snapshot array forms,
+     * skipping any malformed entry.
+     *
+     * @return list<SerializerDescriptor>
+     */
+    private function readSerializers(mixed $entries): array
+    {
+        if (!\is_array($entries)) {
+            return [];
+        }
+
+        $serializers = [];
+        foreach ($entries as $entry) {
+            if (\is_array($entry)) {
+                /** @var array{class: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>, type: string, uriType: string, servers: list<string>, operations: list<string>, tags?: list<string>} $entry */
+                $serializers[] = SerializerDescriptor::fromArray($entry);
+            }
+        }
+
+        return $serializers;
     }
 
     /**

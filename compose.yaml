@@ -1,0 +1,9 @@
+# Run the worked example live:
+#   docker compose up        # then open http://localhost:8080/api/albums
+services:
+  json-api-laravel-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"

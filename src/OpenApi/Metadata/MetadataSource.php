@@ -15,6 +15,7 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\ResourceDescriptor;
+use haddowg\JsonApiLaravel\Discovery\SerializerDescriptor;
 use haddowg\JsonApiLaravel\Operation\Operation;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
@@ -191,7 +192,10 @@ final class MetadataSource
     }
 
     /**
-     * Builds the type metadata list for one server, in descriptor (discovery) order.
+     * Builds the type metadata list for one server, in descriptor (discovery) order:
+     * the resources first, then the standalone-serializer types (PLAN decision 3, bundle
+     * ADR 0024) — the same resources-then-standalone ordering the bundle's descriptor map
+     * carries, so the projected OpenAPI `paths` stay byte-compatible.
      *
      * @return list<TypeMetadataInterface>
      */
@@ -206,7 +210,54 @@ final class MetadataSource
             $types[] = $this->buildType($server, $serverName, $descriptor);
         }
 
+        foreach ($this->discovery->serializersFor($serverName) as $descriptor) {
+            if ($descriptor->type === '') {
+                continue;
+            }
+
+            $types[] = $this->buildSerializerType($server, $serverName, $descriptor);
+        }
+
         return $types;
+    }
+
+    /**
+     * Assembles a standalone-serializer type's metadata (no resource, no field inventory)
+     * — the fieldless projection path (PLAN decision 3, bundle ADR 0024). `hasFields` is
+     * `false`, so core's projector emits a permissive resource object with an inline
+     * `attributes: {type: object}` (no `{Type}Attributes` `$ref`), byte-identical to the
+     * bundle. It carries no authorization config of its own, so it declares no
+     * secured/public operations and inherits the document-level default security; a
+     * resource-less type has no client-id policy, id pattern, paginator, filter/sort
+     * vocabulary or include tree. Custom actions mounted on the type (if any) still project.
+     */
+    private function buildSerializerType(Server $server, string $serverName, SerializerDescriptor $descriptor): TypeMetadata
+    {
+        $type = $descriptor->type;
+        $operations = $this->operations($descriptor->operations);
+
+        return new TypeMetadata(
+            type: $type,
+            uriType: $descriptor->uriType,
+            hasFields: false,
+            fields: [],
+            relations: [],
+            operations: $operations,
+            securedOperations: [],
+            publicOperations: [],
+            allowsClientId: false,
+            requiresClientId: false,
+            idPattern: null,
+            paginatorKind: PaginatorKind::None,
+            countable: false,
+            filters: [],
+            sorts: [],
+            actions: $this->actions?->forServerType($serverName, $type) ?? [],
+            tags: $this->typeTags($descriptor->tags, $type),
+            description: null,
+            operationDescriptions: [],
+            includablePaths: [],
+        );
     }
 
     /**

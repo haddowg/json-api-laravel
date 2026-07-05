@@ -18,6 +18,7 @@ use haddowg\JsonApi\Resource\Filter\Boolean as BooleanFilter;
 use haddowg\JsonApi\Resource\Filter\Contains;
 use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\EndsWith;
+use haddowg\JsonApi\Resource\Filter\Range;
 use haddowg\JsonApi\Resource\Filter\StartsWith;
 use haddowg\JsonApi\Resource\Filter\WhereIn;
 use haddowg\JsonApi\Resource\Filter\WhereNotIn;
@@ -75,13 +76,17 @@ final class AlbumResource extends AbstractResource
             Contains::make('title'),
             StartsWith::make('titleStarts', 'title'),
             EndsWith::make('titleEnds', 'title'),
-            // Structured date-time range over the NON-NULL `released_at` column (ISO-8601
-            // bounds). Ordered comparison / range filters are declared only over columns
-            // with no null rows — the witness coerces `null` in a comparison while SQL
-            // three-valued logic excludes it, so ranging a null-bearing column would
-            // diverge (see comparisonFiltersOverNullableColumns…). The bundle sidesteps
-            // the same way; null presence is tested with WhereNull/WhereNotNull instead.
+            // Structured date-time range over the `released_at` column (ISO-8601 bounds).
             DateRange::make('releasedRange', 'released_at'),
+            // Structured numeric range over the NULLABLE `average_rating` column (matching
+            // the bundle's `filter[rating]` for OpenAPI byte-compat, PLAN decision 11). Now
+            // that core ADR 0116 makes an ordered comparison / Range bound against `null`
+            // never match — the in-memory witness converged with SQL three-valued logic —
+            // a null-bearing range returns the SAME set on both providers, the null rows
+            // (albums 4, 7) excluded rather than coerced in. This is the fixture ADR 0003
+            // deferred until the core fix landed; see
+            // orderedComparisonAndRangeOverANullableColumnExcludeNullsIdentically.
+            Range::make('rating', 'average_rating'),
             // Coerced boolean equality on `explicit`.
             BooleanFilter::make('explicit'),
             // Set membership (and its negation) on `status`.

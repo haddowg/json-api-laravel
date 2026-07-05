@@ -63,12 +63,15 @@ final class InMemoryDataProviderFilterTest extends TestCase
     #[Test]
     public function itMatchesGreaterThanOrEqualAndLessThanOrEqualComparisons(): void
     {
-        // `>=` excludes the null-rating row (`null >= 9.0` is false). `<=` includes it:
-        // PHP orders null as the least element (`null <= 5.5` is true), the in-memory
-        // witness's behaviour for a raw comparison on a nullable column — see the note on
-        // this divergence from SQL NULL semantics in the class docblock's sibling filters.
+        // An ordered comparison against a NULL column never matches (core ADR 0116: an
+        // ordered `<`/`<=`/`>`/`>=` — and therefore a Range bound — where either operand
+        // is null yields false, mirroring SQL three-valued logic rather than PHP's silent
+        // coercion of null toward 0). Row 3's rating is null, so it is excluded from BOTH
+        // the `>=` set (`null >= 9.0` is false) and the `<=` set (`null <= 5.5` is false):
+        // the in-memory witness now CONVERGES with the Eloquent/SQL reference (this pins
+        // the resolved side of the divergence docs/adr/0003 deferred to core).
         self::assertSame([1], $this->filter([Where::make('ratingGte', 'rating', '>=')], ['ratingGte' => 9.0]));
-        self::assertSame([2, 3], $this->filter([Where::make('ratingLte', 'rating', '<=')], ['ratingLte' => 5.5]));
+        self::assertSame([2], $this->filter([Where::make('ratingLte', 'rating', '<=')], ['ratingLte' => 5.5]));
     }
 
     #[Test]
