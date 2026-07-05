@@ -22,8 +22,11 @@ Three phases, mirroring the bundle's two warmers plus a deploy-time safety check
 
 1. **Servability validation (mandatory).** Eagerly checks that every discovered resource is
    actually serveable — sortable/filterable columns resolve against the table/casts, relation
-   methods exist, morph maps are registered. **A problem fails the command** (a non-zero exit),
-   so a mis-declared resource fails the *deploy*, not a runtime `500`.
+   methods exist (the method checked is the one the runtime reads, so a `storedAs()` alias is
+   honoured, and a relation whose value comes from an `extractUsing()`/`serializeUsing()`
+   closure needs no model method at all), morph maps are registered. **A problem fails the
+   command** (a non-zero exit), so a mis-declared resource fails the *deploy*, not a runtime
+   `500`.
 2. **Discovery snapshot (opt-in).** When `jsonapi.discovery.cache` names a path, it writes the
    `var_export`-able discovery snapshot there, so route registration and OpenAPI projection
    become a pure function of the cache — this is what makes `route:cache` safe (see

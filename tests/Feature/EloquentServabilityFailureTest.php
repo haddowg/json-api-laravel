@@ -81,6 +81,18 @@ final class EloquentServabilityFailureTest extends Orchestra
 
     #[Test]
     #[Group('openapi')]
+    public function theWarmerChecksAStoredAsAliasAgainstTheModel(): void
+    {
+        $problems = \implode("\n", $this->resolve(ServableResourceWarmer::class)->warm());
+
+        // The guard resolves the runtime read member (column() ?? name()), so a storedAs
+        // alias naming no model method flags under the ALIAS, not the relation name.
+        $this->assertStringContainsString('aliasedGhost', $problems);
+        $this->assertStringContainsString('ghostStoredAsMethod', $problems);
+    }
+
+    #[Test]
+    #[Group('openapi')]
     public function optimizeFailsTheDeployOnBrokenColumns(): void
     {
         $this->jsonApiArtisan('jsonapi:optimize')->assertExitCode(1);
