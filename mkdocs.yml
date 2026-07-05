@@ -108,3 +108,6 @@ nav:
   - The example app:
       - workbench.md
       - docker.md
+  - How it compares:
+      - vs-laravel-json-api.md
+      - vs-json-api-server.md
