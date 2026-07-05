@@ -55,6 +55,18 @@ page-size DoS bound — the request stays `200`, the size is just capped). Set `
 the built-in default paginator (collections then render unpaginated unless a resource
 declares its own). See [pagination](pagination.md).
 
+## `profiles`
+
+```php
+'profiles' => [\haddowg\JsonApi\Pagination\CursorPaginationProfile::class],
+```
+
+Additional JSON:API profiles registered on every server (class-strings, resolved through the
+container), on top of the built-in Countable and Relationship Queries registrations. The
+canonical use is core's `CursorPaginationProfile`, so cursor-paginated responses advertise
+the published cursor-pagination profile — see
+[pagination](pagination.md#advertising-the-cursor-pagination-profile). Defaults to `[]`.
+
 ## `defaults` (response headers)
 
 ```php

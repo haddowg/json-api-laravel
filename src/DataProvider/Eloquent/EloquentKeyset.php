@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\DataProvider\Eloquent;
 
+use haddowg\JsonApi\Collection\Keyset\KeysetColumn;
 use haddowg\JsonApi\Pagination\CursorBoundary;
-use haddowg\JsonApiLaravel\DataProvider\Keyset\KeysetColumn;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 /**
  * Builds the Eloquent push-down for a cursor (keyset) page — the forced
  * NULL=largest `ORDER BY` and the IS-NULL-branched lexicographic keyset `WHERE` —
- * matching the in-memory witness ({@see \haddowg\JsonApiLaravel\DataProvider\Keyset\InMemoryKeyset})
+ * matching the in-memory witness ({@see \haddowg\JsonApi\Collection\Keyset\InMemoryKeyset})
  * byte-for-byte (bundle ADR 0063).
  *
  * The order is forced as a PORTABLE NULL=largest (NOT `NULLS LAST`, which

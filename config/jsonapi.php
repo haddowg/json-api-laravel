@@ -69,6 +69,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Profiles
+    |--------------------------------------------------------------------------
+    |
+    | Additional JSON:API profiles registered on every server, as class-strings
+    | resolved through the container, on top of the built-in Countable and
+    | Relationship Queries profiles. Register core's CursorPaginationProfile here
+    | so a cursor-paginated response advertises the published cursor-pagination
+    | profile in `jsonapi.profile` and the `Content-Type` `profile` parameter (a
+    | page profile the server has not registered is silently dropped):
+    |
+    |   'profiles' => [\haddowg\JsonApi\Pagination\CursorPaginationProfile::class],
+    |
+    */
+    'profiles' => [],
+
+    /*
+    |--------------------------------------------------------------------------
     | Response header defaults
     |--------------------------------------------------------------------------
     |

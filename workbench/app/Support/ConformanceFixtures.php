@@ -245,6 +245,25 @@ final class ConformanceFixtures
     }
 
     /**
+     * Two cursor boards carrying the PIVOT-bearing twin of the {@see cursorGroups()}
+     * partition — the same widget membership, joined through a `position`-carrying
+     * pivot — shared by BOTH pivot-cursor conformance concretes so the
+     * `belongsToMany` keyset push-down and the in-memory witness referee the SAME
+     * membership AND the same per-member `meta.pivot`. The position is `widget id × 10`
+     * (deterministic, trivially assertable, and deliberately NOT the keyset order — the
+     * cursor walks the related columns, never the pivot).
+     *
+     * @return list<array{id: int, name: string, widgets: array<int, int>}> `widgets` maps widget id => pivot position
+     */
+    public static function cursorBoards(): array
+    {
+        return [
+            ['id' => 1, 'name' => 'alpha', 'widgets' => [1 => 10, 2 => 20, 3 => 30, 4 => 40, 5 => 50, 7 => 70]],
+            ['id' => 2, 'name' => 'beta', 'widgets' => [6 => 60, 8 => 80]],
+        ];
+    }
+
+    /**
      * Five tracks — the far side of the Phase-3b playlist pivot relation. Titles are
      * distinct (the `orderedTrackTitled` WhereThrough leaf) and `released_at` is a sortable
      * key for windowed related fetches.

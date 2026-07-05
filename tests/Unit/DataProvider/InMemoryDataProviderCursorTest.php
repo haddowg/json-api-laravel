@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Unit\DataProvider;
 
 use haddowg\JsonApi\Collection\CursorCollectionResult;
+use haddowg\JsonApi\Collection\Keyset\CursorTokenMinter;
+use haddowg\JsonApi\Collection\Keyset\InMemoryKeyset;
+use haddowg\JsonApi\Collection\Keyset\KeysetResolver;
 use haddowg\JsonApi\Exception\CursorStale;
 use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Pagination\CursorCodec;
@@ -13,9 +16,6 @@ use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
-use haddowg\JsonApiLaravel\DataProvider\Keyset\CursorTokenMinter;
-use haddowg\JsonApiLaravel\DataProvider\Keyset\InMemoryKeyset;
-use haddowg\JsonApiLaravel\DataProvider\Keyset\KeysetResolver;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Song;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
@@ -24,16 +24,13 @@ use PHPUnit\Framework\TestCase;
 /**
  * The in-memory cursor (keyset) arm — the ground truth the Eloquent SQL push-down must
  * match byte-for-byte (bundle ADR 0063). Drives the real mint → decode → resolve → after
- * round-trip through the shared {@see KeysetResolver} / {@see InMemoryKeyset} /
- * {@see CursorTokenMinter}, so forward/backward navigation, the has-flags, NULL ordering,
- * and the staleness guard are all exercised end-to-end.
+ * round-trip through core's shared {@see KeysetResolver} / {@see InMemoryKeyset} /
+ * {@see CursorTokenMinter} (core ADR 0123), so forward/backward navigation, the has-flags,
+ * NULL ordering, and the staleness guard are all exercised end-to-end.
  *
  * @internal
  */
 #[CoversClass(InMemoryDataProvider::class)]
-#[CoversClass(KeysetResolver::class)]
-#[CoversClass(InMemoryKeyset::class)]
-#[CoversClass(CursorTokenMinter::class)]
 final class InMemoryDataProviderCursorTest extends TestCase
 {
     #[Test]

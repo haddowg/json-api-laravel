@@ -603,6 +603,19 @@ final class JsonApiServiceProvider extends ServiceProvider
             /** @var bool $strict */
             $strict = config('jsonapi.strict_query_parameters', true);
 
+            // Additional server-registered profiles (`jsonapi.profiles`, class-strings):
+            // e.g. core's CursorPaginationProfile so a cursor page advertises the
+            // published cursor-pagination profile. Instantiated once, shared by every
+            // server (profiles are stateless VOs).
+            /** @var list<class-string<\haddowg\JsonApi\Schema\Profile\ProfileInterface>> $profileClasses */
+            $profileClasses = config('jsonapi.profiles', []);
+            $profiles = [];
+            foreach ($profileClasses as $profileClass) {
+                $profile = $app->make($profileClass);
+                \assert($profile instanceof \haddowg\JsonApi\Schema\Profile\ProfileInterface);
+                $profiles[] = $profile;
+            }
+
             /** @var array<string, mixed> $serversConfig */
             $serversConfig = config('jsonapi.servers', []);
 
@@ -667,6 +680,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $standaloneSerializers,
                     $serializerOverrides,
                     $hydratorOverrides,
+                    $profiles,
                 );
             }
 

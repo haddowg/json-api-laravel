@@ -76,6 +76,40 @@ scoped to the parent, with the cursor links built on the related URL:
 HasMany::make('widgets', 'cursorWidgets')->paginate(CursorPaginator::make()->withDefaultSize(2));
 ```
 
+This covers a pivot-carrying `belongsToMany` as well: the keyset composes on top of the pivot
+join (the sort columns always qualify off the related table), and each member's stored pivot
+still renders as `meta.pivot` on the cursor page:
+
+```php
+BelongsToMany::make('widgets', 'cursorWidgets')
+    ->fields(Integer::make('position'))
+    ->paginate(CursorPaginator::make()->withDefaultSize(2));
+```
+
+### Cursor pages on the relationship (linkage) endpoint
+
+A **queried** relationship GET (`GET /{type}/{id}/relationships/{rel}` with
+`?page`/`?sort`/`?filter`) over a cursor-paginated relation windows the identifier linkage to
+a keyset page: the document's pagination links carry the real `page[after]`/`page[before]`
+cursors (never a `last`), while the body stays links-only — identifier `data` members and no
+`meta.page` (core ADR 0124). A bare (unqueried) relationship GET still renders the whole
+association. A queried **pivot** relationship GET remains a `400`
+([ADR 0010](adr/0010-relationship-endpoint-query-params-reject-not-ignore.md)).
+
+### Advertising the cursor-pagination profile
+
+A `CursorBasedPage` carries the published
+[cursor-pagination profile](https://jsonapi.org/profiles/ethanresnick/cursor-pagination/),
+but core only advertises a page profile the server has **registered**. Register it via the
+`jsonapi.profiles` config (class-strings, resolved through the container) and every cursor
+page — primary, related, and windowed linkage — advertises the profile URI in
+`jsonapi.profile` and the `Content-Type` `profile` media-type parameter:
+
+```php
+// config/jsonapi.php
+'profiles' => [\haddowg\JsonApi\Pagination\CursorPaginationProfile::class],
+```
+
 ## Pagination links and meta
 
 The paginator emits the standard `links.first`/`prev`/`next`/`last` (as the strategy allows —
