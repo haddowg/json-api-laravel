@@ -40,9 +40,13 @@
     "require-dev": {
         "friendsofphp/php-cs-fixer": "^3.64",
         "larastan/larastan": "^3.0",
+        "opis/json-schema": "^2.6",
         "orchestra/testbench": "^10.0 || ^11.0",
         "phpstan/phpstan": "^2.0",
         "phpunit/phpunit": "^12.0"
+    },
+    "suggest": {
+        "opis/json-schema": "Enables the testing kit's SchemaConformanceTrait (validate real responses against the generated OpenAPI component schemas in your test suite) and the TestResponse::assertJsonApiSpecCompliant() macro / the optional schema_validation document linter (^2.6)."
     },
     "autoload": {
         "psr-4": {

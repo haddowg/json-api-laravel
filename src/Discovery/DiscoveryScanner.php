@@ -5,6 +5,11 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Discovery;
 
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApiLaravel\Action\ActionDescriptor;
+use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
+use haddowg\JsonApiLaravel\Action\ActionInput;
+use haddowg\JsonApiLaravel\Action\ActionOutput;
+use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
@@ -52,6 +57,7 @@ final class DiscoveryScanner
         $providers = [];
         $persisters = [];
         $translators = [];
+        $actions = [];
 
         foreach ($classes as $class) {
             if (isset($seen[$class])) {
@@ -77,6 +83,15 @@ final class DiscoveryScanner
                 continue;
             }
 
+            // A custom-action handler is a class carrying #[AsJsonApiAction] and
+            // implementing ActionHandlerInterface — discovered by the same scan, no
+            // AbstractResource sugar (PLAN decision 12).
+            if ($reflection->getAttributes(AsJsonApiAction::class) !== [] && $reflection->implementsInterface(ActionHandlerInterface::class)) {
+                $actions[] = $this->describeAction($reflection);
+
+                continue;
+            }
+
             if ($reflection->implementsInterface(DataProviderInterface::class)) {
                 $providers[] = $class;
 
@@ -94,7 +109,7 @@ final class DiscoveryScanner
             }
         }
 
-        return new DiscoveryResult($resources, $providers, $persisters, $translators);
+        return new DiscoveryResult($resources, $providers, $persisters, $translators, $actions);
     }
 
     /**
@@ -131,6 +146,99 @@ final class DiscoveryScanner
             $this->operations($attribute),
             $attribute?->policy,
             $attribute !== null ? $attribute->abilities : [],
+            $this->headers($attribute),
+            $attribute !== null ? \array_values($attribute->tags) : [],
+        );
+    }
+
+    /**
+     * Projects a resource's declarative response-header config into the scalar
+     * `{cache, cache_operations, deprecation}` shape the
+     * {@see \haddowg\JsonApiLaravel\Http\ResponseHeadersRegistry} consumes (kept as
+     * scalars so the discovery snapshot stays cacheable). The `#[AsJsonApiResource]`
+     * `cacheHeaders` map's optional nested `operations` key is lifted out to
+     * `cache_operations`; the `deprecation`/`sunset`/`sunsetLink` params fold into a
+     * single `deprecation` sub-map. A resource declaring none contributes `[]`.
+     *
+     * @return array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}
+     */
+    private function headers(?AsJsonApiResource $attribute): array
+    {
+        if ($attribute === null) {
+            return [];
+        }
+
+        $headers = [];
+
+        $cache = $attribute->cacheHeaders;
+        if ($cache !== []) {
+            $operations = $cache['operations'] ?? null;
+            unset($cache['operations']);
+
+            if ($cache !== []) {
+                $headers['cache'] = $cache;
+            }
+            if (\is_array($operations) && $operations !== []) {
+                /** @var array<string, array<string, mixed>> $operations */
+                $headers['cache_operations'] = $operations;
+            }
+        }
+
+        if ($attribute->deprecation !== null || $attribute->sunset !== null || $attribute->sunsetLink !== null) {
+            $headers['deprecation'] = [
+                'deprecation' => $attribute->deprecation,
+                'sunset' => $attribute->sunset,
+                'sunset_link' => $attribute->sunsetLink,
+            ];
+        }
+
+        return $headers;
+    }
+
+    /**
+     * Builds an {@see ActionDescriptor} from a custom-action handler's
+     * {@see AsJsonApiAction} attribute, applying the decoupled-document defaults:
+     * `inputType`/`outputType` resolve to the mount `type` when the attribute left them
+     * null, and a `returns204`/`outputMeta` action carries the empty-string `outputType`
+     * sentinel (no response resource) with the matching {@see ActionOutput}.
+     *
+     * @param \ReflectionClass<object> $reflection
+     */
+    private function describeAction(\ReflectionClass $reflection): ActionDescriptor
+    {
+        /** @var AsJsonApiAction $attribute */
+        $attribute = $reflection->getAttributes(AsJsonApiAction::class)[0]->newInstance();
+
+        $output = match (true) {
+            $attribute->returns204 => ActionOutput::None,
+            $attribute->outputMeta => ActionOutput::Meta,
+            default => ActionOutput::Document,
+        };
+
+        // Document mode carries the resolved output type; a 204/meta action carries the
+        // empty-string "no response resource" sentinel.
+        $outputType = $output === ActionOutput::Document
+            ? ($attribute->outputType ?? $attribute->type)
+            : '';
+
+        /** @var class-string<ActionHandlerInterface> $handlerClass */
+        $handlerClass = $reflection->getName();
+
+        return new ActionDescriptor(
+            $attribute->type,
+            $attribute->path,
+            $attribute->methods,
+            $attribute->scope,
+            $attribute->input,
+            $attribute->input === ActionInput::Document ? ($attribute->inputType ?? $attribute->type) : $attribute->type,
+            $outputType,
+            $output,
+            $attribute->ability,
+            $handlerClass,
+            $attribute->server ?? 'default',
+            $attribute->name,
+            $attribute->tags,
+            $attribute->asLink,
         );
     }
 

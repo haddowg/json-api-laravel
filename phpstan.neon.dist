@@ -7,6 +7,10 @@ parameters:
         - src
         - tests
         - workbench
+    bootstrapFiles:
+        # Registers the testing kit's TestResponse macros so larastan resolves them at
+        # every call site (its macro detection reflects the live Macroable::$macros).
+        - phpstan-bootstrap.php
     tmpDir: .phpstan.cache
     treatPhpDocTypesAsCertain: false
     ignoreErrors:

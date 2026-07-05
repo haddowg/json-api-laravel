@@ -5,26 +5,53 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel;
 
 use haddowg\JsonApi\Serializer\RelationshipLoadStateInterface;
+use haddowg\JsonApi\Serializer\ResourceLinkContributorInterface;
+use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
+use haddowg\JsonApiLaravel\Action\ActionInvoker;
+use haddowg\JsonApiLaravel\Action\ActionLinkContributor;
+use haddowg\JsonApiLaravel\Action\ActionRegistry;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
 use haddowg\JsonApiLaravel\Authorization\ResourceAuthorization;
+use haddowg\JsonApiLaravel\Console\ClearCommand;
+use haddowg\JsonApiLaravel\Console\JsonSchemaExportCommand;
+use haddowg\JsonApiLaravel\Console\OpenApiExportCommand;
+use haddowg\JsonApiLaravel\Console\OptimizeCommand;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
+use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\InMemorySnapshotCoordinator;
 use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\RelationshipWindowBatcher;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\DiscoveryScanner;
+use haddowg\JsonApiLaravel\EventListener\ResourceHookSubscriber;
 use haddowg\JsonApiLaravel\Exception\ExceptionMapperInterface;
 use haddowg\JsonApiLaravel\Exception\JsonApiExceptionRenderer;
+use haddowg\JsonApiLaravel\Http\DescribedbyStamper;
+use haddowg\JsonApiLaravel\Http\ResponseHeadersRegistry;
+use haddowg\JsonApiLaravel\OpenApi\ArtifactStore;
+use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiConfig;
+use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiConfigResolver;
+use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
+use haddowg\JsonApiLaravel\OpenApi\DocumentWarmer;
+use haddowg\JsonApiLaravel\OpenApi\JsonSchemaFactory;
+use haddowg\JsonApiLaravel\OpenApi\Metadata\ActionMetadataProviderInterface;
+use haddowg\JsonApiLaravel\OpenApi\Metadata\IncludePathResolver;
+use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
+use haddowg\JsonApiLaravel\OpenApi\Metadata\PaginatorKindResolver;
+use haddowg\JsonApiLaravel\OpenApi\Metadata\TagNameResolver;
 use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
+use haddowg\JsonApiLaravel\Routing\OpenApiRouteRegistrar;
 use haddowg\JsonApiLaravel\Routing\RouteRegistrar;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipPagination;
+use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use haddowg\JsonApiLaravel\Server\ServerFactory;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
@@ -36,10 +63,12 @@ use haddowg\JsonApiLaravel\Validation\ResourceValidator;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Foundation\CachesRoutes;
+use Illuminate\Contracts\Routing\UrlGenerator;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
 use Nyholm\Psr7\Factory\Psr17Factory;
+use Psr\Log\LoggerInterface;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
 use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
 
@@ -60,6 +89,15 @@ final class JsonApiServiceProvider extends ServiceProvider
      */
     public const string CONSTRAINT_TRANSLATOR_TAG = 'jsonapi.constraint_translator';
 
+    /**
+     * The container tag an {@see \haddowg\JsonApiLaravel\OpenApi\OpenApiFactoryInterface}
+     * binding carries to join the OpenAPI document decorator chain. Decorators are applied in
+     * **registration order**, so a later-registered decorator refines an earlier one and gets
+     * the final word (Laravel's `tagged()` carries no priority — later binding wins). Bind +
+     * tag a decorator to mutate the projected document wholesale.
+     */
+    public const string OPENAPI_FACTORY_TAG = 'jsonapi.openapi_factory';
+
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/jsonapi.php', 'jsonapi');
@@ -72,7 +110,11 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->registerValidation();
         $this->registerAuthorization();
         $this->registerRelationships();
+        $this->registerActions();
+        $this->registerAtomic();
+        $this->registerResponseHeaders();
         $this->registerServers();
+        $this->registerOpenApi();
 
         $this->app->singleton(TargetResolver::class);
         $this->app->singleton(CrudOperationHandler::class);
@@ -82,8 +124,132 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->app->singleton(RouteRegistrar::class, static function (Container $app): RouteRegistrar {
             /** @var array<string, array{prefix?: string, middleware?: list<string>|string, domain?: string|null}> $servers */
             $servers = config('jsonapi.servers', []);
+            /** @var bool $atomicEnabled */
+            $atomicEnabled = config('jsonapi.atomic_operations.enabled', false);
+            /** @var string $atomicPath */
+            $atomicPath = config('jsonapi.atomic_operations.path', '/operations');
 
-            return new RouteRegistrar($app->make(Discovery::class), $servers);
+            // Resolves a resource class to its Id field's declared route pattern (PLAN
+            // decision 4): the resource is constructed via the container (the same lazy
+            // resolver core uses) purely to read `fields()` — never the full Server, so route
+            // registration stays cheap. Resilient: any construction failure degrades to the
+            // single-segment default rather than breaking routing.
+            $idPatternResolver = static function (string $class) use ($app): ?string {
+                try {
+                    $resource = $app->make($class);
+                    if (!$resource instanceof \haddowg\JsonApi\Resource\AbstractResource) {
+                        return null;
+                    }
+                    foreach ($resource->fields() as $field) {
+                        if ($field instanceof \haddowg\JsonApi\Resource\Field\Id) {
+                            return $field->routePattern();
+                        }
+                    }
+
+                    return null;
+                } catch (\Throwable) {
+                    return null;
+                }
+            };
+
+            return new RouteRegistrar($app->make(Discovery::class), $servers, $atomicEnabled, $atomicPath, $idPatternResolver);
+        });
+    }
+
+    /**
+     * Binds the custom-actions subsystem (PLAN decision 12): the {@see ActionRegistry}
+     * (descriptors from the cacheable discovery snapshot + a container handler-resolver +
+     * the tag resolver), aliased to the {@see ActionMetadataProviderInterface} the OpenAPI
+     * {@see MetadataSource} reads a type's actions through, and the {@see ActionInvoker} the
+     * {@see CrudOperationHandler}'s {@see \haddowg\JsonApi\Operation\CustomActionOperation}
+     * arm delegates to.
+     */
+    private function registerActions(): void
+    {
+        $this->app->singleton(ActionRegistry::class, static function (Container $app): ActionRegistry {
+            /** @var Discovery $discovery */
+            $discovery = $app->make(Discovery::class);
+
+            $resolver = static function (string $class) use ($app): ActionHandlerInterface {
+                $handler = $app->make($class);
+                \assert($handler instanceof ActionHandlerInterface);
+
+                return $handler;
+            };
+
+            // The explicit OpenAPI tags each mount type declares, so an action with no tags of
+            // its own inherits the mount type's tags before the humanized default (bundle parity).
+            $typeTags = [];
+            foreach ($discovery->resources() as $descriptor) {
+                if ($descriptor->tags !== []) {
+                    $typeTags[$descriptor->type] = $descriptor->tags;
+                }
+            }
+
+            return new ActionRegistry($discovery->actions(), $resolver, $app->make(TagNameResolver::class), $typeTags);
+        });
+
+        // The OpenAPI metadata source reads a type's actions through this interface; the
+        // registry IS the provider (the "A stubs actions() first, B fills it" handoff).
+        $this->app->alias(ActionRegistry::class, ActionMetadataProviderInterface::class);
+
+        $this->app->singleton(ActionInvoker::class);
+    }
+
+    /**
+     * Binds the Atomic Operations collaborators (PLAN decision 12).
+     *
+     * The deferred-hook {@see WriteTransactionContext} is a **singleton**: its only consumer,
+     * the singleton {@see CrudOperationHandler}, captures it at first construction, so a
+     * `scoped()` binding would silently mint per-request instances the handler never uses
+     * (and leave any other resolver observing a different instance than the handler's). A
+     * singleton makes the binding honest — one instance everywhere — and cross-batch
+     * cleanliness rests on the executor's always-run {@see WriteTransactionContext::deactivate()}
+     * (in a `finally` on both the commit and rollback paths); {@see WriteTransactionContext::reset()}
+     * is available for an Octane/queue worker reset hook.
+     *
+     * The cross-store {@see InMemorySnapshotCoordinator} stays `scoped()` (the reference
+     * in-memory witness's per-request snapshot holder). The
+     * {@see \haddowg\JsonApiLaravel\Atomic\AtomicLoopBackend} is built per-batch by the
+     * handler, so nothing else is bound here.
+     */
+    private function registerAtomic(): void
+    {
+        $this->app->singleton(WriteTransactionContext::class);
+        $this->app->scoped(InMemorySnapshotCoordinator::class);
+    }
+
+    /**
+     * Binds the response-header registry (PLAN decision 12): the per-type declarative
+     * cache + deprecation/sunset config projected off the discovered
+     * {@see \haddowg\JsonApiLaravel\Discovery\ResourceDescriptor}s (a discovery-time
+     * projection, like the Authorizer config), layered over the global
+     * `jsonapi.defaults.*` defaults. The {@see \haddowg\JsonApiLaravel\Http\ResponseHeadersMiddleware}
+     * queries it per request.
+     */
+    private function registerResponseHeaders(): void
+    {
+        $this->app->singleton(ResponseHeadersRegistry::class, static function (Container $app): ResponseHeadersRegistry {
+            /** @var Discovery $discovery */
+            $discovery = $app->make(Discovery::class);
+
+            $byType = [];
+            foreach ($discovery->resources() as $descriptor) {
+                if ($descriptor->headers !== []) {
+                    $byType[$descriptor->type] = $descriptor->headers;
+                }
+            }
+
+            /** @var array<string, mixed> $defaultCache */
+            $defaultCache = config('jsonapi.defaults.cache_headers', []);
+
+            $defaultDeprecation = [
+                'deprecation' => config('jsonapi.defaults.deprecation'),
+                'sunset' => config('jsonapi.defaults.sunset'),
+                'sunset_link' => config('jsonapi.defaults.sunset_link'),
+            ];
+
+            return new ResponseHeadersRegistry($byType, $defaultCache, $defaultDeprecation);
         });
     }
 
@@ -94,6 +260,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         ], 'jsonapi-config');
 
         $this->registerRouteMacro();
+        $this->registerEventSubscribers();
 
         /** @var JsonApiManager $manager */
         $manager = $this->app->make(JsonApiManager::class);
@@ -110,9 +277,11 @@ final class JsonApiServiceProvider extends ServiceProvider
             /** @var Router $router */
             $router = $this->app->make('router');
             $registrar->registerConfiguredServers($router);
+            $this->registerOpenApiRoutes($router);
         }
 
         $this->registerExceptionRenderable();
+        $this->registerConsole();
     }
 
     /**
@@ -438,11 +607,227 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $loadState,
                     $relationshipPagination,
                     $relationshipLinkage,
+                    $this->actionLinkContributor($app, $server),
+                    $app->make(\Illuminate\Contracts\Events\Dispatcher::class),
+                    $server,
                 );
             }
 
             return new ServerRegistry($factories);
         });
+    }
+
+    /**
+     * Builds the per-server {@see ActionLinkContributor} threaded into a server's
+     * {@see \haddowg\JsonApi\Server\Server} — the out-of-band merge of each `asLink` custom
+     * action's URL onto its mount type's resources. Returns `null` when the server declares no
+     * `asLink` action, so a server with none pays nothing (its resource links are exactly the
+     * author's + the convention self link). The serializer is resolved lazily (via the
+     * memoized {@see ServerRegistry}) so building the Server — which is threaded this
+     * contributor — does not recurse.
+     */
+    private function actionLinkContributor(Container $app, string $server): ?ResourceLinkContributorInterface
+    {
+        /** @var ActionRegistry $registry */
+        $registry = $app->make(ActionRegistry::class);
+
+        $byType = [];
+        foreach ($registry->forServer($server) as $descriptor) {
+            if ($descriptor->asLink) {
+                $byType[$descriptor->type][] = $descriptor;
+            }
+        }
+
+        if ($byType === []) {
+            return null;
+        }
+
+        $resolver = static fn(string $type): \haddowg\JsonApi\Serializer\SerializerInterface => $app->make(ServerRegistry::class)->get($server)->serializerFor($type);
+
+        return new ActionLinkContributor(
+            $byType,
+            $resolver,
+            $app->make(UrlGenerator::class),
+            $app->make(Authorizer::class),
+        );
+    }
+
+    /**
+     * Binds the OpenAPI subtree (PLAN decision 11): the resolved {@see OpenApiConfig},
+     * the metadata resolvers + {@see MetadataSource} (core's metadata contract, read from
+     * discovery), the {@see DocumentFactory} (+ tagged {@see OpenApiFactoryInterface}
+     * decorators) and {@see JsonSchemaFactory}, the {@see ArtifactStore}, and the two
+     * warmers the optimize pipeline runs.
+     */
+    private function registerOpenApi(): void
+    {
+        $this->app->singleton(OpenApiConfig::class, function (Container $app): OpenApiConfig {
+            /** @var array<string, mixed> $openapi */
+            $openapi = config('jsonapi.openapi', []);
+
+            return (new OpenApiConfigResolver())->resolve($openapi, $this->serverNames());
+        });
+
+        $this->app->singleton(TagNameResolver::class);
+        $this->app->singleton(PaginatorKindResolver::class);
+        $this->app->singleton(IncludePathResolver::class);
+
+        $this->app->singleton(MetadataSource::class, function (Container $app): MetadataSource {
+            /** @var OpenApiConfig $config */
+            $config = $app->make(OpenApiConfig::class);
+            /** @var bool $atomicEnabled */
+            $atomicEnabled = config('jsonapi.atomic_operations.enabled', false);
+            /** @var string $atomicPath */
+            $atomicPath = config('jsonapi.atomic_operations.path', '/operations');
+
+            $actions = $app->bound(ActionMetadataProviderInterface::class)
+                ? $app->make(ActionMetadataProviderInterface::class)
+                : null;
+            \assert($actions === null || $actions instanceof ActionMetadataProviderInterface);
+
+            return new MetadataSource(
+                $app->make(ServerRegistry::class),
+                $app->make(Discovery::class),
+                $app->make(TypeMetadataResolver::class),
+                $app->make(PaginatorKindResolver::class),
+                $app->make(TagNameResolver::class),
+                $app->make(IncludePathResolver::class),
+                $this->serverNames(),
+                $config->serverDocuments,
+                $atomicEnabled,
+                $atomicPath,
+                $actions,
+            );
+        });
+
+        $this->app->singleton(DescribedbyStamper::class, static function (Container $app): DescribedbyStamper {
+            /** @var OpenApiConfig $config */
+            $config = $app->make(OpenApiConfig::class);
+            /** @var UrlGenerator $url */
+            $url = $app->make(UrlGenerator::class);
+
+            return new DescribedbyStamper($url, $config->describedby, $config->combined);
+        });
+
+        $this->app->singleton(ArtifactStore::class, static function (Container $app): ArtifactStore {
+            /** @var string|null $path */
+            $path = config('jsonapi.openapi.cache_path');
+            $dir = \is_string($path) && $path !== '' ? $path : storage_path('framework/cache/jsonapi-openapi');
+
+            return new ArtifactStore($dir);
+        });
+
+        $this->app->singleton(DocumentFactory::class, function (Container $app): DocumentFactory {
+            /** @var OpenApiConfig $config */
+            $config = $app->make(OpenApiConfig::class);
+            /** @var iterable<\haddowg\JsonApiLaravel\OpenApi\OpenApiFactoryInterface> $decorators */
+            $decorators = $app->tagged(self::OPENAPI_FACTORY_TAG);
+
+            return new DocumentFactory(
+                $app->make(MetadataSource::class),
+                $config->enumDescriptionMode,
+                $decorators,
+            );
+        });
+
+        $this->app->singleton(JsonSchemaFactory::class, static function (Container $app): JsonSchemaFactory {
+            /** @var OpenApiConfig $config */
+            $config = $app->make(OpenApiConfig::class);
+
+            return new JsonSchemaFactory(
+                $app->make(ServerRegistry::class),
+                $app->make(TypeMetadataResolver::class),
+                $app->make(Discovery::class),
+                $config->enumDescriptionMode,
+            );
+        });
+
+        $this->app->singleton(DocumentWarmer::class, function (Container $app): DocumentWarmer {
+            /** @var OpenApiConfig $config */
+            $config = $app->make(OpenApiConfig::class);
+
+            $logger = $app->bound(LoggerInterface::class) ? $app->make(LoggerInterface::class) : null;
+            \assert($logger === null || $logger instanceof LoggerInterface);
+
+            return new DocumentWarmer(
+                $app->make(DocumentFactory::class),
+                $app->make(JsonSchemaFactory::class),
+                $app->make(ArtifactStore::class),
+                $this->serverNames(),
+                $config->enabled,
+                $config->combined,
+                $config->publicPath,
+                $logger,
+            );
+        });
+
+        $this->app->singleton(ServableResourceWarmer::class, function (Container $app): ServableResourceWarmer {
+            return new ServableResourceWarmer(
+                $app->make(ServerRegistry::class),
+                $app->make(Discovery::class),
+                $app->make(DataProviderRegistry::class),
+                $app->make(DataPersisterRegistry::class),
+                $app->make(TypeMetadataResolver::class),
+                $this->serverNames(),
+            );
+        });
+    }
+
+    /**
+     * Registers the OpenAPI documentation routes (gated by the expose rule) through the
+     * {@see OpenApiRouteRegistrar}, route:cache-safe like the CRUD routes.
+     */
+    private function registerOpenApiRoutes(Router $router): void
+    {
+        /** @var OpenApiConfig $config */
+        $config = $this->app->make(OpenApiConfig::class);
+        /** @var bool $debug */
+        $debug = config('app.debug', false);
+
+        (new OpenApiRouteRegistrar($config, $this->serverNames(), $debug))->register($router);
+    }
+
+    /**
+     * Registers the artisan commands (exports + the optimize/clear pair) and wires the
+     * optimize pipeline so `php artisan optimize` warms the JSON:API artifacts + validates
+     * servability, and `optimize:clear` clears them.
+     */
+    private function registerConsole(): void
+    {
+        $this->commands([
+            OpenApiExportCommand::class,
+            JsonSchemaExportCommand::class,
+            OptimizeCommand::class,
+            ClearCommand::class,
+        ]);
+
+        $this->optimizes(
+            optimize: 'jsonapi:optimize',
+            clear: 'jsonapi:clear',
+            key: 'jsonapi',
+        );
+    }
+
+    /**
+     * The declared server names (`jsonapi.servers` keys), `default` first — the per-server
+     * type source the OpenAPI metadata + warmers iterate.
+     *
+     * @return list<string>
+     */
+    private function serverNames(): array
+    {
+        /** @var array<string, mixed> $servers */
+        $servers = config('jsonapi.servers', []);
+        $names = \array_map(static fn($name): string => (string) $name, \array_keys($servers));
+
+        $ordered = \in_array(ServerRegistry::DEFAULT_SERVER, $names, true) ? [ServerRegistry::DEFAULT_SERVER] : [];
+        foreach ($names as $name) {
+            if ($name !== ServerRegistry::DEFAULT_SERVER) {
+                $ordered[] = $name;
+            }
+        }
+
+        return $ordered;
     }
 
     private function registerExceptionRenderer(): void
@@ -472,6 +857,26 @@ final class JsonApiServiceProvider extends ServiceProvider
         $mappers = $app->tagged('jsonapi.exception_mapper');
 
         return $mappers;
+    }
+
+    /**
+     * Registers the resource lifecycle-hook subscriber (PLAN decision 10) as lazy
+     * class-string listeners on each hook-relevant event, so an
+     * {@see ResourceLifecycleHooksInterface} resource's methods run off the dispatched
+     * events. Registered by class-string (not `Event::subscribe`, which would
+     * construct the subscriber — and its {@see \haddowg\JsonApiLaravel\Server\ServerRegistry}/discovery
+     * — at boot); the subscriber resolves from the container only when an event fires.
+     * Always registered (independent of route caching), since dispatch is a runtime
+     * concern.
+     */
+    private function registerEventSubscribers(): void
+    {
+        /** @var \Illuminate\Contracts\Events\Dispatcher $events */
+        $events = $this->app->make(\Illuminate\Contracts\Events\Dispatcher::class);
+
+        foreach (ResourceHookSubscriber::eventMap() as $event => $method) {
+            $events->listen($event, [ResourceHookSubscriber::class, $method]);
+        }
     }
 
     private function registerRouteMacro(): void
