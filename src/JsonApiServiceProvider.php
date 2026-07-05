@@ -52,6 +52,7 @@ use haddowg\JsonApiLaravel\Routing\RouteRegistrar;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipPagination;
+use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use haddowg\JsonApiLaravel\Server\ServerFactory;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
@@ -559,10 +560,25 @@ final class JsonApiServiceProvider extends ServiceProvider
     /**
      * Binds the {@see ServerRegistry}: one {@see ServerFactory} per configured server,
      * each holding that server's resource class-strings and building its immutable core
-     * {@see \haddowg\JsonApi\Server\Server} lazily on first dispatch.
+     * {@see \haddowg\JsonApi\Server\Server} lazily on first dispatch. Also binds the
+     * {@see IdEncoderResolver} the reference Eloquent provider/persister decode wire
+     * ids through (ADR 0014) — resolving a type's resource from the SAME memoized
+     * discovery descriptors, constructed via the container on first use.
      */
     private function registerServers(): void
     {
+        $this->app->singleton(IdEncoderResolver::class, static function (Container $app): IdEncoderResolver {
+            return new IdEncoderResolver(
+                $app->make(Discovery::class),
+                static function (string $class) use ($app): object {
+                    $instance = $app->make($class);
+                    \assert(\is_object($instance));
+
+                    return $instance;
+                },
+            );
+        });
+
         $this->app->singleton(ServerRegistry::class, function (Container $app): ServerRegistry {
             /** @var Discovery $discovery */
             $discovery = $app->make(Discovery::class);

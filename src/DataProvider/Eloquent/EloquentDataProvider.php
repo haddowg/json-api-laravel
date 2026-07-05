@@ -13,6 +13,7 @@ use haddowg\JsonApi\Pagination\CursorWindow;
 use haddowg\JsonApi\Pagination\OffsetWindow;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\BelongsToMany as PivotRelation;
+use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\InMemory\ArrayFilterHandler;
 use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortHandler;
@@ -23,6 +24,8 @@ use haddowg\JsonApiLaravel\DataProvider\Keyset\CursorTokenMinter;
 use haddowg\JsonApiLaravel\DataProvider\Keyset\KeysetColumn;
 use haddowg\JsonApiLaravel\DataProvider\Keyset\KeysetResolver;
 use haddowg\JsonApiLaravel\DataProvider\RelatedBatch;
+use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
+use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
@@ -115,13 +118,25 @@ final class EloquentDataProvider extends AbstractDataProvider
     private readonly array $modelByType;
 
     /**
+     * The id-encoder resolver wire ids decode through (ADR 0014) — injected, or
+     * resolved lazily from the container on first use so the hand-constructed
+     * reference wiring (`new EloquentDataProvider($modelByType)`) keeps working.
+     */
+    private ?IdEncoderResolver $idEncoders;
+
+    private bool $idEncodersResolved;
+
+    /**
      * @param array<string, class-string<Model>>          $modelByType a `type → Eloquent model FQCN` map
      * @param iterable<EloquentFilterArmInterface<Model>> $filterArms  author arms for custom `FilterInterface` types
      * @param iterable<EloquentSortArmInterface<Model>>   $sortArms    author arms for custom `SortInterface` types
+     * @param IdEncoderResolver|null                      $idEncoders  resolves a type's id encoder (wire-id decode, ADR 0014); null resolves it lazily from the container
      */
-    public function __construct(array $modelByType, iterable $filterArms = [], iterable $sortArms = [])
+    public function __construct(array $modelByType, iterable $filterArms = [], iterable $sortArms = [], ?IdEncoderResolver $idEncoders = null)
     {
         $this->modelByType = $modelByType;
+        $this->idEncoders = $idEncoders;
+        $this->idEncodersResolved = $idEncoders !== null;
         $this->applier = new CriteriaApplier();
         $this->windowExecutor = new WindowExecutor();
         $this->filterHandler = new EloquentFilterHandler($filterArms);
@@ -152,7 +167,21 @@ final class EloquentDataProvider extends AbstractDataProvider
 
     public function fetchOne(string $type, string $id): ?object
     {
-        return $this->newQuery($type)->whereKey($id)->first();
+        // Decode the wire id to its storage key when the type declares an encoder.
+        // An undecodable id is a 404: no row holds that key, so short-circuit without
+        // querying (the SPI stays wire-id — only this reference impl decodes; ADR 0014).
+        $encoder = $this->encoderFor($type);
+        if ($encoder !== null) {
+            /** @var mixed $key */
+            $key = $encoder->decode($id);
+            if ($key === null) {
+                return null;
+            }
+        } else {
+            $key = $id;
+        }
+
+        return $this->newQuery($type)->whereKey($key)->first();
     }
 
     /**
@@ -319,6 +348,8 @@ final class EloquentDataProvider extends AbstractDataProvider
         $models = $eager->initRelation($models, $method);
         $eager->match($models, $eager->getEager(), $method);
 
+        $encoder = $this->encoderFor($parentType);
+
         $results = [];
         foreach ($models as $model) {
             $related = $model->getRelation($method);
@@ -329,7 +360,7 @@ final class EloquentDataProvider extends AbstractDataProvider
                 $items = $related instanceof Model ? [$related] : [];
             }
 
-            $results[$this->wireId($model)] = new CollectionResult($items);
+            $results[$this->wireId($model, $encoder)] = new CollectionResult($items);
         }
 
         return new RelatedBatch($results);
@@ -459,11 +490,13 @@ final class EloquentDataProvider extends AbstractDataProvider
             ? $this->countRelated($parentType, $parents, $relation, $criteria, $request)
             : [];
 
+        $encoder = $this->encoderFor($parentType);
+
         $results = [];
         foreach ($clones as $model) {
             $matched = $model->getRelation($method);
             $items = $matched instanceof EloquentCollection ? \array_values($matched->all()) : [];
-            $wireId = $this->wireId($model);
+            $wireId = $this->wireId($model, $encoder);
 
             if ($countable) {
                 // The group-limit already bounded the partition to `limit` rows.
@@ -500,10 +533,11 @@ final class EloquentDataProvider extends AbstractDataProvider
      * subquery through the shared applier, so a `?withCount`-named relation that also
      * carries a filter counts the SAME set the related endpoint would page.
      *
-     * Keyed by each parent's primary key as a string (the wire id the serializer's `getId()`
-     * reports for the standard resource), so the count batcher reconciles each count back to
-     * its parent. A relation with no Eloquent method, or a page with no models, reports the
-     * empty map (the caller then supplies no count).
+     * Keyed by each parent's wire id (its primary key as a string — encoded first when the
+     * type declares an id encoder — the value the serializer's `getId()` reports for the
+     * standard resource), so the count batcher reconciles each count back to its parent. A
+     * relation with no Eloquent method, or a page with no models, reports the empty map
+     * (the caller then supplies no count).
      *
      * @return array<int|string, int>
      */
@@ -549,17 +583,19 @@ final class EloquentDataProvider extends AbstractDataProvider
             }])
             ->get();
 
+        $encoder = $this->encoderFor($type);
+
         $counts = [];
         foreach ($counted as $model) {
             /** @var mixed $count */
             $count = $model->getAttribute($countAttribute);
-            $counts[$this->wireId($model)] = \is_numeric($count) ? (int) $count : 0;
+            $counts[$this->wireId($model, $encoder)] = \is_numeric($count) ? (int) $count : 0;
         }
 
         // Zero-fill any parent the query somehow did not return (belt and braces — whereKey
         // returns every loaded parent, so withCount already zero-fills the empty ones).
         foreach ($models as $model) {
-            $counts[$this->wireId($model)] ??= 0;
+            $counts[$this->wireId($model, $encoder)] ??= 0;
         }
 
         return $counts;
@@ -599,8 +635,9 @@ final class EloquentDataProvider extends AbstractDataProvider
      * eager pipeline loads every parent's to-one target in ONE query, then a single
      * `WHERE id IN (…) AND <filters>` intersects the distinct targets against the filter. A
      * parent whose target is null, or whose target falls outside the matching set, maps to
-     * `false`; keyed by each parent's primary key as a string. A relation with no Eloquent
-     * method falls back to the neutral all-match default.
+     * `false`; keyed by each parent's wire id (encoded when the type declares an id
+     * encoder). A relation with no Eloquent method falls back to the neutral all-match
+     * default.
      *
      * @return array<string, bool>
      */
@@ -626,12 +663,16 @@ final class EloquentDataProvider extends AbstractDataProvider
         $models = $eager->initRelation($models, $method);
         $eager->match($models, $eager->getEager(), $method);
 
-        // Collect each parent's target key, and the distinct targets to probe.
+        $encoder = $this->encoderFor($parentType);
+
+        // Collect each parent's target key (wire-keyed, so it matches the serializer's
+        // getId()), and the distinct targets to probe (keyed by their raw storage key —
+        // internal to this method, never compared to a serializer id).
         $parentTargetKey = [];
         $targets = [];
         foreach ($models as $model) {
             $target = $model->getRelation($method);
-            $wireId = $this->wireId($model);
+            $wireId = $this->wireId($model, $encoder);
 
             if ($target instanceof Model) {
                 $targetKey = $this->wireId($target);
@@ -703,6 +744,12 @@ final class EloquentDataProvider extends AbstractDataProvider
 
         $accessor = $eloquentRelation->getPivotAccessor();
 
+        // Keyed by each member's WIRE id (encoded when the related type declares an id
+        // encoder), because the caller folds each map entry under an incoming linkage
+        // member's meta by its wire `id`.
+        $relatedTypes = $relation->relatedTypes();
+        $encoder = \count($relatedTypes) === 1 ? $this->encoderFor($relatedTypes[0]) : null;
+
         $pivots = [];
         foreach ($eloquentRelation->get() as $member) {
             $pivot = $member->getRelation($accessor);
@@ -715,7 +762,7 @@ final class EloquentDataProvider extends AbstractDataProvider
                 $meta[$field->name()] = $pivot->getAttribute($field->column() ?? $field->name());
             }
 
-            $pivots[$this->wireId($member)] = $meta;
+            $pivots[$this->wireId($member, $encoder)] = $meta;
         }
 
         return $pivots;
@@ -731,16 +778,41 @@ final class EloquentDataProvider extends AbstractDataProvider
     }
 
     /**
-     * A model's JSON:API wire id — its primary key coerced to a string (the value the
-     * standard resource's serializer `getId()` reports, and the key every relation batch /
-     * count / match map is keyed by). A non-scalar key (a value object) yields `''`.
+     * A model's JSON:API wire id — its primary key encoded through the type's id encoder
+     * when one is declared, else coerced to a string (in both cases the value the type's
+     * serializer `getId()` reports, and the key every relation batch / count / match map
+     * is keyed by). A non-scalar key (a value object) with no encoder yields `''`.
      */
-    private function wireId(Model $model): string
+    private function wireId(Model $model, ?IdEncoderInterface $encoder = null): string
     {
         /** @var mixed $key */
         $key = $model->getKey();
 
+        if ($encoder !== null) {
+            return $encoder->encode($key);
+        }
+
         return \is_scalar($key) ? (string) $key : '';
+    }
+
+    /**
+     * The id encoder declared by `$type`'s resource, or `null` when wire == storage (no
+     * resource / no Id field / no encoder — today's behaviour, ADR 0014). The resolver is
+     * injected, or resolved lazily from the container once so the hand-constructed
+     * reference wiring keeps working; outside a container (a bare unit test) every type
+     * resolves encoder-less.
+     */
+    private function encoderFor(string $type): ?IdEncoderInterface
+    {
+        if (!$this->idEncodersResolved) {
+            $container = Container::getInstance();
+            $this->idEncoders = $container->bound(IdEncoderResolver::class)
+                ? $container->make(IdEncoderResolver::class)
+                : null;
+            $this->idEncodersResolved = true;
+        }
+
+        return $this->idEncoders?->encoderFor($type);
     }
 
     /**
