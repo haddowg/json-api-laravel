@@ -51,13 +51,16 @@ Event::listen(function (AfterCreateEvent $event): void {
 ```
 
 Queued listeners work (implement `ShouldQueue`), and `Event::fake()` lets a test assert an
-event fired. A cross-cutting subscriber is just a plain listener set: the **Symfony bundle
-example's** `AuditLogSubscriber`, for instance, gates a write on an `X-Read-Only: on` header
-via `ServingEvent` and records an audit entry on `AfterSaveEvent`/`AfterDeleteEvent` — the same
-shape ports directly to a set of `Event::listen` calls here. (The Laravel music-catalog
-workbench does not ship this subscriber — see the
-[parity audit](https://github.com/haddowg/json-api-laravel/blob/main/docs/parity-audit.md) — it
-is an illustration of the listener pattern, not a workbench component.)
+event fired. A cross-cutting subscriber is just a plain listener set — the worked example is
+the workbench's
+[`AuditLogSubscriber`](https://github.com/haddowg/json-api-laravel/blob/main/workbench/app/MusicCatalog/Listeners/AuditLogSubscriber.php)
+(the Laravel port of the Symfony bundle example's subscriber): registered once via
+`Event::subscribe()` in the [example's wiring providers](workbench.md), it gates every write
+on an `X-Read-Only: on` header via `ServingEvent` (a `403` before the operation runs) and
+appends an audit entry on `AfterSaveEvent`/`AfterDeleteEvent` — one concern spanning every
+type, no resource touched. `tests/Feature/MusicCatalog/AuditListenerTestCase` drives it end
+to end on both provider arms: a committed write appends exactly one entry, a failed write
+(a `409` hook guard, a denied ability, the read-only gate) appends none.
 
 ## Before vs after semantics
 
