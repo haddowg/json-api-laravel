@@ -8,7 +8,6 @@ use haddowg\JsonApi\Exception\ClientGeneratedIdAlreadyExists;
 use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
-use haddowg\JsonApi\Resource\Field\AbstractField;
 use haddowg\JsonApi\Resource\Field\BelongsToMany as PivotRelation;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
@@ -410,7 +409,8 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
     /**
      * The pivot-column payload for one linkage member: each writable pivot field present in
      * the member's `meta.pivot` mapped to its `column ?? name`, its wire value coerced through
-     * the field's own cast (an `Integer` → int, a `DateTime` → `\DateTimeImmutable`). A field
+     * the field's own {@see FieldInterface::castWireValue()} (an `Integer` → int, a `DateTime`
+     * → `\DateTimeImmutable`) — the type's value cast alone, request-independent. A field
      * absent from meta is left out (its stored value is preserved on update, its server default
      * taken on insert); a readOnly field is never in the writable set, so never written.
      *
@@ -433,42 +433,10 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
             $column = $field->column() ?? $field->name();
             /** @var mixed $raw */
             $raw = $pivot[$field->name()];
-            $attributes[$column] = $this->coercePivotValue($field, $raw);
+            $attributes[$column] = $field->castWireValue($raw);
         }
 
         return $attributes;
-    }
-
-    /**
-     * Coerces a wire pivot value to its domain representation via the field's OWN value cast
-     * (the field's protected `deserializeValue`, invoked through a bound closure — it is
-     * request-independent for a plain pivot field). A field not built on {@see AbstractField}
-     * passes the value through unchanged.
-     *
-     * FLAGGED CORE FRICTION (PLAN decision 1 / witness contract): binding a closure into core's
-     * `AbstractField` to reach the protected `deserializeValue()` is a reflection-style
-     * workaround around a missing PUBLIC value-cast entry point on the field contract. It is
-     * fragile (a core rename/signature change breaks it silently at runtime; PHPStan cannot see
-     * through the bound closure) and bypasses any request-aware contract `deserializeValue` may
-     * grow. The fix is a core change under the witness contract — a public cast method (e.g.
-     * `FieldInterface::castWireValue(mixed): mixed`), added + ADR'd + merged to core `main`,
-     * then consumed here via `dev-main`, dropping the `Closure::bind`. Recorded here (not worked
-     * around silently) as the flagged gap until that core API lands.
-     */
-    private function coercePivotValue(FieldInterface $field, mixed $value): mixed
-    {
-        if (!$field instanceof AbstractField) {
-            return $value;
-        }
-
-        /** @var \Closure(mixed): mixed $cast */
-        $cast = \Closure::bind(
-            fn(mixed $raw): mixed => $this->deserializeValue($raw),
-            $field,
-            AbstractField::class,
-        );
-
-        return $cast($value);
     }
 
     /**
