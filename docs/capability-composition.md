@@ -44,6 +44,95 @@ capability-composition witness.
 `#[AsJsonApiSerializer]` takes `type`, `operations` (empty = serialize-only), `server`, and
 `tags`.
 
+## A standalone hydrator (no resource)
+
+The write half is registered the same way: `#[AsJsonApiHydrator]` on a class implementing
+core's `HydratorInterface` registers the type's hydrator with no resource. A standalone
+type is writable exactly when a hydrator is registered for it (and a
+[persister](custom-data-providers.md) is wired) — no hydrator means no writes:
+
+```php
+use haddowg\JsonApiLaravel\Attribute\AsJsonApiHydrator;
+use haddowg\JsonApi\Hydrator\HydratorInterface;
+use haddowg\JsonApi\Request\JsonApiRequestInterface;
+
+#[AsJsonApiHydrator(type: 'beacons')]
+final class BeaconHydrator implements HydratorInterface
+{
+    public function hydrate(JsonApiRequestInterface $request, mixed $domainObject): mixed
+    {
+        // read the request document's attributes onto the domain object
+        $label = $request->getResourceAttribute('label');
+        // … assign, then:
+        return $domainObject;
+    }
+}
+```
+
+`#[AsJsonApiHydrator]` takes `type` and `server` — deliberately **no** `operations`: a
+hydrator adds write *capability*, never endpoints. Endpoints are opened only by the paired
+serializer's allow-list (or a resource's), so a hydrator registered alone exposes nothing —
+it is the write shape core resolves through `hydratorFor()`, e.g. for a
+[custom action](actions.md)'s decoupled `inputType` document.
+
+A class may carry more than one of these attributes: a single class that implements both
+`SerializerInterface` and `HydratorInterface` can bear `#[AsJsonApiSerializer]` and
+`#[AsJsonApiHydrator]` together, registering both halves of a resource-less type in one
+place.
+
+## The default-operations asymmetry
+
+This is the one footgun to internalise. **A standalone serializer exposes no endpoints by
+default; an `AbstractResource` exposes all five.**
+
+| Type kind | Default operations |
+| --- | --- |
+| `AbstractResource` | all five (`FetchCollection`, `FetchOne`, `Create`, `Update`, `Delete`) |
+| standalone `#[AsJsonApiSerializer]` | **none** — serialize-only |
+| standalone `#[AsJsonApiHydrator]` | **none** — a hydrator never opens endpoints |
+
+A standalone serializer defaults to serialize-only because the classic use is an
+*embedded/reference* type: it renders as primary data, linkage and `included` when it
+appears inside another resource, but serves no routes of its own. To give it endpoints you
+open them explicitly with the `operations` allow-list — the example's `charts` opens
+exactly `GET /charts` and `GET /charts/{id}`; a hydrator-paired type may open the write
+verbs the same way (`Create` → `POST`, `Update` → `PATCH`, `Delete` → `DELETE`).
+
+## Mix-and-match recipes
+
+Because every capability is optional and independent, the endpoint set is whatever the
+capabilities you declare add up to:
+
+| You want | Declare |
+| --- | --- |
+| a serialize-only embedded/reference type | a serializer alone (no `operations`) |
+| a read-only fetchable type | a serializer with `operations: [FetchCollection, FetchOne]` + a provider |
+| a write shape with no endpoints (e.g. an action `inputType`) | a hydrator alone |
+| a fully resource-less CRUD type | serializer (all five `operations`) + hydrator + provider + persister |
+
+The `charts` type is the second row, lifted straight from the example. The fourth row
+needs no resource at all: the serializer and hydrator (two attributes, possibly on one
+class) plus a provider/persister pair give you the same CRUD endpoints an
+`AbstractResource` would — assembled from independent parts instead of one declaration.
+Relations stay resource-only: a resource-less type declares none, so it never gets the
+related/relationship routes.
+
+## The write-capability guard
+
+You cannot expose a write without something to populate the entity. If a standalone type's
+`operations` allow-list includes `Create` or `Update` but no hydrator is registered for it,
+**route registration fails** with a `LogicException` naming the type and the fix:
+
+```
+The JSON:API type "charts" exposes a write operation (Create) but has no hydrator;
+register #[AsJsonApiHydrator(type: "charts")] or use an AbstractResource.
+```
+
+This surfaces at boot (and at `route:cache` / `jsonapi:optimize` — a deploy step), never
+as a runtime surprise on the first request. `Delete` hydrates nothing, so it needs no
+hydrator — only a persister, which the [servability guard](optimize.md) holds it to. (An
+`AbstractResource` always carries a hydrator, so it never trips this.)
+
 ## Dependency injection
 
 Every capability class is constructed **through the container**, so it can take constructor

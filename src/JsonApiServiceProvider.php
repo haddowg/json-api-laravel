@@ -651,12 +651,18 @@ final class JsonApiServiceProvider extends ServiceProvider
                     }
                 }
 
-                // The standalone serializers this server exposes, keyed by JSON:API type
-                // (PLAN decision 3, bundle ADR 0024) — a resource-less type served through
-                // core's registerSerializerHydrator() pair.
+                // The standalone serializers + hydrators this server exposes, keyed by
+                // JSON:API type (PLAN decision 3, bundle ADR 0024) — a resource-less type
+                // served through core's registerSerializerHydrator() pair (the factory
+                // registers a type's two halves together, since core rejects a second
+                // registration for the same type).
                 $standaloneSerializers = [];
                 foreach ($discovery->serializersFor($server) as $descriptor) {
                     $standaloneSerializers[$descriptor->type] = $descriptor->class;
+                }
+                $standaloneHydrators = [];
+                foreach ($discovery->hydratorsFor($server) as $descriptor) {
+                    $standaloneHydrators[$descriptor->type] = $descriptor->class;
                 }
 
                 $factories[$server] = new ServerFactory(
@@ -678,6 +684,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $app->make(\Illuminate\Contracts\Events\Dispatcher::class),
                     $server,
                     $standaloneSerializers,
+                    $standaloneHydrators,
                     $serializerOverrides,
                     $hydratorOverrides,
                     $profiles,

@@ -55,6 +55,11 @@ final class Discovery
     private ?array $serializers = null;
 
     /**
+     * @var list<HydratorDescriptor>|null
+     */
+    private ?array $hydrators = null;
+
+    /**
      * @param list<string>       $paths           the directories to scan
      * @param list<class-string> $explicitClasses classes registered via `JsonApi::register()`
      * @param string|null        $cachePath       an optional pre-built snapshot file (resources + provider/persister class-strings); loaded instead of scanning when present
@@ -113,6 +118,34 @@ final class Discovery
         return \array_values(\array_filter(
             $this->serializers(),
             static fn(SerializerDescriptor $descriptor): bool => $descriptor->exposedOn($server),
+        ));
+    }
+
+    /**
+     * The discovered standalone-hydrator descriptors (the decoupled write half of the
+     * serializer channel, bundle ADR 0024).
+     *
+     * @return list<HydratorDescriptor>
+     */
+    public function hydrators(): array
+    {
+        if ($this->hydrators === null) {
+            $this->resolve();
+        }
+
+        return $this->hydrators ?? [];
+    }
+
+    /**
+     * The discovered standalone-hydrator descriptors exposed on the named server.
+     *
+     * @return list<HydratorDescriptor>
+     */
+    public function hydratorsFor(string $server): array
+    {
+        return \array_values(\array_filter(
+            $this->hydrators(),
+            static fn(HydratorDescriptor $descriptor): bool => $descriptor->exposedOn($server),
         ));
     }
 
@@ -187,7 +220,7 @@ final class Discovery
     }
 
     /**
-     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>, serializers: list<SerializerDescriptor>}
+     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>, serializers: list<SerializerDescriptor>, hydrators: list<HydratorDescriptor>}
      */
     private function resolve(): array
     {
@@ -199,6 +232,7 @@ final class Discovery
             $this->translators = $snapshot['translators'];
             $this->actions = $snapshot['actions'];
             $this->serializers = $snapshot['serializers'];
+            $this->hydrators = $snapshot['hydrators'];
 
             return $snapshot;
         }
@@ -210,6 +244,7 @@ final class Discovery
         $this->translators = $result->translators;
         $this->actions = $result->actions;
         $this->serializers = $result->serializers;
+        $this->hydrators = $result->hydrators;
 
         return [
             'resources' => $result->resources,
@@ -218,6 +253,7 @@ final class Discovery
             'translators' => $result->translators,
             'actions' => $result->actions,
             'serializers' => $result->serializers,
+            'hydrators' => $result->hydrators,
         ];
     }
 
@@ -231,7 +267,7 @@ final class Discovery
      * configuration is behaviourally identical to a scanned one. Missing keys degrade
      * gracefully to empty lists (a resources-only file still loads its resources).
      *
-     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>, serializers: list<SerializerDescriptor>}|null
+     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>, serializers: list<SerializerDescriptor>, hydrators: list<HydratorDescriptor>}|null
      */
     private function loadSnapshot(): ?array
     {
@@ -252,6 +288,7 @@ final class Discovery
             'translators' => $this->readClassStrings($data['translators'] ?? []),
             'actions' => $this->readActions($data['actions'] ?? []),
             'serializers' => $this->readSerializers($data['serializers'] ?? []),
+            'hydrators' => $this->readHydrators($data['hydrators'] ?? []),
         ];
     }
 
@@ -276,6 +313,29 @@ final class Discovery
         }
 
         return $serializers;
+    }
+
+    /**
+     * Rebuilds the standalone-hydrator descriptors from their snapshot array forms,
+     * skipping any malformed entry.
+     *
+     * @return list<HydratorDescriptor>
+     */
+    private function readHydrators(mixed $entries): array
+    {
+        if (!\is_array($entries)) {
+            return [];
+        }
+
+        $hydrators = [];
+        foreach ($entries as $entry) {
+            if (\is_array($entry)) {
+                /** @var array{class: class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>, type: string, servers: list<string>} $entry */
+                $hydrators[] = HydratorDescriptor::fromArray($entry);
+            }
+        }
+
+        return $hydrators;
     }
 
     /**

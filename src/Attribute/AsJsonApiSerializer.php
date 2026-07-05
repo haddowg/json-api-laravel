@@ -19,13 +19,15 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * type whose wire shape is fully hand-written, or that has no resource at all. Pair it
  * with a provider (via `JsonApi::provider()` or discovery) to make the type fetchable.
  *
- * `operations` is the exposed operation allow-list. A standalone serializer is
- * **fetch-only**: only {@see Operation::FetchCollection} (`GET /{type}`) and
- * {@see Operation::FetchOne} (`GET /{type}/{id}`) are routable — a resource-less type
- * declares no fields, writes or relations, so a write/relation case in the allow-list is
- * ignored (no route emitted). An empty array means the default — **no** endpoints
- * (serialize-only) — the deliberate asymmetry against an `AbstractResource`, which
- * defaults to all five.
+ * `operations` is the exposed operation allow-list. An empty array means the default —
+ * **no** endpoints (serialize-only) — the deliberate asymmetry against an
+ * `AbstractResource`, which defaults to all five. The two fetch cases open the read
+ * routes (pair the type with a data provider); the write cases open the write routes,
+ * but {@see Operation::Create}/{@see Operation::Update} additionally require the type's
+ * decoupled write half — a standalone {@see AsJsonApiHydrator} — or route registration
+ * refuses loudly ({@see Operation::Delete} hydrates nothing, so it needs only a
+ * persister). A resource-less type declares no relations, so it never gets the relation
+ * or relationship-mutation routes an `AbstractResource` does.
  *
  * `server` names the server(s) this type is exposed on: a single server name, a list of
  * names (the same type may join several servers at once), or `null` for the implicit
@@ -39,7 +41,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
 final readonly class AsJsonApiSerializer
 {
     /**
-     * @param list<Operation>          $operations the exposed operation allow-list; only FetchCollection/FetchOne are routable (empty = none, serialize-only)
+     * @param list<Operation>          $operations the exposed operation allow-list (empty = none, serialize-only); Create/Update require a standalone {@see AsJsonApiHydrator} for the type
      * @param string|list<string>|null $server     the server name(s) exposing this type (null = the implicit `default`)
      * @param list<string>             $tags       the OpenAPI tag names this type is grouped under (empty = the humanized-type default)
      */

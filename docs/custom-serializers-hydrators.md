@@ -57,6 +57,29 @@ see [capability-composition](capability-composition.md#dependency-injection). Pa
 [custom provider](custom-data-providers.md) to make the type fetchable — the example's
 `charts`/`countries` do exactly this.
 
+## A standalone hydrator
+
+The write twin: `#[AsJsonApiHydrator(type: …)]` on a class implementing core's
+`HydratorInterface` registers a type's hydrator with **no** resource — the
+[capability-composition](capability-composition.md#a-standalone-hydrator-no-resource)
+model owns the attribute, the operation defaults and the standalone recipes. Two
+consequences belong here, where you are choosing between an override and a standalone
+pair:
+
+- A standalone hydrator opens **no endpoints of its own** — endpoints come from the
+  paired serializer's `operations` allow-list, whose `Create`/`Update` become legal (and
+  routable) exactly when the hydrator exists; without one, route registration fails with
+  a `LogicException` naming the type (the
+  [write-capability guard](capability-composition.md#the-write-capability-guard)).
+- A bare serializer/hydrator pair declares **no field inventory**, so writes through it
+  are **not validated** (the always-on [validation](validation.md) bridge resolves its
+  rules from a resource's fields), and its projected document stays fieldless. If you
+  want validation and a typed document, keep an `AbstractResource` and override the one
+  concern the DSL can't model (below) — don't drop the resource.
+
+Both attributes may sit on one class implementing both interfaces, registering both
+halves of a resource-less type in one place.
+
 ## Writing: hydration and post-hydration seams
 
 Whole-document hydration is core's, driven by the resource. Two Laravel seams let you shape a
@@ -108,9 +131,9 @@ client-generated-id policy, leaving you the attribute fan-out.
 
 Reach for the override only when the cheaper seams fall short: **per-field
 `serializeUsing`/`extractUsing`/`fillUsing`** closures (above) cover most wire-shape changes
-in one declaration, a **standalone `#[AsJsonApiSerializer]`** serves a type with no resource
-at all, and the **[hook trait](lifecycle-hooks.md)** handles write-side derivation that
-belongs after hydration.
+in one declaration, a **standalone `#[AsJsonApiSerializer]` / `#[AsJsonApiHydrator]`**
+serves a type with no resource at all, and the **[hook trait](lifecycle-hooks.md)** handles
+write-side derivation that belongs after hydration.
 
 ## Overriding the operation handler
 

@@ -45,6 +45,10 @@ final class DiscoverySnapshotWriter
                 static fn(SerializerDescriptor $descriptor): array => $descriptor->toArray(),
                 $this->discovery->serializers(),
             ),
+            'hydrators' => \array_map(
+                static fn(HydratorDescriptor $descriptor): array => $descriptor->toArray(),
+                $this->discovery->hydrators(),
+            ),
         ];
 
         $php = '<?php' . "\n\n" . 'return ' . \var_export($snapshot, true) . ';' . "\n";
