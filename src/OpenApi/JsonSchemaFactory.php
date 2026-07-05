@@ -31,6 +31,11 @@ use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
  * no `components` to reference. So for relationships/links/meta the OpenAPI document is
  * the fuller contract; the standalone document is authoritative for a type's attribute
  * shape.
+ *
+ * A resource-less / standalone-serializer type (PLAN decision 3, bundle ADR 0024)
+ * contributes a permissive resource-object schema (no field inventory, so an inline
+ * `attributes: {type: object}`), so every registered type yields a document — the same
+ * fieldless projection the OpenAPI document carries for it.
  */
 final class JsonSchemaFactory
 {
@@ -124,7 +129,10 @@ final class JsonSchemaFactory
     }
 
     /**
-     * The JSON:API type names registered for a server, in discovery order.
+     * The JSON:API type names registered for a server, in discovery order: the resources
+     * first, then the standalone-serializer types (PLAN decision 3, bundle ADR 0024) —
+     * the same resources-then-standalone ordering the OpenAPI document projects, so the
+     * two artifacts enumerate the identical type set.
      *
      * @return list<string>
      */
@@ -135,12 +143,17 @@ final class JsonSchemaFactory
             $names[] = $descriptor->type;
         }
 
+        foreach ($this->discovery->serializersFor($serverName) as $descriptor) {
+            $names[] = $descriptor->type;
+        }
+
         return $names;
     }
 
     /**
      * The declared server names, `default` first, drawn from the discovered resources'
-     * server assignments.
+     * and standalone serializers' server assignments (so a server exposing only
+     * standalone types still exports).
      *
      * @return list<string>
      */
@@ -148,6 +161,14 @@ final class JsonSchemaFactory
     {
         $names = [];
         foreach ($this->discovery->resources() as $descriptor) {
+            foreach ($descriptor->servers as $server) {
+                if (!\in_array($server, $names, true)) {
+                    $names[] = $server;
+                }
+            }
+        }
+
+        foreach ($this->discovery->serializers() as $descriptor) {
             foreach ($descriptor->servers as $server) {
                 if (!\in_array($server, $names, true)) {
                     $names[] = $server;
