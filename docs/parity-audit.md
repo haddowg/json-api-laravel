@@ -178,6 +178,18 @@ optional example) is likewise unported — lower stakes as it was optional.
 the MusicCatalog wiring as `Event::listen` listeners with a smoke test in a follow-up, so the
 workbench demonstrates the cross-cutting-listener pattern end-to-end. Not a v1 blocker.
 
+## E. Composite attribute types (post-audit addendum, 2026-07-05)
+
+The composite rollout (core #128–#131) landed in both packages after the original audit:
+
+| Concern | Bundle | Laravel | Parity |
+|---|---|---|---|
+| `Obj` child cascade | `nestedCollection` (Map ∥ Obj), ADR 0111 | `mapChildRules` (Map ∥ Obj), ADR 0012 | ✅ identical `/data/attributes/<field>/<child>` pointers (twin conformance cases assert the same pointers) |
+| `OneOf` variant validation | document-level `oneOfErrors()` | document-level `oneOfErrors()` | ✅ identical pointers incl. the unknown-discriminator `422` at `/<field>/<discriminator>`; violation *details* differ by host validator (by design) |
+| `Shape` value validation | core `SchemaValueValidator`, DI-gated on opis, ADR 0112 | same core validator, `class_exists`-gated, ADR 0013 | ✅ one shared implementation — identical errors and pointers |
+| Storage | single Doctrine `json` column | single `json` column + `array` cast | 🟰 recorded storage twins |
+| Showcase resource | example `releases` (json-api-symfony#108) | workbench `releases` twin | ✅ byte-compatible OpenAPI (covered by `composer byte-compat` on both servers) |
+
 ## Summary
 
 Every bundle capability is either **ported (✅)**, **intentionally reshaped/diverged by a

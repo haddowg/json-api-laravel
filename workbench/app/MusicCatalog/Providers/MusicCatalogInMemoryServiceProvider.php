@@ -23,6 +23,7 @@ use Workbench\App\MusicCatalog\Domain\Library;
 use Workbench\App\MusicCatalog\Domain\Playlist;
 use Workbench\App\MusicCatalog\Domain\PlaylistEntry;
 use Workbench\App\MusicCatalog\Domain\Product;
+use Workbench\App\MusicCatalog\Domain\Release;
 use Workbench\App\MusicCatalog\Domain\Track;
 use Workbench\App\MusicCatalog\Domain\User;
 use Workbench\App\MusicCatalog\JsonApi\AlbumResource;
@@ -34,6 +35,7 @@ use Workbench\App\MusicCatalog\JsonApi\LibraryResource;
 use Workbench\App\MusicCatalog\JsonApi\PlaylistResource;
 use Workbench\App\MusicCatalog\JsonApi\ProductResource;
 use Workbench\App\MusicCatalog\JsonApi\PublicProfileResource;
+use Workbench\App\MusicCatalog\JsonApi\ReleaseResource;
 use Workbench\App\MusicCatalog\JsonApi\TrackResource;
 use Workbench\App\MusicCatalog\JsonApi\UserResource;
 use Workbench\App\MusicCatalog\Provider\ChartProvider;
@@ -84,6 +86,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
             PlaylistResource::class,
             ProductResource::class,
             PublicProfileResource::class,
+            ReleaseResource::class,
             TrackResource::class,
             UserResource::class,
             ReissueAlbum::class,
@@ -109,6 +112,11 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
         JsonApi::provider($albums);
         $artistResolver = static fn(string $type, string $id): ?object => $type === 'artists' ? ($graph['artists'][$id] ?? null) : null;
         JsonApi::persister(new InMemoryDataPersister('albums', $albums->store(), static fn(): Album => new Album(), $artistResolver));
+
+        $releases = new InMemoryDataProvider('releases', $graph['releases'], identify: self::identify(), assignId: self::assignId());
+        JsonApi::provider($releases);
+        $albumResolver = static fn(string $type, string $id): ?object => $type === 'albums' ? ($graph['albums'][$id] ?? null) : null;
+        JsonApi::persister(new InMemoryDataPersister('releases', $releases->store(), static fn(): Release => new Release(), $albumResolver));
 
         $tracks = new InMemoryDataProvider('tracks', $graph['tracks'], identify: self::identify(), assignId: self::assignId(), filterArms: [$fullTextArm]);
         JsonApi::provider($tracks);
@@ -167,7 +175,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
      *     artists: array<int|string, Artist>, albums: array<int|string, Album>, tracks: array<int|string, Track>,
      *     genres: array<int|string, Genre>, devices: array<int|string, Device>, products: array<int|string, Product>,
      *     users: array<int|string, User>, libraries: array<int|string, Library>, playlists: array<int|string, Playlist>,
-     *     favorites: array<int|string, Favorite>,
+     *     favorites: array<int|string, Favorite>, releases: array<int|string, Release>,
      * }
      */
     private function buildGraph(): array
@@ -224,6 +232,19 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
             if ($album !== null) {
                 $album->tracks[] = $track;
             }
+        }
+
+        $releases = [];
+        foreach (Fixtures::releases() as $row) {
+            $releases[(string) $row['id']] = new Release(
+                id: (string) $row['id'],
+                catalog_number: $row['catalog_number'],
+                format: $row['format'],
+                packaging: $row['packaging'],
+                availability: $row['availability'],
+                dimensions: $row['dimensions'],
+                album: $row['album_id'] !== null ? ($albums[(string) $row['album_id']] ?? null) : null,
+            );
         }
 
         $genres = [];
@@ -332,7 +353,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
             );
         }
 
-        return \compact('artists', 'albums', 'tracks', 'genres', 'devices', 'products', 'users', 'libraries', 'playlists', 'favorites');
+        return \compact('artists', 'albums', 'tracks', 'genres', 'devices', 'products', 'users', 'libraries', 'playlists', 'favorites', 'releases');
     }
 
     private static function identify(): \Closure

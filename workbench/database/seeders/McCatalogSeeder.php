@@ -13,6 +13,7 @@ use Workbench\App\MusicCatalog\Models\Genre;
 use Workbench\App\MusicCatalog\Models\Library;
 use Workbench\App\MusicCatalog\Models\Playlist;
 use Workbench\App\MusicCatalog\Models\Product;
+use Workbench\App\MusicCatalog\Models\Release;
 use Workbench\App\MusicCatalog\Models\Track;
 use Workbench\App\MusicCatalog\Models\User;
 use Workbench\App\MusicCatalog\Support\Fixtures;
@@ -42,6 +43,9 @@ final class McCatalogSeeder extends Seeder
         }
         foreach (Fixtures::albums() as $row) {
             Album::query()->create($row);
+        }
+        foreach (Fixtures::releases() as $row) {
+            Release::query()->create($row);
         }
         foreach (Fixtures::tracks() as $row) {
             Track::query()->create($row);

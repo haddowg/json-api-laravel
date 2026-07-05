@@ -44,6 +44,21 @@ final class Fixtures
     }
 
     /**
+     * The composite-attribute showcase rows: each composite value (OneOf `format`, Obj
+     * `packaging`, Shape'd `availability`/`dimensions`) is a single array — one json
+     * column / one property.
+     *
+     * @return list<array{id: int, album_id: ?int, catalog_number: string, format: ?array<string, mixed>, packaging: ?array<string, mixed>, availability: ?array<string, mixed>, dimensions: ?array<string, mixed>}>
+     */
+    public static function releases(): array
+    {
+        return [
+            ['id' => 1, 'album_id' => 1, 'catalog_number' => 'NODATA 01 LP', 'format' => ['medium' => 'vinyl', 'rpm' => 33, 'coloured' => true], 'packaging' => ['material' => 'cardboard', 'gatefold' => true], 'availability' => ['regions' => ['GB', 'EU']], 'dimensions' => ['widthMm' => 315, 'heightMm' => 315, 'depthMm' => 8]],
+            ['id' => 2, 'album_id' => 1, 'catalog_number' => 'NODATA 01 DL', 'format' => ['medium' => 'digital', 'codec' => 'FLAC', 'bitrateKbps' => 1411], 'packaging' => null, 'availability' => ['worldwide' => true], 'dimensions' => null],
+        ];
+    }
+
+    /**
      * @return list<array{id: int, album_id: ?int, title: string, track_number: int, length_seconds: int, explicit: bool, genres: list<string>, preview_offset: ?string}>
      */
     public static function tracks(): array

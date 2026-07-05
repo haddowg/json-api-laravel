@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Validation;
 
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
+use haddowg\JsonApi\OpenApi\Schema;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Constraint\CompareField;
@@ -13,6 +14,7 @@ use haddowg\JsonApi\Resource\Constraint\Comparison;
 use haddowg\JsonApi\Resource\Constraint\ConstraintInterface;
 use haddowg\JsonApi\Resource\Constraint\Nullable;
 use haddowg\JsonApi\Resource\Constraint\Required;
+use haddowg\JsonApi\Resource\Constraint\Shape;
 use haddowg\JsonApi\Resource\Constraint\When;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\DateTime;
@@ -20,9 +22,12 @@ use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Map;
 use haddowg\JsonApi\Resource\Field\Mode;
+use haddowg\JsonApi\Resource\Field\Obj;
+use haddowg\JsonApi\Resource\Field\OneOf;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\Error\Error;
 use haddowg\JsonApi\Schema\Error\ErrorSource;
+use haddowg\JsonApi\Validation\SchemaValueValidator;
 use haddowg\JsonApiLaravel\Validation\Constraint\UniqueEntity;
 use haddowg\JsonApiLaravel\Validation\Rules\NotNull;
 use haddowg\JsonApiLaravel\Validation\Rules\ParsableDate;
@@ -68,6 +73,9 @@ final class ResourceValidator
         private readonly ValidationFactory $validatorFactory,
         private readonly ConstraintTranslator $translator,
         private readonly JsonPointerBuilder $pointers,
+        // Null when opis/json-schema is not installed — a Shape then documents its
+        // OpenAPI shape but is not value-validated (ADR 0013).
+        private readonly ?SchemaValueValidator $schemaValues = null,
     ) {}
 
     /**
@@ -139,7 +147,7 @@ final class ResourceValidator
             $value = $attributes[$name] ?? null;
             $rules[$name] = $this->fieldRules($field, $creating, $request, $value);
 
-            if ($field instanceof Map && \is_array($value)) {
+            if (($field instanceof Map || $field instanceof Obj) && \is_array($value)) {
                 foreach ($this->mapChildRules($field, $creating, $request, $value) as $childKey => $childRules) {
                     $rules[$childKey] = $childRules;
                 }
@@ -173,6 +181,16 @@ final class ResourceValidator
                     $errors[] = $this->error($detail, $owner);
                 }
             }
+        }
+
+        // The composite passes also run document-level: a OneOf's variant is selected by
+        // the incoming discriminator (value-dependent, so no static rule map can carry
+        // it), and a Shape is raw JSON Schema no illuminate rule can translate.
+        foreach ($this->oneOfErrors($resource, $attributes, $creating, $request) as $error) {
+            $errors[] = $error;
+        }
+        foreach ($this->shapeErrors($resource, $attributes, $creating, $request) as $error) {
+            $errors[] = $error;
         }
 
         $ownIdError = $this->ownIdError($resource, $data);
@@ -652,7 +670,7 @@ final class ResourceValidator
     private function valueConstraints(FieldInterface $field, bool $creating, JsonApiRequestInterface $request): array
     {
         $rules = [];
-        if ($field instanceof Map) {
+        if ($field instanceof Map || $field instanceof Obj || $field instanceof OneOf) {
             $rules[] = 'array';
         }
         // A DateTime field (and its Date/Time specialisations) carries no implicit format
@@ -679,6 +697,9 @@ final class ResourceValidator
             if ($constraint instanceof EntityConstraintInterface) {
                 continue; // entity pass / Rule::unique
             }
+            if ($constraint instanceof Shape) {
+                continue; // raw JSON Schema; validated document-level by shapeErrors()
+            }
             foreach ($this->translator->translate($constraint, $request) as $rule) {
                 $rules[] = $rule;
             }
@@ -688,18 +709,20 @@ final class ResourceValidator
     }
 
     /**
-     * The dot-notation child rule-sets for a present {@see Map} value, one per writable
-     * child, keyed `<map>.<child>` so Laravel validates each nested child and a violation
-     * maps to `/data/attributes/<map>/<child>`. Registered only when the map value is a
-     * present array, so an omitted optional map never fires its required children (ADR
-     * 0020). The recursion is one level deep by design — a child that is itself a Map is
+     * The dot-notation child rule-sets for a present {@see Map} or {@see Obj} value, one
+     * per writable child, keyed `<field>.<child>` so Laravel validates each nested child
+     * and a violation maps to `/data/attributes/<field>/<child>`. The two structured
+     * types cascade identically — they differ only in storage (flat columns vs one
+     * value), which validation never sees. Registered only when the value is a present
+     * array, so an omitted optional field never fires its required children (ADR 0020).
+     * The recursion is one level deep by design — a child that is itself structured is
      * not descended into.
      *
-     * @param array<array-key, mixed> $value the incoming map value
+     * @param array<array-key, mixed> $value the incoming structured value
      *
      * @return array<string, list<string|\Stringable|\Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\Rule>>
      */
-    private function mapChildRules(Map $map, bool $creating, JsonApiRequestInterface $request, array $value): array
+    private function mapChildRules(Map|Obj $map, bool $creating, JsonApiRequestInterface $request, array $value): array
     {
         $rules = [];
         foreach ($map->children() as $child) {
@@ -716,6 +739,129 @@ final class ResourceValidator
         }
 
         return $rules;
+    }
+
+    /**
+     * Validates each present {@see OneOf} attribute value-dependently: the incoming
+     * discriminator selects the variant, whose writable children are then validated
+     * through the same dot-notation rule map as a {@see Map}/{@see Obj} cascade (one
+     * level, same create/update presence resolution) — so a child violation maps to
+     * `/data/attributes/<field>/<child>`. An array value whose discriminator names no
+     * variant yields one error at `/data/attributes/<field>/<discriminator>`; the main
+     * pass's `array` rule already rejects a non-array value. Absent or explicit-null
+     * values are the main pass's concern (presence / nullability), so they are skipped
+     * here. (ADR 0012.)
+     *
+     * @param array<string, mixed> $attributes the merged incoming attribute map
+     *
+     * @return list<Error>
+     */
+    private function oneOfErrors(AbstractResource $resource, array $attributes, bool $creating, JsonApiRequestInterface $request): array
+    {
+        $errors = [];
+        foreach ($resource->fields() as $field) {
+            if (!$field instanceof OneOf) {
+                continue;
+            }
+            if (!\array_key_exists($field->name(), $attributes) || $field->isReadOnlyFor($creating, $request)) {
+                continue;
+            }
+
+            $value = $attributes[$field->name()];
+            if ($value === null || !\is_array($value)) {
+                continue; // presence/nullability and the `array` rule are the main pass's concern
+            }
+
+            $discriminator = $field->discriminatorName();
+            $variant = $field->variantFor($value[$discriminator] ?? null);
+            if ($variant === null) {
+                $errors[] = $this->error(
+                    'This value is not one of the allowed types.',
+                    $field->name() . '.' . $discriminator,
+                );
+
+                continue;
+            }
+
+            $rules = [];
+            foreach ($variant->children() as $child) {
+                // Static visibility, mirroring the Map/Obj cascade (ADR 0020).
+                if ($child->isReadOnly($creating)) {
+                    continue;
+                }
+
+                /** @var mixed $childValue */
+                $childValue = $value[$child->name()] ?? null;
+                $rules[$field->name() . '.' . $child->name()] = $this->fieldRules($child, $creating, $request, $childValue);
+            }
+            if ($rules === []) {
+                continue;
+            }
+
+            $bag = $this->validatorFactory->make($attributes, $rules)->errors();
+            foreach ($bag->keys() as $key) {
+                foreach ($bag->get($key) as $message) {
+                    $errors[] = $this->error(\is_string($message) ? $message : '', (string) $key);
+                }
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Validates each present attribute carrying a {@see Shape} constraint against that
+     * constraint's composite JSON Schema (oneOf/anyOf/allOf of raw member schemas)
+     * through the core {@see SchemaValueValidator} (opis). A {@see Shape} is a
+     * raw-schema carrier no illuminate rule can translate, so — like {@see OneOf} and
+     * the cross-field compares — it validates value-dependently at the document level.
+     * Each returned {@see Error} already carries the opis instance pointer appended to
+     * `/data/attributes/<field>`.
+     *
+     * A no-op when opis is not installed (`$this->schemaValues === null`), so a Shape
+     * still documents its OpenAPI shape but is not value-validated. Absent or
+     * explicit-null values are the main pass's concern (presence / nullability), so
+     * they are skipped here. (ADR 0013.)
+     *
+     * @param array<string, mixed> $attributes the merged incoming attribute map
+     *
+     * @return list<Error>
+     */
+    private function shapeErrors(AbstractResource $resource, array $attributes, bool $creating, JsonApiRequestInterface $request): array
+    {
+        if ($this->schemaValues === null) {
+            return []; // opis not installed — a Shape documents but does not validate
+        }
+
+        $errors = [];
+        foreach ($resource->fields() as $field) {
+            if ($field instanceof Id || $field instanceof RelationInterface) {
+                continue;
+            }
+            if (!\array_key_exists($field->name(), $attributes) || $field->isReadOnlyFor($creating, $request)) {
+                continue;
+            }
+
+            $value = $attributes[$field->name()];
+            if ($value === null) {
+                continue; // nullability is the main pass's concern, not the shape's
+            }
+
+            foreach ($field->constraints() as $constraint) {
+                if (!$constraint instanceof Shape || !$constraint->context()->appliesTo($creating)) {
+                    continue;
+                }
+                foreach ($this->schemaValues->validate(
+                    $constraint->contribute(Schema::create()),
+                    $value,
+                    '/data/attributes/' . $field->name(),
+                ) as $error) {
+                    $errors[] = $error;
+                }
+            }
+        }
+
+        return $errors;
     }
 
     /**

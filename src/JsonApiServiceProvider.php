@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel;
 
 use haddowg\JsonApi\Serializer\RelationshipLoadStateInterface;
 use haddowg\JsonApi\Serializer\ResourceLinkContributorInterface;
+use haddowg\JsonApi\Validation\SchemaValueValidator;
 use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
 use haddowg\JsonApiLaravel\Action\ActionInvoker;
 use haddowg\JsonApiLaravel\Action\ActionLinkContributor;
@@ -408,7 +409,24 @@ final class JsonApiServiceProvider extends ServiceProvider
             return new ConstraintTranslator($this->constraintTranslators($app));
         });
 
-        $this->app->singleton(ResourceValidator::class);
+        // The core opis value-validator gives a Shape constraint teeth. Registered only
+        // when opis/json-schema is installed — without it a Shape still documents its
+        // OpenAPI shape but is not value-validated (the same optional posture the
+        // testing kit's schema assertions have). Independent of any structural-linter
+        // toggle: a declared Shape exists solely to be enforced (ADR 0013).
+        $opisInstalled = \class_exists(\Opis\JsonSchema\Validator::class);
+        if ($opisInstalled) {
+            $this->app->singleton(SchemaValueValidator::class);
+        }
+
+        $this->app->singleton(ResourceValidator::class, function (Container $app) use ($opisInstalled): ResourceValidator {
+            return new ResourceValidator(
+                $app->make(\Illuminate\Contracts\Validation\Factory::class),
+                $app->make(ConstraintTranslator::class),
+                $app->make(JsonPointerBuilder::class),
+                $opisInstalled ? $app->make(SchemaValueValidator::class) : null,
+            );
+        });
         $this->app->singleton(FilterValueValidator::class);
     }
 

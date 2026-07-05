@@ -50,6 +50,9 @@ Core's constraint VOs translate to the natural Laravel rule:
 | `AtLeastOneOf` | a composite closure |
 | `Each` (list items) | array-element rules |
 | `Map` children | nested dot-notation rules → `/data/attributes/<map>/<child>` pointers |
+| `Obj` children | the same dot-notation cascade as `Map` (one value, one json column) |
+| `OneOf` variants | the discriminator selects the variant; its children cascade like `Map`'s, an unknown discriminator is a `422` at `/data/attributes/<field>/<discriminator>` |
+| `Shape` | not translated — value-validated by core's opis `SchemaValueValidator` when opis is installed (see [composite attributes](composite-attributes.md)) |
 
 The example's `users.passwordConfirm` composes three of these (an `AtLeastOneOf`, a
 conditional `When`, and an equality `CompareField`).
