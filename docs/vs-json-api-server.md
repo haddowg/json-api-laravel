@@ -9,8 +9,8 @@ principle rather than an afterthought. The differences are ones of investment: j
 stays deliberately lean and framework-agnostic (a PSR-15 handler you wire by hand), while this
 package invests in a deep Laravel-native layer — discovery, routing, artisan tooling, Gate
 policies, a testing kit — plus a byte-identical cross-framework contract with the Symfony
-bundle. It also, honestly, has things this package does not: end-to-end asynchronous
-processing chief among them.
+bundle. It also, honestly, has things this package does not: boolean filter algebra and
+heterogeneous polymorphic collections chief among them.
 
 Comparison as of 5 July 2026, against `tobyz/json-api-server` v1.0.0-rc.1. Found an error?
 [Open an issue](https://github.com/haddowg/json-api-laravel/issues).
@@ -68,8 +68,9 @@ CRUD, client-generated ids, and relationship mutation are covered on both sides.
 where the shared philosophy diverges in depth: both derive validation from the type system,
 but this package compiles the full constraint set to Laravel rules (or Symfony constraints)
 with an entity-level pass and an optional document-first linter, while json-api-server's
-Laravel `rules()` bridge validates values one at a time. And one row belongs entirely to them:
-asynchronous processing.
+Laravel `rules()` bridge validates values one at a time. Asynchronous processing, once a row
+that belonged entirely to them, is now covered on both sides — the difference is in reach:
+json-api-server reflects the async responses in OpenAPI, this package does not yet.
 
 | Capability | This package | json-api-server |
 | --- | --- | --- |
@@ -77,7 +78,7 @@ asynchronous processing.
 | Validation from the definition | **Yes** — constraints compile to Laravel rules with nested pointers, an entity-level post-hydration pass, and an optional JSON Schema linter; see [validation](validation.md) | **Partial** — type-system validation plus per-field `validate()` closures; the `rules()` bridge validates one value at a time (interdependent rules do not work) and rules are not reflected in OpenAPI |
 | Lifecycle events & hooks | **Yes** — 18 real Laravel [events](lifecycle.md) plus a per-resource [hook trait](lifecycle-hooks.md); before hooks abort, after hooks replace the result | **Partial** — per-resource hook methods and endpoint-level callbacks; no framework event dispatch |
 | Custom actions | **Yes** — declared on the resource with typed input modes, per-action authorization, and `asLink` exposure; see [actions](actions.md) | **Yes** — `CollectionAction`/`ResourceAction` endpoints with configurable methods and OpenAPI paths; no typed input/output modes |
-| Async writes | **No** — a `202 Accepted` seam exists in the Symfony bundle, but the Laravel package has no counterpart yet | **Yes** — the full JSON:API Asynchronous Processing recommendation: `202` + job resource, `Retry-After`, `303 See Other` on completion, all reflected in OpenAPI |
+| Async writes | **Yes** — a persister returns `AcceptedForProcessing` to defer a write to a queue; the handler renders `202` + a pollable job resource with `Retry-After`, and a completion action returns `303 See Other` (not yet reflected in OpenAPI); see [async writes](async.md) | **Yes** — the full JSON:API Asynchronous Processing recommendation: `202` + job resource, `Retry-After`, `303 See Other` on completion, all reflected in OpenAPI |
 
 ## Data layer
 
@@ -128,9 +129,10 @@ There is a lot to admire here, and some of it this package simply does not have:
 
 - **Lean and framework-agnostic.** A PSR-15 handler with five tiny runtime dependencies —
   drop it into any PSR-7-capable stack with no bundle or provider machinery to adopt.
-- **Asynchronous processing, end to end.** `Create::make()->async()` for `202` + a job
-  resource, `Retry-After` header schemas, and `303 See Other` on completion — the Laravel
-  package here has no counterpart yet.
+- **Asynchronous processing reflected in OpenAPI.** Both packages now do `202` + a job
+  resource, `Retry-After`, and `303 See Other` on completion (this package via the
+  [async-write seam](async.md)); json-api-server goes one further and reflects the async
+  responses in its generated OpenAPI document, which this package does not yet.
 - **Boolean filter algebra.** Nestable `filter[and]`/`[or]`/`[not]` groups and per-filter
   operators go beyond a flat declarative vocabulary.
 - **Polymorphism as a design pillar.** Heterogeneous collections with a union SQL builder for
@@ -145,8 +147,8 @@ There is a lot to admire here, and some of it this package simply does not have:
 
 **Choose json-api-server** if you value minimal dependencies and framework independence — a
 non-Laravel PSR-7 stack, or a Laravel app where you would rather wire one route by hand than
-adopt a package's conventions; if you need JSON:API asynchronous processing today; or if
-boolean filter algebra and heterogeneous collections match your domain. It is a lean,
+adopt a package's conventions; if you need OpenAPI-reflected asynchronous processing today; or
+if boolean filter algebra and heterogeneous collections match your domain. It is a lean,
 carefully crafted library approaching a well-earned 1.0.
 
 **Choose this package** if you want the same spec-first, typed-schema philosophy with the

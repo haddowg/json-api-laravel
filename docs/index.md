@@ -114,6 +114,9 @@ Eloquent `Album` model, with no controller and no handler. The step-by-step buil
   [atomic-operations](atomic-operations.md).
 - **Lifecycle events & hooks** — 18 real Laravel events plus a per-resource hook trait. See
   [lifecycle](lifecycle.md) and [lifecycle-hooks](lifecycle-hooks.md).
+- **Asynchronous writes** — a persister can accept a long-running write for queued
+  processing, rendering `202 Accepted` + a pollable job resource and `303 See Other` on
+  completion. See [async writes](async.md).
 - **OpenAPI 3.1** — an auto-generated, byte-compatible document, a Swagger UI / ReDoc
   viewer, JSON Schema exports, and an `optimize` pipeline. See [openapi](openapi.md) and
   [optimize](optimize.md).
