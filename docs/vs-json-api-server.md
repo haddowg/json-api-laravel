@@ -9,8 +9,10 @@ principle rather than an afterthought. The differences are ones of investment: j
 stays deliberately lean and framework-agnostic (a PSR-15 handler you wire by hand), while this
 package invests in a deep Laravel-native layer — discovery, routing, artisan tooling, Gate
 policies, a testing kit — plus a byte-identical cross-framework contract with the Symfony
-bundle. It also, honestly, has things this package does not: boolean filter algebra and
-heterogeneous polymorphic collections chief among them.
+bundle. It also, honestly, has capabilities this package does not — heterogeneous
+polymorphic collections chief among them — and one this package *deliberately declines*
+rather than lacks: client-composed boolean filter algebra, where this package holds
+filtering to an explicit, owner-vetted allow-list (see Reading, below).
 
 Comparison as of 5 July 2026, against `tobyz/json-api-server` v1.0.0-rc.1. Found an error?
 [Open an issue](https://github.com/haddowg/json-api-laravel/issues).
@@ -50,14 +52,20 @@ direction, down to a bare serializer/hydrator pair with no resource class at all
 ## Reading
 
 Both validate includes against per-relation opt-ins, support sparse fieldsets, multi-field
-sorting, and a declarative filter vocabulary — and json-api-server's nestable boolean
-`filter[and]`/`[or]`/`[not]` algebra goes beyond anything this package ships. The gaps run the
-other way on bounding: cursor pagination coverage and how to-many includes behave at scale.
+sorting, and a declarative filter vocabulary. They diverge on *who composes a filter*:
+json-api-server exposes a nestable boolean `filter[and]`/`[or]`/`[not]` algebra that lets the
+client assemble predicates the server never named, while this package holds filtering to an
+explicit, owner-vetted allow-list — every filter is a named, indexable query shape the
+resource author wrote. That is a deliberate trade, not a missing feature: it keeps query cost
+bounded and predictable (no client can compose an unindexed `OR`/`NOT` fan-out), matters most
+under multi-tenancy where an ad-hoc filter tree is a cost-amplification surface, and keeps the
+filter surface exporting cleanly to OpenAPI as discrete, documented parameters. The gaps run
+the other way on bounding: cursor pagination coverage and how to-many includes behave at scale.
 
 | Capability | This package | json-api-server |
 | --- | --- | --- |
 | Fieldsets & includes | **Yes** — depth caps, per-relation opt-outs, and per-relationship sort/filter on included collections via the [Relationship Queries profile](relationships.md#the-relationship-queries-profile) | **Yes** — sparse fieldsets plus a `sparse()` flag, includes validated per relation; no depth caps and no per-relationship querying of included collections |
-| Filtering | **Yes** — `Where`, `WhereIn`/`NotIn`, `WhereNull`, `WhereHas`/`WhereDoesntHave`, dotted-path `WhereThrough`, singular filters; see [eloquent](eloquent.md#filters--query-builder) | **Yes** — a comparable vocabulary plus nestable boolean `filter[and]`/`[or]`/`[not]` groups and per-filter operators (`filter[views][gt]=100`) — beyond this package's flat vocabulary; no dotted-path equivalent |
+| Filtering | **Yes** — an explicit, owner-vetted allow-list: `Where`, `WhereIn`/`NotIn`, `WhereNull`, `WhereHas`/`WhereDoesntHave`, dotted-path `WhereThrough`, singular filters — every filter is a named, indexable query shape the author declared; client-composed algebra is declined by design (bounded query cost, multi-tenant safety); see [eloquent](eloquent.md#filters--query-builder) | **Yes** — a comparable named vocabulary, plus client-composed nestable boolean `filter[and]`/`[or]`/`[not]` groups and per-filter operators (`filter[views][gt]=100`); no dotted-path equivalent |
 | Pagination strategies | **Yes** — page-number, offset, server-fixed, and cursor, with a per-relation defaults chain; see [pagination](pagination.md) | **Partial** — offset and cursor, both count-free by default with opt-in totals; no page-number or server-fixed strategies |
 | Cursor pagination | **Yes** — true keyset under any declared `?sort`, on primary, related, *and* relationship linkage endpoints, advertising the published profile | **Yes** — true keyset via Laravel's `cursorPaginate`, correctly activating the published profile URI; not available on to-many linkage, and `after`+`before` ranges are unsupported in the Eloquent layer |
 | Compound-document bounding | **Yes** — windowed includes and related collections via SQL window functions and push-down queries; see [eloquent](eloquent.md#windowed-relationship-queries--sql-push-down-only) | **No** — a deferred-value buffer batches relationship loading to avoid N+1, but to-many includes and linkage load the full related collection (the docs warn about this) |
