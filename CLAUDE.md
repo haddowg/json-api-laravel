@@ -37,10 +37,12 @@ Phase 5 (consolidation) delivered:
   (`docker compose up` → `http://localhost:8080/api/albums`). Core is resolved via the VCS-repo
   trick (the path-repo symlink does not exist in a container).
 
-**Known gap (documented, non-blocking):** the per-resource `serializer:`/`hydrator:` override
-on `#[AsJsonApiResource]` is not yet carried (the standalone `#[AsJsonApiSerializer]` is). The
-workbench reaches both bundle cases via field closures + the hook trait, so byte-compat is
-unaffected. See finding **F1** in the parity audit.
+**Resolved parity finding (documented, non-blocking):** the per-resource
+`serializer:`/`hydrator:` override on `#[AsJsonApiResource]` is now carried (ADR 0015) — the
+override params exist and are threaded through discovery into core's `Server::register()`,
+alongside the standalone `#[AsJsonApiSerializer]`/`#[AsJsonApiHydrator]`. Byte-compat is
+unaffected either way (the workbench also reaches both bundle cases via field closures + the
+hook trait). See finding **F1** (resolved) in the parity audit.
 
 **Remaining close-out (human-gated, do NOT do autonomously):** pin core `^1.0` once json-api#6
 merges; then remove `PLAN.md` + this notice. The main session owns this final step.
