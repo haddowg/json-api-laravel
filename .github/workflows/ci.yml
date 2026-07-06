@@ -126,14 +126,15 @@ jobs:
         run: composer cs-check
 
   byte-compat:
-    name: OpenAPI byte-compatibility
+    name: OpenAPI + JSON Schema byte-compatibility
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
     env:
-      # The music-catalog example document exported from the sibling bundle is diffed
-      # against this package's; the two MUST be byte-identical (PLAN decision 11).
+      # The music-catalog example documents (OpenAPI + standalone JSON Schema) exported
+      # from the sibling bundle are diffed against this package's; each MUST be
+      # byte-identical (PLAN decision 11).
       JSON_API_SYMFONY_PATH: ${{ github.workspace }}/../json-api-symfony
       # Carry the token + capped parallelism into every Composer resolution so the
       # anonymous GitHub VCS lookups for core don't hit rate limits (429/400).
@@ -169,5 +170,5 @@ jobs:
         working-directory: ${{ env.JSON_API_SYMFONY_PATH }}
         run: composer install --no-interaction --no-progress
 
-      - name: Diff the projected OpenAPI documents (must be byte-identical)
+      - name: Diff the projected OpenAPI + JSON Schema documents (must be byte-identical)
         run: composer byte-compat

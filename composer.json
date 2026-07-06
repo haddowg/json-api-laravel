@@ -87,7 +87,7 @@
         "phpstan": "Run PHPStan static analysis",
         "cs-check": "Check code style without modifying files",
         "cs-fix": "Apply code style fixes",
-        "byte-compat": "Diff the projected OpenAPI document against the Symfony bundle's (must be byte-identical)"
+        "byte-compat": "Diff the projected OpenAPI and JSON-Schema documents against the Symfony bundle's (must be byte-identical)"
     },
     "minimum-stability": "dev",
     "prefer-stable": true
