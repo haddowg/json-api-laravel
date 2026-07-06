@@ -34,6 +34,7 @@ use haddowg\JsonApi\Resource\Constraint\UniqueItems;
 use haddowg\JsonApi\Resource\Constraint\UrlFormat;
 use haddowg\JsonApi\Resource\Constraint\UuidFormat;
 use haddowg\JsonApi\Resource\Constraint\When;
+use haddowg\JsonApiLaravel\Validation\Constraint\LaravelRules;
 use haddowg\JsonApiLaravel\Validation\Rules\AfterDate;
 use haddowg\JsonApiLaravel\Validation\Rules\AtLeastOneOf as AtLeastOneOfRule;
 use haddowg\JsonApiLaravel\Validation\Rules\BeforeDate;
@@ -139,6 +140,9 @@ final class ConstraintTranslator
             $constraint instanceof After => [new AfterDate($constraint->bound)],
             $constraint instanceof Before => [new BeforeDate($constraint->bound)],
             $constraint instanceof Between => [new BetweenDates($constraint->min, $constraint->max)],
+            // A LaravelRules carrier holds ready-made illuminate/validation rules — run
+            // them directly; the OpenAPI half rides core's ProvidesJsonSchema (contribute()).
+            $constraint instanceof LaravelRules => $constraint->rules,
             default => $this->translateExtension($constraint),
         };
     }
