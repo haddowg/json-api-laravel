@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Action;
 
+use haddowg\JsonApi\Response\AcceptedResponse;
 use haddowg\JsonApi\Response\DataResponse;
 use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Response\MetaResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
+use haddowg\JsonApi\Response\SeeOtherResponse;
 
 /**
  * A custom, non-CRUD action (the Laravel twin of the bundle's
@@ -27,5 +29,5 @@ use haddowg\JsonApi\Response\NoContentResponse;
  */
 interface ActionHandlerInterface
 {
-    public function handle(ActionContext $context): DataResponse|MetaResponse|NoContentResponse|ErrorResponse;
+    public function handle(ActionContext $context): DataResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|ErrorResponse;
 }

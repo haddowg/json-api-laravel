@@ -210,6 +210,29 @@ The composite rollout (core #128–#131) landed in both packages after the origi
 | Storage | single Doctrine `json` column | single `json` column + `array` cast | 🟰 recorded storage twins |
 | Showcase resource | example `releases` (json-api-symfony#108) | workbench `releases` twin | ✅ byte-compatible OpenAPI (covered by `composer byte-compat` on both servers) |
 
+## F. Async write seam (post-audit addendum, 2026-07-06)
+
+The Symfony bundle grew an async-write seam after the original audit (bundle PR #104,
+bundle ADR 0110); this seam is now twinned here (ADR 0020):
+
+| Concern | Bundle | Laravel | Parity |
+|---|---|---|---|
+| Accept marker | `DataPersister\AcceptedForProcessing` (`poll`/`withJob`/`withRetryAfter`/`withMeta`) | same class, `haddowg\JsonApiLaravel\DataPersister` namespace | ✅ identical fluent API |
+| `202` render | `CrudOperationHandler::accepted()` → core `AcceptedResponse` on create/update | same arm, same core response VO | ✅ byte-identical `202` (job resource / meta-only, `Content-Location`, `Retry-After`) |
+| `303` completion | `ActionContext::seeOther()` → core `SeeOtherResponse` | same helper, same core response VO | ✅ byte-identical `303` (empty body, `Location`) |
+| Atomic rejection | `AsyncWriteNotAllowedInAtomicOperation` (`422`, `ASYNC_WRITE_IN_ATOMIC_OPERATION`) | same exception + code | ✅ identical error; batch rolls back |
+| Recipe | Symfony Messenger (`docs/async.md`) | Laravel queued jobs ([async](async.md)) | 🟰 same wire contract, framework-idiomatic recipe (both unopinionated about the queue) |
+| Witness | `AsyncWriteTest` (in-memory kernel) | dual-provider `AsyncWriteConformanceTestCase` (in-memory + Eloquent) | ✅ over-parity: the seam is exercised on **both** providers here |
+
+Two consequences of the reference storage model are recorded in ADR 0020, not divergences
+from the bundle's contract: on an accepted whole-resource **create**, the deferred
+(join / inverse-FK) embedded-relationship applies are skipped (nothing was keyed — the
+bundle applies embedded relationships pre-create, so it never had a deferred tail); and the
+conformance suite does not assert an accepted **update** leaves its target unchanged on a
+re-read (the in-memory witness hydrates by reference, so its read reflects the uncommitted
+hydration while Eloquent's re-query would not — the bundle's `AsyncWriteTest` makes no such
+claim either). OpenAPI does not yet document the async `202`/`303` responses on either side.
+
 ## Summary
 
 Every bundle capability is either **ported (✅)**, **intentionally reshaped/diverged by a

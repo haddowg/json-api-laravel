@@ -47,6 +47,7 @@ use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\SupportsSingular;
+use haddowg\JsonApi\Response\AcceptedResponse;
 use haddowg\JsonApi\Response\AtomicResultsResponse;
 use haddowg\JsonApi\Response\DataResponse;
 use haddowg\JsonApi\Response\ErrorResponse;
@@ -54,6 +55,7 @@ use haddowg\JsonApi\Response\IdentifierResponse;
 use haddowg\JsonApi\Response\MetaResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
 use haddowg\JsonApi\Response\RelatedResponse;
+use haddowg\JsonApi\Response\SeeOtherResponse;
 use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
 use haddowg\JsonApi\Schema\Relationship\RelationshipPagination;
 use haddowg\JsonApi\Serializer\PolymorphicSerializer;
@@ -64,6 +66,8 @@ use haddowg\JsonApiLaravel\Action\ActionInvoker;
 use haddowg\JsonApiLaravel\Atomic\AtomicLoopBackend;
 use haddowg\JsonApiLaravel\Atomic\AtomicOperationsUnavailable;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
+use haddowg\JsonApiLaravel\DataPersister\AcceptedForProcessing;
+use haddowg\JsonApiLaravel\DataPersister\AsyncWriteNotAllowedInAtomicOperation;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
@@ -186,7 +190,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         private readonly ?Dispatcher $dispatcher = null,
     ) {}
 
-    public function handle(JsonApiOperationInterface $operation): DataResponse|RelatedResponse|IdentifierResponse|MetaResponse|NoContentResponse|AtomicResultsResponse|ErrorResponse
+    public function handle(JsonApiOperationInterface $operation): DataResponse|RelatedResponse|IdentifierResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|AtomicResultsResponse|ErrorResponse
     {
         // Clear the request-scoped `?withCount` seam at the very start of EVERY dispatch, so a
         // prior request's batched counts can never bleed into an arm that does not itself
@@ -1135,7 +1139,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * document-validation and authorization seams sit before hydrate/persist so the
      * follow-on Phase 2 work slots in without reordering.
      */
-    private function create(CreateResourceOperation $operation): DataResponse
+    private function create(CreateResourceOperation $operation): DataResponse|AcceptedResponse
     {
         $server = $operation->context()->server;
         \assert($server instanceof Server);
@@ -1232,10 +1236,27 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // insert / inverse-FK reparent both need the parent PK), their per-op transactions
             // nesting as savepoints under this boundary.
             $created = $persister->create($type, $entity);
+
+            // The persister accepted the write for asynchronous processing (it dispatched
+            // the work instead of committing) — nothing was persisted, so the deferred
+            // (join / inverse-FK) applies have no keyed parent to hang off and are skipped;
+            // the queued job owns the whole write, relationships included (ADR 0020).
+            if ($created instanceof AcceptedForProcessing) {
+                return $created;
+            }
+
             $this->applyRelationships($persister, $type, $created, $deferred, $body, true, flush: true);
 
             return $created;
         });
+
+        // Render the async accept as a `202 Accepted` pointing at the job resource, not
+        // the `201` a synchronous create renders (the twin of bundle ADR 0110). The
+        // post-commit include/window/count wiring and the After* hooks below do not apply
+        // (no resource was persisted), so the branch returns here.
+        if ($entity instanceof AcceptedForProcessing) {
+            return $this->accepted($entity, $server);
+        }
 
         // A write response is the same resource document, so it honours `?include`, the
         // Relationship Queries profile (windowed linkage/pagination), and `?withCount` exactly
@@ -1277,7 +1298,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * loaded target and committed, rendering `200` with the updated document (an
      * unsupplied attribute is left untouched).
      */
-    private function update(UpdateResourceOperation $operation): DataResponse|ErrorResponse
+    private function update(UpdateResourceOperation $operation): DataResponse|AcceptedResponse|ErrorResponse
     {
         $server = $operation->context()->server;
         \assert($server instanceof Server);
@@ -1368,6 +1389,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
             return $persister->update($type, $entity);
         });
 
+        // The persister accepted the update for asynchronous processing — render a
+        // `202 Accepted` pointing at the job resource, as the async create does; the
+        // post-commit wiring and After* hooks below do not apply (ADR 0020).
+        if ($entity instanceof AcceptedForProcessing) {
+            return $this->accepted($entity, $server);
+        }
+
         // A write response honours `?include`, the Relationship Queries profile (windowed
         // linkage/pagination), and `?withCount` exactly as a read does — preload → window →
         // count over the updated entity, before rendering.
@@ -1390,6 +1418,38 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
             return $afterSave->response() ?? $response;
         }, $response);
+    }
+
+    /**
+     * Renders a persister's async-accept marker ({@see AcceptedForProcessing}) as
+     * core's `202` {@see AcceptedResponse}: the pollable job resource (through the job
+     * type's registered serializer) or a meta-only status document, carrying the
+     * `Content-Location` and any `Retry-After` the persister set. An async accept
+     * cannot participate in an all-or-nothing Atomic Operations batch — it defers the
+     * write past the batch's commit — so it is refused (`422`, rolling the batch back)
+     * when a batch is in flight (the twin of bundle ADR 0110; ADR 0020).
+     */
+    private function accepted(AcceptedForProcessing $accepted, Server $server): AcceptedResponse
+    {
+        if ($this->txContext?->isActive() ?? false) {
+            throw new AsyncWriteNotAllowedInAtomicOperation();
+        }
+
+        $job = $accepted->job();
+        $jobType = $accepted->jobType();
+
+        $response = $job !== null && $jobType !== null
+            ? AcceptedResponse::forResource($job, $server->serializerFor($jobType))
+            : AcceptedResponse::fromMeta($accepted->meta());
+
+        $response = $response->withContentLocation($accepted->contentLocation());
+
+        $retryAfter = $accepted->retryAfter();
+        if ($retryAfter !== null) {
+            $response = $response->withRetryAfter($retryAfter);
+        }
+
+        return $response;
     }
 
     /**
