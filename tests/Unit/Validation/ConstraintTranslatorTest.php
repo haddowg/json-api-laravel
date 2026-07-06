@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Unit\Validation;
 
+use haddowg\JsonApi\OpenApi\Schema;
 use haddowg\JsonApi\Resource\Constraint\After;
 use haddowg\JsonApi\Resource\Constraint\AtLeastOneOf;
 use haddowg\JsonApi\Resource\Constraint\Before;
@@ -33,6 +34,7 @@ use haddowg\JsonApi\Resource\Constraint\UniqueItems;
 use haddowg\JsonApi\Resource\Constraint\UrlFormat;
 use haddowg\JsonApi\Resource\Constraint\UuidFormat;
 use haddowg\JsonApi\Resource\Constraint\When;
+use haddowg\JsonApiLaravel\Validation\Constraint\LaravelRules;
 use haddowg\JsonApiLaravel\Validation\ConstraintTranslator;
 use haddowg\JsonApiLaravel\Validation\ConstraintTranslatorInterface;
 use haddowg\JsonApiLaravel\Validation\Rules\AfterDate;
@@ -254,6 +256,46 @@ final class ConstraintTranslatorTest extends Orchestra
         self::assertTrue($this->fails($before, '2021-01-01T00:00:00+00:00'));
         self::assertTrue($this->fails($between, '2021-06-01T00:00:00+00:00'));
         self::assertFalse($this->fails($between, '2020-06-01T00:00:00+00:00'));
+    }
+
+    #[Test]
+    public function itPassesLaravelRulesThroughUntranslated(): void
+    {
+        $invokable = new GreaterThan(3);
+
+        // The carrier holds ready-made illuminate/validation rules — the translator returns
+        // them verbatim, no class-keyed extension translator needed.
+        self::assertSame(['min:3', $invokable], $this->translator->translate(LaravelRules::make(['min:3', $invokable])));
+    }
+
+    #[Test]
+    public function aLaravelRuleActuallyValidatesThroughTheSamePass(): void
+    {
+        $rules = $this->translator->translate(LaravelRules::make(['string', 'min:3']));
+
+        self::assertTrue($this->fails($rules, 'ab'));   // too short → fails
+        self::assertFalse($this->fails($rules, 'abc')); // long enough → ok
+    }
+
+    #[Test]
+    public function laravelRulesAreSchemaInvisibleUntilAuthorDeclaresOne(): void
+    {
+        // A native rule validates but contributes nothing to the projected schema…
+        self::assertSame([], LaravelRules::make(['min:3'])->contribute(Schema::create())->toArray());
+
+        // …until the author declares the neutral value schema it implies.
+        $documented = LaravelRules::make(['min:3'])
+            ->schema(static fn(Schema $s): Schema => $s->withMinLength(3));
+        self::assertSame(['minLength' => 3], $documented->contribute(Schema::create())->toArray());
+    }
+
+    #[Test]
+    public function laravelRulesScopeToAWriteContext(): void
+    {
+        $onCreate = LaravelRules::make(['min:3'])->onCreate();
+
+        self::assertTrue($onCreate->context()->onCreate);
+        self::assertFalse($onCreate->context()->onUpdate);
     }
 
     #[Test]

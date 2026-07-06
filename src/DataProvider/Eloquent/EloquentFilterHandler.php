@@ -53,9 +53,11 @@ use Illuminate\Database\Eloquent\Model;
  * are validated as identifier paths and qualified against the model's table before
  * being interpolated into a `LIKE`/raw fragment; values are always bound.
  *
- * A custom {@see FilterInterface} the built-ins do not recognise is delegated to a
- * registered {@see EloquentFilterArmInterface} (constructor-injected, first
- * {@see EloquentFilterArmInterface::supports()} match wins) before
+ * A custom {@see FilterInterface} that carries its own query fragment implements
+ * {@see AppliesToEloquentQueryBuilder} — the handler runs it **before** the arm registry,
+ * so a one-off, dependency-free custom filter needs no service. Otherwise a custom filter
+ * is delegated to a registered {@see EloquentFilterArmInterface} (constructor-injected,
+ * first {@see EloquentFilterArmInterface::supports()} match wins) before
  * {@see UnsupportedFilter} is raised — the Eloquent half of the framework's
  * extensible-handler seam.
  *
@@ -108,6 +110,10 @@ final class EloquentFilterHandler implements FilterHandlerInterface
             $filter instanceof WhereDoesntHave => $query->whereDoesntHave($filter->relationship),
             // Range (and DateRange, which extends it): two push-down where predicates.
             $filter instanceof Range => $this->range($query, $filter, $value),
+            // A self-applying filter carries its own Eloquent query fragment (a named
+            // scope, a where closure) — consulted before the arm registry, so no
+            // separate arm service is needed.
+            $filter instanceof AppliesToEloquentQueryBuilder => $filter->applyToQueryBuilder($query, $value),
             default => $this->applyArm($filter, $query, $value),
         };
 

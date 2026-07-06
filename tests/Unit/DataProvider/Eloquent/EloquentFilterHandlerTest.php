@@ -24,6 +24,7 @@ use haddowg\JsonApi\Resource\Filter\WhereNotIn;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\AppliesToEloquentQueryBuilder;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentFilterHandler;
 use haddowg\JsonApiLaravel\Tests\Eloquent\EloquentTestCase;
 use Illuminate\Database\Eloquent\Builder;
@@ -205,6 +206,35 @@ final class EloquentFilterHandlerTest extends EloquentTestCase
         // related (albums) table.
         self::assertStringContainsString('exists (select * from "albums"', $sql);
         self::assertStringContainsString('"albums"."title" = ?', $sql);
+        self::assertSame(['OK Computer'], $bindings);
+    }
+
+    #[Test]
+    public function aSelfApplyingFilterAddsItsOwnPredicateWithNoArmRegistered(): void
+    {
+        // The handler has NO arms registered; a self-applying filter carries its own
+        // query fragment, so it runs anyway — consulted before the arm registry, the
+        // execution twin of the LaravelRules validation carrier.
+        $filter = new class implements AppliesToEloquentQueryBuilder {
+            public function key(): string
+            {
+                return 'titled';
+            }
+
+            public function constraints(): array
+            {
+                return [];
+            }
+
+            public function applyToQueryBuilder(Builder $query, mixed $value): void
+            {
+                $query->where('name', $value);
+            }
+        };
+
+        [$sql, $bindings] = $this->apply($filter, 'OK Computer');
+
+        self::assertStringContainsString('where "name" = ?', $sql);
         self::assertSame(['OK Computer'], $bindings);
     }
 

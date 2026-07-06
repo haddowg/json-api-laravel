@@ -141,6 +141,34 @@ Eloquent-specific filter (a raw scope) ships only the Eloquent arm. A custom pro
 needs its own filter/sort translation is covered in
 [custom data providers](custom-data-providers.md#custom-filters-and-sorts).
 
+### Self-applying filters: no arm to register
+
+For a one-off, dependency-free Eloquent filter, skip the separate arm and put the query
+fragment on the filter VO itself by implementing
+[`AppliesToEloquentQueryBuilder`](https://github.com/haddowg/json-api-laravel/blob/main/src/DataProvider/Eloquent/AppliesToEloquentQueryBuilder.php):
+
+```php
+final readonly class Active implements AppliesToEloquentQueryBuilder
+{
+    public function key(): string { return 'active'; }
+    public function constraints(): array { return [new Boolean()]; }
+
+    public function applyToQueryBuilder(Builder $query, mixed $value): void
+    {
+        $query->whereNull('archived_at'); // a named scope, a where closure, a whereHas…
+    }
+}
+```
+
+The handler consults it **before** the arm registry, so it runs with no
+`EloquentFilterArmInterface` registered — the self-applying twin of the arm seam, and the
+query counterpart of the [`LaravelRules`](validation.md#native-laravel-rules-without-a-translator-laravelrules)
+validation carrier. Reach for an arm instead when the application needs injected services
+(a repository, an auth guard). Like a raw scope it is Eloquent-only — the key is undeclared
+on the in-memory provider, so a request there is a clean `400`. Bind the request value with
+`where(...)` (never interpolate it); only ever interpolate a validated, server-declared
+column into a `whereRaw()`.
+
 ## Sorting, sparse fieldsets, pagination
 
 `sortable()` fields drive `?sort` (`SortByField::make($key, $column)` maps a wire key to a

@@ -98,6 +98,41 @@ JsonApi::constraintTranslator(\App\JsonApi\Validation\MyConstraintTranslator::cl
 When a constraint has no natural Laravel rule, ship it as an invokable
 `ValidationRule` and translate to that.
 
+### Native Laravel rules without a translator: `LaravelRules`
+
+For a one-off Laravel-native rule, skip the bespoke VO + translator and wrap the raw
+`illuminate/validation` rules in
+[`LaravelRules`](../src/Validation/Constraint/LaravelRules.php), attached with
+`constrain()`:
+
+```php
+Str::make('slug')->constrain(LaravelRules::make(['alpha_dash', 'min:3']));
+```
+
+The translator recognises the carrier and passes the wrapped rules straight to the
+validator — so they run in the same `422` pass (and, because the filter-value validator
+shares the translator, on `filter[…]` values too) with nothing to register. A rule can be
+a string (`'min:3'`), a `Rule` builder (`Password::defaults()`), or an invokable
+`ValidationRule`. Scope it with `->onCreate()` / `->onUpdate()`.
+
+A native rule is **invisible to the generated OpenAPI/JSON Schema** by default (it
+validates but doesn't document). Declare the value schema it implies with `->schema()` — a
+closure over core's neutral `Schema` VO (it rides core's
+[`ProvidesJsonSchema`](https://github.com/haddowg/json-api/blob/main/src/Resource/Constraint/ProvidesJsonSchema.php)
+seam) — when you want it in the document:
+
+```php
+Str::make('slug')->constrain(
+    LaravelRules::make(['alpha_dash', 'min:3'])
+        ->schema(static fn(Schema $s): Schema => $s->withMinLength(3)),
+);
+```
+
+Keep the fragment framework-neutral so the byte-compatible twin (the Symfony
+`NativeConstraints` carrier) emits the identical schema. `LaravelRules` couples the field
+to Laravel, so prefer a core constraint when one exists and reach here only for a genuinely
+native rule.
+
 ## Non-goal: FormRequest integration
 
 This package deliberately does **not** integrate Laravel `FormRequest` classes — they are a

@@ -294,6 +294,21 @@ The mirror adoption on the bundle side — `DoctrineDataPersister::coercePivotVa
 the same core API — was **pending at audit time** and is landing in a sibling bundle PR; the
 two reference persisters then share one core coercion contract.
 
+## I. Native-rule + self-applying-filter carriers (post-audit addendum, 2026-07-06)
+
+Twin of bundle PR #101 (bundle ADRs 0108/0109), landing the two first-party `constrain()`
+escape hatches here as Laravel ADRs **0021/0022**:
+
+| Bundle construct | Laravel twin | Notes |
+| --- | --- | --- |
+| `NativeConstraints` (wraps native Symfony `Constraint`s) | **`LaravelRules`** (`src/Validation/Constraint/LaravelRules.php`) — wraps native `illuminate/validation` rules | ✅ `ConstraintTranslator` recognises it in the `match` and returns the wrapped rules verbatim (before `translateExtension`); runs in the same `422` pass and on `filter[…]` values via the shared translator; opt-in `->schema()` over core's neutral `Schema` VO (both carriers ride core `ProvidesJsonSchema`, so the fragment is byte-identical) |
+| `AppliesToQueryBuilder` (self-applying Doctrine filter) | **`AppliesToEloquentQueryBuilder`** (`src/DataProvider/Eloquent/AppliesToEloquentQueryBuilder.php`) — self-applying Eloquent filter | ✅ `EloquentFilterHandler` consults it **before** the arm registry; the built-ins still win; Eloquent-only (undeclared on the in-memory provider → clean `400`) |
+
+Neither touches the music-catalog workbench (the byte-compat witness), mirroring the bundle
+PR, which did not touch its example app — so the export diff stays empty. Both are exercised
+by unit tests (`ConstraintTranslatorTest`, `EloquentFilterHandlerTest`), the native rule
+proven to actually validate through the shared pass.
+
 ## Summary
 
 Every bundle capability is either **ported (✅)**, **intentionally reshaped/diverged by a
