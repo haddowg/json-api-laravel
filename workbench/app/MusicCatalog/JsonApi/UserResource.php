@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Workbench\App\MusicCatalog\JsonApi;
 
+use haddowg\JsonApi\Pagination\CursorPaginator;
+use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Constraint\Comparison;
 use haddowg\JsonApi\Resource\Constraint\MinLength;
@@ -26,6 +28,13 @@ use haddowg\JsonApiLaravel\Validation\Constraint\UniqueEntity;
  * {@see ArrayHash}, a genuine write-only `password`, and the composition trio on
  * `passwordConfirm` (an AtLeastOneOf, a conditional When, and an equality CompareField).
  * `email` carries a {@see UniqueEntity} rule (Laravel: `Rule::unique` pre-hydration).
+ *
+ * It is finally the catalogue's sole cursor (keyset) pagination witness: {@see pagination()}
+ * pins a {@see CursorPaginator} for the primary `users` collection, so `GET /admin/users`
+ * pages by opaque `page[after]`/`page[before]` cursor tokens rather than `page[number]`.
+ * Because `users` is admin-only, the cursor `page[…]` vocabulary appears ONLY in the admin
+ * OpenAPI document; every other collection and relation (including `users.playlists`, which
+ * resolves its paginator off the related `playlists` resource) stays page-based.
  */
 #[AsJsonApiResource(server: 'admin')]
 final class UserResource extends AbstractResource
@@ -59,6 +68,21 @@ final class UserResource extends AbstractResource
             HasMany::make('playlists', 'playlists'),
             HasOne::make('library', 'libraries'),
         ];
+    }
+
+    /**
+     * Pin the cursor (keyset) strategy for this resource's primary collection — the
+     * catalogue's sole cursor witness. Returning a {@see CursorPaginator} verbatim replaces
+     * the server default (page-based) for `GET /admin/users` alone: the endpoint pages by
+     * opaque `page[after]`/`page[before]` tokens (count-free, no total), and the OpenAPI
+     * projector advertises exactly that cursor `page[…]` vocabulary for it. The keyset needs
+     * a total order; with no requested `?sort` and no {@see defaultSort()}, the resolver
+     * terminates the keyset on the `id` primary key alone, so the order is deterministic
+     * without any extra config.
+     */
+    public function pagination(?PaginatorInterface $serverDefault): PaginatorInterface
+    {
+        return CursorPaginator::make();
     }
 
     /**
