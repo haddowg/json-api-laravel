@@ -15,10 +15,12 @@ map, (B) the bundle doc-page feature set, (C) the `laravel-gap-build-plan.md` bu
 | ⏭ | **DEFERRED** — not shipped by the bundle either (a recipe or a post-1.0 item); no Laravel gap |
 | ❌ | **GAP** — a bundle capability not yet on the Laravel surface, **not** covered by a recorded divergence (a finding) |
 
-**Baseline (verified 2026-07-05):** `composer test` → **925 tests / 7727 assertions green**;
-`vendor/bin/phpstan --memory-limit=1G` → **no errors**; `composer cs-check` → **clean (463
-files)**. Docker demo image **builds and serves** the full domain (`/api/albums`,
-`/admin/albums`, `/docs.json` all `200`).
+**Baseline (refreshed 2026-07-06):** `composer test` → **1087 tests / 10666 assertions green**;
+`vendor/bin/phpstan --memory-limit=1G` → **no errors**; `composer cs-check` → **clean (573
+files)**; `composer byte-compat` → **byte-identical on both servers**. Docker demo image
+**builds and serves** the full domain (`/api/albums`, `/admin/albums`, `/docs.json` all `200`).
+(The original audit figures — 925 tests / 7727 assertions / 463 files, verified 2026-07-05 —
+predated PRs #9–#22; the metrics above supersede them.)
 
 ## 0. The "four core-dependent pins/markers" — CONFIRMED RESOLVED
 
@@ -35,6 +37,11 @@ not re-open them.
 
 The only two `markTestSkipped` in the suite are **opis-gating** (`SchemaConformanceTrait`,
 `JsonApiAssertions`), not core gaps.
+
+> **Core ADR-numbering note:** core `main` briefly carried two ADRs numbered **0116**. The
+> ordered-comparison-vs-null decision (cited above and in the D-axis) **stays 0116**; the
+> unrelated async-affordances ADR that collided with it has been **renumbered 0125** in a
+> sibling core PR. Every "ADR 0116" reference in this audit is the ordered-comparison one.
 
 ## A. `suggest`-map axis (bundle optional dependencies)
 
@@ -69,10 +76,10 @@ The only two `markTestSkipped` in the suite are **opis-gating** (`SchemaConforma
 | actions | custom `-actions/{name}` | `#[AsJsonApiAction]` + `ActionContext`; 3 example actions | [actions](actions.md), `MusicCatalog/Action/*` | ✅ |
 | atomic-operations | atomic extension, lid | `POST /operations`, `DB::transaction`, lid registry, After* deferral | [atomic-operations](atomic-operations.md), `src/Atomic` | ✅ |
 | errors | route-scoped rendering | invokable renderer; core/HTTP/authz/500 arms; **exception-mapper seam** | [errors](errors.md), `src/Exception/ExceptionMapperInterface` | ✅ |
-| openapi | document, UI, exports, byte-compat | full; `/docs.json`,`/schemas.json`,`/docs`; `jsonapi:openapi:export`/`jsonschema:export`; byte-compat CI | [openapi](openapi.md), `tests/ByteCompat`, `bin/byte-compat.php` | ✅ |
+| openapi | document, UI, exports, byte-compat | full; `/docs.json`,`/schemas.json`,`/docs`; `jsonapi:openapi:export`/`jsonschema:export`; byte-compat CI | [openapi](openapi.md), `tests/ByteCompat`, `bin/byte-compat.php`; post-audit correctness fix #11 — standalone `#[AsJsonApiSerializer]` types are now included in the `schemas.json` export **and** the servability warmer (previously omitted); the bundle was verified unaffected | ✅ (corrected by #11) |
 | multi-server-and-testing | N-server + testing | servers map; trait + macros; `actingAs()` native; schema conformance | [multi-server-and-testing](multi-server-and-testing.md) | 🟰 (testing reshaped) |
 | capability-composition | independent capabilities | serializer/hydrator/relations/provider/persister composable; one-model-two-types | [capability-composition](capability-composition.md) | ✅ |
-| — (new) optimize | cache warmers | **`optimizes()` pipeline** + `jsonapi:optimize`/`jsonapi:clear` + servability validation | [optimize](optimize.md), `src/Console/OptimizeCommand` | 🟰 PLAN divergence (optimize vs warmers) |
+| — (new) optimize | cache warmers | **`optimizes()` pipeline** + `jsonapi:optimize`/`jsonapi:clear` + servability validation | [optimize](optimize.md), `src/Console/OptimizeCommand`; post-audit correctness fix #17 — the warmer no longer false-flags `extractUsing`/`storedAs` relations as unservable; the bundle was verified unaffected | 🟰 PLAN divergence (optimize vs warmers) |
 
 ## C. Gap-build-plan axis (`laravel-gap-build-plan.md` — the pre-v1 build list)
 
@@ -94,7 +101,7 @@ These are core/bundle gaps closed pre-1.0. The audit confirms the Laravel surfac
 | 15 | PATCH merge-before-validate | pivot merge-before-validate; post-hydration seam | [relationships](relationships.md#pivot-belongstomany-data), [validation](validation.md) | ✅ |
 | 17 | conditional `readOnly(fn)`/`hidden(fn)` | core field closures | core fields | ✅ (core) |
 | 19 | custom id route pattern + `ulid()` | `matchAs()`→`where`; `ulid()->generated()` | `Product`/`Device` resources, [routing](routing.md) | ✅ |
-| 20 | pluggable id encode/decode | `encodeUsing(IdEncoder)` | `ProductResource` + `ProductIdCodec` | ✅ |
+| 20 | pluggable id encode/decode | `encodeUsing(IdEncoder)` | `ProductResource` + `ProductIdCodec`; the original ✅ covered **encode only** — reads and linkage writes passed the raw wire token straight to storage until [ADR 0014](adr/0014-encoded-id-decode-is-a-reference-eloquent-layer-concern.md) (#13) made decode a reference-Eloquent-layer concern (`EloquentEncodedIdTest`), matching the bundle's pre-existing ADR 0038 posture | ✅ (encode+decode since #13) |
 | 24 | sort by relationship count | core sort vocabulary | core | ✅ (core) |
 | 26 | dynamic `baseUri()` | `base_uri` config (+ request-derived default) | `config/jsonapi.php` | ✅ |
 | 27 | disallow/require pagination | paginator policy | core pagination | ✅ (core) |
@@ -198,6 +205,30 @@ Witnessed end-to-end by `tests/Feature/GettingStartedTest` (the documented flow 
 zero wiring) and `tests/Feature/ModelMappingTiersTest` (each tier + the untouched
 no-provider failure); documented in [eloquent](eloquent.md#the-model-map-three-tiers).
 
+### F4 — Sparse-by-default fields (core #126 / ADR 0117) — ✅ RESOLVED (2026-07-06)
+
+**What:** core PR #126 (ADR 0117) added a sparse-by-default field tier — a field declared
+`sparseByDefault()` is omitted from a resource's `attributes` **unless** the client explicitly
+names it in a `fields[type]` member (the opt-in inverse of the usual sparse-fieldset rule,
+orthogonal to `hidden()`/`writeOnly()`). The Symfony bundle witnesses it over HTTP
+(`tests/Functional/SparseByDefaultFieldTest` + a `Sparse` fixture kernel, bundle #105) and
+documents it in `resources.md`. This package inherited the core capability through the
+vendored core but carried **no witness and no docs** for it.
+
+**Severity:** low / coverage-and-documentation. The behaviour was already correct — it lives
+entirely in core's `AbstractResource` attribute render — so the gap was a missing Laravel-side
+witness + doc, not a missing capability. No byte-compat bearing: the field renders on no
+document unless requested, so the music-catalog export is untouched.
+
+**Resolved by this PR:** a dual-provider HTTP conformance suite
+(`tests/Conformance/SparseByDefaultConformanceTestCase` + in-memory and Eloquent concretes)
+asserts the `sparseWidgets` resource's `expensiveScore` attribute is absent by default,
+present when named in `fields[sparseWidgets]`, and stays absent when only `name` is named — on
+**both** providers. The fixture lives in a dedicated `Workbench\App\Sparse` namespace (+ a
+`sparse_widgets` migration for the Eloquent arm), isolated from the music-catalog workbench so
+`composer byte-compat` stays byte-identical. Documented in
+[resources](resources.md#sparse-by-default-fields).
+
 ## E. Composite attribute types (post-audit addendum, 2026-07-05)
 
 The composite rollout (core #128–#131) landed in both packages after the original audit:
@@ -233,6 +264,36 @@ re-read (the in-memory witness hydrates by reference, so its read reflects the u
 hydration while Eloquent's re-query would not — the bundle's `AsyncWriteTest` makes no such
 claim either). OpenAPI does not yet document the async `202`/`303` responses on either side.
 
+## G. Cursor-completeness rollout (post-audit addendum, 2026-07-06)
+
+The keyset (cursor) surface grew to full coverage after the original audit, each shape twinned
+with the bundle on one hoisted core engine:
+
+| Endpoint shape | Bundle | Laravel | Parity |
+|---|---|---|---|
+| Related-collection cursor | ADR 0113 | ADR 0016 | ✅ dual-provider conformance (`RelatedCursorConformanceTestCase`) |
+| Pivot-related + linkage cursor | ADR 0114 | ADR 0017 | ✅ dual-provider conformance (`PivotCursorConformanceTestCase`, `LinkageCursorConformanceTestCase`) |
+| Shared keyset engine | core `Collection\Keyset` (core #136 / ADR 0123) | same hoisted core keyset, consumed by the Eloquent + in-memory providers | ✅ one implementation, both hosts |
+| Linkage page profile advertisement | core `IdentifierResponse::withPage` (core #137 / ADR 0124) | same core response VO | ✅ identical `page` profile on a linkage document |
+
+Related, pivot-related, and linkage cursor pages all ride core's hoisted `Collection\Keyset` —
+the cursor logic lives once in core and both packages consume it — while the Laravel side
+proves each shape on **both** providers (Eloquent keyset push-down + the in-memory witness),
+over-parity to the bundle's single-provider functional tests. Linkage cursor pages advertise
+the `page` profile through core's `IdentifierResponse::withPage`, so a linkage document carries
+the same profile link/meta as a full-resource collection page.
+
+## H. Reverse-parity note (post-audit addendum, 2026-07-06)
+
+Parity now flows both directions across one core seam. This package **consumes** core's public
+`castWireValue` API (core ADR 0122) in the reference persister: `EloquentDataPersister` casts
+an incoming pivot/attribute wire value through the field's own
+`FieldInterface::castWireValue()`
+(`src/DataPersister/Eloquent/EloquentDataPersister.php`) rather than re-deriving the coercion.
+The mirror adoption on the bundle side — `DoctrineDataPersister::coercePivotValue` moving onto
+the same core API — was **pending at audit time** and is landing in a sibling bundle PR; the
+two reference persisters then share one core coercion contract.
+
 ## Summary
 
 Every bundle capability is either **ported (✅)**, **intentionally reshaped/diverged by a
@@ -240,6 +301,8 @@ recorded PLAN decision or ADR (🟰)**, or **not shipped by the bundle itself (�
 surfaced two genuine, low-severity gaps, both since **resolved (2026-07-05)**: **F1**, the
 per-resource serializer/hydrator attribute override (ADR 0015), and **F2**, the example
 `AuditLogSubscriber` example-wiring omission — now ported to the workbench and exercised on
-both provider arms. The over-parity items
+both provider arms. A third low-severity coverage gap, **F4** (the sparse-by-default field
+tier, core ADR 0117, previously witnessed only by the bundle), is **resolved by this PR** with
+a dual-provider conformance suite and docs. The over-parity items
 (polymorphic to-many on the reference provider; `UniqueEntity` via `Rule::unique`; always-on
 validation) exceed the bundle's surface by design.
