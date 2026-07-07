@@ -25,17 +25,6 @@ Composer pulls core (`haddowg/json-api`) transitively. The service provider
 (`haddowg\JsonApiLaravel\JsonApiServiceProvider`) is registered automatically through
 Laravel package discovery — there is nothing to add to `bootstrap/providers.php`.
 
-> [!NOTE]
-> Until core ships a stable release, this package depends on `haddowg/json-api: dev-main`.
-> If you install from source before then, add core as a VCS repository so Composer can
-> resolve the development branch:
->
-> ```bash
-> composer config repositories.haddowg-json-api vcs https://github.com/haddowg/json-api
-> ```
->
-> The `docker compose up` demo and CI both use this VCS trick — see [docker](docker.md).
-
 ## Publish the configuration
 
 The package ships a sensible default `config/jsonapi.php`; publish it to customise servers,

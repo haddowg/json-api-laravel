@@ -15,8 +15,8 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
 /**
  * A discovery-scan guard fixture: the `handle()` return type keeps the interface's union
  * (it is not narrowed to a single response class), so it declares no single body shape and
- * the guard does not constrain it — discovery accepts it with no `returns204`/`outputMeta`
- * flag (Document mode by default).
+ * the guard does not constrain it — discovery accepts it with the default 200-document
+ * `responds` of the mount type.
  *
  * @internal
  */

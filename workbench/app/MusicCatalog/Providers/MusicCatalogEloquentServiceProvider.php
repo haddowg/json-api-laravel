@@ -19,7 +19,9 @@ use Workbench\App\MusicCatalog\Action\SummarizeAlbums;
 use Workbench\App\MusicCatalog\Action\UploadAlbumArtwork;
 use Workbench\App\MusicCatalog\JsonApi\AlbumResource;
 use Workbench\App\MusicCatalog\JsonApi\ArtistResource;
+use Workbench\App\MusicCatalog\JsonApi\CatalogExportResource;
 use Workbench\App\MusicCatalog\JsonApi\DeviceResource;
+use Workbench\App\MusicCatalog\JsonApi\ExportJobResource;
 use Workbench\App\MusicCatalog\JsonApi\FavoriteResource;
 use Workbench\App\MusicCatalog\JsonApi\GenreResource;
 use Workbench\App\MusicCatalog\JsonApi\LibraryResource;
@@ -41,8 +43,11 @@ use Workbench\App\MusicCatalog\Models\Product;
 use Workbench\App\MusicCatalog\Models\Release;
 use Workbench\App\MusicCatalog\Models\Track;
 use Workbench\App\MusicCatalog\Models\User;
+use Workbench\App\MusicCatalog\Provider\CatalogExportPersister;
+use Workbench\App\MusicCatalog\Provider\CatalogExportProvider;
 use Workbench\App\MusicCatalog\Provider\ChartProvider;
 use Workbench\App\MusicCatalog\Provider\CountryProvider;
+use Workbench\App\MusicCatalog\Provider\ExportJobProvider;
 use Workbench\App\MusicCatalog\Query\EloquentFullTextSearchArm;
 use Workbench\App\MusicCatalog\Security\PlaylistApiPolicy;
 use Workbench\App\MusicCatalog\Serializer\ChartSerializer;
@@ -82,7 +87,9 @@ final class MusicCatalogEloquentServiceProvider extends ServiceProvider
         JsonApi::register([
             AlbumResource::class,
             ArtistResource::class,
+            CatalogExportResource::class,
             DeviceResource::class,
+            ExportJobResource::class,
             FavoriteResource::class,
             GenreResource::class,
             LibraryResource::class,
@@ -127,6 +134,13 @@ final class MusicCatalogEloquentServiceProvider extends ServiceProvider
         // reference data, so both provider arms read them identically (decision 3).
         JsonApi::provider(new ChartProvider());
         JsonApi::provider(new CountryProvider());
+
+        // The async-write witness types (catalog-exports + its export-jobs job resource):
+        // resource-less like charts/countries, served by custom providers on both arms, plus a
+        // custom persister that accepts a create for asynchronous processing (a 202).
+        JsonApi::provider(new CatalogExportProvider());
+        JsonApi::provider(new ExportJobProvider());
+        JsonApi::persister(new CatalogExportPersister());
 
         $this->app->singleton(RelationshipLoadStateInterface::class, EloquentRelationshipLoadState::class);
 

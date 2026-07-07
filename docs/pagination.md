@@ -93,8 +93,8 @@ A **queried** relationship GET (`GET /{type}/{id}/relationships/{rel}` with
 a keyset page: the document's pagination links carry the real `page[after]`/`page[before]`
 cursors (never a `last`), while the body stays links-only — identifier `data` members and no
 `meta.page` (core ADR 0124). A bare (unqueried) relationship GET still renders the whole
-association. A queried **pivot** relationship GET remains a `400`
-([ADR 0010](adr/0010-relationship-endpoint-query-params-reject-not-ignore.md)).
+association. A queried **pivot** relationship GET remains a `400` — query parameters on a
+relationship endpoint are rejected, not silently ignored.
 
 ### Advertising the cursor-pagination profile
 

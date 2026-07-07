@@ -62,16 +62,13 @@ hooks:
 
 validation:
   nav:
-    # The ADRs and the parity audit are built (docs link to them by file) but
-    # deliberately not in the nav.
+    # The ADRs are linked from the pages by file but deliberately not in the nav.
     omitted_files: ignore
   links:
     anchors: warn
 
-# Working/analysis docs kept in the repo but not part of the published site.
 # The ADRs are linked from the pages by absolute GitHub URL, not built as site pages.
 exclude_docs: |
-  parity-audit.md
   adr/
 
 nav:

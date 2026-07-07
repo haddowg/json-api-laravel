@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Attribute;
 
+use haddowg\JsonApi\OpenApi\Metadata\ActionResource;
+use haddowg\JsonApi\OpenApi\Metadata\ActionResponse;
+use haddowg\JsonApi\OpenApi\Metadata\ActionResponses;
 use haddowg\JsonApiLaravel\Action\ActionInput;
 use haddowg\JsonApiLaravel\Action\ActionScope;
 
@@ -29,17 +32,28 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
  * `input` chooses the request-body contract: {@see ActionInput::None} (default) reads no
  * body; {@see ActionInput::Document} parses + validates + hydrates a JSON:API document
  * into an `inputType` instance; {@see ActionInput::Raw} relaxes request content-type
- * negotiation for a non-JSON:API upload.
+ * negotiation for a non-JSON:API upload. The request document is **decoupled from the
+ * mount type**: it defaults to it, but `inputType` (Document mode only) may point at any
+ * other registered type. A `null` `inputType` resolves to `type`.
  *
- * The request and response documents are **decoupled from the mount type**: both default
- * to it, but `inputType` (Document mode only) and `outputType` may point at any other
- * registered type. A `null` `inputType`/`outputType` resolves to `type`.
- *
- * `returns204` declares the action returns **no response body** (a `204 No Content`);
- * `outputMeta` declares a **meta-only document**. Each suppresses the `outputType` default
- * in the generated OpenAPI document; they are mutually exclusive with each other and with
- * an explicit `outputType`. They affect only the generated document — the runtime response
- * is whatever the handler returns.
+ * `responds` declares the action's success-response set the generated OpenAPI advertises,
+ * as a list of the `new`-constructable atomic response objects (a single object is
+ * accepted as shorthand). It defaults to a `200` document of the **mount type**
+ * ({@see ActionResource}). The atomic responses:
+ *  - {@see ActionResource}(`type`) — a `200` whose body is that type's resource document
+ *    (the handler returns a {@see \haddowg\JsonApi\Response\DataResponse}).
+ *  - {@see \haddowg\JsonApi\OpenApi\Metadata\MetaResult} — a `200` meta-only document
+ *    ({@see \haddowg\JsonApi\Response\MetaResponse}).
+ *  - {@see \haddowg\JsonApi\OpenApi\Metadata\NoContent} — a `204` ({@see \haddowg\JsonApi\Response\NoContentResponse}).
+ *  - {@see \haddowg\JsonApi\OpenApi\Metadata\Accepted}(`jobType`) — a `202` accept whose
+ *    body is the job type's document ({@see \haddowg\JsonApi\Response\AcceptedResponse}).
+ *  - {@see \haddowg\JsonApi\OpenApi\Metadata\SeeOther} — a `303` completion redirect
+ *    ({@see \haddowg\JsonApi\Response\SeeOtherResponse}).
+ * The set is validated at declaration time ({@see ActionResponses::validate()}: non-empty,
+ * unique status codes) and affects only the generated document — the runtime response is
+ * whatever the handler returns. When a `200`-document {@see ActionResource} is declared,
+ * its type is also the serializer every {@see \haddowg\JsonApi\Response\DataResponse} the
+ * handler returns renders through; otherwise the mount type's serializer is used.
  *
  * `server` names the server this action is exposed on (a single server name, or `null`
  * for the implicit `default` server).
@@ -67,11 +81,19 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
 final readonly class AsJsonApiAction
 {
     /**
-     * @param list<string> $methods    the author-declared HTTP method allow-list (default `['POST']`)
-     * @param bool         $returns204 the action returns no response body (the document advertises `204`); mutually exclusive with `outputType` and `outputMeta`
-     * @param bool         $outputMeta the action returns a meta-only document; mutually exclusive with `outputType` and `returns204`
-     * @param list<string> $tags       the OpenAPI tag names this action is grouped under (empty = inherit the mount type's default tag)
-     * @param bool         $asLink     expose the action as an ability-aware `links` member on the mount type's resources (resource scope only)
+     * The declared success-response set (the OpenAPI projection reads it; a single-object
+     * declaration is normalised to a one-element list, and an omitted declaration defaults
+     * to a `200` document of the mount type).
+     *
+     * @var non-empty-list<ActionResponse>
+     */
+    public array $responds;
+
+    /**
+     * @param list<string>                             $methods  the author-declared HTTP method allow-list (default `['POST']`)
+     * @param ActionResponse|list<ActionResponse>|null $responds the success-response set the document advertises (default: a `200` document of the mount type)
+     * @param list<string>                             $tags     the OpenAPI tag names this action is grouped under (empty = inherit the mount type's default tag)
+     * @param bool                                     $asLink   expose the action as an ability-aware `links` member on the mount type's resources (resource scope only)
      */
     public function __construct(
         public string $type,
@@ -80,44 +102,24 @@ final readonly class AsJsonApiAction
         public ActionScope $scope = ActionScope::Resource,
         public ActionInput $input = ActionInput::None,
         public ?string $inputType = null,
-        public ?string $outputType = null,
-        public bool $returns204 = false,
-        public bool $outputMeta = false,
+        ActionResponse|array|null $responds = null,
         public ?string $server = null,
         public ?string $ability = null,
         public ?string $name = null,
         public array $tags = [],
         public bool $asLink = false,
     ) {
-        // An action answers exactly one way. A `204` and a meta-only document are both
-        // body-shape declarations that suppress the `outputType` default, so declaring
-        // both — or either alongside an explicit `outputType` — is contradictory.
-        if ($returns204 && $outputMeta) {
-            throw new \LogicException(\sprintf(
-                'The JSON:API action "%s" on type "%s" declares both returns204 and outputMeta; an action answers '
-                . 'exactly one way, so they are mutually exclusive.',
-                $path,
-                $type,
-            ));
-        }
+        // Normalise the declaration: a single response object → a one-element list; an
+        // omitted declaration → a `200` document of the mount type (the historical default).
+        $normalized = $responds === null
+            ? [new ActionResource($type)]
+            : (\is_array($responds) ? \array_values($responds) : [$responds]);
 
-        if ($outputMeta && $outputType !== null) {
-            throw new \LogicException(\sprintf(
-                'The JSON:API action "%s" on type "%s" declares both outputMeta and an outputType; a meta-only '
-                . 'document carries no resource, so they are mutually exclusive.',
-                $path,
-                $type,
-            ));
-        }
-
-        if ($returns204 && $outputType !== null) {
-            throw new \LogicException(\sprintf(
-                'The JSON:API action "%s" on type "%s" declares both returns204 and an outputType; a `204` response '
-                . 'carries no body, so they are mutually exclusive.',
-                $path,
-                $type,
-            ));
-        }
+        // Reject a contradictory set (empty, a non-ActionResponse, or duplicate status codes)
+        // at declaration time — an action answers each status exactly one way.
+        ActionResponses::validate($normalized);
+        \assert($normalized !== []);
+        $this->responds = $normalized;
 
         // A collection-scope action has no resource to hang a link on, so exposing it as
         // a resource link is incoherent — reject it at declaration time.

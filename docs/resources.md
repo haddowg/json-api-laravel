@@ -44,6 +44,7 @@ final class AlbumResource extends AbstractResource { /* … */ }
 | `serializer` / `hydrator` | per-concern override classes ([custom-serializers-hydrators](custom-serializers-hydrators.md)) |
 | `operations` | the exposed operation allow-list (`Operation` cases); empty = all five |
 | `readOnly` | shorthand for the two fetch operations (mutually exclusive with `operations`) |
+| `create` / `update` / `delete` / `fetchOne` / `fetchCollection` | per-operation advertised response shape(s) — see [below](#declaring-response-shapes) |
 | `policy` | a dedicated API policy class ([authorization](authorization.md)) |
 | `abilities` | per-operation Gate ability override ([authorization](authorization.md)) |
 | `cacheHeaders` | declarative `Cache-Control`/`Vary` for GET reads (below) |
@@ -62,6 +63,44 @@ use haddowg\JsonApiLaravel\Operation\Operation;
 
 Only the allowed operations get a route; the rest 404. The `public-profiles` type in the
 example is read-only this way.
+
+### Declaring response shapes
+
+Each operation advertises a default success response — `POST` → `201`, `PATCH` → `200`,
+`DELETE` → `204`, `GET` → `200`. Override it per operation with atomic response objects from
+`haddowg\JsonApi\OpenApi\Metadata` (a single object or a list). Each names a spec-valid code
+for that operation, so an illegal set is rejected at discovery:
+
+```php
+use haddowg\JsonApi\OpenApi\Metadata\Accepted;
+use haddowg\JsonApi\OpenApi\Metadata\MetaResult;
+use haddowg\JsonApi\OpenApi\Metadata\NoContent;
+
+#[AsJsonApiResource(
+    // POST /catalog-exports is always asynchronous → 202 only, never 201:
+    create: [new Accepted('export-jobs')],
+    // DELETE may answer 204 or a 200 meta-only document:
+    delete: [new NoContent(), new MetaResult()],
+)]
+```
+
+| Object | Code | Valid on |
+| --- | --- | --- |
+| `new Created()` | `201` | create |
+| `new Ok()` | `200` | update, fetchOne, fetchCollection |
+| `new NoContent()` | `204` | create, update, delete |
+| `new Accepted('job-type')` | `202` | create, update |
+| `new SeeOther()` | `303` | fetchOne |
+| `new MetaResult()` | `200` (meta) | delete |
+
+The param types are the per-operation marker interfaces, so an out-of-place object (e.g. a
+`new SeeOther()` under `create`) is a static-analysis error, not just a runtime one. Common
+shapes: **sync** (omit — the default); **always-async** `create: [new Accepted('jobs')]`;
+**maybe-async** `create: [new Created(), new Accepted('jobs')]`; a client-generated-id create
+that echoes nothing `create: [new NoContent()]`; and an async job resource whose fetch
+redirects on completion `fetchOne: [new Ok(), new SeeOther()]`. A `202` names the **job type**
+whose document is the accepted body. The whole async lifecycle then appears in the generated
+[OpenAPI document](openapi.md#per-operation-response-declarations); see [async writes](async.md).
 
 ## Sourcing the resource id
 

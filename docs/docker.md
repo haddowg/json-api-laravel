@@ -29,11 +29,9 @@ ids on `products`, the polymorphic reads, and every id strategy.
 
 - **Base image** — `php:8.3-cli` with `intl`, `zip`, and `pdo_sqlite`. The container runs
   `vendor/bin/testbench serve` (the PHP dev server), not FrankenPHP.
-- **Core resolution** — the local path-repo symlink does not exist in a container, so the build
-  resolves core (`dev-main`) from GitHub with the **same VCS trick CI uses**
-  (`composer config repositories.haddowg-json-api '{"type":"vcs","url":…,"no-api":true}'` +
-  `composer update`), with `COMPOSER_MAX_PARALLEL_HTTP=6`. Pass `--build-arg GITHUB_TOKEN=…` to
-  authenticate the fetch and lift the anonymous rate limits.
+- **Dependency resolution** — the build runs `composer update` inside the image to resolve the
+  full dependency tree (including core) at build time. Pass `--build-arg GITHUB_TOKEN=…` to lift
+  anonymous GitHub API rate limits during the fetch.
 - **Full-domain wiring** — the build copies
   [`testbench.docker.yaml`](https://github.com/haddowg/json-api-laravel/blob/main/testbench.docker.yaml)
   over `testbench.yaml` inside the image, so `testbench serve` boots the music-catalog

@@ -5,6 +5,12 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Discovery;
 
 use haddowg\JsonApi\Hydrator\HydratorInterface;
+use haddowg\JsonApi\OpenApi\Metadata\Accepted;
+use haddowg\JsonApi\OpenApi\Metadata\ActionResource;
+use haddowg\JsonApi\OpenApi\Metadata\MetaResult;
+use haddowg\JsonApi\OpenApi\Metadata\NoContent;
+use haddowg\JsonApi\OpenApi\Metadata\OperationResponseInterface;
+use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Response\MetaResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
@@ -12,7 +18,6 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApiLaravel\Action\ActionDescriptor;
 use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
 use haddowg\JsonApiLaravel\Action\ActionInput;
-use haddowg\JsonApiLaravel\Action\ActionOutput;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiHydrator;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
@@ -272,7 +277,47 @@ final class DiscoveryScanner
             $this->overrideClass($attribute?->serializer, SerializerInterface::class, 'serializer', $class),
             $this->overrideClass($attribute?->hydrator, HydratorInterface::class, 'hydrator', $class),
             $this->modelClass($attribute?->model, $class),
+            $this->responses($attribute),
         );
+    }
+
+    /**
+     * Projects the attribute's per-operation response overrides into the scalar
+     * `{operation => [{status, jobType}, …]}` map the {@see ResourceDescriptor} carries —
+     * kept as scalars so the discovery snapshot stays `var_export`-able. Only an
+     * operation the attribute actually overrides appears; every other operation keeps its
+     * default in {@see \haddowg\JsonApiLaravel\OpenApi\Metadata\TypeMetadata::responsesFor()}.
+     *
+     * @return array<string, list<array{status: int, jobType: string|null}>>
+     */
+    private function responses(?AsJsonApiResource $attribute): array
+    {
+        if ($attribute === null) {
+            return [];
+        }
+
+        $projected = [];
+        foreach ([
+            Operation::FetchCollection->value => $attribute->fetchCollection,
+            Operation::FetchOne->value => $attribute->fetchOne,
+            Operation::Create->value => $attribute->create,
+            Operation::Update->value => $attribute->update,
+            Operation::Delete->value => $attribute->delete,
+        ] as $operation => $responses) {
+            if ($responses === []) {
+                continue;
+            }
+
+            $projected[$operation] = \array_map(
+                static fn(OperationResponseInterface $response): array => [
+                    'status' => $response->status(),
+                    'jobType' => $response->jobType(),
+                ],
+                $responses,
+            );
+        }
+
+        return $projected;
     }
 
     /**
@@ -380,10 +425,11 @@ final class DiscoveryScanner
 
     /**
      * Builds an {@see ActionDescriptor} from a custom-action handler's
-     * {@see AsJsonApiAction} attribute, applying the decoupled-document defaults:
-     * `inputType`/`outputType` resolve to the mount `type` when the attribute left them
-     * null, and a `returns204`/`outputMeta` action carries the empty-string `outputType`
-     * sentinel (no response resource) with the matching {@see ActionOutput}.
+     * {@see AsJsonApiAction} attribute: `inputType` resolves to the mount `type` when the
+     * attribute left it null, the declared `responds` set is flattened to its cacheable
+     * `{kind, ref}` scalar form, and `outputType` is resolved to the serializer type the
+     * handler's responses render through — the declared `resource` (200-document)
+     * response's type when one is present, else the mount type.
      *
      * @param \ReflectionClass<object> $reflection
      */
@@ -394,17 +440,23 @@ final class DiscoveryScanner
 
         $this->guardActionHandlerOutput($reflection, $attribute);
 
-        $output = match (true) {
-            $attribute->returns204 => ActionOutput::None,
-            $attribute->outputMeta => ActionOutput::Meta,
-            default => ActionOutput::Document,
-        };
-
-        // Document mode carries the resolved output type; a 204/meta action carries the
-        // empty-string "no response resource" sentinel.
-        $outputType = $output === ActionOutput::Document
-            ? ($attribute->outputType ?? $attribute->type)
-            : '';
+        $serializerType = $attribute->type;
+        $responds = [];
+        foreach ($attribute->responds as $response) {
+            if ($response instanceof ActionResource) {
+                $serializerType = $response->bodyType();
+                $responds[] = ['kind' => 'resource', 'ref' => $response->bodyType()];
+            } elseif ($response instanceof Accepted) {
+                $responds[] = ['kind' => 'accepted', 'ref' => $response->jobType()];
+            } elseif ($response instanceof MetaResult) {
+                $responds[] = ['kind' => 'meta', 'ref' => null];
+            } elseif ($response instanceof NoContent) {
+                $responds[] = ['kind' => 'nocontent', 'ref' => null];
+            } elseif ($response instanceof SeeOther) {
+                $responds[] = ['kind' => 'seeother', 'ref' => null];
+            }
+        }
+        \assert($responds !== []);
 
         /** @var class-string<ActionHandlerInterface> $handlerClass */
         $handlerClass = $reflection->getName();
@@ -416,8 +468,8 @@ final class DiscoveryScanner
             $attribute->scope,
             $attribute->input,
             $attribute->input === ActionInput::Document ? ($attribute->inputType ?? $attribute->type) : $attribute->type,
-            $outputType,
-            $output,
+            $serializerType,
+            $responds,
             $attribute->ability,
             $handlerClass,
             $attribute->server ?? 'default',
@@ -428,15 +480,15 @@ final class DiscoveryScanner
     }
 
     /**
-     * Guards a discovered action handler's declared output shape against its attribute
-     * flags (the Laravel twin of the bundle's `ResourceLocatorPass::guardActionHandlerOutput`):
+     * Guards a discovered action handler's declared response set against its handler's
+     * return type (the Laravel twin of the bundle's `ResourceLocatorPass::guardActionHandlerOutput`):
      * a handler whose `handle()` return type is narrowed to exactly {@see NoContentResponse}
-     * must declare `returns204`, and one narrowed to exactly {@see MetaResponse} must declare
-     * `outputMeta` — so the generated OpenAPI response can never drift from the shape the
-     * handler actually returns. A handler that keeps the interface's union return type (or
-     * any other single non-narrowed type) declares no single body shape, so it is not
-     * constrained here (the flags then govern the projection alone); discovery fails loudly
-     * only on a genuine narrowing/flag mismatch.
+     * must declare a `204` ({@see NoContent}) in its `responds`, and one narrowed to exactly
+     * {@see MetaResponse} must declare a meta document ({@see MetaResult}) — so the generated
+     * OpenAPI response can never drift from the shape the handler actually returns. A handler
+     * that keeps the interface's union return type (or any other single non-narrowed type)
+     * declares no single body shape, so it is not constrained here; discovery fails loudly
+     * only on a genuine narrowing/declaration mismatch.
      *
      * @param \ReflectionClass<object> $reflection
      */
@@ -453,25 +505,41 @@ final class DiscoveryScanner
 
         $name = $returnType->getName();
 
-        if ($name === NoContentResponse::class && !$attribute->returns204) {
+        if ($name === NoContentResponse::class && !$this->respondsWith($attribute, NoContent::class)) {
             throw new \LogicException(\sprintf(
-                'The JSON:API action "%s" on type "%s" has a handler (%s) returning NoContentResponse but does not '
-                . 'declare returns204; a body-less action must declare returns204 so the generated document advertises a 204.',
+                'The JSON:API action "%s" on type "%s" has a handler (%s) returning NoContentResponse but its `responds` '
+                . 'set declares no 204 (new NoContent()); a body-less action must declare it so the generated document advertises a 204.',
                 $attribute->path,
                 $attribute->type,
                 $reflection->getName(),
             ));
         }
 
-        if ($name === MetaResponse::class && !$attribute->outputMeta) {
+        if ($name === MetaResponse::class && !$this->respondsWith($attribute, MetaResult::class)) {
             throw new \LogicException(\sprintf(
-                'The JSON:API action "%s" on type "%s" has a handler (%s) returning MetaResponse but does not declare '
-                . 'outputMeta; a meta-only action must declare outputMeta so the generated document advertises a meta document.',
+                'The JSON:API action "%s" on type "%s" has a handler (%s) returning MetaResponse but its `responds` set '
+                . 'declares no meta document (new MetaResult()); a meta-only action must declare it so the generated document advertises a meta document.',
                 $attribute->path,
                 $attribute->type,
                 $reflection->getName(),
             ));
         }
+    }
+
+    /**
+     * Whether the action's declared `responds` set contains a response of the given class.
+     *
+     * @param class-string $class
+     */
+    private function respondsWith(AsJsonApiAction $attribute, string $class): bool
+    {
+        foreach ($attribute->responds as $response) {
+            if ($response instanceof $class) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

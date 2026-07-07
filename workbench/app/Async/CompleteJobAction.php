@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Workbench\App\Async;
 
+use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
 use haddowg\JsonApi\Response\SeeOtherResponse;
 use haddowg\JsonApiLaravel\Action\ActionContext;
 use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
@@ -17,7 +18,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
  * operation produced. The witness that a custom action can drive the `303` leg of the
  * async story (ADR 0020, the twin of the bundle's `CompleteJobAction`).
  */
-#[AsJsonApiAction(type: 'jobs', path: 'complete', scope: ActionScope::Collection, returns204: true)]
+#[AsJsonApiAction(type: 'jobs', path: 'complete', scope: ActionScope::Collection, responds: [new SeeOther()])]
 final readonly class CompleteJobAction implements ActionHandlerInterface
 {
     public function handle(ActionContext $context): SeeOtherResponse

@@ -180,6 +180,25 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         $show->assertJsonPath('data.attributes.name', 'United Kingdom');
     }
 
+    public function test_catalog_exports_index_lists_the_seeded_exports(): void
+    {
+        $index = $this->fetch('/api/catalog-exports')->assertOk();
+        $index->assertJsonPath('data.0.type', 'catalog-exports');
+    }
+
+    public function test_export_job_fetch_redirects_when_complete_and_reports_status_while_running(): void
+    {
+        // JSON:API asynchronous-processing completion: a completed job → 303 See Other to the
+        // produced export (the ResolvesCompletionRedirect fetch-one seam), a running job → 200.
+        $done = $this->fetch('/api/export-jobs/job-completed');
+        $done->assertStatus(303);
+        self::assertNotNull($done->headers->get('Location'));
+
+        $running = $this->fetch('/api/export-jobs/job-processing')->assertOk();
+        $running->assertJsonPath('data.type', 'export-jobs');
+        $running->assertJsonPath('data.attributes.state', 'processing');
+    }
+
     public function test_standalone_types_are_read_only(): void
     {
         // The operation allow-list opened only the two fetch verbs, so a write verb is unrouted
@@ -225,6 +244,19 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         $response->assertStatus(201);
         // The beforeCreate hook derived the read-only slug from the title.
         $response->assertJsonPath('data.attributes.slug', 'late-night');
+    }
+
+    public function test_catalog_export_create_is_accepted_for_async_processing(): void
+    {
+        // The always-async create: POST → 202 Accepted with a pollable export-jobs job document
+        // (Content-Location + Retry-After), never a 201 (create: [new Accepted('export-jobs')]).
+        $response = $this->write('POST', '/api/catalog-exports', [
+            'data' => ['type' => 'catalog-exports', 'attributes' => ['format' => 'json']],
+        ]);
+        $response->assertStatus(202);
+        self::assertNotNull($response->headers->get('Content-Location'));
+        self::assertNotNull($response->headers->get('Retry-After'));
+        $response->assertJsonPath('data.type', 'export-jobs');
     }
 
     /**

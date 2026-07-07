@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
+use haddowg\JsonApi\OpenApi\Metadata\Accepted;
 use haddowg\JsonApi\OpenApi\Metadata\ActionInputMode;
 use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
-use haddowg\JsonApi\OpenApi\Metadata\ActionOutputMode;
+use haddowg\JsonApi\OpenApi\Metadata\ActionResource;
+use haddowg\JsonApi\OpenApi\Metadata\ActionResponse;
 use haddowg\JsonApi\OpenApi\Metadata\ActionScope;
+use haddowg\JsonApi\OpenApi\Metadata\MetaResult;
+use haddowg\JsonApi\OpenApi\Metadata\NoContent;
+use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
 use haddowg\JsonApiLaravel\Action\ActionDescriptor;
 
 /**
@@ -15,18 +20,16 @@ use haddowg\JsonApiLaravel\Action\ActionDescriptor;
  * OpenAPI {@see ActionMetadataInterface} core's projector consumes — the Laravel twin of
  * the bundle's `OpenApi\Metadata\ActionMetadata`.
  *
- * The package and core each carry their own scope/input/output enums (same case names,
- * different namespaces — the package's drive routing/dispatch, core's drive projection),
- * so they are mapped **by case name**.
+ * The package and core each carry their own scope/input enums (same case names, different
+ * namespaces — the package's drive routing/dispatch, core's drive projection), so they are
+ * mapped **by case name**.
  *
  * `isSecured()` reads whether the descriptor declares an `ability` (the ability itself is
- * never surfaced). `outputMode()` maps the descriptor's resolved
- * {@see \haddowg\JsonApiLaravel\Action\ActionOutput} to core's {@see ActionOutputMode} by
- * case name. `outputType()` maps the empty-string sentinel (a `returns204`/`outputMeta`
- * action carries no response resource) to `null`, and is read only in
- * {@see ActionOutputMode::Document}. `tags` is already resolved by the {@see ActionRegistry}
- * (empty action tags fall back to the mount type's default tag) so the projected document
- * matches the bundle's for an identical action.
+ * never surfaced). `responds()` rehydrates the descriptor's cached `{kind, ref}` scalar
+ * pairs into core's atomic response objects — the concrete classes the projector
+ * discriminates on. `tags` is already resolved by the {@see ActionRegistry} (empty action
+ * tags fall back to the mount type's default tag) so the projected document matches the
+ * bundle's for an identical action.
  */
 final readonly class ActionMetadata implements ActionMetadataInterface
 {
@@ -66,14 +69,29 @@ final readonly class ActionMetadata implements ActionMetadataInterface
         return $this->inputMode() === ActionInputMode::Document ? $this->descriptor->inputType : null;
     }
 
-    public function outputMode(): ActionOutputMode
+    /**
+     * @return non-empty-list<ActionResponse>
+     */
+    public function responds(): array
     {
-        return ActionOutputMode::{$this->descriptor->output->name};
-    }
+        $responds = [];
+        foreach ($this->descriptor->responds as $response) {
+            $responds[] = match ($response['kind']) {
+                'resource' => new ActionResource((string) $response['ref']),
+                'accepted' => new Accepted((string) $response['ref']),
+                'meta' => new MetaResult(),
+                'nocontent' => new NoContent(),
+                'seeother' => new SeeOther(),
+                default => throw new \LogicException(\sprintf(
+                    'Unknown action response kind "%s" for action "%s" on type "%s".',
+                    $response['kind'],
+                    $this->descriptor->path,
+                    $this->descriptor->type,
+                )),
+            };
+        }
 
-    public function outputType(): ?string
-    {
-        return $this->descriptor->outputType !== '' ? $this->descriptor->outputType : null;
+        return $responds;
     }
 
     public function isSecured(): bool

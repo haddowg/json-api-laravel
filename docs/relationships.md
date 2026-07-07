@@ -127,7 +127,7 @@ BelongsToMany::make('orderedTracks', 'tracks')
 `position` is required-on-create, `weight` is a second writable pivot field constrained
 `weight >= position`, and `addedAt` is server-owned (`readOnly`). Pivot fields are merged into
 the payload **before validation**, so cross-field rules see them. (Pivot-meta *read* rendering
-landed in Phase 3b —
+is described in
 [ADR 0008](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0008-pivot-meta-read-render-is-deferred-to-phase-3b.md).)
 
 ## Relationship mutations and prohibitions

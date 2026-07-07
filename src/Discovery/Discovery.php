@@ -353,7 +353,7 @@ final class Discovery
         $actions = [];
         foreach ($entries as $entry) {
             if (\is_array($entry)) {
-                /** @var array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, output: string, ability?: ?string, handlerClass: class-string<\haddowg\JsonApiLaravel\Action\ActionHandlerInterface>, server: string, name?: ?string, tags?: list<string>, asLink?: bool} $entry */
+                /** @var array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null}>, ability?: ?string, handlerClass: class-string<\haddowg\JsonApiLaravel\Action\ActionHandlerInterface>, server: string, name?: ?string, tags?: list<string>, asLink?: bool} $entry */
                 $actions[] = \haddowg\JsonApiLaravel\Action\ActionDescriptor::fromArray($entry);
             }
         }
