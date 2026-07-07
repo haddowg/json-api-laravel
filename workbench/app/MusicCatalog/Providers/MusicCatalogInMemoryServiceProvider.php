@@ -29,7 +29,9 @@ use Workbench\App\MusicCatalog\Domain\Track;
 use Workbench\App\MusicCatalog\Domain\User;
 use Workbench\App\MusicCatalog\JsonApi\AlbumResource;
 use Workbench\App\MusicCatalog\JsonApi\ArtistResource;
+use Workbench\App\MusicCatalog\JsonApi\CatalogExportResource;
 use Workbench\App\MusicCatalog\JsonApi\DeviceResource;
+use Workbench\App\MusicCatalog\JsonApi\ExportJobResource;
 use Workbench\App\MusicCatalog\JsonApi\FavoriteResource;
 use Workbench\App\MusicCatalog\JsonApi\GenreResource;
 use Workbench\App\MusicCatalog\JsonApi\LibraryResource;
@@ -40,8 +42,11 @@ use Workbench\App\MusicCatalog\JsonApi\ReleaseResource;
 use Workbench\App\MusicCatalog\JsonApi\TrackResource;
 use Workbench\App\MusicCatalog\JsonApi\UserResource;
 use Workbench\App\MusicCatalog\Listeners\AuditLogSubscriber;
+use Workbench\App\MusicCatalog\Provider\CatalogExportPersister;
+use Workbench\App\MusicCatalog\Provider\CatalogExportProvider;
 use Workbench\App\MusicCatalog\Provider\ChartProvider;
 use Workbench\App\MusicCatalog\Provider\CountryProvider;
+use Workbench\App\MusicCatalog\Provider\ExportJobProvider;
 use Workbench\App\MusicCatalog\Query\ArrayFullTextSearchArm;
 use Workbench\App\MusicCatalog\Security\PlaylistApiPolicy;
 use Workbench\App\MusicCatalog\Serializer\ChartSerializer;
@@ -82,7 +87,9 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
         JsonApi::register([
             AlbumResource::class,
             ArtistResource::class,
+            CatalogExportResource::class,
             DeviceResource::class,
+            ExportJobResource::class,
             FavoriteResource::class,
             GenreResource::class,
             LibraryResource::class,
@@ -157,6 +164,12 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
         // both provider arms read them identically (decision 3, bundle ADR 0024).
         JsonApi::provider(new ChartProvider());
         JsonApi::provider(new CountryProvider());
+
+        // The async-write witness types — the SAME custom providers/persister the Eloquent arm
+        // uses (storage-orthogonal), so both arms serve catalog-exports/export-jobs identically.
+        JsonApi::provider(new CatalogExportProvider());
+        JsonApi::provider(new ExportJobProvider());
+        JsonApi::persister(new CatalogExportPersister());
 
         // The audit trail is a singleton so every listener invocation appends to the one
         // store the feature test reads back (see AuditLogSubscriber).

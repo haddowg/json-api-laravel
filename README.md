@@ -5,16 +5,20 @@
 [![PHP Version](https://img.shields.io/packagist/php-v/haddowg/json-api-laravel.svg)](https://packagist.org/packages/haddowg/json-api-laravel)
 [![License](https://img.shields.io/packagist/l/haddowg/json-api-laravel.svg)](LICENSE)
 
+> **Part of the [jsonapi.rest](https://jsonapi.rest) suite** — a complete, spec-compliant
+> JSON:API 1.1 stack for PHP: a framework-agnostic [core](https://github.com/haddowg/json-api),
+> a [Symfony bundle](https://github.com/haddowg/json-api-symfony), this **Laravel package**, and
+> a typed TypeScript client, bound together by one conformance-tested OpenAPI 3.1 contract.
+
 A Laravel package that makes [`haddowg/json-api`](https://github.com/haddowg/json-api)
 idiomatic in a Laravel application: declare a JSON:API type as a class and get the standard
 endpoint set — spec-compliant JSON:API 1.1 documents, content negotiation, validation, policy
 authorization, and an **Eloquent data layer** — with no controller, handler, or serializer
 wired by hand.
 
-It is the Laravel twin of the
-[Symfony bundle](https://github.com/haddowg/json-api-symfony): both build on the same
-framework-agnostic core and project a **byte-identical OpenAPI document** for an identical
-domain, so a client generator consumes either backend unchanged.
+It is the Laravel twin of the [Symfony bundle](https://github.com/haddowg/json-api-symfony):
+both build on the same framework-agnostic core and project a **byte-identical OpenAPI document**
+for an identical domain, so a client generator consumes either backend unchanged.
 
 ## Requirements
 
@@ -28,8 +32,8 @@ composer require haddowg/json-api-laravel
 php artisan vendor:publish --tag=jsonapi-config   # optional — customise servers, pagination, OpenAPI
 ```
 
-The service provider is auto-discovered. See [Installation](docs/install.md) for the
-`dev-main` VCS note while core is pre-release.
+The service provider is auto-discovered and core is pulled in transitively — there is nothing
+to register by hand.
 
 ## Quickstart
 
@@ -96,22 +100,15 @@ and validated writes, each a JSON:API 1.1 document.
 docker compose up   # then open http://localhost:8080/api/albums and http://localhost:8080/docs
 ```
 
-Serves the full twelve-type [music-catalog example](docs/workbench.md) over HTTP. See
-[Docker](docs/docker.md).
+Serves the full twelve-type music-catalog example over HTTP. See the
+[Docker guide](https://haddowg.github.io/json-api-laravel/docker/).
 
 ## Documentation
 
-Full docs: **[haddowg.github.io/json-api-laravel](https://haddowg.github.io/json-api-laravel/)**
-(source under [`docs/`](docs/index.md)).
+Full documentation: **[haddowg.github.io/json-api-laravel](https://haddowg.github.io/json-api-laravel/)**
 
-- Getting started: [install](docs/install.md) · [getting-started](docs/getting-started.md) · [configuration](docs/configuration.md)
-- Resources: [resources](docs/resources.md) · [capability-composition](docs/capability-composition.md) · [custom-serializers-hydrators](docs/custom-serializers-hydrators.md)
-- Data layer: [eloquent](docs/eloquent.md) · [custom-data-providers](docs/custom-data-providers.md) · [pagination](docs/pagination.md)
-- Writing: [validation](docs/validation.md) · [authorization](docs/authorization.md) · [lifecycle](docs/lifecycle.md) · [lifecycle-hooks](docs/lifecycle-hooks.md) · [actions](docs/actions.md) · [atomic-operations](docs/atomic-operations.md)
-- Operations: [routing](docs/routing.md) · [errors](docs/errors.md) · [relationships](docs/relationships.md) · [multi-server & testing](docs/multi-server-and-testing.md) · [openapi](docs/openapi.md) · [optimize](docs/optimize.md)
-
-Core concepts (fields, relations, constraints, response VOs) live in the
-[core documentation](https://github.com/haddowg/json-api).
+Core concepts (fields, relations, constraints, response value objects) live in the
+[core documentation](https://haddowg.github.io/json-api/).
 
 ## Contributing & development
 

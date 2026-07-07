@@ -11,7 +11,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
 
 /**
  * A discovery-scan guard fixture: the `handle()` return type is narrowed to exactly
- * {@see MetaResponse}, but the attribute does NOT declare `outputMeta`. Discovery must
+ * {@see MetaResponse}, but its `responds` declares no `new MetaResult()`. Discovery must
  * fail loudly rather than project a resource-body response the handler can never return.
  *
  * @internal

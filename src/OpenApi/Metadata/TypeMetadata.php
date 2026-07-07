@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
 use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
+use haddowg\JsonApi\OpenApi\Metadata\OperationResponseInterface;
+use haddowg\JsonApi\OpenApi\Metadata\OperationResponses;
 use haddowg\JsonApi\OpenApi\Metadata\OperationType;
 use haddowg\JsonApi\OpenApi\Metadata\PaginatorKind;
 use haddowg\JsonApi\OpenApi\Metadata\RelationMetadataInterface;
@@ -38,6 +40,7 @@ final readonly class TypeMetadata implements TypeMetadataInterface
      * @param list<string>                    $tags
      * @param array<string, ?string>          $operationDescriptions per-CRUD-operation description overrides, keyed by {@see OperationType::value}; a missing key (and a null value) means "no override"
      * @param list<string>                    $includablePaths
+     * @param array<string, list<array{status: int, jobType: string|null}>> $responses per-operation success-response overrides, keyed by {@see OperationType::value} → an ordered list of `{status, jobType}` scalar pairs; a missing key means "the operation's default" ({@see OperationResponses::defaultFor()})
      */
     public function __construct(
         private string $type,
@@ -60,6 +63,7 @@ final readonly class TypeMetadata implements TypeMetadataInterface
         private ?string $description,
         private array $operationDescriptions,
         private array $includablePaths,
+        private array $responses = [],
     ) {}
 
     public function type(): string
@@ -90,6 +94,19 @@ final readonly class TypeMetadata implements TypeMetadataInterface
     public function operations(): array
     {
         return $this->operations;
+    }
+
+    public function responsesFor(OperationType $operation): array
+    {
+        $declared = $this->responses[$operation->value] ?? [];
+        if ($declared === []) {
+            return OperationResponses::defaultFor($operation);
+        }
+
+        return \array_map(
+            static fn(array $response): OperationResponseInterface => new DeclaredOperationResponse($response['status'], $response['jobType']),
+            $declared,
+        );
     }
 
     public function securedOperations(): array

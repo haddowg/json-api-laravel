@@ -9,10 +9,12 @@ principle rather than an afterthought. The differences are ones of investment: j
 stays deliberately lean and framework-agnostic (a PSR-15 handler you wire by hand), while this
 package invests in a deep Laravel-native layer — discovery, routing, artisan tooling, Gate
 policies, a testing kit — plus a byte-identical cross-framework contract with the Symfony
-bundle. It also, honestly, has capabilities this package does not — heterogeneous
-polymorphic collections chief among them — and one this package *deliberately declines*
-rather than lacks: client-composed boolean filter algebra, where this package holds
-filtering to an explicit, owner-vetted allow-list (see Reading, below).
+bundle. It also, honestly, has a capability this package does not — a **top-level
+heterogeneous listing endpoint**: a primary collection that returns mixed models via a union
+query. (This package does support heterogeneous polymorphism at the *relationship* level —
+`MorphTo` and mixed-type `MorphToMany` — just not as a top-level collection.) And there is one
+this package *deliberately declines* rather than lacks: client-composed boolean filter algebra,
+where this package holds filtering to an explicit, owner-vetted allow-list (see Reading, below).
 
 Comparison as of 5 July 2026, against `tobyz/json-api-server` v1.0.0-rc.1. Found an error?
 [Open an issue](https://github.com/haddowg/json-api-laravel/issues).
@@ -77,8 +79,9 @@ where the shared philosophy diverges in depth: both derive validation from the t
 but this package compiles the full constraint set to Laravel rules (or Symfony constraints)
 with an entity-level pass and an optional document-first linter, while json-api-server's
 Laravel `rules()` bridge validates values one at a time. Asynchronous processing, once a row
-that belonged entirely to them, is now covered on both sides — the difference is in reach:
-json-api-server reflects the async responses in OpenAPI, this package does not yet.
+that belonged entirely to them, is now at full parity — both accept a write with `202` + a
+pollable job resource and `Retry-After` and complete with `303 See Other`, and both reflect
+that whole lifecycle in the generated OpenAPI document.
 
 | Capability | This package | json-api-server |
 | --- | --- | --- |
@@ -86,7 +89,7 @@ json-api-server reflects the async responses in OpenAPI, this package does not y
 | Validation from the definition | **Yes** — constraints compile to Laravel rules with nested pointers, an entity-level post-hydration pass, and an optional JSON Schema linter; see [validation](validation.md) | **Partial** — type-system validation plus per-field `validate()` closures; the `rules()` bridge validates one value at a time (interdependent rules do not work) and rules are not reflected in OpenAPI |
 | Lifecycle events & hooks | **Yes** — 18 real Laravel [events](lifecycle.md) plus a per-resource [hook trait](lifecycle-hooks.md); before hooks abort, after hooks replace the result | **Partial** — per-resource hook methods and endpoint-level callbacks; no framework event dispatch |
 | Custom actions | **Yes** — declared on the resource with typed input modes, per-action authorization, and `asLink` exposure; see [actions](actions.md) | **Yes** — `CollectionAction`/`ResourceAction` endpoints with configurable methods and OpenAPI paths; no typed input/output modes |
-| Async writes | **Yes** — a persister returns `AcceptedForProcessing` to defer a write to a queue; the handler renders `202` + a pollable job resource with `Retry-After`, and a completion action returns `303 See Other` (not yet reflected in OpenAPI); see [async writes](async.md) | **Yes** — the full JSON:API Asynchronous Processing recommendation: `202` + job resource, `Retry-After`, `303 See Other` on completion, all reflected in OpenAPI |
+| Async writes | **Yes** — a persister returns `AcceptedForProcessing` to defer a write to a queue; the handler renders `202` + a pollable job resource with `Retry-After`, and the job resource's fetch (or a completion action) returns `303 See Other` — the whole lifecycle reflected in OpenAPI via per-operation response declarations; see [async writes](async.md) | **Yes** — the full JSON:API Asynchronous Processing recommendation: `202` + job resource, `Retry-After`, `303 See Other` on completion, all reflected in OpenAPI |
 
 ## Data layer
 
@@ -101,7 +104,7 @@ pair ships as a test double and conformance witness (see
 | Capability | This package | json-api-server |
 | --- | --- | --- |
 | Provider/persister seam | **Yes** — separately registered services, priority + first-supports resolution, clean per-type shadowing | **Partial** — storage methods live on the resource class; any backend works, but there is no registered-service resolution or shadowing without subclassing |
-| Reference layers | **Yes** — an auto-registered Eloquent layer with a three-tier type-to-model map (and a Doctrine ORM layer on the Symfony side); see [eloquent](eloquent.md) | **Partial** — one Eloquent layer implementing all capabilities, including polymorphic unions; registration is manual, with no attribute or convention-based mapping |
+| Reference layers | **Yes** — an auto-registered Eloquent layer with a three-tier type-to-model map (and a Doctrine ORM layer on the Symfony side), resolving polymorphic relationships (`MorphTo`, mixed-type `MorphToMany`) natively; see [eloquent](eloquent.md) | **Partial** — one Eloquent layer implementing all capabilities, including top-level polymorphic-union *listing* endpoints; registration is manual, with no attribute or convention-based mapping |
 | In-memory provider | **Yes** — ships with the package; the docs' example suites run over both it and the database layer; see [workbench](workbench.md) | **No** — array-backed mocks exist only in the internal test suite, not as a shipped consumer tool |
 
 ## OpenAPI & tooling
@@ -137,26 +140,24 @@ There is a lot to admire here, and some of it this package simply does not have:
 
 - **Lean and framework-agnostic.** A PSR-15 handler with five tiny runtime dependencies —
   drop it into any PSR-7-capable stack with no bundle or provider machinery to adopt.
-- **Asynchronous processing reflected in OpenAPI.** Both packages now do `202` + a job
-  resource, `Retry-After`, and `303 See Other` on completion (this package via the
-  [async-write seam](async.md)); json-api-server goes one further and reflects the async
-  responses in its generated OpenAPI document, which this package does not yet.
 - **Boolean filter algebra.** Nestable `filter[and]`/`[or]`/`[not]` groups and per-filter
   operators go beyond a flat declarative vocabulary.
-- **Polymorphism as a design pillar.** Heterogeneous collections with a union SQL builder for
-  mixed-model listing endpoints.
+- **Top-level polymorphic listing.** A union SQL builder serves a *primary* collection of mixed
+  models (a single listing endpoint returning albums + tracks + …). This package renders mixed
+  types through polymorphic *relationships* (`MorphTo`/`MorphToMany`) but has no top-level
+  heterogeneous collection.
 - **The capability-interface design.** The storage abstraction and the permission surface are
   the same small contract — elegant and easy to reason about.
 - **Craft.** A chapter-by-chapter spec test suite, benchmarks, a localizable error catalogue,
   disciplined changelogs, and the lineage of Flarum's author refining the API across nine
-  pre-1.0 release lines.
+  release lines.
 
 ## Which should you choose?
 
 **Choose json-api-server** if you value minimal dependencies and framework independence — a
 non-Laravel PSR-7 stack, or a Laravel app where you would rather wire one route by hand than
-adopt a package's conventions; if you need OpenAPI-reflected asynchronous processing today; or
-if boolean filter algebra and heterogeneous collections match your domain. It is a lean,
+adopt a package's conventions; or if boolean filter algebra or top-level heterogeneous
+listing collections match your domain. It is a lean,
 carefully crafted library approaching a well-earned 1.0.
 
 **Choose this package** if you want the same spec-first, typed-schema philosophy with the
@@ -169,6 +170,5 @@ error pointers, SQL push-down [windowing](eloquent.md#windowed-relationship-quer
 for compound documents, and an OpenAPI pipeline that runs from
 [viewer routes](openapi.md) through [deploy-time warmup](optimize.md) to a
 [byte-identical contract](openapi.md#byte-compatibility-with-the-symfony-bundle) with the
-Symfony bundle. Both packages are pre-1.0; json-api-server carries years of refinement and its
-author's production lineage, while this package is brand-new — weigh that honestly against the
-breadth above.
+Symfony bundle. json-api-server carries years of refinement and its author's production lineage,
+while this package is newer — weigh that honestly against the breadth above.

@@ -38,6 +38,7 @@ final readonly class ResourceDescriptor
      * @param class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null $serializer the custom serializer this type renders through (null = the resource's field inventory)
      * @param class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null     $hydrator   the custom hydrator this type writes through (null = the resource's field inventory)
      * @param class-string<\Illuminate\Database\Eloquent\Model>|null             $model      the Eloquent model this type declares for the reference Eloquent layer (null = resolve by convention, ADR 0019)
+     * @param array<string, list<array{status: int, jobType: string|null}>>      $responses  the per-operation OpenAPI success-response overrides, keyed by {@see Operation} case value → an ordered list of `{status, jobType}` scalar pairs (empty = each operation's default); kept as scalars so it round-trips through the discovery cache
      */
     public function __construct(
         public string $class,
@@ -52,6 +53,7 @@ final readonly class ResourceDescriptor
         public ?string $serializer = null,
         public ?string $hydrator = null,
         public ?string $model = null,
+        public array $responses = [],
     ) {}
 
     /**
@@ -71,7 +73,7 @@ final readonly class ResourceDescriptor
     }
 
     /**
-     * @return array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy: class-string|null, abilities: array<string, string|bool>, headers: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags: list<string>, serializer: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null, hydrator: class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null, model: class-string<\Illuminate\Database\Eloquent\Model>|null}
+     * @return array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy: class-string|null, abilities: array<string, string|bool>, headers: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags: list<string>, serializer: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null, hydrator: class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null, model: class-string<\Illuminate\Database\Eloquent\Model>|null, responses: array<string, list<array{status: int, jobType: string|null}>>}
      */
     public function toArray(): array
     {
@@ -88,6 +90,7 @@ final readonly class ResourceDescriptor
             'serializer' => $this->serializer,
             'hydrator' => $this->hydrator,
             'model' => $this->model,
+            'responses' => $this->responses,
         ];
     }
 
@@ -97,7 +100,7 @@ final readonly class ResourceDescriptor
      * no response headers, no explicit tags, no serializer/hydrator override, no declared
      * model — the convention tier still applies at map-resolution time).
      *
-     * @param array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy?: class-string|null, abilities?: array<string, string|bool>, headers?: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags?: list<string>, serializer?: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null, hydrator?: class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null, model?: class-string<\Illuminate\Database\Eloquent\Model>|null} $data
+     * @param array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy?: class-string|null, abilities?: array<string, string|bool>, headers?: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags?: list<string>, serializer?: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null, hydrator?: class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null, model?: class-string<\Illuminate\Database\Eloquent\Model>|null, responses?: array<string, list<array{status: int, jobType: string|null}>>} $data
      */
     public static function fromArray(array $data): self
     {
@@ -114,6 +117,7 @@ final readonly class ResourceDescriptor
             $data['serializer'] ?? null,
             $data['hydrator'] ?? null,
             $data['model'] ?? null,
+            $data['responses'] ?? [],
         );
     }
 }

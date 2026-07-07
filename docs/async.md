@@ -12,6 +12,13 @@ returns a marker; the handler renders the spec-correct `202`. *How* you queue th
 is your choice — the recipe below dispatches a [Laravel queued job](https://laravel.com/docs/queues),
 but nothing about the queue is baked in.
 
+The whole lifecycle is **reflected in the generated
+[OpenAPI document](openapi.md#per-operation-response-declarations)**: declare the write's `202`
+and the job's completion `303` with [per-operation response
+declarations](resources.md#declaring-response-shapes), and a codegen client sees the async
+contract — the `202` + job resource, the `Retry-After` hint, and the `303` to the produced
+resource — from the document alone.
+
 ## Accepting the write — `AcceptedForProcessing`
 
 A [`DataPersister`](custom-data-providers.md) that dispatches a write instead of committing
@@ -78,39 +85,91 @@ standalone `#[AsJsonApiSerializer(type: 'jobs')]`, or a full resource if you wan
 own endpoints). Persist the job wherever your queue tracks state (a `jobs` table, the
 cache) so the polling endpoint can report its progress.
 
+Declare the async response on the resource so the `202` is advertised in OpenAPI — always-async
+`create: [new Accepted('jobs')]`, or maybe-async `create: [new Created(), new Accepted('jobs')]`
+(see [response shapes](resources.md#declaring-response-shapes)).
+
 ## Reporting completion — `303 See Other`
 
-Model the job-status endpoint as a [custom action](actions.md) that returns
-`$context->seeOther($url)` once the queued work has produced the resource:
+Point the client at the job resource: while the work runs, `GET`ting it returns the job's
+status (`200`); once complete it answers `303 See Other`, redirecting to the produced
+resource. The spec-canonical way to express that is the **job resource's own fetch-one** —
+implement [`ResolvesCompletionRedirect`](https://github.com/haddowg/json-api/blob/main/src/Resource/ResolvesCompletionRedirect.php)
+and declare `fetchOne: [new Ok(), new SeeOther()]`:
 
 ```php
-use haddowg\JsonApi\Response\SeeOtherResponse;
-use haddowg\JsonApiLaravel\Action\ActionContext;
-use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
-use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
+use haddowg\JsonApi\OpenApi\Metadata\Ok;
+use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
+use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\Id;
+use haddowg\JsonApi\Resource\Field\Str;
+use haddowg\JsonApi\Resource\ResolvesCompletionRedirect;
+use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
-#[AsJsonApiAction(type: 'jobs', path: 'result', methods: ['GET'])]
-final class JobResult implements ActionHandlerInterface
+#[AsJsonApiResource(readOnly: true, fetchOne: [new Ok(), new SeeOther()])]
+final class JobResource extends AbstractResource implements ResolvesCompletionRedirect
 {
-    public function handle(ActionContext $context): SeeOtherResponse
-    {
-        $job = $context->entity();
-        \assert($job instanceof Job);
+    public static string $type = 'jobs';
 
-        // Still running → 202 again; done → redirect to the produced resource.
-        return $context->seeOther(url("/api/albums/{$job->createdId}"));
+    public function fields(): array
+    {
+        return [Id::make(), Str::make('state')->readOnly()];
+    }
+
+    // Done → the produced resource's URL (a 303 Location); still running → null (a normal 200).
+    public function completionLocation(object $entity): ?string
+    {
+        \assert($entity instanceof Job);
+
+        return $entity->state === 'completed'
+            ? url("/api/albums/{$entity->createdId}")
+            : null;
     }
 }
 ```
 
 ```http
-HTTP/1.1 303 See Other
-Location: https://example.test/api/albums/42
+GET /api/jobs/9f3b      → 200   { "data": { "type": "jobs", "attributes": { "state": "processing" } } }
+GET /api/jobs/9f3b      → 303   Location: https://example.test/api/albums/42
 ```
 
-While the job is still running the same action can return
-`$context->accepted($pollUrl)->withRetryAfter(30)` to answer `202` again, so a polling
-client sees `202` until the work finishes and then a single `303`.
+The handler consults `completionLocation()` after loading the entity: a non-null string
+renders a `303`, `null` renders the job normally. The `fetchOne: [new Ok(), new SeeOther()]`
+declaration advertises both outcomes in the OpenAPI document.
+
+### Completion via a custom action
+
+When completion isn't a plain job fetch — a side-effecting `POST`, a collection-scoped
+result, or a dedicated poll endpoint — model it as a [custom action](actions.md) declaring
+`responds: [new Accepted('jobs'), new SeeOther()]`, returning `$context->seeOther($url)` (done)
+or `$context->accepted($pollUrl)->withRetryAfter(30)` (still running):
+
+```php
+use haddowg\JsonApi\OpenApi\Metadata\Accepted;
+use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
+use haddowg\JsonApi\Response\AcceptedResponse;
+use haddowg\JsonApi\Response\SeeOtherResponse;
+use haddowg\JsonApiLaravel\Action\ActionContext;
+use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
+use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
+
+#[AsJsonApiAction(type: 'jobs', path: 'result', methods: ['GET'], responds: [new Accepted('jobs'), new SeeOther()])]
+final class JobResult implements ActionHandlerInterface
+{
+    public function handle(ActionContext $context): AcceptedResponse|SeeOtherResponse
+    {
+        $job = $context->entity();
+        \assert($job instanceof Job);
+
+        return $job->state === 'completed'
+            ? $context->seeOther(url("/api/albums/{$job->createdId}"))
+            : $context->accepted(url("/api/jobs/{$job->id}/-actions/result"))->withRetryAfter(30);
+    }
+}
+```
+
+So a polling client sees `202` (with `Retry-After`) until the work finishes, then a single
+`303` — and both are advertised in the generated document.
 
 ## Notes
 

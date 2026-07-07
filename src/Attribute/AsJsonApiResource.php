@@ -4,6 +4,14 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Attribute;
 
+use haddowg\JsonApi\OpenApi\Metadata\CreateResponse;
+use haddowg\JsonApi\OpenApi\Metadata\DeleteResponse;
+use haddowg\JsonApi\OpenApi\Metadata\FetchCollectionResponse;
+use haddowg\JsonApi\OpenApi\Metadata\FetchOneResponse;
+use haddowg\JsonApi\OpenApi\Metadata\OperationResponseInterface;
+use haddowg\JsonApi\OpenApi\Metadata\OperationResponses;
+use haddowg\JsonApi\OpenApi\Metadata\OperationType;
+use haddowg\JsonApi\OpenApi\Metadata\UpdateResponse;
 use haddowg\JsonApiLaravel\Operation\Operation;
 
 /**
@@ -90,6 +98,21 @@ use haddowg\JsonApiLaravel\Operation\Operation;
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final readonly class AsJsonApiResource
 {
+    /** @var list<OperationResponseInterface> the resolved create success-response override (empty = the default `201`) */
+    public array $create;
+
+    /** @var list<OperationResponseInterface> the resolved update success-response override (empty = the default `200`) */
+    public array $update;
+
+    /** @var list<OperationResponseInterface> the resolved delete success-response override (empty = the default `204`) */
+    public array $delete;
+
+    /** @var list<OperationResponseInterface> the resolved fetch-one success-response override (empty = the default `200`) */
+    public array $fetchOne;
+
+    /** @var list<OperationResponseInterface> the resolved fetch-collection success-response override (empty = the default `200`) */
+    public array $fetchCollection;
+
     /**
      * @param string|list<string>|null   $server       the server name(s) exposing this type (null = the implicit `default`)
      * @param class-string<\Illuminate\Database\Eloquent\Model>|null $model the Eloquent model this type maps to for the reference Eloquent layer (null = the convention guess under `jsonapi.eloquent.model_namespace`)
@@ -104,6 +127,11 @@ final readonly class AsJsonApiResource
      * @param string|null                $sunset       RFC 8594 sunset HTTP-date (`Sunset: <date>`), or null
      * @param string|null                $sunsetLink   a URI for the companion `Link: <uri>; rel="sunset"` (emitted only when `sunset` is set)
      * @param list<string>               $tags         the OpenAPI tag names this type's operations are grouped under (empty = the humanized-type default)
+     * @param CreateResponse|list<CreateResponse>|null                   $create          the create (`POST`) success response(s) this type advertises (null = the default `201`); use {@see \haddowg\JsonApi\OpenApi\Metadata\Accepted} for an async `202`, {@see \haddowg\JsonApi\OpenApi\Metadata\NoContent} for a client-id `204`
+     * @param UpdateResponse|list<UpdateResponse>|null                   $update          the update (`PATCH`) success response(s) (null = the default `200`)
+     * @param DeleteResponse|list<DeleteResponse>|null                   $delete          the delete (`DELETE`) success response(s) (null = the default `204`)
+     * @param FetchOneResponse|list<FetchOneResponse>|null               $fetchOne        the fetch-one (`GET /{type}/{id}`) success response(s) (null = the default `200`); use {@see \haddowg\JsonApi\OpenApi\Metadata\SeeOther} for an async-completion `303`
+     * @param FetchCollectionResponse|list<FetchCollectionResponse>|null $fetchCollection the fetch-collection (`GET /{type}`) success response(s) (null = the default `200`)
      */
     public function __construct(
         public ?string $type = null,
@@ -120,6 +148,11 @@ final readonly class AsJsonApiResource
         public ?string $sunset = null,
         public ?string $sunsetLink = null,
         public array $tags = [],
+        CreateResponse|array|null $create = null,
+        UpdateResponse|array|null $update = null,
+        DeleteResponse|array|null $delete = null,
+        FetchOneResponse|array|null $fetchOne = null,
+        FetchCollectionResponse|array|null $fetchCollection = null,
     ) {
         if ($readOnly && $operations !== []) {
             throw new \LogicException(
@@ -127,6 +160,80 @@ final readonly class AsJsonApiResource
                 . 'they are mutually exclusive — drop one. Use readOnly for the two fetch operations, '
                 . 'or operations for a precise allow-list.',
             );
+        }
+
+        $this->create = self::normalizeResponses(OperationType::Create, $create);
+        $this->update = self::normalizeResponses(OperationType::Update, $update);
+        $this->delete = self::normalizeResponses(OperationType::Delete, $delete);
+        $this->fetchOne = self::normalizeResponses(OperationType::FetchOne, $fetchOne);
+        $this->fetchCollection = self::normalizeResponses(OperationType::FetchCollection, $fetchCollection);
+
+        $this->assertResponsesExposed($operations, $readOnly);
+    }
+
+    /**
+     * Normalises a declared response override into a validated list: a single response
+     * object becomes a one-element list, `null` an empty list (the operation keeps its
+     * default). A non-empty set is validated by core's {@see OperationResponses} — spec-valid
+     * status codes only, no duplicates, at most one asynchronous `202` — so an illegal
+     * declaration fails loudly at discovery rather than producing a malformed document.
+     *
+     * @param OperationResponseInterface|list<OperationResponseInterface>|null $declared
+     *
+     * @return list<OperationResponseInterface>
+     */
+    private static function normalizeResponses(OperationType $operation, OperationResponseInterface|array|null $declared): array
+    {
+        if ($declared === null) {
+            return [];
+        }
+
+        $responses = $declared instanceof OperationResponseInterface ? [$declared] : \array_values($declared);
+        foreach ($responses as $response) {
+            if (!$response instanceof OperationResponseInterface) {
+                throw new \InvalidArgumentException(\sprintf(
+                    'Every %s response override must implement %s.',
+                    $operation->value,
+                    OperationResponseInterface::class,
+                ));
+            }
+        }
+
+        OperationResponses::validate($operation, $responses);
+
+        return $responses;
+    }
+
+    /**
+     * Guards that a response override is declared only for an exposed operation: a
+     * `create`/`update`/`delete` override on a `readOnly` type, or any override for an
+     * operation absent from a non-empty `operations` allow-list, is a configuration error
+     * rather than a silently ignored declaration.
+     *
+     * @param list<Operation> $operations
+     */
+    private function assertResponsesExposed(array $operations, bool $readOnly): void
+    {
+        $exposed = $readOnly
+            ? [Operation::FetchCollection->value, Operation::FetchOne->value]
+            : ($operations !== []
+                ? \array_map(static fn(Operation $op): string => $op->value, $operations)
+                : \array_map(static fn(Operation $op): string => $op->value, Operation::cases()));
+
+        foreach ([
+            Operation::Create->value => $this->create,
+            Operation::Update->value => $this->update,
+            Operation::Delete->value => $this->delete,
+            Operation::FetchOne->value => $this->fetchOne,
+            Operation::FetchCollection->value => $this->fetchCollection,
+        ] as $operation => $responses) {
+            if ($responses !== [] && !\in_array($operation, $exposed, true)) {
+                throw new \LogicException(\sprintf(
+                    'AsJsonApiResource declares a response override for the %s operation, but it is not exposed; '
+                    . 'add it to `operations` (or drop `readOnly`).',
+                    $operation,
+                ));
+            }
         }
     }
 }

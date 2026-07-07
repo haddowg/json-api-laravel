@@ -11,7 +11,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
 
 /**
  * A discovery-scan guard fixture: the `handle()` return type is narrowed to exactly
- * {@see NoContentResponse}, but the attribute does NOT declare `returns204`. Discovery
+ * {@see NoContentResponse}, but its `responds` declares no `new NoContent()`. Discovery
  * must fail loudly rather than project a `200` body the handler can never return.
  *
  * @internal

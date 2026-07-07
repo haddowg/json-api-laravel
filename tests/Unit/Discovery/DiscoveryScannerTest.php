@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Unit\Discovery;
 
-use haddowg\JsonApiLaravel\Action\ActionOutput;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiSerializer;
 use haddowg\JsonApiLaravel\Discovery\DiscoveryScanner;
 use haddowg\JsonApiLaravel\Discovery\ResourceDescriptor;
 use haddowg\JsonApiLaravel\Discovery\SerializerDescriptor;
 use haddowg\JsonApiLaravel\Operation\Operation;
+use haddowg\JsonApiLaravel\Tests\Fixtures\Action\AsyncPollHandler;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\MetaHandlerMissingOutputMeta;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\MetaHandlerWithOutputMeta;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\NoContentHandlerMissingReturns204;
@@ -198,11 +198,11 @@ final class DiscoveryScannerTest extends TestCase
     public function test_an_action_handler_narrowing_to_meta_response_without_output_meta_fails_discovery(): void
     {
         // The handle() return type is narrowed to exactly MetaResponse, but the attribute
-        // declares no outputMeta: the projected shape would drift from what the handler
-        // returns, so discovery must fail loudly (the Laravel twin of the bundle's
-        // guardActionHandlerOutput).
+        // declares no MetaResult in its responds: the projected shape would drift from what
+        // the handler returns, so discovery must fail loudly (the Laravel twin of the
+        // bundle's guardActionHandlerOutput).
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('outputMeta');
+        $this->expectExceptionMessage('MetaResult');
 
         (new DiscoveryScanner())->scan([], [MetaHandlerMissingOutputMeta::class]);
     }
@@ -210,29 +210,43 @@ final class DiscoveryScannerTest extends TestCase
     public function test_an_action_handler_narrowing_to_no_content_without_returns_204_fails_discovery(): void
     {
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('returns204');
+        $this->expectExceptionMessage('new NoContent()');
 
         (new DiscoveryScanner())->scan([], [NoContentHandlerMissingReturns204::class]);
     }
 
     public function test_an_action_handler_with_a_matching_output_flag_passes_discovery(): void
     {
-        // MetaResponse narrowing + outputMeta: true — the declared shape agrees with the
-        // projected shape, so the action is classified with the meta ActionOutput.
+        // MetaResponse narrowing + responds: [new MetaResult()] — the declared shape agrees
+        // with the projected shape, so the action's responds carries the meta result.
         $result = (new DiscoveryScanner())->scan([], [MetaHandlerWithOutputMeta::class]);
 
         self::assertCount(1, $result->actions);
-        self::assertSame(ActionOutput::Meta, $result->actions[0]->output);
+        self::assertSame([['kind' => 'meta', 'ref' => null]], $result->actions[0]->responds);
     }
 
     public function test_an_action_handler_with_an_un_narrowed_return_type_passes_without_flags(): void
     {
         // The handle() return keeps the interface's union (not a single response class), so
-        // it declares no single body shape: the guard does not constrain it and it is
-        // classified in the default Document mode with no returns204/outputMeta flag.
+        // it declares no single body shape: the guard does not constrain it and it defaults
+        // to a 200 document of the mount type.
         $result = (new DiscoveryScanner())->scan([], [UnionReturnHandler::class]);
 
         self::assertCount(1, $result->actions);
-        self::assertSame(ActionOutput::Document, $result->actions[0]->output);
+        self::assertSame([['kind' => 'resource', 'ref' => 'guarded']], $result->actions[0]->responds);
+    }
+
+    public function test_an_async_poll_action_carries_its_accepted_and_see_other_responses(): void
+    {
+        // responds: [new Accepted('guarded-jobs'), new SeeOther()] — the union return leaves the
+        // output guard unconstrained, and the set round-trips to its cacheable scalar form (a
+        // 202 accept + a 303 completion) for the OpenAPI projection.
+        $result = (new DiscoveryScanner())->scan([], [AsyncPollHandler::class]);
+
+        self::assertCount(1, $result->actions);
+        self::assertSame(
+            [['kind' => 'accepted', 'ref' => 'guarded-jobs'], ['kind' => 'seeother', 'ref' => null]],
+            $result->actions[0]->responds,
+        );
     }
 }

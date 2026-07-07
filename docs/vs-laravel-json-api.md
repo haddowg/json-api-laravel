@@ -154,9 +154,9 @@ Credit where it is due — there are real reasons it is the default choice:
 **Choose Laravel JSON:API** if you want the safer bet: a battle-tested package with years of
 production hardening, a large installed base, community answers to almost any question, and
 features this package lacks — first-class soft deletes, client-selectable pagination, and
-form-request-style validation. This package is brand-new and pre-1.0, with no public install
-base or plugin ecosystem; that maturity gap is real and should weigh heavily for
-risk-sensitive projects.
+form-request-style validation. This package is newer, without the same installed base or
+plugin ecosystem; that maturity gap is real and should weigh heavily for risk-sensitive
+projects.
 
 **Choose this package** if the contract is the point: one typed definition driving
 serialization, validation, *and* a first-party OpenAPI 3.1 document that a

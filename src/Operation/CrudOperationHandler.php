@@ -47,6 +47,7 @@ use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\SupportsSingular;
+use haddowg\JsonApi\Resource\ResolvesCompletionRedirect;
 use haddowg\JsonApi\Response\AcceptedResponse;
 use haddowg\JsonApi\Response\AtomicResultsResponse;
 use haddowg\JsonApi\Response\DataResponse;
@@ -291,7 +292,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         return $exposed;
     }
 
-    private function fetch(FetchResourceOperation $operation): DataResponse|ErrorResponse
+    private function fetch(FetchResourceOperation $operation): DataResponse|SeeOtherResponse|ErrorResponse
     {
         $server = $operation->context()->server;
         \assert($server instanceof Server);
@@ -314,6 +315,19 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // before it is rendered — a denial is a `403` (thrown, rendered by the
             // exception renderer).
             $this->authorizer->authorize($type, Operation::FetchOne, $model);
+
+            // Async-completion redirect (JSON:API 1.1 §"Asynchronous Processing"): when the
+            // type's serializer resolves a completion location for this resource, a GET on the
+            // job resource redirects there with a `303 See Other` instead of rendering — so a
+            // client polling the job follows `Location` to the produced resource once the work
+            // is done. The OpenAPI twin is a `new SeeOther()` fetch-one declaration; this hook drives the
+            // runtime. Resolved before includes/counts, since a redirect renders no body.
+            if ($serializer instanceof ResolvesCompletionRedirect) {
+                $location = $serializer->completionLocation($model);
+                if ($location !== null) {
+                    return SeeOtherResponse::to($location);
+                }
+            }
 
             // Batch eager-load the effective ?include tree (explicit or the resource's
             // default-include fallback) so includes do not N+1; a single resource is
