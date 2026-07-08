@@ -276,7 +276,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
             'artists',
             $this->allArtists(),
             HasMany::make('phantom', 'albums'),
-            new CollectionCriteria($this->query(), window: new OffsetWindow(0, 2)),
+            new CollectionCriteria($this->queryParameters(), window: new OffsetWindow(0, 2)),
             $this->request(),
         );
     }
@@ -330,7 +330,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
 
     private function emptyCriteria(): CollectionCriteria
     {
-        return new CollectionCriteria($this->query());
+        return new CollectionCriteria($this->queryParameters());
     }
 
     /**
@@ -344,7 +344,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
         );
     }
 
-    private function query(): QueryParameters
+    private function queryParameters(): QueryParameters
     {
         return new QueryParameters([], [], [], [], []);
     }
