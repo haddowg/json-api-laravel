@@ -17,6 +17,8 @@ use haddowg\JsonApi\Resource\Filter\Numeric;
 use haddowg\JsonApi\Resource\Filter\Range;
 use haddowg\JsonApi\Resource\Filter\StartsWith;
 use haddowg\JsonApi\Resource\Filter\Where;
+use haddowg\JsonApi\Resource\Filter\WhereAll;
+use haddowg\JsonApi\Resource\Filter\WhereAny;
 use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
 use haddowg\JsonApi\Resource\Filter\WhereHas;
 use haddowg\JsonApi\Resource\Filter\WhereIdIn;
@@ -192,6 +194,73 @@ final class InMemoryDataProviderFilterTest extends TestCase
         // WhereThrough walks the dotted path and matches if any reached leaf satisfies the operator.
         self::assertSame([2], $this->filter([WhereThrough::make('tagName', 'tags.name')], ['tagName' => 'pop']));
         self::assertSame([1, 2], $this->filter([WhereThrough::make('tagName', 'tags.name')], ['tagName' => 'rock']));
+    }
+
+    #[Test]
+    public function whereAnyFansOneValueAcrossColumnsAsAMultiColumnSearch(): void
+    {
+        // filter[search]=<v> -> title LIKE '%v%' OR status LIKE '%v%': one value fanned
+        // across two columns.
+        $group = [WhereAny::make('search', Contains::make('title'), Contains::make('status'))];
+
+        // "article" matches both titles (1,2), no status.
+        self::assertSame([1, 2], $this->filter($group, ['search' => 'article']));
+        // "draft" matches only song 2's status, no title.
+        self::assertSame([2], $this->filter($group, ['search' => 'draft']));
+        // "zed" matches only song 3's title.
+        self::assertSame([3], $this->filter($group, ['search' => 'zed']));
+    }
+
+    #[Test]
+    public function whereAllOfFixedChildrenIsACannedToggleThatIgnoresTheRequestValue(): void
+    {
+        // filter[hotHits] present -> status = 'released' AND rating > 8, via fixed
+        // children; the request value is ignored. Released = {1,3}; rating > 8 = {1}
+        // (song 3's rating is null, excluded under ADR 0116).
+        $group = [WhereAll::make(
+            'hotHits',
+            Where::make('status')->fixed('released'),
+            GreaterThan::make('rating')->fixed(8),
+        )];
+
+        self::assertSame([1], $this->filter($group, ['hotHits' => 'anything']));
+        self::assertSame([1], $this->filter($group, ['hotHits' => '0']));
+    }
+
+    #[Test]
+    public function nestedGroupEvaluatesAAndBOrC(): void
+    {
+        // filter[scoped]=<v> -> title LIKE '%v%' AND (status = 'draft' OR rating > 8).
+        $group = [WhereAll::make(
+            'scoped',
+            Contains::make('title'),
+            WhereAny::make(
+                'inner',
+                Where::make('status')->fixed('draft'),
+                GreaterThan::make('rating')->fixed(8),
+            ),
+        )];
+
+        // "article" -> titles {1,2}; inner = draft{2} OR rating>8{1} = {1,2} -> {1,2}.
+        self::assertSame([1, 2], $this->filter($group, ['scoped' => 'article']));
+        // "two" -> title {2}; song 2 is a draft -> admitted via the status branch.
+        self::assertSame([2], $this->filter($group, ['scoped' => 'two']));
+        // "the" -> title {1}; song 1 is released but rating 9 > 8 -> admitted via the rating branch.
+        self::assertSame([1], $this->filter($group, ['scoped' => 'the']));
+    }
+
+    #[Test]
+    public function fixedStandalonePinsTheValueAndIsNotAppliedOnOmission(): void
+    {
+        // filter[onlyReleased]=<anything> -> status = 'released' (songs 1,3); the sent
+        // value is ignored.
+        $fixed = [Where::make('onlyReleased', 'status')->fixed('released')];
+
+        self::assertSame([1, 3], $this->filter($fixed, ['onlyReleased' => '1']));
+        // Sending 'draft' does NOT filter for drafts — the fixed 'released' wins.
+        self::assertSame([1, 3], $this->filter($fixed, ['onlyReleased' => 'draft']));
+        // Omitting the key does NOT apply it (contrast ->default()): every song survives.
+        self::assertSame([1, 2, 3], $this->filter($fixed, []));
     }
 
     #[Test]

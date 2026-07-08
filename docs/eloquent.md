@@ -71,6 +71,28 @@ declare, and the provider translates:
 | `DateRange::make('releasedAt', 'released_at')` | a datetime bound pair |
 | `WhereHas::make('tracks')` | `whereHas('tracks')` (relationship existence) |
 | `WhereThrough::make('artist.name')` | a dotted-path correlated `EXISTS` |
+| `WhereAll` / `WhereAny` | a nested `where(fn ($q) => …)` combining the children with `AND` / `orWhere` |
+| `Where…->fixed($value)` | the same `where` predicate with its value pinned server-side (no arm needed) |
+
+### Server-composed filter groups and `->fixed()`
+
+`WhereAll` (AND) and `WhereAny` (OR) are core's [server-composed filter
+groups](https://github.com/haddowg/json-api/blob/main/docs/filters.md#filter-groups-whereall--whereany):
+value objects the resource author composes from child filters. The provider runs a group
+by applying each child inside a nested `where(fn ($q) => …)` closure — combining with `AND`
+(`WhereAll`) or `orWhere` (`WhereAny`) — and **fanning the group's request value uniformly
+to every child**. So a fanning group is a multi-column search
+(`WhereAny::make('q', Contains::make('name'), Contains::make('email'))` →
+`filter[q]=foo` compiles `... and (lower(name) like ? or lower(email) like ?)`), while a
+group of [`->fixed()`](https://github.com/haddowg/json-api/blob/main/docs/filters.md#fixed-values)
+children is a canned toggle whose request value is ignored. Groups **nest** — a group child
+re-enters the same dispatch — so `(A AND (B OR C))` compiles to the matching nested `where`
+closures.
+
+`->fixed($value)` pins a `Where`'s compared value: `filter[<key>]` present with any value
+applies `column = <literal>` and its value is ignored. It needs no arm of its own — the
+pinned value rides core's existing value-deserializer seam, so the `Where` push-down above
+runs it unchanged.
 
 Need an operator or a sort the built-ins don't cover? Author a custom `FilterInterface` /
 `SortInterface` and teach the provider to push it down via the

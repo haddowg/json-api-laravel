@@ -10,6 +10,8 @@ use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\Range;
 use haddowg\JsonApi\Resource\Filter\UnsupportedFilter;
 use haddowg\JsonApi\Resource\Filter\Where;
+use haddowg\JsonApi\Resource\Filter\WhereAll;
+use haddowg\JsonApi\Resource\Filter\WhereAny;
 use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
 use haddowg\JsonApi\Resource\Filter\WhereHas;
 use haddowg\JsonApi\Resource\Filter\WhereIdIn;
@@ -42,6 +44,13 @@ use Illuminate\Database\Eloquent\Model;
  * - {@see WhereIn}/{@see WhereIdIn} with an empty value list match nothing
  *   (`whereRaw('1 = 0')`); the negated variants then match everything (no-op).
  * - {@see WhereNull}/{@see WhereNotNull} ignore the request value entirely.
+ * - {@see WhereAll}/{@see WhereAny} are server-composed boolean groups: each child
+ *   is applied inside a nested `where(fn ($q) => …)` closure — combining with `AND`
+ *   ({@see WhereAll}) or `orWhere` ({@see WhereAny}) — fanning the group's value
+ *   uniformly to every child. So a fanning group is a multi-column search and a
+ *   fixed-child group a canned toggle, and groups nest (a group child re-enters this
+ *   dispatch). A `->fixed()` {@see Where} needs no arm of its own: its pinned value
+ *   rides the existing `deserialize` seam, so the {@see Where} arm runs it unchanged.
  * - {@see WhereHas}/{@see WhereDoesntHave} and {@see WhereThrough} are
  *   relationship-existence filters: Eloquent's `whereHas`/`whereDoesntHave`
  *   compile to a correlated `EXISTS`/`NOT EXISTS` subquery (set-membership, never
@@ -98,6 +107,10 @@ final class EloquentFilterHandler implements FilterHandlerInterface
         // Each arm mutates the builder in place (Eloquent's `where*` are fluent
         // setters); the same `$query` is returned so the applier threads one builder.
         match (true) {
+            // Server-composed boolean groups: recurse each child into a nested
+            // where()/orWhere() closure, fanning the group's value uniformly.
+            $filter instanceof WhereAll => $this->whereAll($query, $filter, $value),
+            $filter instanceof WhereAny => $this->whereAny($query, $filter, $value),
             $filter instanceof Where => $this->where($filter, $query, $value),
             $filter instanceof WhereIn => $this->whereIn($query, $filter->column, $this->toList($value, $filter->delimiter), false),
             $filter instanceof WhereNotIn => $this->whereIn($query, $filter->column, $this->toList($value, $filter->delimiter), true),
@@ -148,6 +161,58 @@ final class EloquentFilterHandler implements FilterHandlerInterface
         $expected = $filter->deserialize !== null ? ($filter->deserialize)($value) : $value;
 
         $this->applyComparison($query, $filter->column, $filter->operator, $expected, $filter->key());
+    }
+
+    /**
+     * AND group ({@see WhereAll}): a nested `where(fn ($q) => …)` closure inside
+     * which every child is applied — each in its own nested closure so a child
+     * that is itself an OR group keeps its precedence — combining with `AND`. Every
+     * child re-enters {@see apply()} with the **group's** value (fanned uniformly),
+     * so a fixed child ignores it, a fanning child consumes it, and a nested group
+     * re-enters this dispatch. An empty group adds no predicate (the AND identity).
+     *
+     * @param Builder<Model> $query
+     */
+    private function whereAll(Builder $query, WhereAll $filter, mixed $value): void
+    {
+        if ($filter->children === []) {
+            return;
+        }
+
+        $query->where(function (Builder $group) use ($filter, $value): void {
+            foreach ($filter->children as $child) {
+                $group->where(function (Builder $inner) use ($child, $value): void {
+                    $this->apply($child, $inner, $value);
+                });
+            }
+        });
+    }
+
+    /**
+     * OR group ({@see WhereAny}): a nested `where(fn ($q) => …)` closure inside
+     * which every child is applied through `orWhere`, each in its own nested closure
+     * — so a value-carrying group is a multi-column search (`filter[q]=foo` →
+     * `col1 LIKE foo OR col2 LIKE foo`) and a fixed-child group a canned toggle. The
+     * group's value is fanned to every child; a nested group re-enters this dispatch.
+     * An empty group matches nothing (the OR identity), mirroring the in-memory witness.
+     *
+     * @param Builder<Model> $query
+     */
+    private function whereAny(Builder $query, WhereAny $filter, mixed $value): void
+    {
+        if ($filter->children === []) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->where(function (Builder $group) use ($filter, $value): void {
+            foreach ($filter->children as $child) {
+                $group->orWhere(function (Builder $inner) use ($child, $value): void {
+                    $this->apply($child, $inner, $value);
+                });
+            }
+        });
     }
 
     /**
