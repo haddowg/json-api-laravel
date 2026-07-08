@@ -760,6 +760,14 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $serializerOverrides,
                     $hydratorOverrides,
                     $profiles,
+                    // Localize/override the error catalogue through the Laravel translator
+                    // (ADR 0023): title/detail per stable error code from the jsonapi-errors
+                    // translation group. The translator is always available in Laravel, so the
+                    // resolver is always wired; with no jsonapi-errors lines it resolves null and
+                    // core renders its inline English copy, byte-identical to today.
+                    new \haddowg\JsonApiLaravel\Server\TranslatorErrorMessageResolver(
+                        $app->make(\Illuminate\Contracts\Translation\Translator::class),
+                    ),
                 );
             }
 
