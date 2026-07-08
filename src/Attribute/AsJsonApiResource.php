@@ -113,6 +113,9 @@ final readonly class AsJsonApiResource
     /** @var list<OperationResponseInterface> the resolved fetch-collection success-response override (empty = the default `200`) */
     public array $fetchCollection;
 
+    /** @var SoftDeletes|null the resolved soft-delete configuration (null = not soft-deletable); `softDeletes: true` normalises to a default {@see SoftDeletes} */
+    public ?SoftDeletes $softDeletes;
+
     /**
      * @param string|list<string>|null   $server       the server name(s) exposing this type (null = the implicit `default`)
      * @param class-string<\Illuminate\Database\Eloquent\Model>|null $model the Eloquent model this type maps to for the reference Eloquent layer (null = the convention guess under `jsonapi.eloquent.model_namespace`)
@@ -132,6 +135,7 @@ final readonly class AsJsonApiResource
      * @param DeleteResponse|list<DeleteResponse>|null                   $delete          the delete (`DELETE`) success response(s) (null = the default `204`)
      * @param FetchOneResponse|list<FetchOneResponse>|null               $fetchOne        the fetch-one (`GET /{type}/{id}`) success response(s) (null = the default `200`); use {@see \haddowg\JsonApi\OpenApi\Metadata\SeeOther} for an async-completion `303`
      * @param FetchCollectionResponse|list<FetchCollectionResponse>|null $fetchCollection the fetch-collection (`GET /{type}`) success response(s) (null = the default `200`)
+     * @param bool|SoftDeletes                                           $softDeletes     opt this type into first-class soft deletes: `true` (or a configured {@see SoftDeletes}) synthesizes the `restore`/`force-delete` actions (`DELETE` stays a recoverable soft delete); `false` (the default) leaves the type unaffected
      */
     public function __construct(
         public ?string $type = null,
@@ -153,6 +157,7 @@ final readonly class AsJsonApiResource
         DeleteResponse|array|null $delete = null,
         FetchOneResponse|array|null $fetchOne = null,
         FetchCollectionResponse|array|null $fetchCollection = null,
+        bool|SoftDeletes $softDeletes = false,
     ) {
         if ($readOnly && $operations !== []) {
             throw new \LogicException(
@@ -167,6 +172,13 @@ final readonly class AsJsonApiResource
         $this->delete = self::normalizeResponses(OperationType::Delete, $delete);
         $this->fetchOne = self::normalizeResponses(OperationType::FetchOne, $fetchOne);
         $this->fetchCollection = self::normalizeResponses(OperationType::FetchCollection, $fetchCollection);
+
+        // `softDeletes: true` is shorthand for a default configuration; `false` opts out.
+        $this->softDeletes = match ($softDeletes) {
+            false => null,
+            true => new SoftDeletes(),
+            default => $softDeletes,
+        };
 
         $this->assertResponsesExposed($operations, $readOnly);
     }

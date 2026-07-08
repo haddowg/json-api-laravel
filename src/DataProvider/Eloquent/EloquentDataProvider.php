@@ -23,6 +23,7 @@ use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortHandler;
 use haddowg\JsonApiLaravel\DataProvider\AbstractDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\CriteriaApplier;
+use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
 use haddowg\JsonApiLaravel\DataProvider\RelatedBatch;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use Illuminate\Container\Container;
@@ -31,6 +32,7 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
 use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 /**
  * The reference Eloquent read provider (PLAN decision 2): the storage twin of the
@@ -89,7 +91,7 @@ use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
  *
  * @extends AbstractDataProvider<object>
  */
-final class EloquentDataProvider extends AbstractDataProvider
+final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed
 {
     private readonly CriteriaApplier $applier;
 
@@ -184,6 +186,29 @@ final class EloquentDataProvider extends AbstractDataProvider
         }
 
         return $this->newQuery($type)->whereKey($key)->first();
+    }
+
+    /**
+     * The single resource of `$type` with `$id` **including** soft-deleted rows — the
+     * trashed-inclusive twin of {@see fetchOne()} the {@see FetchesTrashed} capability exposes,
+     * consulted only for a `resolvesTrashed` action (the synthesized restore/force-delete).
+     * A type whose model is not soft-deletable simply resolves as usual (the `withTrashed()`
+     * guard is inert).
+     */
+    public function fetchOneWithTrashed(string $type, string $id): ?object
+    {
+        $encoder = $this->encoderFor($type);
+        if ($encoder !== null) {
+            /** @var mixed $key */
+            $key = $encoder->decode($id);
+            if ($key === null) {
+                return null;
+            }
+        } else {
+            $key = $id;
+        }
+
+        return $this->newQueryWithTrashed($type)->whereKey($key)->first();
     }
 
     /**
@@ -1056,5 +1081,19 @@ final class EloquentDataProvider extends AbstractDataProvider
         \assert($model instanceof Model);
 
         return $model->newQuery();
+    }
+
+    /**
+     * A fresh root query for the type's model with the soft-delete global scope lifted, so a
+     * trashed row is visible (the restore/force-delete target resolution). This is exactly what
+     * Eloquent's `withTrashed()` macro does; the real Builder method is used directly (the macro
+     * is invisible to static analysis), and on a non-soft-deletable model the scope is absent,
+     * so this is a harmless no-op.
+     *
+     * @return Builder<Model>
+     */
+    private function newQueryWithTrashed(string $type): Builder
+    {
+        return $this->newQuery($type)->withoutGlobalScope(SoftDeletingScope::class);
     }
 }

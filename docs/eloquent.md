@@ -167,7 +167,15 @@ validation carrier. Reach for an arm instead when the application needs injected
 (a repository, an auth guard). Like a raw scope it is Eloquent-only — the key is undeclared
 on the in-memory provider, so a request there is a clean `400`. Bind the request value with
 `where(...)` (never interpolate it); only ever interpolate a validated, server-declared
-column into a `whereRaw()`.
+column into a `whereRaw()`. The shipped `WithTrashed`/`OnlyTrashed`
+[soft-delete filters](soft-deletes.md) are self-applying filters of exactly this shape.
+
+## Soft deletes
+
+A resource whose model uses Laravel's `SoftDeletes` trait can opt into first-class soft
+deletes with `#[AsJsonApiResource(softDeletes: true)]` — `DELETE` becomes a recoverable soft
+delete and the package synthesizes `restore`/`force-delete` actions. See
+[soft deletes](soft-deletes.md).
 
 ## Sorting, sparse fieldsets, pagination
 

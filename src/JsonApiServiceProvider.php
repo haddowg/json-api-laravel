@@ -794,11 +794,19 @@ final class JsonApiServiceProvider extends ServiceProvider
 
         $resolver = static fn(string $type): \haddowg\JsonApi\Serializer\SerializerInterface => $app->make(ServerRegistry::class)->get($server)->serializerFor($type);
 
+        $handlerResolver = static function (string $class) use ($app): ActionHandlerInterface {
+            $handler = $app->make($class);
+            \assert($handler instanceof ActionHandlerInterface);
+
+            return $handler;
+        };
+
         return new ActionLinkContributor(
             $byType,
             $resolver,
             $app->make(UrlGenerator::class),
             $app->make(Authorizer::class),
+            $handlerResolver,
         );
     }
 

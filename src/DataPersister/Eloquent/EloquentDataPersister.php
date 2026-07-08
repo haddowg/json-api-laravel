@@ -15,6 +15,7 @@ use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApiLaravel\DataPersister\AbstractDataPersister;
+use haddowg\JsonApiLaravel\DataPersister\SoftDeleteCapable;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use Illuminate\Container\Container;
@@ -59,7 +60,7 @@ use Illuminate\Support\Facades\DB;
  * materialising each store-generated id immediately (`save()` sets it before its savepoint
  * releases), so a later batch operation can reference a just-created resource.
  */
-final class EloquentDataPersister extends AbstractDataPersister implements TransactionalDataPersisterInterface
+final class EloquentDataPersister extends AbstractDataPersister implements TransactionalDataPersisterInterface, SoftDeleteCapable
 {
     /**
      * @var array<string, class-string<Model>>
@@ -147,6 +148,38 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
 
         $entity->getConnection()->transaction(static function () use ($entity): void {
             $entity->delete();
+        });
+    }
+
+    /**
+     * Restores a soft-deleted model — `$model->restore()` clears the tombstone — inside a
+     * transaction on the model's own connection (the {@see SoftDeleteCapable} seam the
+     * synthesized `restore` action commits through). The model uses Laravel's `SoftDeletes`
+     * trait (the resource opted into soft deletes), so `restore()` is present.
+     */
+    public function restore(string $type, object $entity): object
+    {
+        \assert($entity instanceof Model && \method_exists($entity, 'restore'));
+
+        $entity->getConnection()->transaction(static function () use ($entity): void {
+            $entity->restore();
+        });
+
+        return $entity;
+    }
+
+    /**
+     * Permanently removes a model — `$model->forceDelete()` bypasses the soft-delete tombstone —
+     * inside a transaction on the model's own connection (the {@see SoftDeleteCapable} seam the
+     * synthesized `force-delete` action commits through). The ordinary {@see delete()} above
+     * stays a recoverable soft delete; this is the only permanent-removal path.
+     */
+    public function forceDelete(string $type, object $entity): void
+    {
+        \assert($entity instanceof Model);
+
+        $entity->getConnection()->transaction(static function () use ($entity): void {
+            $entity->forceDelete();
         });
     }
 

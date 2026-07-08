@@ -85,6 +85,7 @@ nav:
   - The Eloquent data layer:
       - eloquent.md
       - custom-data-providers.md
+      - soft-deletes.md
   - Querying & relationships:
       - relationships.md
       - pagination.md
