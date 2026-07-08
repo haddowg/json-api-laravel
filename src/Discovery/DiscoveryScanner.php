@@ -18,6 +18,10 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApiLaravel\Action\ActionDescriptor;
 use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
 use haddowg\JsonApiLaravel\Action\ActionInput;
+use haddowg\JsonApiLaravel\Action\ActionScope;
+use haddowg\JsonApiLaravel\Action\ConditionallyLinked;
+use haddowg\JsonApiLaravel\Action\ForceDeleteAction;
+use haddowg\JsonApiLaravel\Action\RestoreAction;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiHydrator;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
@@ -154,7 +158,78 @@ final class DiscoveryScanner
             }
         }
 
+        // Synthesize the soft-delete restore/force-delete actions for every soft-deletable
+        // resource, into the SAME actions bucket a discovered #[AsJsonApiAction] lands in — so
+        // routing, dispatch, OpenAPI and the discovery cache all pick them up from one source
+        // (Model B). Done here at scan time so the synthesized descriptors are captured by the
+        // discovery snapshot and rebuilt identically under `route:cache`.
+        foreach ($resources as $resource) {
+            foreach ($this->synthesizeSoftDeleteActions($resource) as $action) {
+                $actions[] = $action;
+            }
+        }
+
         return new DiscoveryResult($resources, $providers, $persisters, $translators, $actions, $serializers, $hydrators);
+    }
+
+    /**
+     * The synthesized soft-delete actions for a resource, or `[]` when it is not soft-deletable
+     * ({@see \haddowg\JsonApiLaravel\Attribute\SoftDeletes}). Each enabled toggle
+     * (`restore` / `forceDelete`) mints one resource-scope `POST` action per server the type is
+     * exposed on, wired to the package-shipped generic handler and resolving its `{id}` through
+     * the trashed-inclusive fetch. The `restore` action is exposed as a `trashed()`-conditional
+     * `links` member ({@see RestoreAction} is {@see ConditionallyLinked}); `force-delete` is not
+     * linked (destructive).
+     *
+     * @return list<ActionDescriptor>
+     */
+    private function synthesizeSoftDeleteActions(ResourceDescriptor $resource): array
+    {
+        $config = $resource->softDeletes;
+        if ($config === null) {
+            return [];
+        }
+
+        $actions = [];
+        foreach ($resource->servers as $server) {
+            if ($config['restore']) {
+                $actions[] = new ActionDescriptor(
+                    $resource->type,
+                    $config['restorePath'],
+                    ['POST'],
+                    ActionScope::Resource,
+                    ActionInput::None,
+                    $resource->type,
+                    $resource->type,
+                    [['kind' => 'resource', 'ref' => $resource->type]],
+                    $config['restoreAbility'],
+                    RestoreAction::class,
+                    $server,
+                    asLink: true,
+                    resolvesTrashed: true,
+                    conditionallyLinked: true, // RestoreAction implements ConditionallyLinked (trashed()-gated link)
+                );
+            }
+
+            if ($config['forceDelete']) {
+                $actions[] = new ActionDescriptor(
+                    $resource->type,
+                    $config['forcePath'],
+                    ['POST'],
+                    ActionScope::Resource,
+                    ActionInput::None,
+                    $resource->type,
+                    $resource->type,
+                    [['kind' => 'nocontent', 'ref' => null]],
+                    $config['forceAbility'],
+                    ForceDeleteAction::class,
+                    $server,
+                    resolvesTrashed: true,
+                );
+            }
+        }
+
+        return $actions;
     }
 
     /**
@@ -278,7 +353,34 @@ final class DiscoveryScanner
             $this->overrideClass($attribute?->hydrator, HydratorInterface::class, 'hydrator', $class),
             $this->modelClass($attribute?->model, $class),
             $this->responses($attribute),
+            $this->softDeletes($attribute),
         );
+    }
+
+    /**
+     * Projects a resource's {@see \haddowg\JsonApiLaravel\Attribute\SoftDeletes} config into the
+     * scalar shape the {@see ResourceDescriptor} carries (kept as scalars so the discovery
+     * snapshot stays `var_export`-able), or `null` when the type is not soft-deletable. The
+     * scanner reads it in {@see synthesizeSoftDeleteActions()} to mint the restore/force-delete
+     * actions.
+     *
+     * @return array{restore: bool, forceDelete: bool, restoreAbility: string, forceAbility: string, restorePath: string, forcePath: string}|null
+     */
+    private function softDeletes(?AsJsonApiResource $attribute): ?array
+    {
+        $config = $attribute?->softDeletes;
+        if ($config === null) {
+            return null;
+        }
+
+        return [
+            'restore' => $config->restore,
+            'forceDelete' => $config->forceDelete,
+            'restoreAbility' => $config->restoreAbility,
+            'forceAbility' => $config->forceAbility,
+            'restorePath' => $config->restorePath,
+            'forcePath' => $config->forcePath,
+        ];
     }
 
     /**
@@ -476,6 +578,7 @@ final class DiscoveryScanner
             $attribute->name,
             $attribute->tags,
             $attribute->asLink,
+            conditionallyLinked: \is_a($handlerClass, ConditionallyLinked::class, true),
         );
     }
 

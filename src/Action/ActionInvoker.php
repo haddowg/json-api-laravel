@@ -17,6 +17,7 @@ use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
 use haddowg\JsonApiLaravel\Event\AfterActionEvent;
 use haddowg\JsonApiLaravel\Event\BeforeActionEvent;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
@@ -80,7 +81,7 @@ final readonly class ActionInvoker
         $entity = null;
         if ($scope === ActionScope::Resource) {
             $id = $target->id;
-            $entity = $id !== null ? $this->providers->forType($type)->fetchOne($type, $id) : null;
+            $entity = $id !== null ? $this->fetchTarget($type, $id, $descriptor) : null;
             if ($entity === null) {
                 return ErrorResponse::fromException(new ResourceNotFound());
             }
@@ -129,6 +130,25 @@ final readonly class ActionInvoker
         $this->dispatcher?->dispatch(new AfterActionEvent($type, $operation->action(), $entity));
 
         return $response;
+    }
+
+    /**
+     * Resolves the resource-scope action's `{id}` to its target entity. A descriptor that
+     * {@see ActionDescriptor::$resolvesTrashed} (the synthesized soft-delete restore/force-delete
+     * actions) resolves through the trashed-inclusive fetch when the type's provider is
+     * {@see FetchesTrashed} — so it can reach a soft-deleted target — while every other action
+     * (and every provider that does not offer the capability) resolves through the ordinary,
+     * trashed-excluding {@see \haddowg\JsonApiLaravel\DataProvider\DataProviderInterface::fetchOne()}.
+     */
+    private function fetchTarget(string $type, string $id, ActionDescriptor $descriptor): ?object
+    {
+        $provider = $this->providers->forType($type);
+
+        if ($descriptor->resolvesTrashed && $provider instanceof FetchesTrashed) {
+            return $provider->fetchOneWithTrashed($type, $id);
+        }
+
+        return $provider->fetchOne($type, $id);
     }
 
     /**

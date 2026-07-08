@@ -96,6 +96,7 @@ test double and conformance witness.
 | --- | --- | --- |
 | Provider/persister seam | **Yes** — separately registered `DataProvider`/`DataPersister` services, priority + first-supports resolution | **Yes** — `Store` contracts resolved via each schema's `repository()`; the non-eloquent package provides the toolkit |
 | Eloquent reference layer | **Yes** — a three-tier type-to-model map (explicit wiring, `model:` declaration, namespace convention), transactional writes, batched includes, encoded ids; see [eloquent](eloquent.md) | **Yes** — comprehensive: reads, writes, eager loading, filters, sorting, first-class soft deletes; the model is declared per schema |
+| First-class soft deletes | **Yes** — `softDeletes: true` synthesizes `restore`/`force-delete` actions (self-documented in OpenAPI, gated by the model's native `restore()`/`forceDelete()` policy methods, restore exposed as a trashed-only link); `DELETE` stays a recoverable soft delete; `WithTrashed`/`OnlyTrashed` filters + a `trashed` meta flag; see [soft deletes](soft-deletes.md) | **Yes** — `DELETE` force-deletes and trash/restore is a `PATCH` of a writable tombstone attribute; `WithTrashed`/`OnlyTrashed` filters; no OpenAPI, and trash/restore share the `update` ability |
 | In-memory provider | **Yes** — a reusable in-memory pair ships with the package, and the docs' example suites run over both it and the database layer; see [workbench](workbench.md) | **Partial** — the non-eloquent toolkit lets you build one; nothing reusable ships as a test double |
 
 ## OpenAPI & tooling
@@ -139,8 +140,6 @@ Credit where it is due — there are real reasons it is the default choice:
   within weeks of the framework release.
 - **Documentation.** A versioned docs site with a full tutorial and a runnable tutorial-app
   repository.
-- **First-class soft deletes.** Restore/force-delete semantics over the standard endpoints,
-  trashed meta, and `WithTrashed`/`OnlyTrashed` filters — this package has no counterpart.
 - **Generator ergonomics.** Artisan generators for every class type
   (`jsonapi:server`/`schema`/`resource`/`requests`/`filter`/`sort-field`/`authorizer`).
 - **Client-selectable pagination.** `MultiPagination` lets a client choose page-based or
@@ -153,8 +152,8 @@ Credit where it is due — there are real reasons it is the default choice:
 
 **Choose Laravel JSON:API** if you want the safer bet: a battle-tested package with years of
 production hardening, a large installed base, community answers to almost any question, and
-features this package lacks — first-class soft deletes, client-selectable pagination, and
-form-request-style validation. This package is newer, without the same installed base or
+features this package lacks — client-selectable pagination and form-request-style validation.
+This package is newer, without the same installed base or
 plugin ecosystem; that maturity gap is real and should weigh heavily for risk-sensitive
 projects.
 
