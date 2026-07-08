@@ -86,3 +86,37 @@ The request layer rejects a bad request before your code runs, all as JSON:API e
 wrong `Accept` is a `406`, a wrong `Content-Type` a `415`, an unknown query-parameter family a
 `400` (strict query parameters — see [configuration](configuration.md)), a malformed document
 a `400`/`422`, and an over-deep `?include` a `400`.
+
+## Localizing and overriding error copy
+
+Every error's `title` and `detail` are message templates core resolves per stable error
+`code`
+([core ADR 0128](https://github.com/haddowg/json-api/blob/main/docs/errors-and-exceptions.md#localizing-and-overriding-error-copy)).
+The package binds that seam to the **Laravel translator** automatically: localize or rebrand
+any error's copy through ordinary translation files in the `jsonapi-errors` group, keyed by
+code:
+
+```php
+// lang/fr/jsonapi-errors.php
+return [
+    'RESOURCE_NOT_FOUND' => ['title' => 'Ressource introuvable'],
+    'MEDIA_TYPE_UNSUPPORTED' => [
+        'detail' => "Le type de média '{mediaType}' n'est pas supporté.",
+    ],
+    'VALIDATION_FAILED' => ['title' => 'Entité non traitable'],
+];
+```
+
+Only the human copy moves: an error's `code` and `status` are never touched, and a line you
+don't provide falls back to core's inline English — per slot, so a partial translation is
+fine. The values are **templates**: a `{placeholder}` is filled from the error's context
+*after* lookup (a media type, an id), so write `{mediaType}`, not Laravel's `:mediaType` (no
+replacements are passed to the translator). The placeholder names available per code are
+listed in core's
+[errors-and-exceptions](https://github.com/haddowg/json-api/blob/main/docs/errors-and-exceptions.md#localizing-and-overriding-error-copy).
+
+The lookup uses the app's current locale, so `Accept-Language` negotiation is the framework's
+job — set the locale with Laravel's usual `App::setLocale()` (or a locale middleware) and each
+request renders in its language. Because the resolver is applied uniformly to every error, the
+validator's `422` `VALIDATION_FAILED` title localizes through the very same group. With no
+`jsonapi-errors` lines the seam is inert and errors render in English exactly as before.
