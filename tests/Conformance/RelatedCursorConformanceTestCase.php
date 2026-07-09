@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
+use haddowg\JsonApi\Pagination\CursorPaginationProfile;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -30,6 +31,13 @@ use PHPUnit\Framework\Attributes\Test;
 abstract class RelatedCursorConformanceTestCase extends Orchestra
 {
     public const string MEDIA_TYPE = 'application/vnd.api+json';
+
+    /**
+     * A related-collection cursor page advertises the cursor-pagination profile on its
+     * Content-Type, because the server registers that profile by default (Laravel ADR
+     * 0025, core ADR 0131).
+     */
+    public const string CURSOR_CONTENT_TYPE = self::MEDIA_TYPE . '; profile="' . CursorPaginationProfile::URI . '"';
 
     /**
      * The workbench service provider that wires exactly ONE provider pair (in-memory
@@ -296,7 +304,7 @@ abstract class RelatedCursorConformanceTestCase extends Orchestra
     {
         $response = $this->request($path);
         $response->assertOk();
-        $response->assertHeader('Content-Type', self::MEDIA_TYPE);
+        $response->assertHeader('Content-Type', self::CURSOR_CONTENT_TYPE);
 
         $document = $response->json();
         self::assertIsArray($document);
@@ -389,7 +397,7 @@ abstract class RelatedCursorConformanceTestCase extends Orchestra
     {
         $response = $this->request($path);
         $response->assertOk();
-        $response->assertHeader('Content-Type', self::MEDIA_TYPE);
+        $response->assertHeader('Content-Type', self::CURSOR_CONTENT_TYPE);
 
         $document = $response->json();
         self::assertIsArray($document);

@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Server;
 
 use haddowg\JsonApi\Operation\OperationHandlerInterface;
+use haddowg\JsonApi\Pagination\CursorPaginationProfile;
 use haddowg\JsonApi\Pagination\PagePaginator;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Schema\Error\ErrorMessageResolverInterface;
 use haddowg\JsonApi\Schema\Profile\CountableProfile;
+use haddowg\JsonApi\Schema\Profile\ProfileInterface;
 use haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile;
 use haddowg\JsonApi\Serializer\RelationshipCountInterface;
 use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
@@ -43,6 +45,21 @@ use Psr\Http\Message\StreamFactoryInterface;
  */
 final class ServerFactory
 {
+    /**
+     * The JSON:API profiles registered by default (ADR 0025): the three built-ins in
+     * the canonical order the OpenAPI `jsonapi.profile` enum advertises them (core ADR
+     * 0131). The order is significant — it is the byte-order the `jsonapi.profile` enum
+     * is generated in — and MUST match the Symfony bundle's default for cross-adapter
+     * byte-parity (`composer byte-compat`). `jsonapi.profiles` overrides or trims it.
+     *
+     * @var list<class-string<ProfileInterface>>
+     */
+    public const array DEFAULT_PROFILES = [
+        CursorPaginationProfile::class,
+        CountableProfile::class,
+        RelationshipQueriesProfile::class,
+    ];
+
     private ?Server $server = null;
 
     /**
@@ -52,7 +69,7 @@ final class ServerFactory
      * @param array<string, class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>>     $standaloneHydrators   this server's standalone hydrators, keyed by JSON:API type (the decoupled write half, bundle ADR 0024)
      * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $serializerOverrides per-resource serializer overrides keyed by resource class (ADR 0014)
      * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>>     $hydratorOverrides   per-resource hydrator overrides keyed by resource class (ADR 0014)
-     * @param list<\haddowg\JsonApi\Schema\Profile\ProfileInterface>                                                $profiles            additional profiles registered on the server (`jsonapi.profiles`)
+     * @param list<ProfileInterface>                                                                                $profiles            the JSON:API profiles this server registers, in order (`jsonapi.profiles`; default {@see self::DEFAULT_PROFILES})
      */
     public function __construct(
         private readonly ResponseFactoryInterface $responseFactory,
@@ -108,10 +125,11 @@ final class ServerFactory
         // the same container resolver the resource itself is built with.
         private readonly array $serializerOverrides = [],
         private readonly array $hydratorOverrides = [],
-        // Additional profiles registered on the server beyond the built-in pair —
-        // `jsonapi.profiles` config (e.g. core's CursorPaginationProfile, so a cursor
-        // page's profile is advertised; core drops a page profile the server has not
-        // registered).
+        // The JSON:API profiles this server registers, in registration order (ADR 0025),
+        // data-driven from `jsonapi.profiles` (default {@see self::DEFAULT_PROFILES} — the
+        // three built-ins in canonical order). Registration makes the server recognize a
+        // profile (advertises its URI when negotiated, parses its opt-in query family only
+        // under negotiation) and, core ADR 0131, gates the profile's OpenAPI output.
         private readonly array $profiles = [],
         // The error-message resolver (ADR 0023): localizes/overrides every error's
         // title/detail per its stable code through the Laravel translator. Null renders
@@ -135,14 +153,6 @@ final class ServerFactory
             ->withDefaultPaginator($this->maxPerPage > 0 ? PagePaginator::make()->withMaxPerPage($this->maxPerPage) : null)
             ->withMaxIncludeDepth($this->maxIncludeDepth > 0 ? $this->maxIncludeDepth : null)
             ->withStrictQueryParameters($this->strictQueryParameters)
-            // Register the Countable profile so `?withCount=<rel>` is recognized when the
-            // client negotiates it (core gates `parseWithCount()` on the profile); the
-            // relationship-object `meta.total` then reads the request-scoped count seam.
-            ->withProfile(new CountableProfile())
-            // Register the Relationship Queries profile so `relatedQuery[<path>][sort|filter]`
-            // (and the `rQ` shorthand) is recognized when the client negotiates it; the windowed
-            // per-relationship linkage/pagination then rides the two request-scoped holders.
-            ->withProfile(new RelationshipQueriesProfile())
             ->withRelationshipCount($this->relationshipCount)
             ->withRelationshipLoadState($this->relationshipLoadState)
             ->withRelationshipPagination($this->relationshipPagination)
@@ -153,10 +163,11 @@ final class ServerFactory
             ->withErrorMessageResolver($this->errorMessageResolver)
             ->withContainer($this->resolver);
 
-        // Consumer-registered profiles (`jsonapi.profiles`): e.g. core's
-        // CursorPaginationProfile, so a cursor page advertises the published
-        // cursor-pagination profile in `jsonapi.profile` + the Content-Type `profile`
-        // parameter (core drops a page profile the server has not registered).
+        // Register the server's JSON:API profiles, data-driven from `jsonapi.profiles`
+        // (ADR 0025; default {@see self::DEFAULT_PROFILES} — the three built-ins in
+        // canonical order). Registration order is the order the OpenAPI `jsonapi.profile`
+        // enum advertises them (core ADR 0131), so it is stable across framework adapters;
+        // a profile's opt-in query family is parsed only when a client negotiates its URI.
         foreach ($this->profiles as $profile) {
             $server = $server->withProfile($profile);
         }

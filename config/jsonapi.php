@@ -72,17 +72,26 @@ return [
     | Profiles
     |--------------------------------------------------------------------------
     |
-    | Additional JSON:API profiles registered on every server, as class-strings
-    | resolved through the container, on top of the built-in Countable and
-    | Relationship Queries profiles. Register core's CursorPaginationProfile here
-    | so a cursor-paginated response advertises the published cursor-pagination
-    | profile in `jsonapi.profile` and the `Content-Type` `profile` parameter (a
-    | page profile the server has not registered is silently dropped):
+    | The JSON:API profiles every server recognizes, as class-strings resolved
+    | through the container. A registered profile is advertised (in `jsonapi.profile`
+    | and the `Content-Type` `profile` parameter) when a client negotiates it, its
+    | opt-in query family is parsed only under that negotiation, and its OpenAPI
+    | output (the `jsonapi.profile` enum, the Countable `?withCount` parameter, the
+    | Relationship Queries `relatedQuery` parameter, the cursor page marker) is
+    | generated only when it is registered.
     |
-    |   'profiles' => [\haddowg\JsonApi\Pagination\CursorPaginationProfile::class],
+    | The default is the three built-ins, in this order (the order the generated
+    | OpenAPI `jsonapi.profile` enum lists them, which must be kept stable for
+    | cross-adapter byte-parity). Trim an entry to stop recognizing and advertising
+    | that profile — its OpenAPI parameters disappear with it — or append your own
+    | ProfileInterface class to recognize a custom profile.
     |
     */
-    'profiles' => [],
+    'profiles' => [
+        \haddowg\JsonApi\Pagination\CursorPaginationProfile::class,
+        \haddowg\JsonApi\Schema\Profile\CountableProfile::class,
+        \haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile::class,
+    ],
 
     /*
     |--------------------------------------------------------------------------
