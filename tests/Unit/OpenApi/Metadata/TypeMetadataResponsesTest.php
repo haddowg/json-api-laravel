@@ -6,7 +6,6 @@ namespace haddowg\JsonApiLaravel\Tests\Unit\OpenApi\Metadata;
 
 use haddowg\JsonApi\OpenApi\Metadata\OperationResponseInterface;
 use haddowg\JsonApi\OpenApi\Metadata\OperationType;
-use haddowg\JsonApi\OpenApi\Metadata\PaginatorKind;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\TypeMetadata;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -71,7 +70,7 @@ final class TypeMetadataResponsesTest extends TestCase
             allowsClientId: false,
             requiresClientId: false,
             idPattern: null,
-            paginatorKind: PaginatorKind::None,
+            pageSchema: null,
             countable: false,
             filters: [],
             sorts: [],

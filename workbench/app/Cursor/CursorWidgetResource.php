@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Workbench\App\Cursor;
 
 use haddowg\JsonApi\Pagination\CursorPaginator;
+use haddowg\JsonApi\Pagination\MultiPaginator;
+use haddowg\JsonApi\Pagination\PagePaginator;
 use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\DateTime;
@@ -15,9 +17,13 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
 /**
  * The `cursorWidgets` resource served by BOTH cursor (keyset) conformance concretes.
- * Its `pagination()` returns a {@see CursorPaginator} (default size 2), so the handler
- * resolves a keyset window and the providers run the keyset push-down — the HTTP arm
- * of the cursor referee (PLAN decision 9, bundle ADR 0063).
+ * Its `pagination()` returns a {@see MultiPaginator} offering a page-number strategy
+ * alongside the cursor (keyset) strategy, defaulting to cursor — so the same endpoint
+ * witnesses both client-selectable strategy selection AND the keyset push-down (PLAN
+ * decision 9, bundle ADR 0063). Absent a discriminator (or with only the shared
+ * `page[size]` key) it resolves to the cursor default, keeping the keyset suite
+ * unchanged; `page[kind]=page` (or the page-unique `page[number]`) selects the
+ * count-based strategy instead.
  *
  * It lives OUTSIDE `workbench/app/JsonApi` so it is discovered ONLY by the dedicated
  * cursor conformance service providers — the artists/albums/genres suites (and the
@@ -47,6 +53,9 @@ final class CursorWidgetResource extends AbstractResource
 
     public function pagination(?PaginatorInterface $serverDefault): PaginatorInterface
     {
-        return CursorPaginator::make()->withDefaultSize(2);
+        return MultiPaginator::make(
+            PagePaginator::make()->withDefaultPerPage(2),
+            CursorPaginator::make()->withDefaultSize(2),
+        )->default('cursor');
     }
 }

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
 use haddowg\JsonApi\OpenApi\Metadata\OperationType;
-use haddowg\JsonApi\OpenApi\Metadata\PaginatorKind;
 use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\TypeMetadataInterface;
 use haddowg\JsonApi\OpenApi\Tag;
@@ -54,8 +53,9 @@ use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
  *    a Gate/policy registered without an attribute declaration is deliberately not projected).
  *  - **`idPattern`** is the un-anchored `{id}` regex the resource's {@see Id} declares;
  *    core's `OperationProjector` anchors it as `^(?:…)$`.
- *  - **`paginatorKind`** is resolved off `resource->pagination(serverDefault)`; a to-one
- *    relation is always {@see PaginatorKind::None}.
+ *  - **`pageSchema`** is the resolved paginator's self-described `page[…]` object schema
+ *    (`resource->pagination(serverDefault)->describePageSchema()`, a `oneOf` menu for a
+ *    `MultiPaginator`); `null` for an unpaginated type or a to-one relation.
  *  - **`tags`** are the explicit `#[AsJsonApiResource(tags: …)]` refs, else the
  *    humanized-type default ({@see TagNameResolver}); a custom action with no tags of its
  *    own inherits the mount type's explicit tags (then the default), exactly as the bundle
@@ -73,7 +73,6 @@ final class MetadataSource
         private readonly ServerRegistry $servers,
         private readonly Discovery $discovery,
         private readonly TypeMetadataResolver $types,
-        private readonly PaginatorKindResolver $paginatorKinds,
         private readonly TagNameResolver $tagNames,
         private readonly IncludePathResolver $includePaths,
         private readonly array $serverNames = [ServerRegistry::DEFAULT_SERVER],
@@ -248,7 +247,7 @@ final class MetadataSource
             allowsClientId: false,
             requiresClientId: false,
             idPattern: null,
-            paginatorKind: PaginatorKind::None,
+            pageSchema: null,
             countable: false,
             filters: [],
             sorts: [],
@@ -279,9 +278,10 @@ final class MetadataSource
 
         $actions = $this->actions?->forServerType($serverName, $type) ?? [];
 
-        $paginatorKind = $resource !== null
-            ? $this->paginatorKinds->resolve($resource->pagination($serverDefaultPaginator))
-            : PaginatorKind::None;
+        // The resolved paginator self-describes its `page[…]` object schema (a `oneOf`
+        // menu for a MultiPaginator); `null` when the type is unpaginated. The projector
+        // emits the whole `page` family as one deepObject parameter carrying this schema.
+        $pageSchema = $resource?->pagination($serverDefaultPaginator)?->describePageSchema();
 
         return new TypeMetadata(
             type: $type,
@@ -298,7 +298,7 @@ final class MetadataSource
             // uuid()/ulid()/numeric()/pattern()/matchAs() id declares), or null for an
             // unconstrained id. Core's OperationProjector anchors it as `^(?:<fragment>)$`.
             idPattern: $idField?->routePattern(),
-            paginatorKind: $paginatorKind,
+            pageSchema: $pageSchema,
             countable: $resource?->isCountable() ?? false,
             filters: $resource !== null ? \array_values($resource->filters()) : [],
             // allSorts(), not sorts(): the runtime accepts the field-derived sortables
@@ -343,16 +343,16 @@ final class MetadataSource
 
     private function buildRelation(Server $server, RelationInterface $relation, ?PaginatorInterface $serverDefault): RelationMetadata
     {
-        // Only a to-many relation has a related-collection to paginate; a to-one is
-        // always PaginatorKind::None. For a to-many the resolved paginator rides core's
-        // relation → related-resource → server-default fallback chain.
-        $kind = $relation->isToMany()
-            ? $this->paginatorKinds->resolve($relation->pagination($serverDefault))
-            : PaginatorKind::None;
+        // Only a to-many relation has a related-collection to paginate; a to-one has no
+        // page schema. For a to-many the resolved paginator rides core's relation →
+        // related-resource → server-default fallback chain and self-describes its schema.
+        $pageSchema = $relation->isToMany()
+            ? $relation->pagination($serverDefault)?->describePageSchema()
+            : null;
 
         return new RelationMetadata(
             $relation,
-            $kind,
+            $pageSchema,
             $this->includePaths->relatedPathsFor($server, $relation),
         );
     }
