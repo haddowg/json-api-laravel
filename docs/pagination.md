@@ -84,9 +84,11 @@ a **shared** key (`page[size]`/`page[number]`) needs `page[kind]`, and an absent
 the declared `default()`. An unknown kind is a `400 PAGINATION_KIND_UNKNOWN` naming `page[kind]`.
 The handler resolves the wrapper to its concrete strategy once, up front, so the count-based and
 cursor render paths behave exactly as for a single strategy; the OpenAPI document projects the
-menu as one `page` deepObject whose schema is a `oneOf` discriminated by `kind`. A cursor-resolved
-**included** relation remains subject to the [push-down-only windowing](#relationship-pagination)
-limitation, so a menu that includes a page strategy is the safe choice on an includable relation.
+menu as one `page` deepObject whose schema is a `oneOf` discriminated by `kind`. A cursor strategy
+works on an **included** relation too: an include carries no cursor token, so a cursor-resolved
+include renders the **first** cursor page per parent (`next` carries the minted `page[after]`, no
+`prev`/`last`), minted through the same per-parent keyset fetch the related endpoint runs — and the
+document advertises the cursor-pagination profile even when the primary collection is page-based.
 
 ## Relationship pagination
 
