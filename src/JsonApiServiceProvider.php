@@ -46,7 +46,6 @@ use haddowg\JsonApiLaravel\OpenApi\JsonSchemaFactory;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\ActionMetadataProviderInterface;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\IncludePathResolver;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
-use haddowg\JsonApiLaravel\OpenApi\Metadata\PaginatorKindResolver;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\TagNameResolver;
 use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
@@ -835,7 +834,6 @@ final class JsonApiServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(TagNameResolver::class);
-        $this->app->singleton(PaginatorKindResolver::class);
         $this->app->singleton(IncludePathResolver::class);
 
         $this->app->singleton(MetadataSource::class, function (Container $app): MetadataSource {
@@ -855,7 +853,6 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(ServerRegistry::class),
                 $app->make(Discovery::class),
                 $app->make(TypeMetadataResolver::class),
-                $app->make(PaginatorKindResolver::class),
                 $app->make(TagNameResolver::class),
                 $app->make(IncludePathResolver::class),
                 $this->serverNames(),

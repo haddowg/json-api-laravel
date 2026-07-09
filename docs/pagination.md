@@ -56,6 +56,38 @@ public function pagination(?PaginatorInterface $serverDefault): PaginatorInterfa
 }
 ```
 
+## Offering a menu of strategies (`page[kind]`)
+
+A resource can offer **several** pagination strategies and let the client pick one per
+request — page-number for a browsing UI, cursor for a stable deep-scroll export. Return a
+[`MultiPaginator`](https://github.com/haddowg/json-api/blob/main/docs/pagination.md#offering-a-menu-of-strategies)
+from `pagination()` (or a relation's `paginate()`); it is itself a `PaginatorInterface`, so
+nothing else changes:
+
+```php
+use haddowg\JsonApi\Pagination\CursorPaginator;
+use haddowg\JsonApi\Pagination\MultiPaginator;
+use haddowg\JsonApi\Pagination\PagePaginator;
+
+public function pagination(?PaginatorInterface $serverDefault): PaginatorInterface
+{
+    return MultiPaginator::make(
+        PagePaginator::make()->withDefaultPerPage(20),
+        CursorPaginator::make(),
+    )->default('cursor');
+}
+```
+
+The client selects with `page[kind]=page` (or `=cursor`); a strategy-**unique** key selects
+without a kind (`page[after]`/`page[before]` → cursor, `page[offset]`/`page[limit]` → offset),
+a **shared** key (`page[size]`/`page[number]`) needs `page[kind]`, and an absent `page` uses
+the declared `default()`. An unknown kind is a `400 PAGINATION_KIND_UNKNOWN` naming `page[kind]`.
+The handler resolves the wrapper to its concrete strategy once, up front, so the count-based and
+cursor render paths behave exactly as for a single strategy; the OpenAPI document projects the
+menu as one `page` deepObject whose schema is a `oneOf` discriminated by `kind`. A cursor-resolved
+**included** relation remains subject to the [push-down-only windowing](#relationship-pagination)
+limitation, so a menu that includes a page strategy is the safe choice on an includable relation.
+
 ## Relationship pagination
 
 A related to-many paginates independently — declare it on the relation. Per-parent windowing

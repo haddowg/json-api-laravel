@@ -17,12 +17,12 @@ use Workbench\App\MusicCatalog\Support\CatalogConfig;
 /**
  * Pins the OpenAPI projection of the catalogue's sole cursor (keyset) witness:
  * `UserResource::pagination()` returns a {@see \haddowg\JsonApi\Pagination\CursorPaginator},
- * so the admin-only `users` primary collection is documented with the keyset `page[…]`
- * vocabulary — the opaque `page[after]`/`page[before]` cursor tokens plus `page[size]`,
- * and NOT the `page[number]` of the page-based server default.
+ * so the admin-only `users` primary collection's single `page` deepObject parameter
+ * (ADR 0130) carries the keyset object schema — the opaque `after`/`before` cursor tokens
+ * plus `size`, and NOT the `number` of the page-based server default.
  *
  * The cursor projection is PER-RESOURCE, not server-wide: `albums` is exposed on the admin
- * server too and keeps the page-based `page[number]` on the SAME document, so pinning a
+ * server too and keeps the page-based `number`/`size` keys on the SAME document, so pinning a
  * cursor on `users` left every other collection untouched. This is the shape the byte-for-byte
  * `composer byte-compat` diff against the Symfony bundle depends on.
  *
@@ -41,16 +41,12 @@ final class UserCursorPaginationOpenApiTest extends Orchestra
         $doc = $this->resolve(DocumentFactory::class)->forServer('admin')->toArray();
         \assert(\array_is_list($doc) === false);
 
-        $names = $this->parameterNames($doc, '/users', 'get');
-        $this->assertContains('page[after]', $names);
-        $this->assertContains('page[before]', $names);
-        $this->assertContains('page[size]', $names);
-        $this->assertNotContains('page[number]', $names, 'the cursor surface drops the page-based page[number]');
+        $this->assertContains('page', $this->parameterNames($doc, '/users', 'get'));
+        $this->assertSame(['after', 'before', 'size'], $this->pageParameterPropertyKeys($doc, '/users'));
 
         // Per-resource, not server-wide: `albums` is shared onto the admin server and keeps
-        // the page-based `page[number]` on the SAME document.
-        $albumNames = $this->parameterNames($doc, '/albums', 'get');
-        $this->assertContains('page[number]', $albumNames);
+        // the page-based `number`/`size` keys on the SAME document.
+        $this->assertSame(['number', 'size'], $this->pageParameterPropertyKeys($doc, '/albums'));
     }
 
     /**

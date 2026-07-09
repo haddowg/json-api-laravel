@@ -124,8 +124,10 @@ final class OpenApiDocumentTest extends TestCase
         $this->assertContains('sort', $names);
         $this->assertContains('include', $names);
         $this->assertContains('fields[albums]', $names);
-        $this->assertContains('page[number]', $names);
-        $this->assertContains('page[size]', $names);
+        // The page family projects as one `page` deepObject parameter (ADR 0130) whose
+        // object schema carries the page-based number/size keys.
+        $this->assertContains('page', $names);
+        $this->assertSame(['number', 'size'], $this->pageParameterPropertyKeys($this->document(), '/albums'));
     }
 
     #[Test]

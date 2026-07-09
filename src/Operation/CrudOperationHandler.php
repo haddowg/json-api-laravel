@@ -396,6 +396,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // impl returns the resolved server default. A singular filter collapses to a
         // zero-to-one response, so it is never paginated.
         $paginator = $singular ? null : ($resource !== null ? $resource->pagination($server->defaultPaginator()) : $server->defaultPaginator());
+        // Resolve a MultiPaginator to the concrete strategy this request selects, once
+        // and up front, so every downstream `instanceof CursorPaginator` render/count
+        // branch sees the child rather than the wrapper.
+        if ($paginator !== null && $request !== null) {
+            $paginator = $paginator->resolve($request);
+        }
         $window = $paginator !== null && $request !== null ? $paginator->window($request) : null;
 
         // The single COUNT decision (G21): a count-based paginator counts when its
@@ -564,6 +570,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
         if ($relation->isToMany()) {
             $relatedResource = $polymorphic ? null : $this->types->resourceFor($server, $relatedType);
             $paginator = $this->relationCriteria->paginatorFor($relation, $relatedResource, $server);
+            // Resolve a MultiPaginator to the concrete child before any cursor branch.
+            $paginator = $paginator?->resolve($request);
             $window = $paginator?->window($request);
 
             // The related endpoint renders via CollectionDocument, which does not run core's
@@ -850,6 +858,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $relatedType = $relation->relatedTypes()[0] ?? $type;
         $relatedResource = $this->types->resourceFor($server, $relatedType);
         $paginator = $this->relationCriteria->paginatorFor($relation, $relatedResource, $server);
+        // Resolve a MultiPaginator to the concrete child before any cursor branch.
+        $paginator = $paginator?->resolve($request);
         $window = $paginator?->window($request);
 
         // `_self_` names THIS relationship's collection — a 400 on a non-countable relation (the

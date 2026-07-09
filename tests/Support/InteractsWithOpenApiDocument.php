@@ -108,4 +108,29 @@ trait InteractsWithOpenApiDocument
 
         return $names;
     }
+
+    /**
+     * The property keys of the single `page` deepObject parameter's object schema at
+     * `paths.{path}.{method}` — the wire keys the resolved paginator self-describes
+     * (`number`/`size`, `after`/`before`/`size`, …). Fails if no `page` parameter is present.
+     *
+     * @param array<string, mixed> $doc
+     *
+     * @return list<string>
+     */
+    protected function pageParameterPropertyKeys(array $doc, string $path, string $method = 'get'): array
+    {
+        foreach ($this->arrayAt($doc, 'paths', $path, $method, 'parameters') as $parameter) {
+            if (\is_array($parameter) && ($parameter['name'] ?? null) === 'page') {
+                $keys = [];
+                foreach (\array_keys($this->arrayAt($parameter, 'schema', 'properties')) as $key) {
+                    $keys[] = (string) $key;
+                }
+
+                return $keys;
+            }
+        }
+
+        self::fail(\sprintf('The `page` parameter was not found on %s %s.', \strtoupper($method), $path));
+    }
 }
