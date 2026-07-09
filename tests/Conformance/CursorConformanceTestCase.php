@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
+use haddowg\JsonApi\Pagination\CursorPaginationProfile;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -34,6 +35,13 @@ use PHPUnit\Framework\Attributes\Test;
 abstract class CursorConformanceTestCase extends Orchestra
 {
     public const string MEDIA_TYPE = 'application/vnd.api+json';
+
+    /**
+     * A cursor page advertises the cursor-pagination profile on its Content-Type,
+     * because the server registers that profile by default (Laravel ADR 0025, core ADR
+     * 0131); a count-based page selected from the same menu does not.
+     */
+    public const string CURSOR_CONTENT_TYPE = self::MEDIA_TYPE . '; profile="' . CursorPaginationProfile::URI . '"';
 
     /**
      * The workbench service provider that wires exactly ONE provider (in-memory or
@@ -367,7 +375,7 @@ abstract class CursorConformanceTestCase extends Orchestra
         // page child before the cursor/count branch, so the page links carry
         // `page[number]`, never an opaque cursor token. (Sort by the null-free `id` so
         // page-1 is deterministic across both strategies' null-ordering conventions.)
-        [$ids, $links] = $this->page('/api/cursorWidgets?sort=id&page[kind]=page&page[number]=1&page[size]=2');
+        [$ids, $links] = $this->page('/api/cursorWidgets?sort=id&page[kind]=page&page[number]=1&page[size]=2', expectCursorProfile: false);
 
         self::assertSame(['1', '2'], $ids);
         self::assertArrayHasKey('next', $links);
@@ -380,7 +388,7 @@ abstract class CursorConformanceTestCase extends Orchestra
     public function aUniqueKeyInfersThePageStrategyWhileASharedKeyFallsBackToCursor(): void
     {
         // `number` is read only by the page strategy, so it selects it with no kind.
-        [, $number] = $this->page('/api/cursorWidgets?sort=priority,id&page[number]=1&page[size]=2');
+        [, $number] = $this->page('/api/cursorWidgets?sort=priority,id&page[number]=1&page[size]=2', expectCursorProfile: false);
         self::assertArrayHasKey('next', $number);
         self::assertStringContainsString('page[number]=2', \urldecode($this->href($number['next'])));
 
@@ -417,11 +425,11 @@ abstract class CursorConformanceTestCase extends Orchestra
     /**
      * @return array<string, mixed>
      */
-    protected function fetch(string $path): array
+    protected function fetch(string $path, bool $expectCursorProfile = true): array
     {
         $response = $this->request($path);
         $response->assertOk();
-        $response->assertHeader('Content-Type', self::MEDIA_TYPE);
+        $response->assertHeader('Content-Type', $expectCursorProfile ? self::CURSOR_CONTENT_TYPE : self::MEDIA_TYPE);
 
         $document = $response->json();
         self::assertIsArray($document);
@@ -506,15 +514,18 @@ abstract class CursorConformanceTestCase extends Orchestra
     }
 
     /**
-     * Fetches a cursor page and returns `[ids, links]` (null links dropped).
+     * Fetches a page and returns `[ids, links]` (null links dropped). A cursor page
+     * advertises the cursor-pagination profile on its Content-Type (Laravel ADR 0025,
+     * core ADR 0131); a count-based page selected from the same menu does not, so
+     * `$expectCursorProfile` is passed `false` for the page-strategy cases.
      *
      * @return array{0: list<string>, 1: array<string, mixed>}
      */
-    private function page(string $path): array
+    private function page(string $path, bool $expectCursorProfile = true): array
     {
         $response = $this->request($path);
         $response->assertOk();
-        $response->assertHeader('Content-Type', self::MEDIA_TYPE);
+        $response->assertHeader('Content-Type', $expectCursorProfile ? self::CURSOR_CONTENT_TYPE : self::MEDIA_TYPE);
 
         $document = $response->json();
         self::assertIsArray($document);

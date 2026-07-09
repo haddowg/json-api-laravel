@@ -110,6 +110,27 @@ trait InteractsWithOpenApiDocument
     }
 
     /**
+     * The `$ref` values of the component-parameter references at
+     * `paths.{path}.{method}.parameters` (a shared component parameter carries a `$ref`
+     * instead of an inline `name`).
+     *
+     * @param array<string, mixed> $doc
+     *
+     * @return list<string>
+     */
+    protected function parameterRefs(array $doc, string $path, string $method): array
+    {
+        $refs = [];
+        foreach ($this->arrayAt($doc, 'paths', $path, $method, 'parameters') as $parameter) {
+            if (\is_array($parameter) && isset($parameter['$ref']) && \is_string($parameter['$ref'])) {
+                $refs[] = $parameter['$ref'];
+            }
+        }
+
+        return $refs;
+    }
+
+    /**
      * The property keys of the single `page` deepObject parameter's object schema at
      * `paths.{path}.{method}` — the wire keys the resolved paginator self-describes
      * (`number`/`size`, `after`/`before`/`size`, …). Fails if no `page` parameter is present.
