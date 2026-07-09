@@ -76,7 +76,7 @@ No point burying this. Choose LaravelJsonApi when:
 | [Non-Eloquent / custom backend SPI](#non-eloquent--custom-backend-spi) | Storage-agnostic `DataProvider`/`DataPersister` | `non-eloquent` package, HTTP-bound | **Advantage** |
 | [N+1 avoidance (linkage, counts, includes)](#n1-avoidance-for-relationship-linkage-counts--compound-includes) | Lazy linkage, batched counts | Native eager loading | Parity |
 | [SQL push-down for windowed relations](#sql-push-down--windowing-for-paginated-included-or-nested-to-many-relations) | `ROW_NUMBER()` windowing, no PHP fallback | Not available | **Advantage** |
-| [Testing utilities](#json-api-format-specific-test-assertions--helpers) | Assertions, builders, schema conformance | Official testing package, fluent builder | Parity |
+| [Testing utilities](#jsonapi-format-specific-test-assertions--helpers) | Assertions, builders, schema conformance | Official testing package, fluent builder | Parity |
 | [Track record, adoption & governance](#production-track-record-adoption--release-cadencegovernance) | Young, rapid iteration | Mature, widely adopted, solo-maintained | **LaravelJsonApi** |
 | [Soft deletes](#soft-deletes-recoverable-delete-restoreforce-delete-actions) | Explicit restore/force-delete actions | PATCH-based restore, trashed DELETE | Different approach |
 | [Asynchronous processing (202/303)](#asynchronous-processing-202-accepted--303-see-other-job-lifecycle) | Shipped job lifecycle, in the contract | Unshipped roadmap item | **Advantage** |
