@@ -443,14 +443,26 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         JsonApiRequestInterface $request,
     ): RelatedBatch {
         $window = $criteria->window;
+
+        // A CURSOR (keyset) windowed include: an include carries no cursor token (the
+        // Relationship Queries profile pins the included page to page 1), so the window
+        // is boundaryless — a FIRST cursor page per parent. Route it through the same
+        // per-parent keyset fetch the related-collection endpoint runs: each
+        // fetchRelatedCollection mints that parent's forward cursor via the shared keyset
+        // machinery (ADR 0063), so the batched include is byte-identical to the in-memory
+        // witness, which windows each parent through the same fetchRelatedCollection
+        // cursor path. This is a real per-parent keyset LIMIT push-down (ADR 0006 forbids
+        // a PHP-window fallback), not the offset group-limit's single-query partition.
+        if ($window instanceof CursorWindow) {
+            return $this->fetchWindowedCursorBatch($parentType, $parents, $relation, $criteria, $request);
+        }
+
         if (!$window instanceof OffsetWindow) {
-            throw new \LogicException(
-                'The Eloquent windowed relation batch pushes down only an offset window (the '
-                . 'Relationship Queries profile pins the included page to page 1); a cursor '
-                . '(keyset) window over a batched relation is not supported on either provider '
-                . '— a shared parent-scoped keyset capability, refereed by the witness, is the '
-                . 'follow-up, never an Eloquent-only workaround.',
-            );
+            throw new \LogicException(\sprintf(
+                'The Eloquent windowed relation batch pushes down only an offset or cursor (keyset) '
+                . 'window (the Relationship Queries profile pins the included page to page 1); got %s.',
+                \get_debug_type($window),
+            ));
         }
 
         // A polymorphic relation spans related types with no single scoped query — the window
@@ -557,6 +569,58 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
                 total: null,
                 windowed: true,
                 hasMore: $hasMore,
+            );
+        }
+
+        return new RelatedBatch($results);
+    }
+
+    /**
+     * Windows a CURSOR (keyset) included relation to a first cursor page per parent —
+     * the companion to {@see fetchWindowedBatch()} for a boundaryless
+     * {@see CursorWindow}. An include carries no cursor token, so each parent's page is
+     * the first N rows under the keyset sort + id tiebreak: exactly what the
+     * parent-scoped {@see fetchRelatedCollection()} keyset path ({@see runCursor()})
+     * already computes, minting the parent's forward cursor from its boundary row via
+     * the shared {@see \haddowg\JsonApi\Collection\Keyset\CursorTokenMinter}. Looping it
+     * per parent yields a {@see CursorCollectionResult} per wire id, byte-identical to
+     * the in-memory witness (which windows each parent through the same path). Each is a
+     * real per-parent keyset LIMIT push-down, not a PHP window (ADR 0006).
+     *
+     * @param list<object> $parents
+     */
+    private function fetchWindowedCursorBatch(
+        string $parentType,
+        array $parents,
+        RelationInterface $relation,
+        CollectionCriteria $criteria,
+        JsonApiRequestInterface $request,
+    ): RelatedBatch {
+        if (\count($relation->relatedTypes()) !== 1) {
+            throw new \LogicException(\sprintf(
+                'The Eloquent windowed relation batch cannot push down the polymorphic relationship "%s": '
+                . 'its members span types with no shared scoped query, and the Relationship Queries profile '
+                . 'never windows a polymorphic to-many.',
+                $relation->name(),
+            ));
+        }
+
+        $models = $this->eloquentModels($parents);
+        if ($models === []) {
+            return new RelatedBatch([]);
+        }
+
+        $relatedType = $relation->relatedTypes()[0];
+        $encoder = $this->encoderFor($parentType);
+
+        $results = [];
+        foreach ($models as $model) {
+            $results[$this->wireId($model, $encoder)] = $this->fetchRelatedCollection(
+                $relatedType,
+                $model,
+                $relation,
+                $criteria,
+                $request,
             );
         }
 

@@ -337,7 +337,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // ?withCount batched counts for this resource so its relationship objects render
             // meta.total.
             $this->preloadIncludes($server, [$model], $type, $request);
-            $this->applyRelationshipWindows($server, $type, [$model], $request);
+            $activatedProfiles = $this->applyRelationshipWindows($server, $type, [$model], $request);
             $this->applyRelationshipCounts($server, $type, [$model], $request);
 
             $response = DataResponse::fromResource($model, $serializer);
@@ -351,7 +351,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $response = $event->response() ?? $response;
             }
 
-            return $response;
+            // Surface any profile a cursor-paginated included relation activated
+            // (e.g. `?include=<cursorRelation>`), even when the primary resource
+            // document itself carries no page profile.
+            return $activatedProfiles === [] ? $response : $response->withActivatedProfiles(...$activatedProfiles);
         }
 
         // An all-or-nothing collection gate runs BEFORE the query: a listener may deny
@@ -431,11 +434,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // ?withCount batched counts in ONE grouped count per relation, before rendering —
         // covering the singular first match too.
         $this->preloadIncludes($server, $items, $type, $request);
-        $this->applyRelationshipWindows($server, $type, $items, $request);
+        // The returned profiles are the ones a cursor-paginated included relation
+        // activated, surfaced onto each collection response below.
+        $activatedProfiles = $this->applyRelationshipWindows($server, $type, $items, $request);
         $this->applyRelationshipCounts($server, $type, $items, $request);
 
         if ($singular) {
-            return $this->afterFetchCollection(DataResponse::fromResource($items[0] ?? null, $serializer), $type, $request, $items);
+            return $this->afterFetchCollection(DataResponse::fromResource($items[0] ?? null, $serializer), $type, $request, $items, $activatedProfiles);
         }
 
         // A cursor (keyset) page: the provider minted the boundary tokens, so render
@@ -466,6 +471,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $type,
                 $request,
                 $items,
+                $activatedProfiles,
             );
         }
 
@@ -479,6 +485,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $type,
                 $request,
                 $items,
+                $activatedProfiles,
             );
         }
 
@@ -489,6 +496,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $type,
                 $request,
                 $items,
+                $activatedProfiles,
             );
         }
 
@@ -498,10 +506,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $type,
                 $request,
                 $items,
+                $activatedProfiles,
             );
         }
 
-        return $this->afterFetchCollection(DataResponse::fromCollection($items, $serializer), $type, $request, $items);
+        return $this->afterFetchCollection(DataResponse::fromCollection($items, $serializer), $type, $request, $items, $activatedProfiles);
     }
 
     /**
@@ -1017,12 +1026,24 @@ final class CrudOperationHandler implements OperationHandlerInterface
      *
      * @param list<object> $items the fetched page whose rendered to-many relations to window
      */
-    private function applyRelationshipWindows(Server $server, string $type, array $items, ?JsonApiRequestInterface $request): void
+    /**
+     * Returns the distinct profiles the windowed included pages activate (a
+     * cursor-paginated included relation activates the cursor-pagination profile), so the
+     * caller can surface them onto the document's applied set even when the primary page
+     * does not carry them; empty when no included page activates a profile.
+     *
+     * @param list<object> $items
+     *
+     * @return list<\haddowg\JsonApi\Schema\Profile\ProfileInterface>
+     */
+    private function applyRelationshipWindows(Server $server, string $type, array $items, ?JsonApiRequestInterface $request): array
     {
         $result = $request === null ? null : $this->windowBatcher->batch($server, $type, $items, $request);
 
         $this->relationshipPagination->set($result?->pagination);
         $this->relationshipLinkage->set($result?->linkage);
+
+        return $result?->pagination?->activatedProfiles() ?? [];
     }
 
     /**
@@ -1990,16 +2011,19 @@ final class CrudOperationHandler implements OperationHandlerInterface
      *
      * @param list<object> $items the materialized collection
      */
-    private function afterFetchCollection(DataResponse $response, string $type, ?JsonApiRequestInterface $request, array $items): DataResponse
+    /**
+     * @param list<object>                                          $items
+     * @param list<\haddowg\JsonApi\Schema\Profile\ProfileInterface> $activatedProfiles profiles a cursor-paginated included relation activated, surfaced onto the document's applied set
+     */
+    private function afterFetchCollection(DataResponse $response, string $type, ?JsonApiRequestInterface $request, array $items, array $activatedProfiles = []): DataResponse
     {
-        if ($request === null) {
-            return $response;
+        if ($request !== null) {
+            $event = new AfterFetchCollectionEvent($type, $request, $items, $this->serverName($request));
+            $this->dispatch($event);
+            $response = $event->response() ?? $response;
         }
 
-        $event = new AfterFetchCollectionEvent($type, $request, $items, $this->serverName($request));
-        $this->dispatch($event);
-
-        return $event->response() ?? $response;
+        return $activatedProfiles === [] ? $response : $response->withActivatedProfiles(...$activatedProfiles);
     }
 
     /**

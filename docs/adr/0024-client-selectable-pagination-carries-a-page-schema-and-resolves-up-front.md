@@ -32,14 +32,22 @@ menu is transparent while new cases prove `page[kind]=page` and the page-unique
 the cursor default, and an unknown kind is a `400`. `composer byte-compat` stays
 green — both integrations project the same core-described `page` schema.
 
-**Out of scope** (a known follow-up, unchanged here): lifting the batched-include
-cursor restriction so a cursor-resolved **included** relation mints a per-parent
-forward cursor from the boundary row instead of throwing. `EloquentDataProvider::
-fetchWindowedBatch()` still refuses a non-offset window — the same "shared
-parent-scoped keyset capability, refereed by the witness" this repo's ADR 0006
-earmarked as the follow-up: it needs a new parent-partitioned keyset push-down
-(the current `groupLimit`/`ROW_NUMBER` batch is offset-only), byte-identical to the
-in-memory witness. A menu that contains a page strategy still batches includes
-cleanly (the profile pins the included page to page-1, whose `page[number]=1`
-resolves the page child); only a menu resolving to cursor on an include is subject
-to the existing limitation.
+**Cursor on a batched include (ADR 0006 lifted).** A cursor-resolved **included**
+relation now renders a first cursor page per parent rather than throwing. An include
+carries no cursor token (the Relationship Queries profile pins the included page to
+page 1), so the window is a **boundaryless** `CursorWindow` — a first page is just
+the first N rows under the keyset sort + id tiebreak, which is what the parent-scoped
+`fetchRelatedCollection` keyset path already computes. So `EloquentDataProvider::
+fetchWindowedBatch()` routes a `CursorWindow` to a per-parent loop over that same
+keyset fetch (each parent's forward cursor minted from its boundary row via the shared
+`CursorTokenMinter`) instead of throwing — a real per-parent keyset `LIMIT` push-down,
+not the PHP window ADR 0006 forbids. `RelationshipWindowBatcher::paginationFor`
+renders a `CursorBasedPage` through `CursorPaginator::fromBoundaries` (`next` carries
+the minted `page[after]`, `prev`/`last` omitted). The in-memory witness already
+windowed each parent through that same path, so the two providers are byte-identical
+(`CursorIncludeConformanceTestCase`). The batcher surfaces each cursor page's profile
+(`WindowedRelationshipPagination::activatedProfiles()`) and the handler advertises it
+on the document via core's `withActivatedProfiles()`, so a cursor include advertises
+the cursor-pagination profile even when the primary collection is page-based (witnessed
+against a registered profile). This reverses the follow-up ADR 0006 earmarked — no new
+parent-partitioned keyset push-down was needed, only reusing the per-parent keyset path.
