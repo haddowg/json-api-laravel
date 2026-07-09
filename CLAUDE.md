@@ -30,8 +30,9 @@ Phase 5 (consolidation) delivered:
   `composer byte-compat` script, the `byte-compat` CI job, and `tests/ByteCompat`.
 - **The docs tree** (`docs/*.md`) — a Laravel-voiced mirror of the bundle doc set, plus
   `mkdocs.yml`, `mkdocs_hooks.py`, and `.github/workflows/docs.yml`. Snippets are lifted from
-  the workbench; `mkdocs build --strict` is clean. The parity checklist is
-  [`docs/parity-audit.md`](docs/parity-audit.md) (excluded from the published site).
+  the workbench; `mkdocs build --strict` is clean. (The one-off parity checklist
+  `docs/parity-audit.md` served its purpose and was deleted in `db8db40` — byte-compat CI is
+  the ongoing parity guarantee.)
 - **The Docker demo** — `Dockerfile` + `compose.yaml` + `testbench.docker.yaml` +
   `MusicCatalogDemoServiceProvider`, running `testbench serve` over the full domain
   (`docker compose up` → `http://localhost:8080/api/albums`). Core is resolved via the VCS-repo
