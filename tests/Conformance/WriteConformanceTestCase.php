@@ -603,7 +603,7 @@ abstract class WriteConformanceTestCase extends Orchestra
         // So this pins the underlying core cast the bridge
         // fronts by driving the exact field the fix touched — its typed error is the
         // ground truth both persisters inherit (it throws in core, before either runs).
-        $field = DateTime::make('releasedAt');
+        $field = DateTime::make('releasedAt')->build();
 
         try {
             $field->hydrate(new \stdClass(), 'banana', [], $this->createStub(JsonApiRequestInterface::class), true);

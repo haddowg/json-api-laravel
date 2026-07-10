@@ -35,12 +35,12 @@ final class PostResource extends AbstractResource
     public function fields(): array
     {
         return [
-            Id::make(),
+            Id::make()->build(),
             Str::make('title'),
             BelongsTo::make('author', 'authors'),
             BelongsToMany::make('tags', 'tags')->fields(
                 // A read-only pivot field for the meta.pivot READ witness (pivot WRITE is 3b).
-                Integer::make('position')->readOnly(),
+                Integer::make('position')->readOnly()->build(),
             ),
             MorphTo::make('feature', ['authors', 'tags']),
             MorphToMany::make('related', ['authors', 'tags'])

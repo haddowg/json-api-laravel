@@ -69,10 +69,10 @@ final class PlaylistResource extends AbstractResource implements ResourceLifecyc
     public function fields(): array
     {
         return [
-            Id::make()->uuid()->generated(),
+            Id::make()->uuid()->generated()->build(),
             Str::make('title')->required(),
             Slug::make('slug')->readOnly(),
-            Boolean::make('public'),
+            Boolean::make('public')->build(),
             Uuid::make('externalId')->storedAs('external_id')->nullable(),
             BelongsTo::make('owner', 'users')->security(read: 'inspectOwner'),
             BelongsTo::make('publicOwner', 'public-profiles')->storedAs('owner'),
@@ -87,9 +87,9 @@ final class PlaylistResource extends AbstractResource implements ResourceLifecyc
             // witness (its related endpoint paginates two-per-page, a ?withCount is a 400).
             BelongsToMany::make('orderedTracks', 'tracks')
                 ->fields(
-                    Integer::make('position')->required()->min(1),
-                    Integer::make('weight')->compareWith('position', Comparison::GreaterThanOrEqual),
-                    DateTime::make('addedAt')->storedAs('added_at')->readOnly(),
+                    Integer::make('position')->required()->min(1)->build(),
+                    Integer::make('weight')->compareWith('position', Comparison::GreaterThanOrEqual)->build(),
+                    DateTime::make('addedAt')->storedAs('added_at')->readOnly()->build(),
                 )
                 ->withFilters(
                     Where::make('position', 'pivot.position'),
