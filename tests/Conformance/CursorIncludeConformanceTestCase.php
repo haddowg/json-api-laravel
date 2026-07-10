@@ -67,7 +67,10 @@ abstract class CursorIncludeConformanceTestCase extends Orchestra
     {
         /** @var \Illuminate\Contracts\Config\Repository $config */
         $config = $app['config'];
-        $config->set('jsonapi.profiles', [CursorPaginationProfile::class]);
+        // Register the cursor-pagination profile (so a cursor-resolved include advertises it
+        // — the watch-item) alongside the Relationship-Queries profile whose `relatedQuery`
+        // family a collection include addresses to sort the windowed relation (`[widgets][sort]`).
+        $config->set('jsonapi.profiles', [CursorPaginationProfile::class, RelationshipQueriesProfile::class]);
         $config->set('jsonapi.base_uri', 'http://localhost/api');
     }
 
@@ -147,6 +150,64 @@ abstract class CursorIncludeConformanceTestCase extends Orchestra
         }
 
         self::assertSame(['3', '4'], $ids);
+    }
+
+    #[Test]
+    #[Group('spec:profiles')]
+    #[Group('spec:fetching-pagination')]
+    public function aCollectionIncludeCursorsOnANullableColumnWithMixedSurplusAcrossParents(): void
+    {
+        // A COLLECTION include windows the whole page of parents in ONE cursor window on the
+        // Eloquent provider (the N→1 collapse) — sorted on the NULLABLE `priority`, with the
+        // forced NULL=largest `CASE … IS NULL …` term composed INSIDE `row_number()`. Both
+        // groups carry a null-priority widget (group 1 → id 3, group 2 → id 6), so the null
+        // bucket is interleaved across the partitions; the witness (in-memory) and the
+        // push-down (SQL) must render the SAME page for each, refereeing exactly the
+        // NULL-inside-window composition #21 feared.
+        //
+        // priority asc, id-tiebreak asc: group 1 owns 1,2,3,4,5,7 → order
+        // 2(10),7(10),5(20),1(30),4(30),3(null) → page 1 = [2, 7] with a further page (SIX
+        // members > size 2 → a `next`); group 2 owns 6,8 → order 8(20),6(null) → page 1 =
+        // [8, 6] exactly the page (no surplus → NO `next`). The null member (6) lands ON
+        // group 2's page, proving NULL=largest orders the partition, not just excludes it.
+        $document = $this->includeDocument('/api/cursorGroups?include=widgets&relatedQuery[widgets][sort]=priority');
+
+        $group1 = $this->relationshipObject($this->resourceWithId($document, '1'), 'widgets');
+        self::assertSame(['2', '7'], $this->linkageIds($group1));
+        $group1Links = $group1['links'] ?? null;
+        self::assertIsArray($group1Links);
+        self::assertArrayHasKey('next', $group1Links, 'the surplus partition renders a next link');
+        self::assertStringContainsString('page%5Bafter%5D=', $this->href($group1Links['next']));
+        self::assertStringContainsString('sort=priority', $this->href($group1Links['next']));
+
+        $group2 = $this->relationshipObject($this->resourceWithId($document, '2'), 'widgets');
+        self::assertSame(['8', '6'], $this->linkageIds($group2));
+        $group2Links = $group2['links'] ?? null;
+        self::assertIsArray($group2Links);
+        self::assertArrayNotHasKey('next', $group2Links, 'a partition with no surplus renders no next link');
+    }
+
+    /**
+     * The primary-collection resource carrying `$id`, resolved out of the document's `data`
+     * list so a per-parent relationship object can be addressed on a collection include.
+     *
+     * @param array<string, mixed> $document
+     *
+     * @return array<string, mixed>
+     */
+    private function resourceWithId(array $document, string $id): array
+    {
+        $data = $document['data'] ?? null;
+        self::assertIsArray($data);
+
+        foreach ($data as $resource) {
+            if (\is_array($resource) && ($resource['id'] ?? null) === $id) {
+                /** @var array<string, mixed> $resource */
+                return $resource;
+            }
+        }
+
+        self::fail(\sprintf('No cursorGroups resource with id "%s" in the collection.', $id));
     }
 
     /**

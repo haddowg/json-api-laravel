@@ -446,15 +446,11 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
         // A CURSOR (keyset) windowed include: an include carries no cursor token (the
         // Relationship Queries profile pins the included page to page 1), so the window
-        // is boundaryless — a FIRST cursor page per parent. Route it through the same
-        // per-parent keyset fetch the related-collection endpoint runs: each
-        // fetchRelatedCollection mints that parent's forward cursor via the shared keyset
-        // machinery (ADR 0063), so the batched include is byte-identical to the in-memory
-        // witness, which windows each parent through the same fetchRelatedCollection
-        // cursor path. This is a real per-parent keyset LIMIT push-down (ADR 0006 forbids
-        // a PHP-window fallback), not the offset group-limit's single-query partition.
+        // is boundaryless — a FIRST cursor page per parent. It collapses to ONE
+        // group-limit query exactly like the offset branch above, only ordered by the
+        // resolved keyset columns instead of the sort + hardcoded id ASC (ADR 0026).
         if ($window instanceof CursorWindow) {
-            return $this->fetchWindowedCursorBatch($parentType, $parents, $relation, $criteria, $request);
+            return $this->fetchWindowedCursorBatch($parentType, $parents, $relation, $criteria, $request, $window);
         }
 
         if (!$window instanceof OffsetWindow) {
@@ -579,17 +575,170 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * Windows a CURSOR (keyset) included relation to a first cursor page per parent —
      * the companion to {@see fetchWindowedBatch()} for a boundaryless
      * {@see CursorWindow}. An include carries no cursor token, so each parent's page is
-     * the first N rows under the keyset sort + id tiebreak: exactly what the
-     * parent-scoped {@see fetchRelatedCollection()} keyset path ({@see runCursor()})
-     * already computes, minting the parent's forward cursor from its boundary row via
-     * the shared {@see \haddowg\JsonApi\Collection\Keyset\CursorTokenMinter}. Looping it
-     * per parent yields a {@see CursorCollectionResult} per wire id, byte-identical to
-     * the in-memory witness (which windows each parent through the same path). Each is a
-     * real per-parent keyset LIMIT push-down, not a PHP window (ADR 0006).
+     * the first N rows under the keyset sort + id tiebreak.
+     *
+     * It collapses to ONE group-limit query per relation ({@see fetchCursorWindow()}) —
+     * `ROW_NUMBER() OVER (PARTITION BY <parent FK> ORDER BY <forced NULL=largest keyset>)`
+     * capped at `limit + 1` per partition — exactly like the offset batch, gated the SAME
+     * way (a monomorphic relation with an Eloquent method). The ONLY difference is the
+     * order: the resolved {@see \haddowg\JsonApi\Collection\Keyset\KeysetColumn} list (the
+     * active sort + the deduped PK tiebreak, whose direction rides the last active
+     * directive — NOT a hardcoded id ASC) via {@see EloquentKeyset::orderBy()}, whose raw
+     * `CASE … IS NULL …` term composes verbatim into the window's `OVER (… ORDER BY …)`.
+     * Each partition mints its forward cursor from its boundary row through the SAME shared
+     * {@see \haddowg\JsonApi\Collection\Keyset\CursorTokenMinter} the per-parent path uses,
+     * so the batched include is byte-identical to the in-memory witness (ADR 0026, 0063).
+     *
+     * A relation that cannot push down as one partitioned window — polymorphic, no Eloquent
+     * method, or a bounded (non-first) page — falls back to
+     * {@see fetchCursorBatchPerParent()}: the per-parent keyset loop that is also the
+     * related-collection endpoint's path (a real keyset LIMIT push-down, never a PHP window,
+     * ADR 0006).
      *
      * @param list<object> $parents
      */
     private function fetchWindowedCursorBatch(
+        string $parentType,
+        array $parents,
+        RelationInterface $relation,
+        CollectionCriteria $criteria,
+        JsonApiRequestInterface $request,
+        CursorWindow $window,
+    ): RelatedBatch {
+        return $this->fetchCursorWindow($parentType, $parents, $relation, $criteria, $window)
+            ?? $this->fetchCursorBatchPerParent($parentType, $parents, $relation, $criteria, $request);
+    }
+
+    /**
+     * The single-query cursor window — the N→1 collapse of {@see fetchWindowedCursorBatch()},
+     * mirroring the offset {@see fetchWindowedBatch()} group-limit path. Returns the batch
+     * on success, or `null` when the relation cannot push down as one partitioned window
+     * (the caller then falls back to the per-parent loop):
+     *  - a polymorphic relation (its members span types with no single scoped query);
+     *  - a bounded page (a `page[after]`/`page[before]` boundary — an include is always a
+     *    boundaryless FIRST page, so there is NO keyset WHERE here; a bounded window is the
+     *    per-parent endpoint's concern, which owns {@see EloquentKeyset::applyAfter()});
+     *  - a relation resolving to no Eloquent method (a computed/`extractUsing` view).
+     *
+     * The window is ordered by the resolved keyset columns (the SAME {@see KeysetResolver}
+     * the per-parent path resolves from, so SQL and the in-memory witness cannot drift), the
+     * order composed onto the relation's own eager query so it flows verbatim into the
+     * group-limit's `OVER (… ORDER BY …)`. Filters push down first ({@see filtersOnly()} —
+     * the keyset owns the order). A cursor page is count-free by definition, so the partition
+     * is bounded to `limit + 1` for the `hasMore` probe. The match runs over CLONES of the
+     * parents, never the caller's models (exactly as the offset path), so the trimmed probe
+     * page never lands on a shared relation cache.
+     *
+     * @param list<object> $parents
+     *
+     * @return RelatedBatch|null the batch, or `null` to fall back to the per-parent loop
+     */
+    private function fetchCursorWindow(
+        string $parentType,
+        array $parents,
+        RelationInterface $relation,
+        CollectionCriteria $criteria,
+        CursorWindow $window,
+    ): ?RelatedBatch {
+        // Gated identically to the offset group-limit push-down: only a monomorphic
+        // relation with an Eloquent method partitions as one window. A bounded page keeps
+        // the keyset WHERE the per-parent path owns, so it is excluded here too.
+        if (\count($relation->relatedTypes()) !== 1) {
+            return null;
+        }
+        if ($window->after !== null || $window->before !== null) {
+            return null;
+        }
+
+        $models = $this->eloquentModels($parents);
+        if ($models === []) {
+            return new RelatedBatch([]);
+        }
+
+        $eager = $this->eagerRelation($models[0], $relation);
+        if ($eager === null) {
+            return null;
+        }
+
+        $method = $this->relationMethod($relation);
+        $related = $eager->getRelated();
+
+        // The keyset columns (active sort + the deduped PK tiebreak) from the ONE resolver
+        // the per-parent keyset path (runCursor) and the in-memory witness use — the PK
+        // tiebreak direction rides the last active directive, NOT a hardcoded id ASC.
+        $columns = $this->keysetResolver->resolve(
+            $criteria->queryParameters->sort,
+            $criteria->sorts,
+            $criteria->defaultSort,
+            $related->getKeyName(),
+        );
+
+        // Filters only (the keyset owns the order), then the forced NULL=largest keyset
+        // ORDER BY onto the relation's own eager query — the raw `CASE … IS NULL …` term
+        // composes verbatim into the group-limit's `OVER (… ORDER BY …)`. NO applyAfter: an
+        // include is a boundaryless first page. The relation's get() adds the correct
+        // projection (related.* plus, for a belongsToMany, the aliased pivot columns), so
+        // the SELECT is left untouched — overriding it would drop the FK/pivot the partition
+        // needs.
+        $this->applier->apply($this->filtersOnly($criteria), $eager->getQuery(), $this->filterHandler, $this->sortHandler);
+        (new EloquentKeyset($related))->orderBy($eager->getQuery(), $columns);
+
+        // A cursor page is count-free by definition (a CursorPaginator never counts), so the
+        // window always probes limit + 1 per partition for the hasMore signal.
+        $limit = $window->limit;
+        $eager->limit($limit + 1);
+
+        // ONE group-limit query for the whole page, matched onto lightweight CLONES so the
+        // windowed (limit + 1)-probe page is setRelation'd onto the clones, never the
+        // caller's models — identical to the offset path's clone discipline (ADR 0006).
+        $clones = \array_map(static fn(Model $model): Model => clone $model, $models);
+        $eager->addEagerConstraints($clones);
+        $clones = $eager->initRelation($clones, $method);
+        $eager->match($clones, $eager->getEager(), $method);
+
+        // The SAME row → keyset-value reader the per-parent path (runCursor) mints with, so
+        // the single-window tokens are byte-identical to the per-parent tokens.
+        $readValue = static fn(object $row, string $column): string|int|float|bool|null => CursorTokenMinter::coerce(
+            $row instanceof Model ? $row->getAttribute($column) : null,
+        );
+
+        $encoder = $this->encoderFor($parentType);
+
+        $results = [];
+        foreach ($clones as $model) {
+            $matched = $model->getRelation($method);
+            $items = $matched instanceof EloquentCollection ? \array_values($matched->all()) : [];
+
+            // The (limit + 1)-th row past the window proves a further page — drop it and
+            // report hasMore, exactly as runCursor's over-fetch does before minting.
+            $hasSurplus = \count($items) > $limit;
+            $page = $hasSurplus ? \array_slice($items, 0, $limit) : $items;
+
+            $results[$this->wireId($model, $encoder)] = $this->minter->mint(
+                $window,
+                $columns,
+                \array_values($page),
+                $hasSurplus,
+                $readValue,
+            );
+        }
+
+        return new RelatedBatch($results);
+    }
+
+    /**
+     * The per-parent cursor batch — the FALLBACK for a relation the single-query
+     * {@see fetchCursorWindow()} cannot partition as one window (polymorphic, no Eloquent
+     * method, or a bounded page). It loops the parent-scoped {@see fetchRelatedCollection()}
+     * keyset path ({@see runCursor()}) once per parent, minting each parent's forward cursor
+     * from its boundary row via the shared
+     * {@see \haddowg\JsonApi\Collection\Keyset\CursorTokenMinter}. Each is a real per-parent
+     * keyset LIMIT push-down, not a PHP window (ADR 0006); this is also the very path the
+     * related-collection endpoint runs, so the two stay byte-identical.
+     *
+     * @param list<object> $parents
+     */
+    private function fetchCursorBatchPerParent(
         string $parentType,
         array $parents,
         RelationInterface $relation,
