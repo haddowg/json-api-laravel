@@ -44,9 +44,9 @@ final class PlaylistResource extends AbstractResource
     public function fields(): array
     {
         return [
-            Id::make(),
+            Id::make()->build(),
             Str::make('title')->required()->maxLength(120)->sortable(),
-            Boolean::make('public'),
+            Boolean::make('public')->build(),
 
             // The plain join — no pivot columns. Relation name IS the Eloquent relation method
             // / in-memory POPO property (`tracks`).
@@ -70,12 +70,12 @@ final class PlaylistResource extends AbstractResource
             BelongsToMany::make('orderedTracks', 'tracks')->fields(
                 // Required-on-create, >= 1. On an existing-member partial update the omitted
                 // position is preserved from the MERGED stored row (no false 422).
-                Integer::make('position')->required()->min(1),
+                Integer::make('position')->required()->min(1)->build(),
                 // A second writable field, `weight >= position` — a cross-pivot-field rule
                 // evaluated over the merged pivot (an incoming weight vs the merged position).
-                Integer::make('weight')->compareWith('position', Comparison::GreaterThanOrEqual),
+                Integer::make('weight')->compareWith('position', Comparison::GreaterThanOrEqual)->build(),
                 // Server-owned: never written from the linkage meta (stored as `added_at`).
-                DateTime::make('addedAt')->storedAs('added_at')->readOnly(),
+                DateTime::make('addedAt')->storedAs('added_at')->readOnly()->build(),
             ),
         ];
     }

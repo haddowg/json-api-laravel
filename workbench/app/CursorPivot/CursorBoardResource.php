@@ -35,10 +35,10 @@ final class CursorBoardResource extends AbstractResource
     public function fields(): array
     {
         return [
-            Id::make(),
+            Id::make()->build(),
             Str::make('name'),
             BelongsToMany::make('widgets', 'cursorWidgets')
-                ->fields(Integer::make('position')->readOnly())
+                ->fields(Integer::make('position')->readOnly()->build())
                 ->paginate(CursorPaginator::make()->withDefaultSize(2)),
         ];
     }
