@@ -167,7 +167,7 @@ final class ServableResourceWarmer
         }
 
         $idFields = \array_filter(
-            $resource->fields(),
+            $resource->allFields(),
             static fn(FieldInterface $field): bool => $field instanceof Id,
         );
 

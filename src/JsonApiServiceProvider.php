@@ -166,7 +166,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                     if (!$resource instanceof \haddowg\JsonApi\Resource\AbstractResource) {
                         return null;
                     }
-                    foreach ($resource->fields() as $field) {
+                    foreach ($resource->allFields() as $field) {
                         if ($field instanceof \haddowg\JsonApi\Resource\Field\Id) {
                             return $field->routePattern();
                         }

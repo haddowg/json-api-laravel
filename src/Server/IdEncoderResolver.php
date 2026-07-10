@@ -72,7 +72,7 @@ final class IdEncoderResolver
                 return null;
             }
 
-            foreach ($resource->fields() as $field) {
+            foreach ($resource->allFields() as $field) {
                 if ($field instanceof Id) {
                     return $field->encoder();
                 }

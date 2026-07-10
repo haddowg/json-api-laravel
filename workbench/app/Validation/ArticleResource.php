@@ -11,6 +11,7 @@ use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Map;
 use haddowg\JsonApi\Resource\Field\Str;
+use haddowg\JsonApi\Resource\Field\StrBuilder;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Validation\Constraint\UniqueEntity;
 
@@ -61,7 +62,7 @@ final class ArticleResource extends AbstractResource
             // passes — the When bridge declare→execute path end to end.
             Str::make('couponCode')->storedAs('coupon_code')->nullable()->when(
                 static fn(mixed $value): bool => \is_string($value) && \str_starts_with($value, 'PROMO-'),
-                static function (Str $field): void {
+                static function (StrBuilder $field): void {
                     $field->minLength(12);
                 },
             ),

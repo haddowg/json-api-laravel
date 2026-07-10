@@ -132,7 +132,7 @@ final class ResourceValidator
         /** @var list<array{0: string, 1: CompareField}> $compares */
         $compares = [];
 
-        foreach ($resource->fields() as $field) {
+        foreach ($resource->allFields() as $field) {
             if ($field instanceof Id || $field instanceof RelationInterface) {
                 continue;
             }
@@ -346,7 +346,7 @@ final class ResourceValidator
         }
 
         $idField = null;
-        foreach ($resource->fields() as $field) {
+        foreach ($resource->allFields() as $field) {
             if ($field instanceof Id) {
                 $idField = $field;
 
@@ -555,7 +555,7 @@ final class ResourceValidator
     public function validateEntity(AbstractResource $resource, object $entity, bool $creating): void
     {
         $errors = [];
-        foreach ($resource->fields() as $field) {
+        foreach ($resource->allFields() as $field) {
             foreach ($field->constraints() as $constraint) {
                 if ($constraint instanceof UniqueEntity) {
                     continue; // handled pre-hydration as Rule::unique
@@ -759,7 +759,7 @@ final class ResourceValidator
     private function oneOfErrors(AbstractResource $resource, array $attributes, bool $creating, JsonApiRequestInterface $request): array
     {
         $errors = [];
-        foreach ($resource->fields() as $field) {
+        foreach ($resource->allFields() as $field) {
             if (!$field instanceof OneOf) {
                 continue;
             }
@@ -834,7 +834,7 @@ final class ResourceValidator
         }
 
         $errors = [];
-        foreach ($resource->fields() as $field) {
+        foreach ($resource->allFields() as $field) {
             if ($field instanceof Id || $field instanceof RelationInterface) {
                 continue;
             }
@@ -930,7 +930,7 @@ final class ResourceValidator
         }
 
         $idField = null;
-        foreach ($resource->fields() as $field) {
+        foreach ($resource->allFields() as $field) {
             if ($field instanceof Id) {
                 $idField = $field;
 
@@ -972,7 +972,7 @@ final class ResourceValidator
      */
     private function fieldByName(AbstractResource $resource, string $name): ?FieldInterface
     {
-        foreach ($resource->fields() as $field) {
+        foreach ($resource->allFields() as $field) {
             if ($field->name() === $name) {
                 return $field;
             }
