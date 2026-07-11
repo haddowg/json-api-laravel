@@ -370,7 +370,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // filter/sort vocabulary and no resource-level paginator.
         $resource = $server->hasResourceFor($type) ? $server->resourceFor($type) : null;
 
-        $filters = $resource?->filters() ?? [];
+        $filters = $resource?->allFilters() ?? [];
 
         // The always-on filter-value gate (PLAN decision 6): a client-supplied
         // `filter[<key>]` value is validated against the filter's declared value

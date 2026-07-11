@@ -11,6 +11,7 @@ use haddowg\JsonApi\Resource\Filter\Boolean;
 use haddowg\JsonApi\Resource\Filter\Contains;
 use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\EndsWith;
+use haddowg\JsonApi\Resource\Filter\FilterBuilderInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\GreaterThan;
 use haddowg\JsonApi\Resource\Filter\Numeric;
@@ -281,7 +282,7 @@ final class InMemoryDataProviderFilterTest extends TestCase
 
         $this->songs()->fetchCollection('songs', new CollectionCriteria(
             $this->query(filter: ['nope' => 'x']),
-            filters: [Where::make('title')],
+            filters: [Where::make('title')->build()],
         ));
     }
 
@@ -289,16 +290,21 @@ final class InMemoryDataProviderFilterTest extends TestCase
      * Runs the given declared filter vocabulary against the requested `filter[…]` map and
      * returns the surviving ids (in store order — no sort applied).
      *
-     * @param list<FilterInterface> $filters
-     * @param array<string, mixed>  $filter
+     * @param list<FilterInterface|FilterBuilderInterface> $filters
+     * @param array<string, mixed>                         $filter
      *
      * @return list<int>
      */
     private function filter(array $filters, array $filter): array
     {
+        $built = \array_values(\array_map(
+            static fn(FilterInterface|FilterBuilderInterface $f): FilterInterface => $f instanceof FilterBuilderInterface ? $f->build() : $f,
+            $filters,
+        ));
+
         $result = $this->songs()->fetchCollection('songs', new CollectionCriteria(
             $this->query(filter: $filter),
-            filters: $filters,
+            filters: $built,
         ));
 
         return $this->ids($result);

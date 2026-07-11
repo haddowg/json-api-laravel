@@ -8,6 +8,7 @@ use haddowg\JsonApi\Resource\Filter\Boolean;
 use haddowg\JsonApi\Resource\Filter\Contains;
 use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\EndsWith;
+use haddowg\JsonApi\Resource\Filter\FilterBuilderInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\GreaterThan;
 use haddowg\JsonApi\Resource\Filter\Numeric;
@@ -269,15 +270,15 @@ final class EloquentFilterHandlerTest extends EloquentTestCase
      *
      * @return array{string, list<mixed>}
      */
-    private function apply(FilterInterface $filter, mixed $value): array
+    private function apply(FilterInterface|FilterBuilderInterface $filter, mixed $value): array
     {
         $query = $this->newQuery();
-        $this->handler->apply($filter, $query, $value);
+        $this->handler->apply($filter instanceof FilterBuilderInterface ? $filter->build() : $filter, $query, $value);
 
         return [$query->toSql(), \array_values($query->getBindings())];
     }
 
-    private function sql(FilterInterface $filter, mixed $value = '1'): string
+    private function sql(FilterInterface|FilterBuilderInterface $filter, mixed $value = '1'): string
     {
         return $this->apply($filter, $value)[0];
     }

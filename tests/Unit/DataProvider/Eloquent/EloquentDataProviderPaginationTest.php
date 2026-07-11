@@ -90,7 +90,7 @@ final class EloquentDataProviderPaginationTest extends EloquentTestCase
         $result = $this->fetch(
             new OffsetWindow(0, 1),
             wantsCount: true,
-            filters: [Contains::make('nameContains', 'name')],
+            filters: [Contains::make('nameContains', 'name')->build()],
             filter: ['nameContains' => 'alph'],
         );
 

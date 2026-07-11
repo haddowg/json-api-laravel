@@ -85,7 +85,7 @@ final class RelationCriteriaFactory
     ): CollectionCriteria {
         return new CollectionCriteria(
             $queryParameters,
-            $this->mergeFilters($relatedResource?->filters() ?? [], $relation->filters()),
+            $this->mergeFilters($relatedResource?->allFilters() ?? [], $relation->allFilters()),
             $this->mergeSorts($relatedResource?->allSorts() ?? [], $relation->sorts()),
             $window,
             $relatedResource?->defaultSort() ?? [],

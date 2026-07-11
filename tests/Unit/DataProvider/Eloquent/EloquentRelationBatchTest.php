@@ -203,7 +203,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
             HasMany::make('albums', 'albums'),
             new CollectionCriteria(
                 new QueryParameters([], [], [], ['status' => 'released'], []),
-                [WhereIn::make('status')],
+                [WhereIn::make('status')->build()],
             ),
             $this->request(),
         );
@@ -340,7 +340,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
     {
         return new CollectionCriteria(
             new QueryParameters([], [], [], $filter, []),
-            [GreaterThanOrEqual::make('minTracks', 'track_count')],
+            [GreaterThanOrEqual::make('minTracks', 'track_count')->build()],
         );
     }
 

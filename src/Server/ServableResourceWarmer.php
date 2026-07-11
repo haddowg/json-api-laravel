@@ -354,7 +354,7 @@ final class ServableResourceWarmer
             }
         }
 
-        foreach ($resource->filters() as $filter) {
+        foreach ($resource->allFilters() as $filter) {
             $column = $this->filterColumn($filter);
             if ($column !== null && !$known($column)) {
                 $problems[] = \sprintf(

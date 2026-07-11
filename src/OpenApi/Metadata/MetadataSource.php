@@ -324,7 +324,7 @@ final class MetadataSource
             idPattern: $idField?->routePattern(),
             pageSchema: $pageSchema,
             countable: $resource?->isCountable() ?? false,
-            filters: $resource !== null ? \array_values($resource->filters()) : [],
+            filters: $resource !== null ? $resource->allFilters() : [],
             // allSorts(), not sorts(): the runtime accepts the field-derived sortables
             // (every `->sortable()` field) UNION the explicit sorts() overrides, so the
             // document must enumerate the same full set.
