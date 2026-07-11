@@ -51,7 +51,7 @@ final class InMemoryRelationBatchTest extends TestCase
         $batch = $provider->fetchRelatedCollectionBatch(
             'parents',
             [$p1, $p2],
-            HasMany::make('children', 'children'),
+            HasMany::make('children', 'children')->build(),
             $this->windowedCriteria(new OffsetWindow(0, 2)),
             $this->createStub(JsonApiRequestInterface::class),
         );
@@ -76,7 +76,7 @@ final class InMemoryRelationBatchTest extends TestCase
         $batch = $provider->fetchRelatedCollectionBatch(
             'parents',
             [$p1],
-            HasMany::make('children', 'children'),
+            HasMany::make('children', 'children')->build(),
             $this->windowedCriteria(new OffsetWindow(2, 2)),
             $this->createStub(JsonApiRequestInterface::class),
         );

@@ -55,7 +55,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
         $batch = $this->provider()->fetchRelatedCollectionBatch(
             'artists',
             $artists,
-            HasMany::make('albums', 'albums'),
+            HasMany::make('albums', 'albums')->build(),
             $this->emptyCriteria(),
             $this->request(),
         );
@@ -84,7 +84,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
         $provider->fetchRelatedCollectionBatch(
             'artists',
             $artists,
-            HasMany::make('albums', 'albums'),
+            HasMany::make('albums', 'albums')->build(),
             $this->emptyCriteria(),
             $this->request(),
         );
@@ -114,7 +114,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
         $batch = $this->provider()->fetchRelatedCollectionBatch(
             'albums',
             \array_values($albums),
-            BelongsTo::make('artist', 'artists'),
+            BelongsTo::make('artist', 'artists')->build(),
             $this->emptyCriteria(),
             $this->request(),
         );
@@ -133,7 +133,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
     {
         $artists = $this->allArtists();
         $loadState = new EloquentRelationshipLoadState();
-        $relation = HasMany::make('albums', 'albums');
+        $relation = HasMany::make('albums', 'albums')->build();
 
         // Freshly fetched: the relation is not loaded (a read would query).
         self::assertFalse($artists[0]->relationLoaded('albums'));
@@ -164,7 +164,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
         $counts = $this->provider()->countRelated(
             'artists',
             $this->allArtists(),
-            HasMany::make('albums', 'albums'),
+            HasMany::make('albums', 'albums')->build(),
             $this->emptyCriteria(),
             $this->request(),
         );
@@ -183,7 +183,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
         $this->provider()->countRelated(
             'artists',
             $artists,
-            HasMany::make('albums', 'albums'),
+            HasMany::make('albums', 'albums')->build(),
             $this->emptyCriteria(),
             $this->request(),
         );
@@ -200,7 +200,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
         $counts = $this->provider()->countRelated(
             'artists',
             $this->allArtists(),
-            HasMany::make('albums', 'albums'),
+            HasMany::make('albums', 'albums')->build(),
             new CollectionCriteria(
                 new QueryParameters([], [], [], ['status' => 'released'], []),
                 [WhereIn::make('status')->build()],
@@ -220,7 +220,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
     public function relatedToOneMatchesProbesTheSingleTargetAgainstTheFilter(): void
     {
         $radiohead = Artist::query()->findOrFail(1);
-        $relation = BelongsTo::make('artist', 'artists');
+        $relation = BelongsTo::make('artist', 'artists')->build();
 
         // Radiohead has track_count 3, so minTracks>=5 excludes it, minTracks>=1 keeps it.
         self::assertFalse($this->provider()->relatedToOneMatches(
@@ -249,7 +249,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
         $matches = $this->provider()->relatedToOneMatchesBatch(
             'albums',
             \array_values($albums),
-            BelongsTo::make('artist', 'artists'),
+            BelongsTo::make('artist', 'artists')->build(),
             $this->filterCriteria(['minTracks' => 5]),
             $this->request(),
         );
@@ -275,7 +275,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
         $this->provider()->fetchRelatedCollectionBatch(
             'artists',
             $this->allArtists(),
-            HasMany::make('phantom', 'albums'),
+            HasMany::make('phantom', 'albums')->build(),
             new CollectionCriteria($this->queryParameters(), window: new OffsetWindow(0, 2)),
             $this->request(),
         );
@@ -294,7 +294,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
         $result = $this->provider()->fetchRelatedCollection(
             'albums',
             $radiohead,
-            HasMany::make('albums', 'albums'),
+            HasMany::make('albums', 'albums')->build(),
             new CollectionCriteria(
                 new QueryParameters([], [], [], [], []),
                 sorts: $albumResource->allSorts(),

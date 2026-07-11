@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Test;
  * The sparse-by-default field conformance witness (core ADR 0117), run against both
  * providers — the Laravel twin of the Symfony bundle's `SparseByDefaultFieldTest`: the
  * `sparseWidgets` resource's `expensiveScore` attribute (marked
- * {@see \haddowg\JsonApi\Resource\Field\AbstractField::sparseByDefault()}) is omitted
+ * {@see \haddowg\JsonApi\Resource\Field\AbstractFieldBuilder::sparseByDefault()}) is omitted
  * from the default response and rendered **only** when the client names it in a
  * `fields[sparseWidgets]` member, proving core's opt-in visibility tier flows through
  * the serializer → transformer → response stack end-to-end over HTTP. The cheap `name`

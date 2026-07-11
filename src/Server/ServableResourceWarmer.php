@@ -270,23 +270,36 @@ final class ServableResourceWarmer
 
     /**
      * Whether the relation's read path is supplied by a value closure —
-     * {@see \haddowg\JsonApi\Resource\Field\AbstractField::extractUsing()} or
-     * {@see \haddowg\JsonApi\Resource\Field\AbstractField::serializeUsing()} — rather than
-     * a member read off the model. Core exposes no accessor for the (protected) closures,
-     * so they are read reflectively; a relation implementation without those properties
-     * reads its members normally and reports `false`.
+     * {@see \haddowg\JsonApi\Resource\Field\AbstractFieldBuilder::extractUsing()} or
+     * {@see \haddowg\JsonApi\Resource\Field\AbstractFieldBuilder::serializeUsing()} — rather than
+     * a member read off the model. A built relation stores those hooks on its immutable
+     * field-state snapshot (the `state` property) rather than as direct properties, so both
+     * the relation object and that snapshot are inspected. Core exposes no accessor for the
+     * closures, so they are read reflectively; a relation carrying neither reports `false`.
      */
     private function hasValueClosure(RelationInterface $relation): bool
     {
-        $reflection = new \ReflectionObject($relation);
+        $carriers = [$relation];
 
-        foreach (['extractUsing', 'serializeUsing'] as $propertyName) {
-            if (!$reflection->hasProperty($propertyName)) {
-                continue;
+        $relationReflection = new \ReflectionObject($relation);
+        if ($relationReflection->hasProperty('state')) {
+            $state = $relationReflection->getProperty('state')->getValue($relation);
+            if (\is_object($state)) {
+                $carriers[] = $state;
             }
+        }
 
-            if ($reflection->getProperty($propertyName)->getValue($relation) instanceof \Closure) {
-                return true;
+        foreach ($carriers as $carrier) {
+            $reflection = new \ReflectionObject($carrier);
+
+            foreach (['extractUsing', 'serializeUsing'] as $propertyName) {
+                if (!$reflection->hasProperty($propertyName)) {
+                    continue;
+                }
+
+                if ($reflection->getProperty($propertyName)->getValue($carrier) instanceof \Closure) {
+                    return true;
+                }
             }
         }
 

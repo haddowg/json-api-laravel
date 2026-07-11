@@ -60,7 +60,7 @@ final class EloquentWindowedRelationBatchTest extends EloquentTestCase
         $this->provider()->fetchRelatedCollectionBatch(
             'artists',
             $this->allArtists(),
-            HasMany::make('albums', 'albums'),
+            HasMany::make('albums', 'albums')->build(),
             $this->windowedCriteria(new OffsetWindow(0, 2), countable: false),
             $this->request(),
         );
@@ -89,7 +89,7 @@ final class EloquentWindowedRelationBatchTest extends EloquentTestCase
         $this->provider()->fetchRelatedCollectionBatch(
             'artists',
             $this->allArtists(),
-            HasMany::make('albums', 'albums'),
+            HasMany::make('albums', 'albums')->build(),
             $this->windowedCriteria(new OffsetWindow(0, 2), countable: true),
             $this->request(),
         );
@@ -110,7 +110,7 @@ final class EloquentWindowedRelationBatchTest extends EloquentTestCase
         $batch = $this->provider()->fetchRelatedCollectionBatch(
             'artists',
             $this->allArtists(),
-            HasMany::make('albums', 'albums'),
+            HasMany::make('albums', 'albums')->build(),
             $this->windowedCriteria(new OffsetWindow(0, 2), countable: false),
             $this->request(),
         );
@@ -135,7 +135,7 @@ final class EloquentWindowedRelationBatchTest extends EloquentTestCase
         $batch = $this->provider()->fetchRelatedCollectionBatch(
             'artists',
             $this->allArtists(),
-            HasMany::make('albums', 'albums'),
+            HasMany::make('albums', 'albums')->build(),
             $this->windowedCriteria(new OffsetWindow(0, 2), countable: true),
             $this->request(),
         );
@@ -163,7 +163,7 @@ final class EloquentWindowedRelationBatchTest extends EloquentTestCase
         $ascending = $this->provider()->fetchRelatedCollectionBatch(
             'artists',
             [$artist],
-            HasMany::make('albums', 'albums'),
+            HasMany::make('albums', 'albums')->build(),
             $this->sortedWindow('rating', 'average_rating', descending: false, window: new OffsetWindow(0, 2)),
             $this->request(),
         );
@@ -174,7 +174,7 @@ final class EloquentWindowedRelationBatchTest extends EloquentTestCase
         $descending = $this->provider()->fetchRelatedCollectionBatch(
             'artists',
             [$artist],
-            HasMany::make('albums', 'albums'),
+            HasMany::make('albums', 'albums')->build(),
             $this->sortedWindow('rating', 'average_rating', descending: true, window: new OffsetWindow(0, 3)),
             $this->request(),
         );
@@ -197,7 +197,7 @@ final class EloquentWindowedRelationBatchTest extends EloquentTestCase
         $batch = $this->pivotProvider()->fetchRelatedCollectionBatch(
             'playlists',
             \array_values($playlists),
-            BelongsToMany::make('tracks', 'tracks'),
+            BelongsToMany::make('tracks', 'tracks')->build(),
             $this->bareWindow(new OffsetWindow(0, 2)),
             $this->request(),
         );
