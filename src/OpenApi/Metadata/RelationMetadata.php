@@ -103,7 +103,7 @@ final readonly class RelationMetadata implements RelationMetadataInterface
 
     public function filters(): array
     {
-        return $this->relation->filters();
+        return $this->relation->allFilters();
     }
 
     public function sorts(): array

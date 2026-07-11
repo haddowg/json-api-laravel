@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Unit\DataProvider\Eloquent;
 
 use haddowg\JsonApi\Resource\Filter\Contains;
+use haddowg\JsonApi\Resource\Filter\FilterBuilderInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\GreaterThan;
 use haddowg\JsonApi\Resource\Filter\Where;
@@ -116,7 +117,7 @@ final class EloquentFilterGroupTest extends EloquentTestCase
      *
      * @return list<int>
      */
-    private function matchedIds(FilterInterface $filter, mixed $value): array
+    private function matchedIds(FilterInterface|FilterBuilderInterface $filter, mixed $value): array
     {
         // Build the query through a Model-typed class-string (as the provider does) so
         // it matches the handler's FilterHandlerInterface<Builder<Model>> contract
@@ -124,7 +125,7 @@ final class EloquentFilterGroupTest extends EloquentTestCase
         /** @var class-string<Model> $class */
         $class = Artist::class;
         $query = (new $class())->newQuery();
-        (new EloquentFilterHandler())->apply($filter, $query, $value);
+        (new EloquentFilterHandler())->apply($filter instanceof FilterBuilderInterface ? $filter->build() : $filter, $query, $value);
 
         $ids = [];
         foreach ($query->orderBy('id')->get() as $model) {

@@ -52,6 +52,6 @@ final class BadColumnAlbumResource extends AbstractResource
     public function filters(): array
     {
         // Points at a column the `albums` table does not have → flagged by the column guard.
-        return [Where::make('bogusFilter', 'nonexistent_filter_column')];
+        return [Where::make('bogusFilter', 'nonexistent_filter_column')->build()];
     }
 }
