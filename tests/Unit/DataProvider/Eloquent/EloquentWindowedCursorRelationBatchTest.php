@@ -65,7 +65,7 @@ final class EloquentWindowedCursorRelationBatchTest extends EloquentTestCase
         $this->groupProvider()->fetchRelatedCollectionBatch(
             'cursorGroups',
             $this->allGroups(),
-            HasMany::make('widgets', 'cursorWidgets'),
+            HasMany::make('widgets', 'cursorWidgets')->build(),
             $this->cursorCriteria('priority'),
             $this->request(),
         );
@@ -108,7 +108,7 @@ final class EloquentWindowedCursorRelationBatchTest extends EloquentTestCase
         $this->groupProvider()->fetchRelatedCollectionBatch(
             'cursorGroups',
             $this->allGroups(),
-            HasMany::make('widgets', 'cursorWidgets'),
+            HasMany::make('widgets', 'cursorWidgets')->build(),
             $this->cursorCriteria('-priority'),
             $this->request(),
         );
@@ -135,7 +135,7 @@ final class EloquentWindowedCursorRelationBatchTest extends EloquentTestCase
         $this->boardProvider()->fetchRelatedCollectionBatch(
             'cursorBoards',
             $this->allBoards(),
-            BelongsToMany::make('widgets', 'cursorWidgets'),
+            BelongsToMany::make('widgets', 'cursorWidgets')->build(),
             $this->cursorCriteria('priority'),
             $this->request(),
         );
@@ -163,7 +163,7 @@ final class EloquentWindowedCursorRelationBatchTest extends EloquentTestCase
         $batch = $this->groupProvider()->fetchRelatedCollectionBatch(
             'cursorGroups',
             $this->allGroups(),
-            HasMany::make('widgets', 'cursorWidgets'),
+            HasMany::make('widgets', 'cursorWidgets')->build(),
             $this->cursorCriteria('priority'),
             $this->request(),
         );

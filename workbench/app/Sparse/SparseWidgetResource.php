@@ -13,7 +13,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 /**
  * The sparse-by-default witness resource, shared by both providers — the Laravel twin of
  * the Symfony bundle's `SparseWidgetResource`. Its `expensiveScore` attribute is marked
- * {@see \haddowg\JsonApi\Resource\Field\AbstractField::sparseByDefault()}: omitted from
+ * {@see \haddowg\JsonApi\Resource\Field\AbstractFieldBuilder::sparseByDefault()}: omitted from
  * the default response and rendered **only** when the client names it in a
  * `fields[sparseWidgets]` member — the opt-in inverse of the usual sparse-fieldset rule
  * (present unless excluded), and orthogonal to `hidden()` / `writeOnly()`. It stays a

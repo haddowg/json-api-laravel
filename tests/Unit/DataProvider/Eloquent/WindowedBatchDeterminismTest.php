@@ -44,7 +44,7 @@ final class WindowedBatchDeterminismTest extends EloquentTestCase
     {
         $this->seedTiedEloquent();
 
-        $relation = HasMany::make('albums', 'albums');
+        $relation = HasMany::make('albums', 'albums')->build();
         $criteria = $this->tiedStatusWindow();
         $request = $this->createStub(JsonApiRequestInterface::class);
 
