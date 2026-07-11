@@ -35,89 +35,22 @@ php artisan vendor:publish --tag=jsonapi-config   # optional — customise serve
 The service provider is auto-discovered and core is pulled in transitively — there is nothing
 to register by hand.
 
-## Quickstart
-
-Drop a resource under `app/JsonApi/`:
-
-```php
-<?php
-
-namespace App\JsonApi;
-
-use haddowg\JsonApi\Resource\AbstractResource;
-use haddowg\JsonApi\Resource\Field\Id;
-use haddowg\JsonApi\Resource\Field\Str;
-use haddowg\JsonApi\Resource\Field\HasMany;
-
-final class AlbumResource extends AbstractResource
-{
-    public static string $type = 'albums';
-
-    public function fields(): array
-    {
-        return [
-            Id::make(),
-            Str::make('title')->required()->maxLength(200)->sortable(),
-            HasMany::make('tracks', 'tracks'),
-        ];
-    }
-}
-```
-
-That is the whole integration. You now have, over your Eloquent `Album` model:
-
-```
-GET    /api/albums          GET /api/albums/{id}
-POST   /api/albums          PATCH /api/albums/{id}          DELETE /api/albums/{id}
-GET    /api/albums/{id}/tracks    GET /api/albums/{id}/relationships/tracks
-```
-
-— collections, sparse fieldsets, sorting, filtering, pagination, relationships, `?include`,
-and validated writes, each a JSON:API 1.1 document.
-
-## Highlights
-
-- **Zero-config discovery + routing** — auto-registered, `route:cache`-safe.
-- **Eloquent reference data layer** — filters, sorting, page/offset/cursor pagination, and
-  SQL-push-down relationship windowing; or bring your own via the `DataProvider`/`DataPersister`
-  SPI.
-- **Always-on validation** — core's constraints become real `illuminate/validation` rules →
-  `422` with `source.pointer`.
-- **Policy authorization** — the model's Gate policy, ability-name overrides, or a dedicated
-  API-policy class.
-- **Relationships** — related + relationship read/mutation endpoints, `?include`,
-  `?withCount`, pivots, the Relationship Queries profile, and polymorphic to-many.
-- **Custom actions & atomic operations**, **lifecycle events + hooks**, **response headers**,
-  **multi-server**.
-- **OpenAPI 3.1** — an auto-generated, byte-compatible document, a Swagger UI / ReDoc viewer,
-  JSON Schema exports, and an `optimize` pipeline.
-- **A testing kit** — the `InteractsWithJsonApi` trait and JSON:API-aware `TestResponse`
-  macros.
-
-## Try the demo
-
-```bash
-docker compose up   # then open http://localhost:8080/api/albums and http://localhost:8080/docs
-```
-
-Serves the full twelve-type music-catalog example over HTTP. See the
-[Docker guide](https://haddowg.github.io/json-api-laravel/docker/).
-
 ## Documentation
 
-Full documentation: **[haddowg.github.io/json-api-laravel](https://haddowg.github.io/json-api-laravel/)**
+Full documentation is published at **[haddowg.github.io/json-api-laravel](https://haddowg.github.io/json-api-laravel/)**.
+Start with [install](https://haddowg.github.io/json-api-laravel/install/) and
+[getting started](https://haddowg.github.io/json-api-laravel/getting-started/), or browse the
+[documentation index](https://haddowg.github.io/json-api-laravel/).
 
 Core concepts (fields, relations, constraints, response value objects) live in the
 [core documentation](https://haddowg.github.io/json-api/).
 
-## Contributing & development
+## Demo
 
-```bash
-composer test        # PHPUnit (both the Eloquent and in-memory providers)
-composer phpstan     # PHPStan level 9 + Larastan
-composer cs-check    # PHP-CS-Fixer (PER-CS 2.0)
-composer byte-compat # diff the OpenAPI document against the Symfony bundle's
-```
+`docker compose up` serves the full twelve-type music-catalog example over HTTP — browse
+`http://localhost:8080/api/albums` and the interactive OpenAPI docs at
+`http://localhost:8080/docs`. See the
+[Docker guide](https://haddowg.github.io/json-api-laravel/docker/).
 
 ## License
 
