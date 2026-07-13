@@ -8,7 +8,9 @@
         "laravel",
         "eloquent",
         "api",
-        "rest"
+        "rest",
+        "openapi",
+        "atomic-operations"
     ],
     "homepage": "https://github.com/haddowg/json-api-laravel",
     "license": "MIT",
