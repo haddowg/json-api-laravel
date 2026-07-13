@@ -43,15 +43,6 @@ jobs:
           coverage: none
           tools: composer:v2
 
-      # Resolve the unpublished haddowg/json-api from GitHub (a global VCS
-      # repository, so the committed composer.json stays clean for local dev,
-      # where a global path repository symlinks a sibling checkout instead).
-      # Drop this and pin a tagged ^1.0 once core is published to Packagist.
-      - name: Configure Composer to resolve haddowg/json-api (dev-main)
-        run: |
-          composer config -g github-oauth.github.com "${{ secrets.GITHUB_TOKEN }}"
-          composer config -g repositories.haddowg-json-api '{"type":"vcs","url":"https://github.com/haddowg/json-api","no-api":true}'
-
       # Pin the Laravel line by pinning orchestra/testbench (^10 => Laravel 12,
       # ^11 => Laravel 13); testbench pulls the matching illuminate/* components.
       - name: Pin the Laravel line
@@ -84,11 +75,6 @@ jobs:
           coverage: none
           tools: composer:v2
 
-      - name: Configure Composer to resolve haddowg/json-api (dev-main)
-        run: |
-          composer config -g github-oauth.github.com "${{ secrets.GITHUB_TOKEN }}"
-          composer config -g repositories.haddowg-json-api '{"type":"vcs","url":"https://github.com/haddowg/json-api","no-api":true}'
-
       - name: Install dependencies
         uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
 
@@ -114,11 +100,6 @@ jobs:
           coverage: none
           tools: composer:v2
 
-      - name: Configure Composer to resolve haddowg/json-api (dev-main)
-        run: |
-          composer config -g github-oauth.github.com "${{ secrets.GITHUB_TOKEN }}"
-          composer config -g repositories.haddowg-json-api '{"type":"vcs","url":"https://github.com/haddowg/json-api","no-api":true}'
-
       - name: Install dependencies
         uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
 
@@ -136,9 +117,6 @@ jobs:
       # from the sibling bundle are diffed against this package's; each MUST be
       # byte-identical (PLAN decision 11).
       JSON_API_SYMFONY_PATH: ${{ github.workspace }}/../json-api-symfony
-      # Carry the token + capped parallelism into every Composer resolution so the
-      # anonymous GitHub VCS lookups for core don't hit rate limits (429/400).
-      COMPOSER_MAX_PARALLEL_HTTP: '6'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -151,14 +129,6 @@ jobs:
           php-version: '8.4'
           coverage: none
           tools: composer:v2
-
-      # Resolve the unpublished haddowg/json-api from GitHub in BOTH trees, at the same
-      # VCS ref, so the two projected documents are built from the identical core commit
-      # (a core skew would make the diff spurious — byte-compat.php guards against it too).
-      - name: Configure Composer to resolve haddowg/json-api (dev-main)
-        run: |
-          composer config -g github-oauth.github.com "${{ secrets.GITHUB_TOKEN }}"
-          composer config -g repositories.haddowg-json-api '{"type":"vcs","url":"https://github.com/haddowg/json-api","no-api":true}'
 
       - name: Install dependencies (this package)
         uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0

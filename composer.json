@@ -20,7 +20,7 @@
     ],
     "require": {
         "php": "^8.3",
-        "haddowg/json-api": "dev-main",
+        "haddowg/json-api": "^1.0",
         "illuminate/auth": "^12.0 || ^13.0",
         "illuminate/config": "^12.0 || ^13.0",
         "illuminate/console": "^12.0 || ^13.0",
@@ -89,6 +89,6 @@
         "cs-fix": "Apply code style fixes",
         "byte-compat": "Diff the projected OpenAPI and JSON-Schema documents against the Symfony bundle's (must be byte-identical)"
     },
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "prefer-stable": true
 }
