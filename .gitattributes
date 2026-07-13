@@ -15,3 +15,12 @@
 /.release-please-manifest.json export-ignore
 /release-please-config.json    export-ignore
 /CLAUDE.md               export-ignore
+/mkdocs.yml              export-ignore
+/mkdocs_hooks.py         export-ignore
+/bin/                    export-ignore
+/Dockerfile              export-ignore
+/compose.yaml            export-ignore
+/.dockerignore           export-ignore
+/testbench.docker.yaml   export-ignore
+/testbench.yaml          export-ignore
+/phpstan-bootstrap.php   export-ignore
