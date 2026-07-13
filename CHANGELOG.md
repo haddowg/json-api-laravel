@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/haddowg/json-api-laravel/compare/v1.0.0...v1.0.1) (2026-07-13)
+
+
+### Miscellaneous Chores
+
+* add openapi and atomic-operations to composer keywords ([#48](https://github.com/haddowg/json-api-laravel/issues/48)) ([11f7065](https://github.com/haddowg/json-api-laravel/commit/11f70655efd7bff4776545ef363458cc67dc3c2f))
+
 ## 1.0.0 (2026-07-13)
 
 
