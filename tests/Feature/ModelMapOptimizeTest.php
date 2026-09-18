@@ -34,6 +34,10 @@ final class ModelMapOptimizeTest extends Orchestra
     {
         $cacheFile = \sys_get_temp_dir() . '/jsonapi-discovery-' . \uniqid() . '.php';
         config(['jsonapi.discovery.cache' => $cacheFile]);
+        // `jsonapi:optimize` also warms the OpenAPI/JSON-Schema artifacts; point them at a
+        // throwaway directory so this app's types never land in the store another test app
+        // reads back.
+        config(['jsonapi.openapi.cache_path' => \sys_get_temp_dir() . '/jsonapi-artifacts-' . \uniqid()]);
 
         try {
             $this->jsonApiArtisan('jsonapi:optimize')->assertExitCode(0);

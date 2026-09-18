@@ -29,7 +29,11 @@ final class FavoriteResource extends AbstractResource
         return [
             Id::make(),
             DateTime::make('favoritedAt')->storedAs('favorited_at')->readOnlyOnUpdate(),
-            BelongsTo::make('user', 'users'),
+            // Targets `public-profiles`, not `users`: `favorites` lives on the default
+            // server and `users` is admin-only, so a relation naming it here would expose
+            // `GET /favorites/{id}/user` to a type this server has no serializer for. The
+            // member name stays `user`, so the endpoint path is unchanged.
+            BelongsTo::make('user', 'public-profiles'),
             MorphTo::make('favoritable', ['tracks', 'albums', 'artists'])
                 ->extractUsing(static function (mixed $favorite): ?object {
                     $target = \is_object($favorite) ? Accessor::get($favorite, 'favoritable') : null;

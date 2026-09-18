@@ -30,6 +30,10 @@ final class DiscoverySnapshotCacheTest extends TestCase
         parent::setUp();
         $this->cacheFile = \sys_get_temp_dir() . '/jsonapi-discovery-' . \uniqid() . '.php';
         config(['jsonapi.discovery.cache' => $this->cacheFile]);
+        // `jsonapi:optimize` also warms the OpenAPI/JSON-Schema artifacts; point them at a
+        // throwaway directory so this app's types never land in the store another test app
+        // reads back.
+        config(['jsonapi.openapi.cache_path' => \sys_get_temp_dir() . '/jsonapi-artifacts-' . \uniqid()]);
     }
 
     protected function tearDown(): void
