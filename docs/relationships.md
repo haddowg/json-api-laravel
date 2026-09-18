@@ -37,6 +37,25 @@ POST   /api/albums/1/relationships/tracks      # add to a to-many
 DELETE /api/albums/1/relationships/tracks      # remove from a to-many
 ```
 
+## The related endpoint's target must be registered on the server
+
+`GET /api/albums/1/artist` returns an `artists` resource object as primary data, so the
+server serving it needs a serializer for `artists` and the OpenAPI document needs its
+field inventory. A relation that exposes its related endpoint to a type the server does
+not register is therefore a configuration error, and `jsonapi:optimize` fails the deploy
+over it (the OpenAPI export refuses too, whichever runs first). Three ways out:
+
+- register the related type on that server as well;
+- point the relation at a **reduced second type** that is registered — the workbench does
+  this with `public-profiles` beside the admin-only `users`, both backed by the same
+  `User` row;
+- declare the relation **linkage-only** with `withoutRelatedEndpoint()`. The linkage
+  `{"type": "users", "id": "1"}` asserts no shape, so an unregistered target is fine
+  there; the `related` link is omitted so nothing points at the 404.
+
+A type reached only as linkage never needs registering. It is exposing the endpoint that
+makes the claim.
+
 ## Linkage, links, and load state
 
 Every relation renders `self`/`related` links by convention (`withoutLinks()` opts out).
