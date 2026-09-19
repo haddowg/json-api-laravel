@@ -12,8 +12,9 @@ namespace haddowg\JsonApiLaravel\Discovery;
  * registers routes + assembles servers from the cached snapshot with no filesystem walk.
  *
  * It writes only the plain, `var_export`-able snapshot the loader expects — the resource
- * descriptors as array forms plus the discovered provider/persister/translator
- * class-strings — so a cached configuration is behaviourally identical to a live scan.
+ * descriptors as array forms plus the discovered provider/persister/translator and
+ * described-error class-strings — so a cached configuration is behaviourally identical to
+ * a live scan.
  *
  * The snapshot is **opt-in**: it is written only when `jsonapi.discovery.cache` names a
  * path (null keeps the always-scan default). `php artisan optimize` writes it,
@@ -49,6 +50,7 @@ final class DiscoverySnapshotWriter
                 static fn(HydratorDescriptor $descriptor): array => $descriptor->toArray(),
                 $this->discovery->hydrators(),
             ),
+            'errors' => $this->discovery->errors(),
         ];
 
         $php = '<?php' . "\n\n" . 'return ' . \var_export($snapshot, true) . ';' . "\n";

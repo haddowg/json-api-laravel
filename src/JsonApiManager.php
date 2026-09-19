@@ -65,7 +65,10 @@ final class JsonApiManager
 
     /**
      * Registers one or more capability classes explicitly, without a filesystem scan
-     * — the escape hatch for a resource that lives outside the scanned paths.
+     * — the escape hatch for a resource that lives outside the scanned paths. A
+     * `DescribedErrorInterface` class named here is catalogued in the OpenAPI document
+     * the same way, which is how an error class in a package or a cache directory gets
+     * documented.
      *
      * @param class-string|list<class-string> $classes
      */

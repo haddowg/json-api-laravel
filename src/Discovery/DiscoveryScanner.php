@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Discovery;
 
+use haddowg\JsonApi\Exception\DescribedErrorInterface;
 use haddowg\JsonApi\Hydrator\HydratorInterface;
 use haddowg\JsonApi\OpenApi\Metadata\Accepted;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResource;
@@ -48,6 +49,13 @@ use Illuminate\Database\Eloquent\Model;
  * registered by scanning too. (The reference in-memory provider is registered
  * explicitly through `JsonApi::provider()` since it carries seed data the container
  * cannot supply.)
+ *
+ * The scan also picks up the application's {@see DescribedErrorInterface} classes, so
+ * its own error codes are catalogued in the generated OpenAPI document beside core's
+ * (core ADR 0136). **Only the configured paths are walked**, which is what keeps that
+ * safe: a described error reaches a published contract because someone put it where
+ * discovery looks, or named it in `JsonApi::register()` — never because it happens to
+ * exist. A test fixture stays a test fixture.
  */
 final class DiscoveryScanner
 {
@@ -67,6 +75,9 @@ final class DiscoveryScanner
             }
         }
 
+        /** @var array<class-string, true> $explicit */
+        $explicit = \array_fill_keys($explicitClasses, true);
+
         /** @var array<class-string, true> $seen */
         $seen = [];
         $resources = [];
@@ -76,6 +87,8 @@ final class DiscoveryScanner
         $persisters = [];
         $translators = [];
         $actions = [];
+        $scannedErrors = [];
+        $registeredErrors = [];
 
         foreach ($classes as $class) {
             if (isset($seen[$class])) {
@@ -89,6 +102,19 @@ final class DiscoveryScanner
 
             $reflection = new \ReflectionClass($class);
             if ($reflection->isAbstract()) {
+                continue;
+            }
+
+            // A described error is an exception, never a capability, so it is settled
+            // first and on its own: the checks below all ask about serving a type.
+            if ($reflection->implementsInterface(DescribedErrorInterface::class)) {
+                /** @var class-string<DescribedErrorInterface> $class */
+                if (isset($explicit[$class])) {
+                    $registeredErrors[] = $class;
+                } else {
+                    $scannedErrors[] = $class;
+                }
+
                 continue;
             }
 
@@ -169,7 +195,24 @@ final class DiscoveryScanner
             }
         }
 
-        return new DiscoveryResult($resources, $providers, $persisters, $translators, $actions, $serializers, $hydrators);
+        // Class-name order (case-insensitive, so a longer name is not split by a shorter
+        // sibling) fixes the order the OpenAPI projection emits the error components in —
+        // the rule core's own CoreErrorSource sorts by, and the one the Symfony bundle's
+        // compiler pass applies to its scan, so the same set of classes documents in the
+        // same order on either adapter. Explicitly registered classes follow in the order
+        // they were named, which is the only order they have.
+        \usort($scannedErrors, static fn(string $a, string $b): int => \strcasecmp($a, $b));
+
+        return new DiscoveryResult(
+            $resources,
+            $providers,
+            $persisters,
+            $translators,
+            $actions,
+            $serializers,
+            $hydrators,
+            [...$scannedErrors, ...$registeredErrors],
+        );
     }
 
     /**

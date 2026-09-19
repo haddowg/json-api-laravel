@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
+use haddowg\JsonApi\Exception\ClassListErrorSource;
+use haddowg\JsonApi\Exception\ErrorCatalogSourceInterface;
 use haddowg\JsonApi\OpenApi\Metadata\OperationType;
 use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\TypeMetadataInterface;
@@ -64,6 +66,11 @@ use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 final class MetadataSource
 {
     /**
+     * @var list<ErrorCatalogSourceInterface>|null
+     */
+    private ?array $errorSources = null;
+
+    /**
      * @param array<string, ServerDocumentConfig> $configByServer the per-server document config, keyed by server name; a server with no entry uses defaults
      * @param list<string>                         $serverNames    the declared server names (`default` first), the same per-server type source `forServer()` reads
      * @param bool                                 $atomicEnabled  whether the Atomic Operations extension is enabled (`jsonapi.atomic_operations.enabled`); when true every server's document gains the atomic endpoint
@@ -81,6 +88,25 @@ final class MetadataSource
         private readonly string $atomicPath = '/operations',
         private readonly ?ActionMetadataProviderInterface $actions = null,
     ) {}
+
+    /**
+     * The application's described-error sources, built once off discovery.
+     *
+     * Every server gets the same set: an exception class carries no server affinity the
+     * way a resource does, and the Symfony bundle makes the same call, so a document
+     * generated from either adapter catalogues the same codes.
+     *
+     * @return list<ErrorCatalogSourceInterface>
+     */
+    private function errorSources(): array
+    {
+        if ($this->errorSources === null) {
+            $errors = $this->discovery->errors();
+            $this->errorSources = $errors === [] ? [] : [new ClassListErrorSource(...$errors)];
+        }
+
+        return $this->errorSources;
+    }
 
     /**
      * The complete OpenAPI metadata for `$serverName` (the implicit `default` when
@@ -109,6 +135,7 @@ final class MetadataSource
             types: $types,
             atomicOperations: $this->atomicOperations(),
             profiles: $this->profileUris($server),
+            errorSources: $this->errorSources(),
         );
     }
 
@@ -176,6 +203,7 @@ final class MetadataSource
             // reflects the default server's registered set (mirroring how the info block
             // and JSON:API version come from the default server).
             profiles: $this->profileUris($defaultServer),
+            errorSources: $this->errorSources(),
         );
     }
 

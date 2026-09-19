@@ -80,6 +80,76 @@ $this->app->tag([PaymentFailedMapper::class], 'jsonapi.exception_mapper');
 Returning `null` falls through to the next mapper, then the generic arms. This is how you map
 an exception without decorating the whole renderer.
 
+## Documenting your own error codes
+
+Core catalogues its own error codes in the generated OpenAPI document: one named schema
+variant per code, offered from `ErrorDocument.errors.items` by an `anyOf` a generated
+client can dispatch on. Your application's codes join them when you say where they are.
+
+An error that wants a place in the catalogue implements core's `DescribedErrorInterface`,
+which reads the code, status and title off the class — nothing is constructed to describe
+it:
+
+```php
+use haddowg\JsonApi\Exception\AbstractJsonApiException;
+use haddowg\JsonApi\Exception\DescribedErrorInterface;
+use haddowg\JsonApi\Exception\ErrorDescriptor;
+
+final class PaymentRequired extends AbstractJsonApiException implements DescribedErrorInterface
+{
+    public function __construct()
+    {
+        parent::__construct('This operation requires an active subscription.', self::describe()->status);
+    }
+
+    public static function describe(): ErrorDescriptor
+    {
+        return new ErrorDescriptor(code: 'PAYMENT_REQUIRED', status: 402, title: 'Payment required');
+    }
+
+    public function getErrors(): array
+    {
+        return [self::describe()->toError(detail: $this->getMessage())];
+    }
+}
+```
+
+Discovery finds it if it lives under a scanned path, so add the directory your exceptions
+live in:
+
+```php
+// config/jsonapi.php
+'discovery' => [
+    'paths' => [
+        app_path('JsonApi'),
+        app_path('Exceptions'),
+    ],
+],
+```
+
+Nothing outside those paths is scanned. An exception reaches your published contract
+because you pointed discovery at it, never because it happens to exist — a described
+error left in a test fixture or a scratch namespace would otherwise become part of the
+API's contract by accident.
+
+For a class no scan reaches — one in a package, one generated into a cache directory —
+name it directly from a service provider's `register()`:
+
+```php
+JsonApi::register([\Acme\Billing\Exception\CardDeclined::class]);
+```
+
+Discovered error classes ride the same snapshot as everything else, so `jsonapi:optimize`
+caches them and a `route:cache`d app documents exactly the codes a scanning one does. See
+[optimize](optimize.md).
+
+Two classes claiming the same `code` string fails loudly rather than merging
+last-one-wins: a `code` is what a client dispatches on, so publishing one class's status
+and title under another's would be a lie. The catalogue stays **open** either way — the
+`anyOf` leads with the generic `Error`, so an error carrying a code you never declared is
+still a valid error object
+([core ADR 0136](https://github.com/haddowg/json-api/blob/main/docs/adr/0136-the-projected-error-code-catalogue-is-open.md)).
+
 ## Content negotiation and query errors
 
 The request layer rejects a bad request before your code runs, all as JSON:API errors: a

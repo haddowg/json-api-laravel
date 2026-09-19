@@ -6,11 +6,11 @@ namespace haddowg\JsonApiLaravel\Discovery;
 
 /**
  * The memoized entry point to discovery: it resolves the discovered
- * {@see ResourceDescriptor}s and the container-constructible SPI class-strings
- * (data providers + persisters) once — from a pre-built snapshot cache file when one
- * is configured and present, otherwise by scanning the configured paths — and hands
- * them to the route registrar, the server assembly, and the provider/persister
- * registries.
+ * {@see ResourceDescriptor}s, the container-constructible SPI class-strings
+ * (data providers + persisters) and the application's described-error classes once —
+ * from a pre-built snapshot cache file when one is configured and present, otherwise by
+ * scanning the configured paths — and hands them to the route registrar, the server
+ * assembly, the provider/persister registries and the OpenAPI metadata source.
  *
  * Because every consumer reads the SAME memoized result, and because loading a cached
  * snapshot bypasses the filesystem walk entirely, route registration stays a pure
@@ -58,6 +58,11 @@ final class Discovery
      * @var list<HydratorDescriptor>|null
      */
     private ?array $hydrators = null;
+
+    /**
+     * @var list<class-string<\haddowg\JsonApi\Exception\DescribedErrorInterface>>|null
+     */
+    private ?array $errors = null;
 
     /**
      * @param list<string>       $paths           the directories to scan
@@ -150,6 +155,21 @@ final class Discovery
     }
 
     /**
+     * The application's discovered described-error classes — the codes its OpenAPI
+     * documents catalogue beside core's.
+     *
+     * @return list<class-string<\haddowg\JsonApi\Exception\DescribedErrorInterface>>
+     */
+    public function errors(): array
+    {
+        if ($this->errors === null) {
+            $this->resolve();
+        }
+
+        return $this->errors ?? [];
+    }
+
+    /**
      * The discovered, container-constructible data-provider class-strings.
      *
      * @return list<class-string>
@@ -220,7 +240,7 @@ final class Discovery
     }
 
     /**
-     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>, serializers: list<SerializerDescriptor>, hydrators: list<HydratorDescriptor>}
+     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>, serializers: list<SerializerDescriptor>, hydrators: list<HydratorDescriptor>, errors: list<class-string<\haddowg\JsonApi\Exception\DescribedErrorInterface>>}
      */
     private function resolve(): array
     {
@@ -233,6 +253,7 @@ final class Discovery
             $this->actions = $snapshot['actions'];
             $this->serializers = $snapshot['serializers'];
             $this->hydrators = $snapshot['hydrators'];
+            $this->errors = $snapshot['errors'];
 
             return $snapshot;
         }
@@ -245,6 +266,7 @@ final class Discovery
         $this->actions = $result->actions;
         $this->serializers = $result->serializers;
         $this->hydrators = $result->hydrators;
+        $this->errors = $result->errors;
 
         return [
             'resources' => $result->resources,
@@ -254,6 +276,7 @@ final class Discovery
             'actions' => $result->actions,
             'serializers' => $result->serializers,
             'hydrators' => $result->hydrators,
+            'errors' => $result->errors,
         ];
     }
 
@@ -267,7 +290,7 @@ final class Discovery
      * configuration is behaviourally identical to a scanned one. Missing keys degrade
      * gracefully to empty lists (a resources-only file still loads its resources).
      *
-     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>, serializers: list<SerializerDescriptor>, hydrators: list<HydratorDescriptor>}|null
+     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>, serializers: list<SerializerDescriptor>, hydrators: list<HydratorDescriptor>, errors: list<class-string<\haddowg\JsonApi\Exception\DescribedErrorInterface>>}|null
      */
     private function loadSnapshot(): ?array
     {
@@ -289,6 +312,7 @@ final class Discovery
             'actions' => $this->readActions($data['actions'] ?? []),
             'serializers' => $this->readSerializers($data['serializers'] ?? []),
             'hydrators' => $this->readHydrators($data['hydrators'] ?? []),
+            'errors' => $this->readErrors($data['errors'] ?? []),
         ];
     }
 
@@ -382,6 +406,25 @@ final class Discovery
         }
 
         return $resources;
+    }
+
+    /**
+     * Rebuilds the described-error class-strings from their snapshot form, dropping any
+     * entry that no longer names a described error (a class renamed or deleted since the
+     * snapshot was written would otherwise fatal when the projector read its descriptor).
+     *
+     * @return list<class-string<\haddowg\JsonApi\Exception\DescribedErrorInterface>>
+     */
+    private function readErrors(mixed $values): array
+    {
+        $errors = [];
+        foreach ($this->readClassStrings($values) as $class) {
+            if (\is_a($class, \haddowg\JsonApi\Exception\DescribedErrorInterface::class, true)) {
+                $errors[] = $class;
+            }
+        }
+
+        return $errors;
     }
 
     /**
