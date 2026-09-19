@@ -14,6 +14,8 @@ use haddowg\JsonApiLaravel\Tests\Fixtures\Action\MetaHandlerMissingOutputMeta;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\MetaHandlerWithOutputMeta;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\NoContentHandlerMissingReturns204;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\UnionReturnHandler;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ErrorCatalog\Scanned\QuotaExceeded;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ErrorCatalog\Unscanned\TenantSuspended;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Overrides\BadSerializerOverrideResource;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Overrides\MemoHydrator;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Overrides\MemoResource;
@@ -87,6 +89,21 @@ final class DiscoveryScannerTest extends TestCase
         $types = \array_map(static fn(ResourceDescriptor $d): string => $d->type, $result->resources);
 
         self::assertSame(['scan-named'], $types);
+    }
+
+    public function test_it_collects_described_errors_scanned_first_then_registered(): void
+    {
+        // The scanned classes sort by case-insensitive class name — the order core's own
+        // CoreErrorSource uses, and the one that fixes the emit order of the projected
+        // error components. Explicitly registered classes follow, in the order named.
+        $result = (new DiscoveryScanner())->scan(
+            [\dirname(__DIR__, 2) . '/Fixtures/ErrorCatalog/Scanned'],
+            [TenantSuspended::class],
+        );
+
+        self::assertSame([QuotaExceeded::class, TenantSuspended::class], $result->errors);
+        // An exception is not a capability: it lands in the error bucket and nowhere else.
+        self::assertSame([], $result->resources);
     }
 
     public function test_a_descriptor_round_trips_through_its_array_form(): void

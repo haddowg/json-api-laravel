@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
+use haddowg\JsonApi\Exception\ErrorCatalogSourceInterface;
 use haddowg\JsonApi\OpenApi\Contact;
 use haddowg\JsonApi\OpenApi\ExternalDocumentation;
 use haddowg\JsonApi\OpenApi\License;
 use haddowg\JsonApi\OpenApi\Metadata\AtomicOperationsMetadataInterface;
+use haddowg\JsonApi\OpenApi\Metadata\ContributesErrorCodes;
 use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\TypeMetadataInterface;
 use haddowg\JsonApi\OpenApi\SecurityRequirement;
@@ -23,8 +25,14 @@ use haddowg\JsonApi\OpenApi\Tag;
  * The info / server / tag-definition / security members are config-shaped (carried
  * ready-made from {@see ServerDocumentConfig} + the resolved per-server base URI); the
  * type list carries the JSON:API semantics the projector interprets.
+ *
+ * It implements core's {@see ContributesErrorCodes} (a {@see ServerMetadataInterface}
+ * that also names error sources) rather than the bare interface, so the application's own
+ * described errors — the ones {@see \haddowg\JsonApiLaravel\Discovery\Discovery} found —
+ * join core's in the projected catalogue. A server with none contributes an empty list,
+ * which changes no document.
  */
-final readonly class ServerMetadata implements ServerMetadataInterface
+final readonly class ServerMetadata implements ContributesErrorCodes
 {
     /**
      * @param list<Server>                  $servers
@@ -33,6 +41,7 @@ final readonly class ServerMetadata implements ServerMetadataInterface
      * @param list<SecurityRequirement>     $defaultSecurity
      * @param list<TypeMetadataInterface>   $types
      * @param list<string>                  $profiles
+     * @param list<ErrorCatalogSourceInterface> $errorSources
      */
     public function __construct(
         private string $title,
@@ -49,7 +58,16 @@ final readonly class ServerMetadata implements ServerMetadataInterface
         private array $types,
         private ?AtomicOperationsMetadataInterface $atomicOperations = null,
         private array $profiles = [],
+        private array $errorSources = [],
     ) {}
+
+    /**
+     * @return list<ErrorCatalogSourceInterface>
+     */
+    public function errorSources(): iterable
+    {
+        return $this->errorSources;
+    }
 
     public function title(): string
     {
