@@ -20,8 +20,13 @@ use Workbench\App\MusicCatalog\Models\Library as LibraryModel;
  * over one polymorphic pivot), read off the parent by the `items` `extractUsing`; the
  * in-memory witness reads the same mixed list off the POPO. Each member renders through its
  * own per-type serializer.
+ *
+ * It is also registered on the `admin` server, because {@see UserResource}'s `library`
+ * relation exposes `GET /admin/users/{id}/library` and whitelists `library` for
+ * inclusion. A related endpoint returns its target as primary data, so the target type
+ * has to be registered wherever the parent is.
  */
-#[AsJsonApiResource]
+#[AsJsonApiResource(server: ['default', 'admin'])]
 final class LibraryResource extends AbstractResource
 {
     public static string $type = 'libraries';
@@ -30,7 +35,10 @@ final class LibraryResource extends AbstractResource
     {
         return [
             Id::make(),
-            BelongsTo::make('owner', 'users'),
+            // Targets `public-profiles` rather than the admin-only `users`: the related
+            // endpoint `GET /libraries/{id}/owner` is served on the default surface, which
+            // registers the curated view of the User row and not the full record.
+            BelongsTo::make('owner', 'public-profiles'),
             MorphToMany::make('items', ['tracks', 'albums', 'artists'])
                 ->extractUsing(static function (mixed $library): array {
                     if ($library instanceof LibraryModel) {

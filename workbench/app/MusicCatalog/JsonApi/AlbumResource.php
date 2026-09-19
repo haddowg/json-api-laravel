@@ -100,6 +100,10 @@ final class AlbumResource extends AbstractResource
     {
         return [
             WhereHas::make('tracks'),
+            // Documented value stays untyped on purpose: `name` is a column on the
+            // related Artist and core will not guess through a relationship path (core
+            // ADR 0138). Every constraint that would buy a type asserts something
+            // narrower than "a string", which an artist name is not.
             WhereThrough::make('artist.name'),
             Contains::make('title'),
             Range::make('rating', 'average_rating'),

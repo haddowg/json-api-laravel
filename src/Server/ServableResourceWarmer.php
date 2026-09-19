@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Server;
 
+use haddowg\JsonApi\OpenApi\ProjectedTypes;
+use haddowg\JsonApi\OpenApi\RelatedTypeNotRegistered;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\Id;
@@ -14,6 +16,7 @@ use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
+use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
 use haddowg\JsonApiLaravel\Operation\Operation;
 use Illuminate\Database\Eloquent\Model;
 
@@ -57,6 +60,13 @@ use Illuminate\Database\Eloquent\Model;
  *    (dotted) path targets another table and is not validated. Skipped when schema
  *    introspection is unavailable (no migrated DB at build time — a different concern that
  *    must not fail the deploy).
+ *  - **A relation's related endpoint must point at a type the server registers.**
+ *    `GET /{type}/{id}/{rel}` returns the related type as primary data, so a server that
+ *    does not register it has neither a serializer to render the response nor a field
+ *    inventory to describe it. Core's {@see ProjectedTypes::relatedOnly()} reports that
+ *    set and the OpenAPI projector refuses to build a document while it is non-empty;
+ *    this reports the same fault at `artisan optimize`, in core's own wording, naming the
+ *    configured server rather than its document title.
  *
  * Standalone-serializer types (PLAN decision 3, bundle ADR 0024) are validated too — a
  * fetch-opened standalone type without a provider is exactly the deploy-time
@@ -75,6 +85,7 @@ final class ServableResourceWarmer
         private readonly DataProviderRegistry $providers,
         private readonly DataPersisterRegistry $persisters,
         private readonly TypeMetadataResolver $types,
+        private readonly MetadataSource $metadata,
         private readonly array $serverNames,
     ) {}
 
@@ -119,9 +130,52 @@ final class ServableResourceWarmer
                 $this->guardEloquentRelationMethods($serverName, $type, $problems);
                 $this->guardSortableFilterableColumns($serverName, $type, $problems);
             }
+
+            $this->guardRelatedEndpointTargets($serverName, $problems);
         }
 
         return $problems;
+    }
+
+    /**
+     * Reports every relation on `$serverName` that exposes its related endpoint to a type
+     * the server does not register — the fault core's OpenAPI projector refuses to build a
+     * document over.
+     *
+     * {@see ProjectedTypes::relatedOnly()} is the rule and the only thing consulted to
+     * decide whether there is a fault. The walk below runs only once that has reported
+     * something, purely to attribute each offending type back to the relation that exposed
+     * it; the wording is core's own {@see RelatedTypeNotRegistered} message, so the
+     * build-time report and the export-time throw read identically.
+     *
+     * @param list<string> $problems
+     */
+    private function guardRelatedEndpointTargets(string $serverName, array &$problems): void
+    {
+        $metadata = $this->metadata->forServer($serverName);
+        $offending = ProjectedTypes::relatedOnly($metadata);
+        if ($offending === []) {
+            return;
+        }
+
+        foreach ($metadata->types() as $type) {
+            foreach ($type->relations() as $relation) {
+                if (!$relation->exposesRelatedEndpoint()) {
+                    continue;
+                }
+
+                foreach ($relation->relatedTypes() as $relatedType) {
+                    if (\in_array($relatedType, $offending, true)) {
+                        $problems[] = (new RelatedTypeNotRegistered(
+                            $serverName,
+                            $type->type(),
+                            $relation->name(),
+                            $relatedType,
+                        ))->getMessage();
+                    }
+                }
+            }
+        }
     }
 
     /**

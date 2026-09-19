@@ -902,6 +902,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(ServerRegistry::class),
                 $app->make(TypeMetadataResolver::class),
                 $app->make(Discovery::class),
+                $app->make(MetadataSource::class),
                 $config->enumDescriptionMode,
             );
         });
@@ -932,6 +933,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(DataProviderRegistry::class),
                 $app->make(DataPersisterRegistry::class),
                 $app->make(TypeMetadataResolver::class),
+                $app->make(MetadataSource::class),
                 $this->serverNames(),
             );
         });

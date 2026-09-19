@@ -17,8 +17,15 @@ use Workbench\App\MusicCatalog\Models\User as UserModel;
  * witness: a curated, read-only, default-server view of the SAME User row the admin-only
  * `users` type exposes. Only `displayName` is declared, so no sparse fieldset, include, or
  * relationship can resurface the private columns; the curation is the field inventory.
+ *
+ * It is registered on both servers. The default surface is where it earns its keep — it is
+ * the only User view a default-server client can reach. It joins the `admin` server
+ * because {@see PlaylistResource} does, and a playlist's `publicOwner` relation exposes
+ * `GET /playlists/{id}/publicOwner`, which returns a `public-profiles` resource object
+ * wherever playlists are served.
  */
 #[AsJsonApiResource(
+    server: ['default', 'admin'],
     operations: [Operation::FetchCollection, Operation::FetchOne],
     tags: ['Library'],
 )]

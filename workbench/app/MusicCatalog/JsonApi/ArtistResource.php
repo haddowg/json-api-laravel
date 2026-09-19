@@ -24,14 +24,22 @@ use Workbench\App\MusicCatalog\Query\FullTextSearch;
  * auto-increment id; a computed read-only `trackCount`; a create-vs-update read-only
  * `createdAt`; and the `albums` HasMany back-reference.
  *
+ * It is registered on both servers because {@see AlbumResource} is, and an album's
+ * `artist` relation exposes `GET /albums/{id}/artist` — a related endpoint returns the
+ * related type as primary data, so `artists` has to exist on every server that serves
+ * albums.
+ *
  * `abilities: ['read' => false, 'list' => false]` declares both reads fully public — the
  * byte-compat twin of the Symfony example's `securityRead:false`/`securityList:false`
  * (the OpenAPI projection emits `security: []` on each read).
  */
-#[AsJsonApiResource(abilities: [
-    Operation::FetchOne->value => false,
-    Operation::FetchCollection->value => false,
-])]
+#[AsJsonApiResource(
+    server: ['default', 'admin'],
+    abilities: [
+        Operation::FetchOne->value => false,
+        Operation::FetchCollection->value => false,
+    ],
+)]
 final class ArtistResource extends AbstractResource
 {
     public static string $type = 'artists';

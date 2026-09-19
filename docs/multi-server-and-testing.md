@@ -26,6 +26,12 @@ final class AlbumResource extends AbstractResource { /* … */ }
 final class UserResource extends AbstractResource { /* … */ }
 ```
 
+A shared type drags its related endpoints' targets along: `GET /admin/albums/1/artist`
+returns an `artists` resource object, so `artists` has to be registered on `admin` too. The
+workbench's `artists`, `tracks`, `playlists`, `libraries` and `public-profiles` are all
+shared for that reason, and `jsonapi:optimize` fails the deploy when one is missing — see
+[relationships](relationships.md#the-related-endpoints-target-must-be-registered-on-the-server).
+
 Route names carry the server: `jsonapi.admin.albums.show`. OpenAPI projects one document per
 server by default (`/docs.json`, `/admin/docs.json`) — see [openapi](openapi.md) and
 [routing](routing.md). The same type may render differently per server (an admin server can
