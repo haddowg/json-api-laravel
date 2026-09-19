@@ -109,7 +109,6 @@ abstract class CursorConformanceTestCase extends Orchestra
             self::assertLessThan(10, ++$seen, 'paging must terminate');
         }
 
-        self::assertNotNull($last);
         self::assertArrayNotHasKey('next', $last);
         self::assertArrayHasKey('prev', $last);
     }
