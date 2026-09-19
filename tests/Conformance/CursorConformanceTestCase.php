@@ -96,22 +96,24 @@ abstract class CursorConformanceTestCase extends Orchestra
     {
         $path = '/api/cursorWidgets?sort=priority,id&page[size]=2';
         $seen = 0;
-        $last = null;
+        $guard = 0;
         while (true) {
             [$ids, $links] = $this->page($path);
             $seen += \count($ids);
             if (!isset($links['next'])) {
-                $last = $links;
-
                 break;
             }
             $path = $this->relativePath($this->href($links['next']));
-            self::assertLessThan(10, ++$seen, 'paging must terminate');
+            self::assertLessThan(10, ++$guard, 'paging must terminate');
         }
 
-        self::assertNotNull($last);
-        self::assertArrayNotHasKey('next', $last);
-        self::assertArrayHasKey('prev', $last);
+        // The page the walk stopped on must be the one that exhausts the fixture (8 rows
+        // over 4 pages of 2) rather than an earlier page that dropped its `next` — that
+        // failure also lands here on a prev-bearing page, so the link assertions alone
+        // cannot see it.
+        self::assertSame(8, $seen, 'the walk must terminate having visited every row');
+        self::assertArrayNotHasKey('next', $links);
+        self::assertArrayHasKey('prev', $links);
     }
 
     #[Test]
