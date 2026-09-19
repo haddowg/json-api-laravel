@@ -104,9 +104,12 @@ final class PlaylistResource extends AbstractResource implements ResourceLifecyc
                     Integer::make('weight')->compareWith('position', Comparison::GreaterThanOrEqual)->build(),
                     DateTime::make('addedAt')->storedAs('added_at')->readOnly()->build(),
                 )
+                // `->integer()` types the documented value: `pivot.` is an Eloquent
+                // convention this package resolves, so core cannot read a type off the
+                // backing pivot field the way it would off a plain column.
                 ->withFilters(
-                    Where::make('position', 'pivot.position'),
-                    Where::make('weight', 'pivot.weight'),
+                    Where::make('position', 'pivot.position')->integer(),
+                    Where::make('weight', 'pivot.weight')->integer(),
                 )
                 ->extractUsing(static function (mixed $playlist): array {
                     if (!$playlist instanceof PlaylistDomain) {

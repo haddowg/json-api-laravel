@@ -192,6 +192,26 @@ on the in-memory provider, so a request there is a clean `400`. Bind the request
 column into a `whereRaw()`. The shipped `WithTrashed`/`OnlyTrashed`
 [soft-delete filters](soft-deletes.md) are self-applying filters of exactly this shape.
 
+> **Describe a custom filter in the OpenAPI document.** A custom `FilterInterface` with no
+> value constraints projects an opaque, permissive `filter[…]` parameter with a generic
+> description. Two opt-in core interfaces fix that, and a custom filter gets neither by
+> accident:
+>
+> - [`DescribedFilter`](https://github.com/haddowg/json-api/blob/main/src/Resource/Filter/DescribedFilter.php)
+>   (`getDescription(): ?string`) gives the parameter its own prose — the same hook the
+>   convenience filter library uses.
+> - [`DescribesQueryParameter`](https://github.com/haddowg/json-api/blob/main/src/Resource/Filter/DescribesQueryParameter.php)
+>   declares the parameter envelope: the value schema plus the OAS `style`/`explode` for a
+>   **structured** wire shape, so a nested object or comma-list documents as a `deepObject`
+>   or array rather than a scalar. A *scalar* custom filter wants it too whenever core cannot
+>   infer the value type for itself — core defaults an unconstrained filter's value from the
+>   single column it targets, so a filter that targets several columns (or none) documents
+>   untyped until it describes itself. The example's
+>   [`FullTextSearch`](https://github.com/haddowg/json-api-laravel/blob/main/workbench/app/MusicCatalog/Query/FullTextSearch.php)
+>   searches several columns and returns a `string` schema for exactly this reason.
+>
+> (Built-in and `Where`/`Range`-derived filters already self-describe.)
+
 ## Soft deletes
 
 A resource whose model uses Laravel's `SoftDeletes` trait can opt into first-class soft
