@@ -153,8 +153,9 @@ the payload **before validation**, so cross-field rules see them.
 Declare a value constraint on each pivot filter (`->integer()` above). Core types an
 unconstrained filter's OpenAPI value from the single column it targets, and `pivot.` means
 nothing to it — the prefix is this package's Eloquent convention — so a pivot filter without
-one documents as an untyped parameter. The constraint buys both a `400` on a mistyped value
-and a typed OpenAPI parameter. (Pivot-meta *read* rendering
+one documents as the plain `string` every query parameter is on the wire, not as the integer
+or date its column really holds. The constraint buys both a `400` on a mistyped value and
+the narrower OpenAPI type. (Pivot-meta *read* rendering
 is described in
 [ADR 0008](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0008-pivot-meta-read-render-is-deferred-to-phase-3b.md).)
 
