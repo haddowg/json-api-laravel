@@ -49,8 +49,13 @@ use Workbench\App\MusicCatalog\Security\PlaylistApiPolicy;
  *    curated `publicOwner` (one-entity-two-types), the plain `belongsToMany` `tracks`, and
  *    the pivot-bearing `belongsToMany` `orderedTracks` (position/weight/addedAt via the
  *    `mc_playlist_track` association — the count-free pivot witness).
+ *
+ * It is registered on both servers because {@see TrackResource} is (a track's `playlists`
+ * relation exposes `GET /tracks/{id}/playlists`, which returns playlist resource objects)
+ * and because a user's `playlists` relation does the same under `/admin`.
  */
 #[AsJsonApiResource(
+    server: ['default', 'admin'],
     // Only update + delete declare an ability — create and the reads carry no ability, so
     // (with no type-wide policy) they inherit the document-level default requirement, exactly
     // as the Symfony example's playlist (which declares only securityUpdate/securityDelete).
@@ -74,7 +79,15 @@ final class PlaylistResource extends AbstractResource implements ResourceLifecyc
             Slug::make('slug')->readOnly(),
             Boolean::make('public')->build(),
             Uuid::make('externalId')->storedAs('external_id')->nullable(),
-            BelongsTo::make('owner', 'users')->security(read: 'inspectOwner'),
+            // `owner` targets the admin-only `users` type — the full record — and is
+            // therefore linkage-only: withoutRelatedEndpoint() drops
+            // `GET /playlists/{id}/owner` and its `related` link, because `users` is not
+            // registered on the default server and an endpoint returning a `users`
+            // resource object cannot be served there. A linkage `{type: users, id}`
+            // asserts no shape; an admin client dereferences it at `/admin/users/{id}`.
+            BelongsTo::make('owner', 'users')
+                ->security(read: 'inspectOwner')
+                ->withoutRelatedEndpoint(),
             BelongsTo::make('publicOwner', 'public-profiles')->storedAs('owner'),
             BelongsToMany::make('tracks', 'tracks')
                 ->paginate(PagePaginator::make()->withDefaultPerPage(2))
@@ -91,9 +104,12 @@ final class PlaylistResource extends AbstractResource implements ResourceLifecyc
                     Integer::make('weight')->compareWith('position', Comparison::GreaterThanOrEqual)->build(),
                     DateTime::make('addedAt')->storedAs('added_at')->readOnly()->build(),
                 )
+                // `->integer()` types the documented value: `pivot.` is an Eloquent
+                // convention this package resolves, so core cannot read a type off the
+                // backing pivot field the way it would off a plain column.
                 ->withFilters(
-                    Where::make('position', 'pivot.position'),
-                    Where::make('weight', 'pivot.weight'),
+                    Where::make('position', 'pivot.position')->integer(),
+                    Where::make('weight', 'pivot.weight')->integer(),
                 )
                 ->extractUsing(static function (mixed $playlist): array {
                     if (!$playlist instanceof PlaylistDomain) {

@@ -28,11 +28,15 @@ use Workbench\App\MusicCatalog\Query\FullTextSearch;
  * (`previewOffset`), a computed `displayTitle`, the `album` to-one and the plain
  * `belongsToMany` `playlists` (eager linkage via `withData()`, prohibiting full replace).
  *
+ * It is registered on both servers because {@see AlbumResource} is, and an album's
+ * `tracks` relation exposes `GET /albums/{id}/tracks` — that endpoint returns track
+ * resource objects, so `tracks` has to exist on every server that serves albums.
+ *
  * (The Symfony example additionally binds a hand-written `TrackSerializer` with a DI
  * constructor arg via `serializer:`; the Laravel `AsJsonApiResource` attribute does not
  * yet carry a serializer override, so the default serializer renders the same wire shape.)
  */
-#[AsJsonApiResource]
+#[AsJsonApiResource(server: ['default', 'admin'])]
 final class TrackResource extends AbstractResource
 {
     public static string $type = 'tracks';

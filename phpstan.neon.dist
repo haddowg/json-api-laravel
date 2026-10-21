@@ -34,3 +34,11 @@ parameters:
         -
             message: '#^Parameter \#1 \$sql of method Illuminate\\Database\\Eloquent\\Builder<.*>::whereRaw\(\) expects .*literal-string.*$#'
             path: src/DataProvider/Eloquent/EloquentFilterHandler.php
+        # The UrlGenerator contract's route() declares only InvalidArgumentException, but
+        # the concrete generator throws UrlGenerationException when a route has unfilled
+        # parameters (a document route under a parameterised prefix). The catch guards
+        # that real path, so dropping it would turn a missing parameter into a 500.
+        -
+            identifier: catch.neverThrown
+            message: '#UrlGenerationException is never thrown#'
+            path: src/Http/DescribedbyStamper.php
