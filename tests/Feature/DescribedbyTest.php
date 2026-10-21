@@ -49,6 +49,17 @@ final class DescribedbyTest extends Orchestra
     /**
      * @param \Illuminate\Foundation\Application $app
      */
+    protected function hideDocs($app): void
+    {
+        /** @var \Illuminate\Contracts\Config\Repository $config */
+        $config = $app['config'];
+        $config->set('app.debug', false);
+        $config->set('jsonapi.openapi.expose_in_prod', false);
+    }
+
+    /**
+     * @param \Illuminate\Foundation\Application $app
+     */
     protected function exposeDocsDescribedbyOff($app): void
     {
         /** @var \Illuminate\Contracts\Config\Repository $config */
@@ -69,10 +80,11 @@ final class DescribedbyTest extends Orchestra
 
     #[Test]
     #[Group('openapi')]
+    #[DefineEnvironment('hideDocs')]
     public function noDescribedbyIsAddedWhenTheDocumentRoutesAreNotExposed(): void
     {
-        // With app.debug false and expose_in_prod false the docs routes are not registered,
-        // so no link is advertised to a document that is not served.
+        // Neither side of the expose gate is open, so the docs routes are not registered and
+        // no link is advertised to a document that is not served.
         $this->getJson('/api/artists', ['Accept' => self::MEDIA_TYPE])
             ->assertOk()
             ->assertJsonMissingPath('links.describedby');
