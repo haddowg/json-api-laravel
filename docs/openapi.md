@@ -15,6 +15,11 @@ backed-enum field (`status->enum(AlbumStatus::class)`) projects a reusable
 `#/components/schemas/AlbumStatus` with described cases. [Custom actions](actions.md) and the
 [atomic](atomic-operations.md) endpoint project too.
 
+The error codes a server can raise are catalogued as one named schema variant each, so a
+generated client gets a typed exception per code rather than one opaque error type. Core's
+codes are always there; your own join them when discovery finds them — see
+[errors](errors.md#documenting-your-own-error-codes).
+
 ## Per-operation response declarations {#per-operation-response-declarations}
 
 By default each operation advertises one success response — `POST` → `201`, `PATCH` → `200`,

@@ -26,6 +26,13 @@ Twelve types, each chosen to witness a distinct capability:
 | `products` | encoded (opaque) id via a codec; self-referential relation |
 | `charts`, `countries` | standalone serializers (no model) + custom providers; `symfony/intl` reference data |
 
+`albums` is served on both the `default` and `admin` servers, and a related endpoint returns
+its target as primary data — so every type an album's (or a user's) related endpoints reach
+is registered on both too: `artists`, `tracks`, `playlists`, `libraries`, `public-profiles`.
+`users` stays admin-only, which is the point of the split; `playlists.owner` targets it
+linkage-only (`withoutRelatedEndpoint()`) so the default surface never promises a `users`
+endpoint it cannot serve. See [relationships](relationships.md#the-related-endpoints-target-must-be-registered-on-the-server).
+
 ## Dual-provider wiring
 
 The domain is wired twice, over the same resources and fixtures:

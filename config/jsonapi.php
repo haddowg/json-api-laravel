@@ -127,6 +127,12 @@ return [
     | implementations). `JsonApi::discover([...])` appends more paths and
     | `JsonApi::register([...])` registers explicit classes without scanning.
     |
+    | The scan also picks up your `DescribedErrorInterface` classes, so your own
+    | error codes are documented in the OpenAPI catalogue beside core's — add
+    | `app_path('Exceptions')` here to have them found. Nothing outside these
+    | paths is scanned, so an error class reaches your published contract only
+    | because you pointed discovery at it or named it in `JsonApi::register()`.
+    |
     | `cache` is an optional path to a pre-built discovery snapshot; when the file
     | exists it is loaded instead of scanning (route:cache-safe). Null = always
     | scan live.
