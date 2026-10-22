@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature\MusicCatalog;
 
+use haddowg\JsonApiLaravel\Testing\SchemaConformanceTrait;
+use haddowg\JsonApiLaravel\Testing\SchemaDocumentKind;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
@@ -23,6 +25,8 @@ use Workbench\App\MusicCatalog\Support\Fixtures;
 #[CoversNothing]
 abstract class MusicCatalogSmokeTestCase extends Orchestra
 {
+    use SchemaConformanceTrait;
+
     public const string MEDIA_TYPE = 'application/vnd.api+json';
 
     /**
@@ -105,6 +109,20 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         $show = $this->fetch('/admin/users/1')->assertOk();
         $show->assertJsonPath('data.attributes.email', 'ada@music.example');
         self::assertNull($show->json('data.attributes.password'));
+    }
+
+    public function test_admin_users_responses_conform_to_the_generated_schema(): void
+    {
+        $index = $this->fetch('/admin/users')->assertOk();
+        $this->assertResponseMatchesGeneratedSchema($index, 'users', SchemaDocumentKind::Collection, server: 'admin');
+
+        $ids = \array_column((array) $index->json('data'), 'id');
+        self::assertCount(\count(Fixtures::users()), $ids);
+        foreach ($ids as $id) {
+            self::assertIsString($id);
+            $show = $this->fetch('/admin/users/' . $id)->assertOk();
+            $this->assertResponseMatchesGeneratedSchema($show, 'users', SchemaDocumentKind::Single, server: 'admin');
+        }
     }
 
     public function test_public_profiles_expose_only_the_display_name(): void

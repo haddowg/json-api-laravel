@@ -77,7 +77,7 @@ return new class extends Migration {
             $table->string('email')->unique();
             $table->string('display_name');
             $table->date('birth_date')->nullable();
-            $table->json('preferences')->nullable();
+            $table->json('preferences');
             $table->string('last_seen_ip')->nullable();
             $table->string('password')->nullable();
             $table->boolean('is_admin')->default(false);

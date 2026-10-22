@@ -272,11 +272,11 @@ final class JsonApiController
 
     /**
      * Wraps the Laravel request as core's {@see JsonApiRequest} (the idempotent guard core
-     * uses everywhere).
+     * uses everywhere), with the query parameters as sent ({@see WireQuery}).
      */
     private function jsonApiRequest(Request $request): JsonApiRequestInterface
     {
-        $psrRequest = $this->psrHttpFactory->createRequest($request);
+        $psrRequest = $this->psrHttpFactory->createRequest($request)->withQueryParams(WireQuery::params($request));
 
         return $psrRequest instanceof JsonApiRequestInterface ? $psrRequest : new JsonApiRequest($psrRequest);
     }
