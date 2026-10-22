@@ -46,6 +46,7 @@ use haddowg\JsonApiLaravel\OpenApi\JsonSchemaFactory;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\ActionMetadataProviderInterface;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\IncludePathResolver;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
+use haddowg\JsonApiLaravel\OpenApi\Metadata\PrefixServers;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\TagNameResolver;
 use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
@@ -148,7 +149,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->registerExceptionRenderer();
 
         $this->app->singleton(RouteRegistrar::class, static function (Container $app): RouteRegistrar {
-            /** @var array<string, array{prefix?: string, middleware?: list<string>|string, domain?: string|null, base_uri?: string|null}> $servers */
+            /** @var array<string, array{prefix?: string, middleware?: list<string>|string, domain?: string|null, defaults?: array<string, string>, base_uri?: string|null}> $servers */
             $servers = config('jsonapi.servers', []);
             /** @var bool $atomicEnabled */
             $atomicEnabled = config('jsonapi.atomic_operations.enabled', false);
@@ -864,6 +865,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $atomicEnabled,
                 $atomicPath,
                 $actions,
+                new PrefixServers($app->make(Router::class)),
             );
         });
 

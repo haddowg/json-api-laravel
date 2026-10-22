@@ -132,6 +132,43 @@ secured operation (via [`abilities`](authorization.md), a relation `security`, o
 `ability`) inherits it (a `401`). A read declared `abilities: ['read' => false]` projects
 `security: []` (public).
 
+## The `servers` list
+
+Unless `jsonapi.openapi.servers` overrides it, each document's `servers` comes from the
+JSON:API server it describes:
+
+- **A configured `base_uri`** (global or the server's own) is the one server URL, as it is
+  (`https://api.example.com/api`).
+- **An empty `base_uri`** advertises the prefix the server's routes are registered under,
+  as a relative URL, so a client resolves `/albums` against the document's host as
+  `/api/albums`. Routes registered with no prefix advertise no `servers`. A server whose
+  routes sit under two prefixes (say, auto-registered under `api` and placed again with
+  `Route::jsonApi()` under `v2`) gets one entry per prefix, sorted, and an unprefixed
+  placement beside them adds `/`.
+- **A prefix with route parameters** (`{tenant}/api`) becomes a templated URL with a server
+  variable whose `default` is the route default for that parameter, set with the server's
+  `defaults` key:
+
+```php
+'servers' => [
+    'default' => ['prefix' => '{tenant}/api', 'middleware' => [], 'domain' => null, 'defaults' => ['tenant' => 'acme']],
+],
+```
+
+```json
+"servers": [{ "url": "/{tenant}/api", "variables": { "tenant": { "default": "acme" } } }]
+```
+
+OpenAPI requires a variable default, so a parameterised prefix without a route default is
+left out of `servers` rather than given an invented value.
+
+The list is read from the registered routes, not from a request, so it is the same whether
+`optimize` or the first request builds the document. That also means it can't see an app
+served below the web root (`/app/index.php`) or a proxy prefix: those are only known per
+request. Set `jsonapi.openapi.servers` (or a configured `base_uri`) when the API is reached
+through one. In `combined` mode the document lists every server's entries, deduplicated by
+URL.
+
 ## Multi-server
 
 `openapi.multi_server` chooses `separate` (one document per server, per-server routes — the

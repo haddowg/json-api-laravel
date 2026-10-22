@@ -141,8 +141,12 @@ its name to route names and to the OpenAPI path set. The music-catalog example a
 A resource joins a server with `#[AsJsonApiResource(server: 'admin')]` or
 `server: ['default', 'admin']`. See [multi-server-and-testing](multi-server-and-testing.md).
 
-An optional `base_uri` per server overrides the global `base_uri`. Omit it to inherit. It is
-used verbatim, so include the prefix.
+Two optional keys per server:
+
+| Key | What it does |
+| --- | --- |
+| `base_uri` | This server's base, overriding the global `base_uri`. Omit it to inherit. Used verbatim, so include the prefix. |
+| `defaults` | Route defaults set on every route of the server, such as `['tenant' => 'acme']` for a `{tenant}/api` prefix. The OpenAPI `servers` entry uses it as the variable's default. |
 
 ### Prefixes and the base
 
@@ -180,6 +184,9 @@ pagination links reuse the request path, which already starts with `/api`, so co
 the base's own path from the front of it and the prefix appears once. A configured base
 without the prefix (`https://api.example` for routes under `api`) renders resource links
 that miss the prefix.
+
+The OpenAPI document advertises the same prefix as a relative `servers` URL (`/api`); see
+[OpenAPI](openapi.md#the-servers-list).
 
 ## `atomic_operations`
 
