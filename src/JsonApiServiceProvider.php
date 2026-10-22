@@ -149,7 +149,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->registerExceptionRenderer();
 
         $this->app->singleton(RouteRegistrar::class, static function (Container $app): RouteRegistrar {
-            /** @var array<string, array{prefix?: string, middleware?: list<string>|string, domain?: string|null, defaults?: array<string, string>, base_uri?: string|null}> $servers */
+            /** @var array<string, array{prefix?: string, middleware?: list<string>|string, domain?: string|null, route_defaults?: array<string, string>, base_uri?: string|null}> $servers */
             $servers = config('jsonapi.servers', []);
             /** @var bool $atomicEnabled */
             $atomicEnabled = config('jsonapi.atomic_operations.enabled', false);

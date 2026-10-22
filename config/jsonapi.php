@@ -180,7 +180,7 @@ return [
     | `jsonapi.{server}.{type}.{action}` for a named server.
     |
     | Optional per server: `base_uri` overrides the global `base_uri` (include the
-    | prefix in it), and `defaults` sets route defaults on every route of the
+    | prefix in it), and `route_defaults` sets route defaults on every route of the
     | server, such as a default for a `{tenant}` placeholder in the prefix, which
     | the OpenAPI `servers` entry advertises as the variable's default.
     |

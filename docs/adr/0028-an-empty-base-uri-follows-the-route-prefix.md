@@ -34,7 +34,7 @@ Symfony bundle's ADR 0121.
 - The OpenAPI document advertises each distinct prefix of an empty-base server as a
   relative `servers` URL (`/api`), sorted, read from the router's routes rather than a
   request so a warmed document matches a lazily built one. A parameterised prefix becomes a
-  server variable defaulting to the route default, which a server's `defaults` config key
+  server variable defaulting to the route default, which a server's `route_defaults` config key
   sets on every route; with no default the prefix is left out, because OAS requires one. The
   request base path and a proxy prefix are per request, so the document can't include them;
   `jsonapi.openapi.servers` covers that case.

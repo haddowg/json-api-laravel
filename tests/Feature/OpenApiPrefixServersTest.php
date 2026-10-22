@@ -67,7 +67,7 @@ final class OpenApiPrefixServersTest extends Orchestra
     protected function tenantPrefixWithDefault($app): void
     {
         $this->servers($app, [
-            'default' => ['prefix' => '{tenant}/api', 'defaults' => ['tenant' => 'acme']],
+            'default' => ['prefix' => '{tenant}/api', 'route_defaults' => ['tenant' => 'acme']],
             'secure' => ['prefix' => 'secure-api'],
         ]);
     }

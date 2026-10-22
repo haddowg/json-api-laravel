@@ -68,7 +68,7 @@ final class RouteRegistrar
     private array $idRequirementCache = [];
 
     /**
-     * @param array<string, array{prefix?: string, middleware?: list<string>|string, domain?: string|null, defaults?: array<string, string>, base_uri?: string|null}> $servers the per-server route config
+     * @param array<string, array{prefix?: string, middleware?: list<string>|string, domain?: string|null, route_defaults?: array<string, string>, base_uri?: string|null}> $servers the per-server route config
      * @param (\Closure(class-string): ?string)|null                                                         $idPatternResolver resolves a resource class to its {@see Id} field's declared route pattern (null when unconstrained); null disables the lookup (the single-segment default)
      */
     public function __construct(
@@ -476,13 +476,13 @@ final class RouteRegistrar
     }
 
     /**
-     * Applies the server's configured route `defaults`, such as the value of a
+     * Applies the server's configured `route_defaults`, such as the value of a
      * placeholder in its prefix (`{tenant}/api`), which the OpenAPI `servers` entry uses
      * as the variable's default (ADR 0028).
      */
     private function withServerDefaults(Route $route, string $server): Route
     {
-        $defaults = $this->servers[$server]['defaults'] ?? [];
+        $defaults = $this->servers[$server]['route_defaults'] ?? [];
         foreach ($defaults as $key => $value) {
             $route->defaults((string) $key, $value);
         }
@@ -494,7 +494,7 @@ final class RouteRegistrar
      * The route-group attributes for a server, dropping empty prefix/middleware/domain so a
      * bare server config produces an unqualified group.
      *
-     * @param array{prefix?: string, middleware?: list<string>|string, domain?: string|null, defaults?: array<string, string>, base_uri?: string|null} $config
+     * @param array{prefix?: string, middleware?: list<string>|string, domain?: string|null, route_defaults?: array<string, string>, base_uri?: string|null} $config
      *
      * @return array<string, mixed>
      */

@@ -147,11 +147,11 @@ JSON:API server it describes:
   placement beside them adds `/`.
 - **A prefix with route parameters** (`{tenant}/api`) becomes a templated URL with a server
   variable whose `default` is the route default for that parameter, set with the server's
-  `defaults` key:
+  `route_defaults` key:
 
 ```php
 'servers' => [
-    'default' => ['prefix' => '{tenant}/api', 'middleware' => [], 'domain' => null, 'defaults' => ['tenant' => 'acme']],
+    'default' => ['prefix' => '{tenant}/api', 'middleware' => [], 'domain' => null, 'route_defaults' => ['tenant' => 'acme']],
 ],
 ```
 
