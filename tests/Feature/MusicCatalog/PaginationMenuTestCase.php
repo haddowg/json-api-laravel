@@ -22,10 +22,10 @@ use Workbench\App\MusicCatalog\Support\CatalogConfig;
  * The fixtures seed three tracks (1, 2, 3), none explicit, so every walk below must
  * visit all three, in id order, once, without leaving the strategy it started on.
  *
- * When a request names its strategy with `page[kind]`, every pagination link must carry
- * it too. Core 1.1.1 drops it (and every other request `page` member) when it builds the
- * links, so the cursor `first` link, which is only `page[size]`, falls back to the page
- * default. The tests that pin the fixed behaviour skip until core 1.2.0 is installed.
+ * A strategy picked over the default carries `page[kind]` in every pagination link, so
+ * links made only of shared keys, such as the cursor `first` link (`page[size]`), stay on
+ * it. The default's links carry no `kind` and land on the default anyway. Core 1.1.1
+ * drops `page[kind]` from every link, so the tests that pin this skip until core 1.2.0.
  *
  * @internal
  */
@@ -153,9 +153,23 @@ abstract class PaginationMenuTestCase extends Orchestra
         self::assertSame(\array_reverse(self::ALL_TRACKS), $this->walk('/api/tracks?page[offset]=2&page[limit]=2', 'prev', 'offset'));
     }
 
-    public function test_page_links_carry_the_named_kind(): void
+    public function test_the_default_strategys_links_need_no_kind(): void
     {
-        $this->assertEveryLinkCarriesTheKind('page', '/api/tracks?page[kind]=page&page[number]=2&page[size]=1');
+        // Naming the default strategy selects nothing new, so its links stay in their
+        // plain form and still land on it.
+        $response = $this->page('/api/tracks?page[kind]=page&page[number]=2&page[size]=1', cursor: false);
+        $links = (array) $response->json('links');
+        unset($links['describedby']);
+        self::assertNotEmpty($links);
+
+        foreach (\array_keys($links) as $rel) {
+            self::assertIsString($rel);
+            $page = $this->pageQuery($this->link($response, $rel));
+            self::assertArrayNotHasKey('kind', $page, "links.{$rel}");
+            self::assertArrayHasKey('number', $page, "links.{$rel}");
+        }
+
+        $this->page($this->link($response, 'next'), cursor: false)->assertJsonPath('meta.page.currentPage', 3);
     }
 
     public function test_cursor_links_carry_the_named_kind(): void
@@ -238,12 +252,12 @@ abstract class PaginationMenuTestCase extends Orchestra
     }
 
     /**
-     * Core 1.1.1 drops `page[kind]` from a menu's pagination links; 1.2.0 keeps it.
+     * Core 1.1.1 drops `page[kind]` from a menu's pagination links; 1.2.0 keeps it for a strategy picked over the default.
      */
     private static function requireMenuLinkFix(): void
     {
         if (\version_compare(InstalledVersions::getVersion('haddowg/json-api') ?? '0', '1.2.0', '<')) {
-            self::markTestSkipped('needs haddowg/json-api >= 1.2.0: menu links keep page[kind]');
+            self::markTestSkipped('needs haddowg/json-api >= 1.2.0: a strategy picked over the default keeps page[kind] in its links');
         }
     }
 
