@@ -8,6 +8,7 @@ use haddowg\JsonApi\Exception\JsonApiExceptionInterface;
 use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Schema\Error\Error;
 use haddowg\JsonApi\Schema\Error\InternalServerError;
+use haddowg\JsonApiLaravel\Routing\JsonApiRoute;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -21,7 +22,7 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
  * The route-scoped renderable that owns every error on a JSON:API route (PLAN
  * decision 5) — the Laravel translation of the Symfony bundle's `ExceptionListener`.
  * Registered on Laravel's exception handler; it acts only when the matched route
- * carries the {@see self::ROUTE_MARKER} default, so it never hijacks a non-JSON:API
+ * carries the {@see JsonApiRoute::MARKER} default, so it never hijacks a non-JSON:API
  * route's error response.
  *
  * Mapping order ({@see toErrorResponse()}):
@@ -44,7 +45,10 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
  */
 final class JsonApiExceptionRenderer
 {
-    public const string ROUTE_MARKER = '_jsonapi';
+    /**
+     * @deprecated since 1.2, use {@see JsonApiRoute::MARKER}, or `$request->isJsonApi()` to test a request
+     */
+    public const string ROUTE_MARKER = JsonApiRoute::MARKER;
 
     /**
      * @param iterable<ExceptionMapperInterface> $mappers the application exception mappers, highest priority first
@@ -63,9 +67,7 @@ final class JsonApiExceptionRenderer
      */
     public function handles(Request $request): bool
     {
-        $route = $request->route();
-
-        return $route !== null && ($route->defaults[self::ROUTE_MARKER] ?? false) === true;
+        return JsonApiRoute::matches($request);
     }
 
     /**
