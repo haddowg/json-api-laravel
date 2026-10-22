@@ -9,6 +9,7 @@ use haddowg\JsonApiLaravel\Testing\SchemaConformanceTrait;
 use haddowg\JsonApiLaravel\Testing\SchemaDocumentKind;
 use Illuminate\Support\Arr;
 use Illuminate\Testing\TestResponse;
+use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Test;
 
@@ -93,6 +94,26 @@ final class TestingKitSchemaConformanceTest extends TestCase
             'A collection body must not validate against the single-resource document component.',
         );
     }
+
+    #[Test]
+    public function aFailureMessageNamesTheTypesInvolved(): void
+    {
+        $collectionBody = (string) $this->jsonApi()->get('/api/albums')->baseResponse->getContent();
+
+        try {
+            $this->assertBodyMatchesGeneratedComponent($collectionBody, 'AlbumsDocument');
+        } catch (AssertionFailedError $e) {
+            $message = $e->getMessage();
+            self::assertStringContainsString('/data: The data (array) must match the type: object', $message);
+            self::assertStringNotContainsString('{type}', $message);
+            self::assertStringNotContainsString('{expected}', $message);
+
+            return;
+        }
+
+        self::fail('A collection body must not validate against the single-resource document component.');
+    }
+
     #[Test]
     public function aSparseFieldsetResponseValidatesAgainstTheGeneratedSchema(): void
     {
