@@ -318,6 +318,22 @@ abstract class CompositeConformanceTestCase extends Orchestra
         $this->assertNoEmptyArrayMembers($response);
     }
 
+    #[Test]
+    #[Group('spec:atomic')]
+    public function aReturnedAtomicErrorRendersNoEmptyMembers(): void
+    {
+        // A missing update target is RETURNED as an error response (not thrown), which the
+        // backend re-raises; the rebuilt error document carries no empty `source`/`links`.
+        $response = $this->rawAtomic('{"atomic:operations":['
+            . '{"op":"add","data":{"type":"composite-settings","attributes":{"name":"Gadget","settings":{}}}},'
+            . '{"op":"remove","ref":{"type":"composite-settings","id":"999"}}'
+            . ']}');
+
+        $response->assertStatus(404);
+        $this->assertNoEmptyArrayMembers($response);
+        self::assertSame('/atomic:operations/1', $response->json('errors.0.source.pointer'));
+    }
+
     /**
      * Every error points at `$pointer`. Core's opis value validator appends the root
      * instance pointer `/` to a whole-value violation, so a trailing slash is tolerated.
