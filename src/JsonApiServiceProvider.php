@@ -50,6 +50,7 @@ use haddowg\JsonApiLaravel\OpenApi\Metadata\PrefixServers;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\TagNameResolver;
 use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
+use haddowg\JsonApiLaravel\Routing\JsonApiRoute;
 use haddowg\JsonApiLaravel\Routing\OpenApiRouteRegistrar;
 use haddowg\JsonApiLaravel\Routing\RouteRegistrar;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
@@ -287,6 +288,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         ], 'jsonapi-config');
 
         $this->registerRouteMacro();
+        JsonApiRoute::registerMacro();
         $this->registerEventSubscribers();
 
         /** @var JsonApiManager $manager */

@@ -82,6 +82,87 @@ auto-registration would, inside the surrounding group. Links built from an empty
 follow that group's prefix (`/v2` above), because the package reads the prefix off the
 matched route rather than from the server config.
 
+## Is this a JSON:API route? {#is-this-a-json-api-route}
+
+Every route the package registers (resources, relationships, custom actions and atomic
+operations) carries the `_jsonapi` route default. `$request->isJsonApi()` reads it off the
+matched route, so your own middleware can tell the package's routes apart without depending
+on its internals:
+
+```php
+use Closure;
+use Illuminate\Http\Request;
+
+final class AddLegacyEnvelope
+{
+    public function handle(Request $request, Closure $next)
+    {
+        if ($request->isJsonApi()) {
+            return $next($request);   // leave JSON:API responses alone
+        }
+
+        // ... the app's own behaviour
+        return $next($request);
+    }
+}
+```
+
+The answer comes from the matched route, so it is only meaningful after Laravel's router has
+matched one. Route middleware (including a server's `middleware` and a group around
+`Route::jsonApi()`) sees the right answer. Global middleware runs before routing and always
+gets `false`, as does anything else that runs before the route is matched.
+
+### Which endpoint it is
+
+`$request->jsonApi()` goes further and says which endpoint matched. It returns a
+`JsonApiRoute`, or `null` wherever `isJsonApi()` is false:
+
+```php
+$route = $request->jsonApi();
+
+$route?->server;                  // 'default', or the named server
+$route?->type;                    // 'albums'; null on the atomic route
+$route?->id;                      // '1' from /albums/1; null on collection routes
+$route?->relationship;            // 'artist' from /albums/1/artist and /albums/1/relationships/artist
+$route?->isRelationshipEndpoint;  // true only for /relationships/{relationship}
+$route?->action;                  // 'publish' from /albums/1/-actions/publish
+$route?->actionScope;             // ActionScope::Resource or ActionScope::Collection
+$route?->isAtomic;                // true on the atomic operations route
+$route?->target();                // core's Target for the endpoint; null on the atomic route
+```
+
+`id` and `relationship` are the route parameters as the URL carried them. Nothing is loaded:
+there is no model on a `JsonApiRoute`, and middleware runs before the package fetches one.
+Code that needs the model belongs in a [lifecycle hook](lifecycle-hooks.md) or a
+[custom action](actions.md), which receive it.
+
+There is no `Server` on it either. Resolve the server for the request from the container,
+which bases its links where the request found it (see
+[configuration](configuration.md#prefixes-and-the-base)):
+
+```php
+use haddowg\JsonApiLaravel\Server\ServerRegistry;
+
+$server = app(ServerRegistry::class)->forRequest($request);
+```
+
+### Without the macros
+
+Both macros delegate to static methods on `JsonApiRoute`, for code that prefers a typed call:
+
+```php
+use haddowg\JsonApiLaravel\Routing\JsonApiRoute;
+
+JsonApiRoute::matches($request);   // isJsonApi()
+JsonApiRoute::of($request);        // jsonApi()
+JsonApiRoute::MARKER;              // '_jsonapi', the route default both check
+```
+
+Larastan and the IDE helpers that read Laravel's registered macros (barryvdh/laravel-ide-helper)
+pick the macros up from the booted application, so `$request->jsonApi()?->type` is typed
+`?string`. Plain PHPStan without Larastan doesn't know about macros, so call the static
+methods there.
+
 ## `route:cache` safety {#route-cache-safety}
 
 Route registration reads the **cached discovery snapshot** rather than re-scanning the

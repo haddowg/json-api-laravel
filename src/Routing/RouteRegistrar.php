@@ -9,7 +9,6 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\ResourceDescriptor;
 use haddowg\JsonApiLaravel\Discovery\SerializerDescriptor;
-use haddowg\JsonApiLaravel\Exception\JsonApiExceptionRenderer;
 use haddowg\JsonApiLaravel\Http\JsonApiController;
 use haddowg\JsonApiLaravel\Http\ResponseHeadersMiddleware;
 use haddowg\JsonApiLaravel\Operation\Operation;
@@ -325,7 +324,7 @@ final class RouteRegistrar
 
         $this->withServerDefaults($router->post($this->atomicPath, JsonApiController::class), $server)
             ->defaults(TargetResolver::SERVER_ATTRIBUTE, $server)
-            ->defaults(JsonApiExceptionRenderer::ROUTE_MARKER, true)
+            ->defaults(JsonApiRoute::MARKER, true)
             ->defaults(JsonApiController::ATOMIC_ATTRIBUTE, true)
             ->name($namePrefix . 'atomic_operations');
     }
@@ -392,7 +391,7 @@ final class RouteRegistrar
             $route = $this->withServerDefaults($router->match($action->methods, $path, JsonApiController::class), $server)
                 ->defaults(TargetResolver::TYPE_ATTRIBUTE, $action->type)
                 ->defaults(TargetResolver::SERVER_ATTRIBUTE, $server)
-                ->defaults(JsonApiExceptionRenderer::ROUTE_MARKER, true)
+                ->defaults(JsonApiRoute::MARKER, true)
                 ->defaults(JsonApiController::ACTION_ATTRIBUTE, $action->path)
                 ->defaults(JsonApiController::ACTION_SCOPE_ATTRIBUTE, $action->scope->name)
                 ->middleware(ResponseHeadersMiddleware::class)
@@ -471,7 +470,7 @@ final class RouteRegistrar
         return $this->withServerDefaults($route, $server)
             ->defaults(TargetResolver::TYPE_ATTRIBUTE, $type)
             ->defaults(TargetResolver::SERVER_ATTRIBUTE, $server)
-            ->defaults(JsonApiExceptionRenderer::ROUTE_MARKER, true)
+            ->defaults(JsonApiRoute::MARKER, true)
             ->middleware(ResponseHeadersMiddleware::class);
     }
 

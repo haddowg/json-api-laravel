@@ -6,8 +6,8 @@ namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
 use haddowg\JsonApi\OpenApi\Server;
 use haddowg\JsonApi\OpenApi\ServerVariable;
-use haddowg\JsonApiLaravel\Exception\JsonApiExceptionRenderer;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
+use haddowg\JsonApiLaravel\Routing\JsonApiRoute;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 
@@ -52,7 +52,7 @@ final class PrefixServers
         /** @var array<string, array<string, mixed>> $prefixes prefix => the defaults of its first route */
         $prefixes = [];
         foreach ($routes as $route) {
-            if (($route->defaults[JsonApiExceptionRenderer::ROUTE_MARKER] ?? false) !== true
+            if (($route->defaults[JsonApiRoute::MARKER] ?? false) !== true
                 || ($route->defaults[TargetResolver::SERVER_ATTRIBUTE] ?? null) !== $serverName) {
                 continue;
             }
