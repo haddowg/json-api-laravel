@@ -9,6 +9,7 @@ use haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
+use Workbench\App\Validation\CompositeSettingsResource;
 use Workbench\App\Validation\CompositeWidget;
 use Workbench\App\Validation\CompositeWidgetResource;
 
@@ -23,11 +24,15 @@ final class CompositeInMemoryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([CompositeWidgetResource::class]);
+        JsonApi::register([CompositeWidgetResource::class, CompositeSettingsResource::class]);
 
         $composites = new InMemoryDataProvider('composites', $this->composites(), identify: self::identify(), assignId: self::assignId());
         JsonApi::provider($composites);
         JsonApi::persister(new InMemoryDataPersister('composites', $composites->store(), static fn(): CompositeWidget => new CompositeWidget()));
+
+        $settings = new InMemoryDataProvider('composite-settings', ['1' => new CompositeWidget(id: '1', name: 'Seed')], identify: self::identify(), assignId: self::assignId());
+        JsonApi::provider($settings);
+        JsonApi::persister(new InMemoryDataPersister('composite-settings', $settings->store(), static fn(): CompositeWidget => new CompositeWidget()));
     }
 
     /**

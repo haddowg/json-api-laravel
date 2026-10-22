@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Atomic;
 
+use haddowg\JsonApi\Atomic\AtomicExtension;
 use haddowg\JsonApi\Atomic\AtomicLoopBackendInterface;
 use haddowg\JsonApi\Atomic\AtomicOperationCode;
 use haddowg\JsonApi\Atomic\AtomicResult;
@@ -31,6 +32,7 @@ use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
 use haddowg\JsonApiLaravel\Operation\Operation;
+use haddowg\JsonApiLaravel\Validation\ObjectAttributes;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Psr\Log\LoggerInterface;
@@ -87,6 +89,14 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
     private array $transactional;
 
     private bool $opened = false;
+
+    /**
+     * The batch's operations decoded with JSON objects kept as objects, keyed by index
+     * (decoded on first use).
+     *
+     * @var array<int, mixed>|null
+     */
+    private ?array $objectOperations = null;
 
     private readonly LoggerInterface $logger;
 
@@ -159,7 +169,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
 
         // (c)/(d) build the matching core CRUD operation VO off a synthetic per-op request
         // and dispatch it through the handler IN-PROCESS (handle(), never Server::dispatch).
-        $operation = $this->buildOperation($op->opCode, $target, $data);
+        $operation = $this->buildOperation($op->opCode, $target, $data, $op->index);
         $response = $this->handler->handle($operation);
 
         // A sub-operation that resolved to a 404/400 returns an ErrorResponse rather than
@@ -392,7 +402,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
      * Builds the core CRUD operation VO for the descriptor's code and resolved target,
      * carrying a synthetic per-operation request whose parsed body is `{data: <data>}`.
      */
-    private function buildOperation(AtomicOperationCode $opCode, Target $target, mixed $data): JsonApiOperationInterface
+    private function buildOperation(AtomicOperationCode $opCode, Target $target, mixed $data, int $index): JsonApiOperationInterface
     {
         $query = new QueryParameters([], [], [], [], []);
 
@@ -406,7 +416,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         };
 
         if ($target->hasRelationship()) {
-            $body = $this->subRequest($target, $method, $data);
+            $body = $this->subRequest($target, $method, $data, $index);
             $context = new OperationContext($this->server, $body);
 
             return match ($opCode) {
@@ -416,7 +426,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
             };
         }
 
-        $body = $this->subRequest($target, $method, $data);
+        $body = $this->subRequest($target, $method, $data, $index);
         $context = new OperationContext($this->server, $body);
 
         return match ($opCode) {
@@ -429,19 +439,35 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
     /**
      * A synthetic per-operation request derived from the batch request: the same
      * headers/attributes with the method + URI rewritten to the sub-operation's verb/path
-     * and a parsed body of `{data: <data>}`.
+     * and a parsed body of `{data: <data>}`. Its raw body is still the whole batch, so it
+     * carries its own operation's object-decoded attributes for value validation.
      */
-    private function subRequest(Target $target, string $method, mixed $data): JsonApiRequestInterface
+    private function subRequest(Target $target, string $method, mixed $data, int $index): JsonApiRequestInterface
     {
         $uri = $this->request->getUri()->withPath($this->pathFor($target));
 
         $request = $this->request
             ->withMethod($method)
             ->withUri($uri, preserveHost: true)
-            ->withParsedBody(['data' => $data]);
+            ->withParsedBody(['data' => $data])
+            ->withAttribute(ObjectAttributes::REQUEST_ATTRIBUTE, ObjectAttributes::inDocument($this->objectOperation($index)));
         \assert($request instanceof JsonApiRequestInterface);
 
         return $request;
+    }
+
+    /**
+     * The batch operation at `$index`, decoded with JSON objects kept as objects.
+     */
+    private function objectOperation(int $index): mixed
+    {
+        if ($this->objectOperations === null) {
+            $document = ObjectAttributes::decode((string) $this->request->getBody());
+            $operations = $document instanceof \stdClass ? ($document->{AtomicExtension::OPERATIONS_MEMBER} ?? null) : null;
+            $this->objectOperations = \is_array($operations) ? $operations : [];
+        }
+
+        return $this->objectOperations[$index] ?? null;
     }
 
     /**

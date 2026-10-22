@@ -189,7 +189,7 @@ final class ResourceValidator
         foreach ($this->oneOfErrors($resource, $attributes, $creating, $request) as $error) {
             $errors[] = $error;
         }
-        foreach ($this->shapeErrors($resource, $attributes, $creating, $request) as $error) {
+        foreach ($this->shapeErrors($resource, $attributes, $incoming, $creating, $request) as $error) {
             $errors[] = $error;
         }
 
@@ -823,15 +823,22 @@ final class ResourceValidator
      * explicit-null values are the main pass's concern (presence / nullability), so
      * they are skipped here. (ADR 0013.)
      *
+     * An incoming value is read from the body's object-decoded view, so a client's `{}`
+     * reaches opis as an object rather than the `[]` the associative decode made of it.
+     *
      * @param array<string, mixed> $attributes the merged incoming attribute map
+     * @param array<string, mixed> $incoming   the attributes the client sent
      *
      * @return list<Error>
      */
-    private function shapeErrors(AbstractResource $resource, array $attributes, bool $creating, JsonApiRequestInterface $request): array
+    private function shapeErrors(AbstractResource $resource, array $attributes, array $incoming, bool $creating, JsonApiRequestInterface $request): array
     {
         if ($this->schemaValues === null) {
             return []; // opis not installed — a Shape documents but does not validate
         }
+
+        $objectView = null;
+        $viewDecoded = false;
 
         $errors = [];
         foreach ($resource->allFields() as $field) {
@@ -850,6 +857,13 @@ final class ResourceValidator
             foreach ($field->constraints() as $constraint) {
                 if (!$constraint instanceof Shape || !$constraint->context()->appliesTo($creating)) {
                     continue;
+                }
+                if (!$viewDecoded) {
+                    $objectView = ObjectAttributes::of($request);
+                    $viewDecoded = true;
+                }
+                if ($objectView !== null && \array_key_exists($field->name(), $incoming) && \property_exists($objectView, $field->name())) {
+                    $value = $objectView->{$field->name()};
                 }
                 foreach ($this->schemaValues->validate(
                     $constraint->contribute(Schema::create()),
