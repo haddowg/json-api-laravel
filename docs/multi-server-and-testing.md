@@ -32,6 +32,25 @@ workbench's `artists`, `tracks`, `playlists`, `libraries` and `public-profiles` 
 shared for that reason, and `jsonapi:optimize` fails the deploy when one is missing — see
 [relationships](relationships.md#the-related-endpoints-target-must-be-registered-on-the-server).
 
+### Links per server
+
+Each server links under its own prefix. With an empty `base_uri` that happens on its own: a
+request to `/api/albums/1` links `http://host/api/albums/1` and one to `/admin/albums/1`
+links `http://host/admin/albums/1`. A single global `base_uri` can only carry one prefix, so
+give each server its own `base_uri` when you pin a canonical host. The music-catalog
+workbench does:
+
+```php
+'base_uri' => 'https://music.example/api',
+'servers' => [
+    'default' => ['prefix' => 'api',   'middleware' => [], 'domain' => null],
+    'admin'   => ['prefix' => 'admin', 'middleware' => [], 'domain' => null, 'base_uri' => 'https://admin.music.example/admin'],
+],
+```
+
+A server without its own `base_uri` inherits the global one. See
+[configuration](configuration.md#prefixes-and-the-base).
+
 Route names carry the server: `jsonapi.admin.albums.show`. OpenAPI projects one document per
 server by default (`/docs.json`, `/admin/docs.json`) — see [openapi](openapi.md) and
 [routing](routing.md). The same type may render differently per server (an admin server can

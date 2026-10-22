@@ -45,11 +45,9 @@ final class GettingStartedTest extends Orchestra
         $response->assertJsonPath('data.0.type', 'albums');
         $response->assertJsonPath('data.0.id', '1');
         $response->assertJsonPath('data.0.attributes.title', 'OK Computer');
-        self::assertIsString($response->json('data.0.links.self'));
-        // The prefixed absolute form on the page ('http://localhost/api/albums/1') needs
-        // the documented `base_uri` setting (see configuration.md); with the bare default
-        // the link derives from scheme + host, which is not this test's concern.
-        self::assertStringEndsWith('/albums/1', $response->json('data.0.links.self'));
+        // With the default empty `base_uri` the link is the request origin plus the
+        // server's `api` prefix, the form the page shows.
+        $response->assertJsonPath('data.0.links.self', 'http://localhost/api/albums/1');
     }
 
     public function test_get_one_reads_through_the_convention_mapped_model(): void

@@ -46,6 +46,7 @@ use haddowg\JsonApiLaravel\OpenApi\JsonSchemaFactory;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\ActionMetadataProviderInterface;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\IncludePathResolver;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
+use haddowg\JsonApiLaravel\OpenApi\Metadata\PrefixServers;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\TagNameResolver;
 use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
@@ -148,7 +149,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->registerExceptionRenderer();
 
         $this->app->singleton(RouteRegistrar::class, static function (Container $app): RouteRegistrar {
-            /** @var array<string, array{prefix?: string, middleware?: list<string>|string, domain?: string|null}> $servers */
+            /** @var array<string, array{prefix?: string, middleware?: list<string>|string, domain?: string|null, route_defaults?: array<string, string>, base_uri?: string|null}> $servers */
             $servers = config('jsonapi.servers', []);
             /** @var bool $atomicEnabled */
             $atomicEnabled = config('jsonapi.atomic_operations.enabled', false);
@@ -688,7 +689,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $profiles[] = $profile;
             }
 
-            /** @var array<string, mixed> $serversConfig */
+            /** @var array<string, array<string, mixed>> $serversConfig */
             $serversConfig = config('jsonapi.servers', []);
 
             // The stable seam holders are shared across every server and the handler.
@@ -737,13 +738,16 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $standaloneHydrators[$descriptor->type] = $descriptor->class;
                 }
 
+                // A server's own `base_uri` wins; without one it inherits the global value.
+                $serverBaseUri = $serversConfig[$server]['base_uri'] ?? null;
+
                 $factories[$server] = new ServerFactory(
                     $psr17,
                     $psr17,
                     $handler,
                     $resolver,
                     $resourceClasses,
-                    $baseUri,
+                    \is_string($serverBaseUri) ? $serverBaseUri : $baseUri,
                     $version,
                     $maxPerPage,
                     $maxIncludeDepth,
@@ -861,6 +865,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $atomicEnabled,
                 $atomicPath,
                 $actions,
+                new PrefixServers($app->make(Router::class)),
             );
         });
 

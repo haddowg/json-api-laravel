@@ -30,7 +30,8 @@ final class CatalogConfig
 
     public static function apply(Repository $config): void
     {
-        $config->set('jsonapi.base_uri', 'https://music.example');
+        // A configured base is used verbatim, so it carries the `default` server's `api` prefix.
+        $config->set('jsonapi.base_uri', 'https://music.example/api');
         $config->set('jsonapi.version', '1.1');
         // Include safeguard B: cap the `?include` nesting depth at 2 (the bundle's example
         // value; core's default is 3) so the include-parameter enums match.
@@ -46,17 +47,18 @@ final class CatalogConfig
 
     /**
      * The two servers: the implicit `default` (served at `/api`) plus a named `admin`
-     * server (the minimal multi-server witness). The routing prefix/domain never reaches
+     * server (the minimal multi-server witness) with its own base, which includes its
+     * `admin` prefix as the bundle example's does. The routing prefix/domain never reaches
      * the OpenAPI path keys (core keys paths by `uriType`), only the normalized
      * `servers[].url`, so their exact values do not affect the byte-compat diff.
      *
-     * @return array<string, array{prefix: string, middleware: list<string>, domain: string|null}>
+     * @return array<string, array{prefix: string, middleware: list<string>, domain: string|null, base_uri?: string}>
      */
     public static function servers(): array
     {
         return [
             'default' => ['prefix' => 'api', 'middleware' => [], 'domain' => null],
-            'admin' => ['prefix' => 'admin', 'middleware' => [], 'domain' => null],
+            'admin' => ['prefix' => 'admin', 'middleware' => [], 'domain' => null, 'base_uri' => 'https://admin.music.example/admin'],
         ];
     }
 
