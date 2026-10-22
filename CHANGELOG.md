@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.1.0](https://github.com/haddowg/json-api-laravel/compare/v1.0.0...v1.1.0) (2026-10-22)
+
+
+### Features
+
+* **openapi:** advertise a server's route prefix in servers ([5ec7c5a](https://github.com/haddowg/json-api-laravel/commit/5ec7c5a309f8e7bc8e8c54d8d55a9c3726a4dacb))
+* **openapi:** document the application's own error codes ([e98d718](https://github.com/haddowg/json-api-laravel/commit/e98d7185fca17a5cfe8cf1ee8c46c49a38f1d680))
+
+
+### Bug Fixes
+
+* base an empty base_uri on the server's route prefix ([5ec7c5a](https://github.com/haddowg/json-api-laravel/commit/5ec7c5a309f8e7bc8e8c54d8d55a9c3726a4dacb))
+* **openapi:** register every type a related endpoint returns ([e98d718](https://github.com/haddowg/json-api-laravel/commit/e98d7185fca17a5cfe8cf1ee8c46c49a38f1d680))
+
+
+### Miscellaneous Chores
+
+* add openapi and atomic-operations to composer keywords ([#48](https://github.com/haddowg/json-api-laravel/issues/48)) ([11f7065](https://github.com/haddowg/json-api-laravel/commit/11f70655efd7bff4776545ef363458cc67dc3c2f))
+* **deps:** require haddowg/json-api ^1.1.1 ([5ec7c5a](https://github.com/haddowg/json-api-laravel/commit/5ec7c5a309f8e7bc8e8c54d8d55a9c3726a4dacb))
+
 ## 1.0.0 (2026-07-13)
 
 
