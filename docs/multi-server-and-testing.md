@@ -131,7 +131,7 @@ Registered on Laravel's `TestResponse`, so they compose with the native assertio
 | `assertJsonApiError(?int $status, ?Closure)` | a JSON:API error document (+ optional status/callback) |
 | `assertFetchedOne(?Closure)` | a `200` single-resource document |
 | `assertFetchedMany(?Closure)` | a `200` collection document |
-| `assertJsonApiSpecCompliant()` | the response validates against the generated OpenAPI schemas (opis-gated) |
+| `assertJsonApiSpecCompliant()` | the response validates against the JSON:API 1.1 JSON Schema (opis-gated) |
 | `jsonApiDocument()` / `jsonApiErrors()` | extract the parsed document / errors for custom assertions |
 
 ```php
@@ -142,9 +142,68 @@ $id = $response->jsonApiDocument()->id();   // chain create → fetch
 ### Schema conformance
 
 With `opis/json-schema` installed, `SchemaConformanceTrait` validates real responses against
-the generated OpenAPI component schemas, and `assertJsonApiSpecCompliant()` becomes active — a
-strong regression net that a response never drifts from its own contract. Without opis both
-degrade gracefully (the conformance assertions are skipped).
+the generated OpenAPI component schemas, and `assertJsonApiSpecCompliant()` becomes active. A
+test fails as soon as a response drifts from the document you publish. Without opis both are
+skipped rather than failed.
+
+```php
+use haddowg\JsonApiLaravel\Testing\InteractsWithJsonApi;
+use haddowg\JsonApiLaravel\Testing\SchemaConformanceTrait;
+use haddowg\JsonApiLaravel\Testing\SchemaDocumentKind;
+
+final class AlbumSchemaTest extends TestCase
+{
+    use InteractsWithJsonApi;
+    use SchemaConformanceTrait;
+
+    public function test_albums_match_the_published_schema(): void
+    {
+        $response = $this->jsonApi()->get('/api/albums/1')->assertOk();
+
+        $this->assertResponseMatchesGeneratedSchema($response, 'albums', SchemaDocumentKind::Single);
+    }
+}
+```
+
+`SchemaDocumentKind` picks the envelope: `Single`, `Collection`, `Relationship` and `Related`
+(the last two take the relation name as the fourth argument). Pass `server:` to validate
+against a named server's document. `assertBodyMatchesGeneratedComponent($body, 'AlbumsResource')`
+validates a raw body against any component by name, and `bodyMatchesGeneratedComponent()`
+returns the result as a bool for tests that expect a body to fail.
+
+#### Sparse fieldsets
+
+The generated read schemas list every attribute as `required`, since a full response carries
+them all and generated clients rely on that. A `?fields[albums]=title` response leaves the
+other attributes out, so the helpers relax `required` to match. For every type the request
+names in `fields[…]`, only the members in that type's fieldset stay required, wherever that
+type's resource schema applies. That covers primary data of another type too, such as the
+`artists` returned by `/api/albums/1/artist`. Types the request doesn't name keep their full
+`required` list, and a member that is in the fieldset but missing from the body still fails.
+The generated `included` schema checks only `type` and `id` on each member, so included
+attributes aren't validated either way.
+
+The helpers read the fieldsets from the request behind the `TestResponse`, so a sparse request
+needs no extra argument:
+
+```php
+$response = $this->jsonApi()
+    ->withInclude('artist')
+    ->withFields('albums', 'title', 'artist')
+    ->withFields('artists', 'name')
+    ->get('/api/albums/1');
+
+$this->assertResponseMatchesGeneratedSchema($response, 'albums', SchemaDocumentKind::Single);
+```
+
+When you validate a raw body string, there's no request to read, so pass `fieldsets:` yourself.
+Each value is the wire form or a list of member names. An explicit `fieldsets:` also replaces
+whatever a `TestResponse`'s request carried, and `fieldsets: []` turns the relaxation off.
+
+```php
+$this->assertBodyMatchesGeneratedComponent($body, 'AlbumsDocument', fieldsets: ['albums' => 'title,artist']);
+$this->bodyMatchesGeneratedComponent($body, 'AlbumsDocument', fieldsets: ['albums' => ['title']]);
+```
 
 ### Testbench
 

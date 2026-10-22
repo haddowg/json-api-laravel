@@ -7,6 +7,8 @@ namespace haddowg\JsonApiLaravel\Tests\Feature;
 use haddowg\JsonApiLaravel\Testing\InteractsWithJsonApi;
 use haddowg\JsonApiLaravel\Testing\SchemaConformanceTrait;
 use haddowg\JsonApiLaravel\Testing\SchemaDocumentKind;
+use Illuminate\Support\Arr;
+use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Test;
 
@@ -90,5 +92,113 @@ final class TestingKitSchemaConformanceTest extends TestCase
             $this->bodyMatchesGeneratedComponent($collectionBody, 'AlbumsDocument'),
             'A collection body must not validate against the single-resource document component.',
         );
+    }
+    #[Test]
+    public function aSparseFieldsetResponseValidatesAgainstTheGeneratedSchema(): void
+    {
+        $this->assertResponseMatchesGeneratedSchema(
+            $this->jsonApi()->withFields('albums', 'title')->get('/api/albums/1')->assertOk(),
+            'albums',
+            SchemaDocumentKind::Single,
+        );
+        $this->assertResponseMatchesGeneratedSchema(
+            $this->jsonApi()->withFields('albums', 'title')->get('/api/albums')->assertOk(),
+            'albums',
+            SchemaDocumentKind::Collection,
+        );
+    }
+
+    #[Test]
+    public function aMemberInsideTheFieldsetIsStillRequired(): void
+    {
+        $body = self::without($this->jsonApi()->withFields('albums', 'title', 'status')->get('/api/albums/1')->assertOk(), 'data.attributes.status');
+
+        self::assertFalse(
+            $this->bodyMatchesGeneratedComponent($body, 'AlbumsDocument', fieldsets: ['albums' => 'title,status']),
+            'A member the fieldset asked for must still be required.',
+        );
+        self::assertTrue(
+            $this->bodyMatchesGeneratedComponent($body, 'AlbumsDocument', fieldsets: ['albums' => ['title']]),
+        );
+    }
+
+    #[Test]
+    public function aFullResponseStillRequiresEveryAttribute(): void
+    {
+        $body = self::without($this->jsonApi()->get('/api/albums/1')->assertOk(), 'data.attributes.releasedAt');
+
+        self::assertFalse(
+            $this->bodyMatchesGeneratedComponent($body, 'AlbumsDocument'),
+            'Without a fieldset every attribute stays required.',
+        );
+
+        $sparse = (string) $this->jsonApi()->withFields('albums', 'title')->get('/api/albums/1')->baseResponse->getContent();
+        self::assertFalse(
+            $this->bodyMatchesGeneratedComponent($sparse, 'AlbumsDocument'),
+            'A sparse body only passes when the fieldset is known.',
+        );
+    }
+
+    #[Test]
+    public function eachTypeFollowsItsOwnFieldset(): void
+    {
+        // The related endpoint hangs off `albums` but its primary data is `artists`.
+        $this->assertResponseMatchesGeneratedSchema(
+            $this->jsonApi()->withFields('artists', 'name')->get('/api/albums/1/artist')->assertOk(),
+            'albums',
+            SchemaDocumentKind::Related,
+            'artist',
+        );
+
+        $body = self::without($this->jsonApi()->get('/api/albums/1/artist')->assertOk(), 'data.attributes.bio');
+
+        self::assertFalse(
+            $this->bodyMatchesGeneratedComponent($body, 'AlbumsArtistRelatedDocument', fieldsets: ['albums' => 'title']),
+            'An albums fieldset must not relax the artists schema.',
+        );
+        self::assertTrue(
+            $this->bodyMatchesGeneratedComponent($body, 'AlbumsArtistRelatedDocument', fieldsets: ['artists' => 'name']),
+        );
+    }
+
+    #[Test]
+    public function aCompoundSparseResponseValidates(): void
+    {
+        $this->assertResponseMatchesGeneratedSchema(
+            $this->jsonApi()
+                ->withInclude('artist')
+                ->withFields('albums', 'title', 'artist')
+                ->withFields('artists', 'name')
+                ->get('/api/albums/1')
+                ->assertOk()
+                ->assertJsonMissingPath('included.0.attributes.bio'),
+            'albums',
+            SchemaDocumentKind::Single,
+        );
+    }
+
+    #[Test]
+    public function explicitFieldsetsOverrideTheRequest(): void
+    {
+        $response = $this->jsonApi()->withFields('albums', 'title')->get('/api/albums/1')->assertOk();
+
+        self::assertFalse(
+            $this->bodyMatchesGeneratedComponent((string) $response->baseResponse->getContent(), 'AlbumsDocument', fieldsets: []),
+        );
+        $this->assertResponseMatchesGeneratedSchema($response, 'albums', SchemaDocumentKind::Single, fieldsets: ['albums' => 'title']);
+    }
+
+    /**
+     * The response body with the member at a dot `$path` removed.
+     *
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
+     */
+    private static function without(TestResponse $response, string $path): string
+    {
+        $body = $response->json();
+        self::assertIsArray($body);
+        Arr::forget($body, $path);
+
+        return \json_encode($body, \JSON_THROW_ON_ERROR);
     }
 }
