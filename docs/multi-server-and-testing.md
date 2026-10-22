@@ -171,17 +171,27 @@ against a named server's document. `assertBodyMatchesGeneratedComponent($body, '
 validates a raw body against any component by name, and `bodyMatchesGeneratedComponent()`
 returns the result as a bool for tests that expect a body to fail.
 
+#### Included resources
+
+The envelope schemas type `included` loosely, as objects with a `type` and an `id`. So once the
+envelope passes, the helpers validate each `included` resource against its own type's
+`<Type>Resource` component, e.g. `ArtistsResource` for an included artist. An included resource
+that is missing an attribute, or carries one of the wrong type, fails the assertion with a
+message naming its index, such as `/included/0 does not validate against "ArtistsResource"`. A
+type the document has no `<Type>Resource` component for is skipped.
+
 #### Sparse fieldsets
 
 The generated read schemas list every attribute as `required`, since a full response carries
 them all and generated clients rely on that. A `?fields[albums]=title` response leaves the
 other attributes out, so the helpers relax `required` to match. For every type the request
 names in `fields[…]`, only the members in that type's fieldset stay required, wherever that
-type's resource schema applies. That covers primary data of another type too, such as the
-`artists` returned by `/api/albums/1/artist`. Types the request doesn't name keep their full
-`required` list, and a member that is in the fieldset but missing from the body still fails.
-The generated `included` schema checks only `type` and `id` on each member, so included
-attributes aren't validated either way.
+type's resource schema applies: primary data, `included` resources, and primary data of
+another type, such as the `artists` returned by `/api/albums/1/artist`. An empty fieldset
+(`fields[artists]=`) requires none of that type's members. Types the request doesn't name keep
+their full `required` list, so `?include=artist&fields[albums]=title,artist` still checks every
+attribute of the included artist. A member that is in the fieldset but missing from the body
+still fails.
 
 The helpers read the fieldsets from the request behind the `TestResponse`, so a sparse request
 needs no extra argument:

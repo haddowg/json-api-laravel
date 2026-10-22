@@ -11,7 +11,6 @@ use Illuminate\Http\Request;
 use Illuminate\Testing\TestResponse;
 use Opis\JsonSchema\Errors\ErrorFormatter;
 use Opis\JsonSchema\Errors\ValidationError;
-use Opis\JsonSchema\ValidationResult;
 use Opis\JsonSchema\Validator;
 use PHPUnit\Framework\Assert;
 
@@ -38,15 +37,20 @@ use PHPUnit\Framework\Assert;
  * which implements the JSON Schema 2020-12 dialect the projection targets natively — so
  * no meta-schema needs registering and the helper is fully offline.
  *
+ * **Included resources.** The envelope's `included` schema only checks `type` and `id`,
+ * so after the envelope passes, each `included` resource is validated against its own
+ * type's `<Type>Resource` component. An included type the document has no component for
+ * is skipped.
+ *
  * **Sparse fieldsets.** The generated read schemas list every attribute as `required`,
  * because a full response carries them all. A response to a `?fields[<type>]=…` request
  * legitimately omits the members outside the fieldset, so for each type the request
- * names, the helpers validate against a copy of the document whose `<Type>` attributes
- * (and relationships) require only the members in that type's fieldset. A type the
- * request does not name keeps its full `required` set, and a member that is in the
- * fieldset but missing from the body still fails. The fieldsets come from the request
- * behind a {@see TestResponse}; pass `$fieldsets` to supply (or override) them, which a
- * raw body string needs.
+ * names, the helpers validate against a copy of the document relaxed by
+ * {@see SparseFieldsetSchema}: that type's resources require only the members in its
+ * fieldset, in primary data and in `included` alike. A type the request does not name
+ * keeps its full `required` set, and a member that is in the fieldset but missing from
+ * the body still fails. The fieldsets come from the request behind a {@see TestResponse};
+ * pass `$fieldsets` to supply (or override) them, which a raw body string needs.
  *
  * When opis is
  * **absent** the assertions **skip** (never fail), matching the kit's opis-gated posture
@@ -68,7 +72,7 @@ trait SchemaConformanceTrait
      * @param SchemaDocumentKind                                             $kind         which document envelope the response carries
      * @param string|null                                                    $relationship the relation name — required for {@see SchemaDocumentKind::Relationship} / {@see SchemaDocumentKind::Related}
      * @param string|null                                                    $server       the JSON:API server whose document to validate against (the implicit `default` server when null)
-     * @param array<string, string|list<string>>|null                         $fieldsets    the sparse fieldsets the response was rendered under, keyed by type (`['albums' => 'title,artist']` or `['albums' => ['title', 'artist']]`); null reads them from the request behind a {@see TestResponse}
+     * @param array<mixed>|null                                              $fieldsets    the request's `fields` map, keyed by type (`['albums' => 'title,artist']` or `['albums' => ['title', 'artist']]`); null reads it from the request behind a {@see TestResponse}
      */
     protected function assertResponseMatchesGeneratedSchema(
         TestResponse|string $response,
@@ -95,7 +99,7 @@ trait SchemaConformanceTrait
      * {@see assertResponseMatchesGeneratedSchema()} is the ergonomic front door; this is
      * the escape hatch for a component the four standard kinds do not name.
      *
-     * @param array<string, string|list<string>>|null $fieldsets the sparse fieldsets the body was rendered under, keyed by type
+     * @param array<mixed>|null $fieldsets the request's `fields` map, when it asked for sparse fieldsets
      */
     protected function assertBodyMatchesGeneratedComponent(string $body, string $component, ?string $server = null, ?array $fieldsets = null): void
     {
@@ -103,14 +107,14 @@ trait SchemaConformanceTrait
             return;
         }
 
-        $result = $this->validateBody($body, $component, $server, $fieldsets ?? []);
+        $failures = $this->validateBody($body, $component, $server, $fieldsets);
 
-        Assert::assertTrue(
-            $result->isValid(),
+        Assert::assertNull(
+            $failures,
             \sprintf(
                 "The response does not validate against the generated \"%s\" component schema:\n%s",
                 $component,
-                $this->describeErrors($result->error()),
+                $failures ?? '',
             ),
         );
     }
@@ -123,13 +127,13 @@ trait SchemaConformanceTrait
      *
      * When opis is absent the test is skipped (the call never returns).
      *
-     * @param array<string, string|list<string>>|null $fieldsets the sparse fieldsets the body was rendered under, keyed by type
+     * @param array<mixed>|null $fieldsets the request's `fields` map, when it asked for sparse fieldsets
      */
     protected function bodyMatchesGeneratedComponent(string $body, string $component, ?string $server = null, ?array $fieldsets = null): bool
     {
         $this->schemaConformanceSkippedWithoutOpis();
 
-        return $this->validateBody($body, $component, $server, $fieldsets ?? [])->isValid();
+        return $this->validateBody($body, $component, $server, $fieldsets) === null;
     }
 
     /**
@@ -150,16 +154,22 @@ trait SchemaConformanceTrait
     }
 
     /**
-     * @param array<string, string|list<string>> $fieldsets
+     * Validates the body against `$component`, then each `included` resource against its
+     * own type's `<Base>Resource` component (the envelope's `included` schema only checks
+     * `type`/`id`). An included type the document has no component for is skipped.
+     *
+     * @param array<mixed>|null $fieldsets
+     *
+     * @return string|null the readable failure detail, or null when the body is valid
      */
-    private function validateBody(string $body, string $component, ?string $server, array $fieldsets): ValidationResult
+    private function validateBody(string $body, string $component, ?string $server, ?array $fieldsets): ?string
     {
         $decoded = \json_decode($body, false, 512, \JSON_THROW_ON_ERROR);
 
         $document = $this->generatedDocument($server);
-        $fieldsets = self::normaliseFieldsets($fieldsets);
-        if ($fieldsets !== []) {
-            $document = self::relaxedForFieldsets($document, $fieldsets);
+        $normalized = SparseFieldsetSchema::normalize($fieldsets ?? []);
+        if ($normalized !== []) {
+            $document = SparseFieldsetSchema::relax($document, $normalized);
         }
 
         $validator = new Validator();
@@ -167,7 +177,35 @@ trait SchemaConformanceTrait
         \assert($resolver !== null);
         $resolver->registerRaw($document, self::documentId());
 
-        return $validator->validate($decoded, self::documentId() . ComponentNaming::schemaRef($component));
+        $result = $validator->validate($decoded, self::documentId() . ComponentNaming::schemaRef($component));
+        if (!$result->isValid()) {
+            return $this->describeErrors($result->error());
+        }
+
+        $included = $decoded instanceof \stdClass ? ($decoded->included ?? null) : null;
+        if (!\is_array($included)) {
+            return null;
+        }
+
+        $schemas = $document->components->schemas ?? null;
+        $failures = [];
+        foreach ($included as $index => $resource) {
+            $type = $resource instanceof \stdClass ? ($resource->type ?? null) : null;
+            if (!\is_string($type) || !$schemas instanceof \stdClass) {
+                continue;
+            }
+            $resourceComponent = ComponentNaming::base($type) . 'Resource';
+            if (!isset($schemas->{$resourceComponent})) {
+                continue;
+            }
+
+            $result = $validator->validate($resource, self::documentId() . ComponentNaming::schemaRef($resourceComponent));
+            if (!$result->isValid()) {
+                $failures[] = \sprintf("/included/%d does not validate against \"%s\":\n%s", $index, $resourceComponent, $this->describeErrors($result->error()));
+            }
+        }
+
+        return $failures === [] ? null : \implode("\n", $failures);
     }
 
     /**
@@ -188,123 +226,18 @@ trait SchemaConformanceTrait
      *
      * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
      *
-     * @return array<string, string|list<string>>
+     * @return array<mixed>|null
      */
-    private static function requestFieldsets(TestResponse $response): array
+    private static function requestFieldsets(TestResponse $response): ?array
     {
         $request = $response->baseRequest;
         if (!$request instanceof Request) {
-            return [];
+            return null;
         }
 
         $fields = $request->query('fields');
-        if (!\is_array($fields)) {
-            return [];
-        }
 
-        $fieldsets = [];
-        foreach ($fields as $type => $members) {
-            if (\is_string($members)) {
-                $fieldsets[(string) $type] = $members;
-            }
-        }
-
-        return $fieldsets;
-    }
-
-    /**
-     * @param array<string, string|list<string>> $fieldsets
-     *
-     * @return array<string, list<string>> the member names per type, an empty fieldset kept as an empty list
-     */
-    private static function normaliseFieldsets(array $fieldsets): array
-    {
-        $normalised = [];
-        foreach ($fieldsets as $type => $members) {
-            $names = \is_string($members) ? \explode(',', $members) : $members;
-            $normalised[$type] = \array_values(\array_filter(\array_map('trim', $names), static fn(string $name): bool => $name !== ''));
-        }
-
-        return $normalised;
-    }
-
-    /**
-     * A copy of `$document` in which each fieldset type's response attributes and
-     * relationships require only the members in its fieldset. The cached document is
-     * never mutated, and a type with no `<Type>Resource` component is ignored.
-     *
-     * @param array<string, list<string>> $fieldsets
-     */
-    private static function relaxedForFieldsets(\stdClass $document, array $fieldsets): \stdClass
-    {
-        $copy = \json_decode(\json_encode($document, \JSON_THROW_ON_ERROR), false, 512, \JSON_THROW_ON_ERROR);
-        \assert($copy instanceof \stdClass);
-
-        $schemas = $copy->components->schemas ?? null;
-        if (!$schemas instanceof \stdClass) {
-            return $copy;
-        }
-
-        foreach ($fieldsets as $type => $members) {
-            $resource = $schemas->{ComponentNaming::base($type) . 'Resource'} ?? null;
-            if (!$resource instanceof \stdClass || !($resource->properties ?? null) instanceof \stdClass) {
-                continue;
-            }
-
-            foreach (['attributes', 'relationships'] as $member) {
-                $schema = self::resolveLocalRef($schemas, $resource->properties->{$member} ?? null);
-                if ($schema !== null) {
-                    self::keepRequired($schema, $members);
-                }
-            }
-        }
-
-        return $copy;
-    }
-
-    /**
-     * The object schema `$schema` names, following one `#/components/schemas/…` `$ref`.
-     */
-    private static function resolveLocalRef(\stdClass $schemas, mixed $schema): ?\stdClass
-    {
-        if (!$schema instanceof \stdClass) {
-            return null;
-        }
-
-        $ref = $schema->{'$ref'} ?? null;
-        if (!\is_string($ref)) {
-            return $schema;
-        }
-
-        $prefix = '#/components/schemas/';
-        if (!\str_starts_with($ref, $prefix)) {
-            return null;
-        }
-
-        $target = $schemas->{\substr($ref, \strlen($prefix))} ?? null;
-
-        return $target instanceof \stdClass ? $target : null;
-    }
-
-    /**
-     * @param list<string> $members
-     */
-    private static function keepRequired(\stdClass $schema, array $members): void
-    {
-        if (!\is_array($schema->required ?? null)) {
-            return;
-        }
-
-        $required = \array_values(\array_filter(
-            $schema->required,
-            static fn(mixed $name): bool => \in_array($name, $members, true),
-        ));
-
-        if ($required === []) {
-            unset($schema->required);
-        } else {
-            $schema->required = $required;
-        }
+        return \is_array($fields) ? $fields : null;
     }
 
     private function factory(): DocumentFactory

@@ -178,6 +178,60 @@ final class TestingKitSchemaConformanceTest extends TestCase
     }
 
     #[Test]
+    public function anIncludedResourceThatDivergesFromItsSchemaFails(): void
+    {
+        $response = $this->jsonApi()->withInclude('artist')->get('/api/albums/1')->assertOk();
+        $this->assertResponseMatchesGeneratedSchema($response, 'albums', SchemaDocumentKind::Single);
+
+        self::assertFalse(
+            $this->bodyMatchesGeneratedComponent(self::without($response, 'included.0.attributes.bio'), 'AlbumsDocument'),
+            'An included resource must validate against its own type\'s resource schema.',
+        );
+    }
+
+    #[Test]
+    public function anIncludedTypeWithoutAFieldsetStaysStrict(): void
+    {
+        $response = $this->jsonApi()
+            ->withInclude('artist')
+            ->withFields('albums', 'title', 'artist')
+            ->get('/api/albums/1')
+            ->assertOk();
+        $this->assertResponseMatchesGeneratedSchema($response, 'albums', SchemaDocumentKind::Single);
+
+        self::assertFalse(
+            $this->bodyMatchesGeneratedComponent(
+                self::without($response, 'included.0.attributes.bio'),
+                'AlbumsDocument',
+                fieldsets: ['albums' => 'title,artist'],
+            ),
+            'An albums fieldset must not relax the included artists.',
+        );
+    }
+
+    #[Test]
+    public function anEmptyFieldsetRelaxesEveryMember(): void
+    {
+        $full = $this->jsonApi()->withInclude('artist')->get('/api/albums/1')->assertOk();
+        self::assertTrue($this->bodyMatchesGeneratedComponent(
+            self::without($full, 'included.0.attributes'),
+            'AlbumsDocument',
+            fieldsets: ['artists' => ''],
+        ));
+        self::assertFalse($this->bodyMatchesGeneratedComponent(self::without($full, 'included.0.attributes.name'), 'AlbumsDocument'));
+    }
+
+    #[Test]
+    public function anIncludedTypeWithoutAComponentIsSkipped(): void
+    {
+        $body = $this->jsonApi()->get('/api/albums/1')->assertOk()->json();
+        self::assertIsArray($body);
+        $body['included'] = [['type' => 'not-a-registered-type', 'id' => '1', 'attributes' => ['anything' => 1]]];
+
+        self::assertTrue($this->bodyMatchesGeneratedComponent(\json_encode($body, \JSON_THROW_ON_ERROR), 'AlbumsDocument'));
+    }
+
+    #[Test]
     public function explicitFieldsetsOverrideTheRequest(): void
     {
         $response = $this->jsonApi()->withFields('albums', 'title')->get('/api/albums/1')->assertOk();
