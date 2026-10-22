@@ -11,7 +11,7 @@ namespace Workbench\App\MusicCatalog\Domain;
 final class User
 {
     /**
-     * @param array<string, mixed>|null $preferences the dynamic-key ArrayHash attribute
+     * @param array<string, mixed>      $preferences the dynamic-key ArrayHash attribute
      * @param list<Playlist>            $playlists   the user's playlists
      * @param ?Library                  $library     the user's library
      */
@@ -20,7 +20,7 @@ final class User
         public string $email = '',
         public string $display_name = '',
         public ?\DateTimeImmutable $birth_date = null,
-        public ?array $preferences = null,
+        public array $preferences = [],
         public ?string $last_seen_ip = null,
         public ?string $password = null,
         public bool $is_admin = false,

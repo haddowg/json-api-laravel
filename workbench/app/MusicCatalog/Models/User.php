@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property string                          $email
  * @property string                          $display_name
  * @property \Illuminate\Support\Carbon|null $birth_date
- * @property array<string, mixed>|null       $preferences
+ * @property array<string, mixed>            $preferences
  * @property string|null                     $last_seen_ip
  * @property string|null                     $password
  * @property bool                            $is_admin
@@ -32,6 +32,13 @@ final class User extends Model
      * @var list<string>
      */
     protected $guarded = [];
+
+    /**
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'preferences' => '[]',
+    ];
 
     /**
      * @var array<string, string>

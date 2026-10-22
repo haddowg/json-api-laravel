@@ -104,13 +104,13 @@ final class Fixtures
     }
 
     /**
-     * @return list<array{id: int, email: string, display_name: string, birth_date: ?\DateTimeImmutable, preferences: ?array<string, mixed>, last_seen_ip: ?string, password: ?string, is_admin: bool}>
+     * @return list<array{id: int, email: string, display_name: string, birth_date: ?\DateTimeImmutable, preferences: array<string, mixed>, last_seen_ip: ?string, password: ?string, is_admin: bool}>
      */
     public static function users(): array
     {
         return [
             ['id' => 1, 'email' => 'ada@music.example', 'display_name' => 'Ada', 'birth_date' => new \DateTimeImmutable('1990-01-01'), 'preferences' => ['theme' => 'dark'], 'last_seen_ip' => '203.0.113.7', 'password' => 'secret-password', 'is_admin' => true],
-            ['id' => 2, 'email' => 'grace@music.example', 'display_name' => 'Grace', 'birth_date' => null, 'preferences' => null, 'last_seen_ip' => null, 'password' => 'another-password', 'is_admin' => false],
+            ['id' => 2, 'email' => 'grace@music.example', 'display_name' => 'Grace', 'birth_date' => null, 'preferences' => ['theme' => 'light'], 'last_seen_ip' => null, 'password' => 'another-password', 'is_admin' => false],
         ];
     }
 
