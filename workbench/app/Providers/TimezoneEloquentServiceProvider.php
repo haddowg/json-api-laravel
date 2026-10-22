@@ -12,6 +12,7 @@ use Workbench\App\Timezone\Models\Gig;
 use Workbench\App\Timezone\Models\Performer;
 use Workbench\App\Timezone\Models\Venue;
 use Workbench\App\Timezone\PerformerResource;
+use Workbench\App\Timezone\RescheduleGig;
 use Workbench\App\Timezone\VenueResource;
 
 /**
@@ -21,7 +22,7 @@ final class TimezoneEloquentServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([GigResource::class, VenueResource::class, PerformerResource::class]);
+        JsonApi::register([GigResource::class, VenueResource::class, PerformerResource::class, RescheduleGig::class]);
 
         JsonApi::provider(new EloquentDataProvider([
             'gigs' => Gig::class,

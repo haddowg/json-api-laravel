@@ -73,7 +73,9 @@ only:
 ```
 
 A resource shared by several servers renders in the zone of the server whose route
-matched. See [configuration](configuration.md#output_timezone).
+matched. Each server holds its own instance of the resource, even when you bind the
+resource as a singleton: the first server gets the container's instance and every other
+server a clone of it, so one server's zone or action links never leak into another's. See [configuration](configuration.md#output_timezone).
 
 ## Testing
 

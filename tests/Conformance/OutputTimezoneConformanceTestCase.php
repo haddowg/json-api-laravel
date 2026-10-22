@@ -10,6 +10,8 @@ use Orchestra\Testbench\Attributes\DefineEnvironment;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
+use Workbench\App\Timezone\GigResource;
+use Workbench\App\Timezone\VenueResource;
 
 /**
  * The server's `output_timezone` against both data layers. Every stored value carries
@@ -75,6 +77,17 @@ abstract class OutputTimezoneConformanceTestCase extends Orchestra
     protected function adminOptsOut($app): void
     {
         $this->adminZone = '';
+    }
+
+    /**
+     * Binds the shared resources as singletons, so both servers resolve one instance.
+     *
+     * @param \Illuminate\Foundation\Application $app
+     */
+    protected function resourcesAreSingletons($app): void
+    {
+        $app->singleton(GigResource::class);
+        $app->singleton(VenueResource::class);
     }
 
     protected function seedConformanceData(): void {}
@@ -173,5 +186,41 @@ abstract class OutputTimezoneConformanceTestCase extends Orchestra
         $this->jsonApi()->get('/api/gigs/1')
             ->assertOk()
             ->assertJsonPath('data.attributes.startsAt', '2024-06-01T18:00:00+00:00');
+    }
+
+    #[Test]
+    #[Group('output-timezone')]
+    public function aTypeOnTwoServersRendersWithEachServersSettingsInTurn(): void
+    {
+        $this->assertEachServerKeepsItsSettings();
+    }
+
+    #[Test]
+    #[Group('output-timezone')]
+    #[DefineEnvironment('resourcesAreSingletons')]
+    public function aResourceBoundAsASingletonStillRendersWithEachServersSettings(): void
+    {
+        $this->assertEachServerKeepsItsSettings();
+    }
+
+    /**
+     * Alternates the servers, so a resource instance the two share would render with
+     * whichever server resolved it last: its zone, and its `admin`-only action link.
+     */
+    private function assertEachServerKeepsItsSettings(): void
+    {
+        $expected = [
+            '/api' => ['2024-06-01T18:00:00+00:00', '2020-01-15T09:00:00+00:00', null],
+            '/admin' => ['2024-06-01T14:00:00-04:00', '2020-01-15T04:00:00-05:00', 'http://localhost/admin/gigs/1/-actions/reschedule'],
+        ];
+
+        foreach (['/api', '/admin', '/api', '/admin'] as $prefix) {
+            $response = $this->jsonApi()->withInclude('venue')->get($prefix . '/gigs/1');
+
+            $response->assertOk();
+            $response->assertJsonPath('data.links.reschedule', $expected[$prefix][2]);
+            $response->assertJsonPath('data.attributes.startsAt', $expected[$prefix][0]);
+            $response->assertJsonPath('included.0.attributes.openedAt', $expected[$prefix][1]);
+        }
     }
 }

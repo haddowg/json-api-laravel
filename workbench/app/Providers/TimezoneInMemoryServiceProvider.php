@@ -12,6 +12,7 @@ use Workbench\App\Timezone\Domain\Performer;
 use Workbench\App\Timezone\Domain\Venue;
 use Workbench\App\Timezone\GigResource;
 use Workbench\App\Timezone\PerformerResource;
+use Workbench\App\Timezone\RescheduleGig;
 use Workbench\App\Timezone\TimezoneFixtures;
 use Workbench\App\Timezone\VenueResource;
 
@@ -23,7 +24,7 @@ final class TimezoneInMemoryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([GigResource::class, VenueResource::class, PerformerResource::class]);
+        JsonApi::register([GigResource::class, VenueResource::class, PerformerResource::class, RescheduleGig::class]);
 
         $venues = [];
         foreach (TimezoneFixtures::venues() as $row) {

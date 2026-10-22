@@ -58,6 +58,7 @@ use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipPagination;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use haddowg\JsonApiLaravel\Server\OutputTimezoneConfig;
+use haddowg\JsonApiLaravel\Server\PerServerInstances;
 use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use haddowg\JsonApiLaravel\Server\ServerFactory;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
@@ -673,12 +674,9 @@ final class JsonApiServiceProvider extends ServiceProvider
             $psr17 = $app->make(Psr17Factory::class);
             $handler = $app->make(CrudOperationHandler::class);
 
-            $resolver = static function (string $class) use ($app): object {
-                $instance = $app->make($class);
-                \assert(\is_object($instance));
-
-                return $instance;
-            };
+            // One resolver per server, so a resource the container shares (a singleton) is
+            // never one instance across two servers' registries.
+            $instances = new PerServerInstances($app);
 
             /** @var string $baseUri */
             $baseUri = config('jsonapi.base_uri', '');
@@ -762,7 +760,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $psr17,
                     $psr17,
                     $handler,
-                    $resolver,
+                    $instances->resolverFor($server),
                     $resourceClasses,
                     \is_string($serverBaseUri) ? $serverBaseUri : $baseUri,
                     $version,
