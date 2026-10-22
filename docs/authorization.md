@@ -23,8 +23,10 @@ operation:
 
 Register a policy the usual Laravel way (`Gate::policy(Album::class, AlbumPolicy::class)` or
 auto-discovery) and it just works. **No policy registered → no check** — the type is inert,
-exactly like the bundle without security-core. A denial is a JSON:API `403` (an
-unauthenticated request that needs identity is a `401`), rendered before any persistence.
+exactly like the bundle without security-core. A denial is a JSON:API `403` with the
+code `ACCESS_DENIED` (an unauthenticated request that needs identity is a `401` with
+`AUTHENTICATION_REQUIRED`), rendered before any persistence. See
+[errors](errors.md#the-mapping-pipeline).
 
 `actingAs()` in tests sets the user natively — see
 [multi-server-and-testing](multi-server-and-testing.md).

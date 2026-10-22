@@ -92,7 +92,7 @@ abstract class SecurityConformanceTestCase extends Orchestra
     {
         $this->readJsonApi('/secure-api/albums')
             ->assertStatus(401)
-            ->assertJsonPath('errors.0.status', '401');
+            ->assertJsonPath('errors.0.status', '401')->assertJsonPath('errors.0.code', 'AUTHENTICATION_REQUIRED');
     }
 
     #[Test]
@@ -101,7 +101,7 @@ abstract class SecurityConformanceTestCase extends Orchestra
     {
         $this->writeJsonApi('POST', '/secure-api/albums', $this->albumDocument())
             ->assertStatus(401)
-            ->assertJsonPath('errors.0.status', '401');
+            ->assertJsonPath('errors.0.status', '401')->assertJsonPath('errors.0.code', 'AUTHENTICATION_REQUIRED');
 
         // The write never reached the handler: the store is untouched.
         $this->readJsonApi('/secure-api/albums')->assertStatus(401);
@@ -119,11 +119,11 @@ abstract class SecurityConformanceTestCase extends Orchestra
         // server middleware from the id routes would be caught.
         $this->writeJsonApi('PATCH', '/secure-api/albums/1', [
             'data' => ['type' => 'albums', 'id' => '1', 'attributes' => ['title' => 'Guest Edit']],
-        ])->assertStatus(401)->assertJsonPath('errors.0.status', '401');
+        ])->assertStatus(401)->assertJsonPath('errors.0.status', '401')->assertJsonPath('errors.0.code', 'AUTHENTICATION_REQUIRED');
 
-        $this->deleteJsonApi('/secure-api/albums/1')->assertStatus(401)->assertJsonPath('errors.0.status', '401');
+        $this->deleteJsonApi('/secure-api/albums/1')->assertStatus(401)->assertJsonPath('errors.0.status', '401')->assertJsonPath('errors.0.code', 'AUTHENTICATION_REQUIRED');
 
-        $this->readJsonApi('/secure-api/albums/1')->assertStatus(401)->assertJsonPath('errors.0.status', '401');
+        $this->readJsonApi('/secure-api/albums/1')->assertStatus(401)->assertJsonPath('errors.0.status', '401')->assertJsonPath('errors.0.code', 'AUTHENTICATION_REQUIRED');
 
         // The guest PATCH/DELETE never reached the handler: album 1 is untouched.
         $this->actingAs($this->reader());
@@ -156,7 +156,7 @@ abstract class SecurityConformanceTestCase extends Orchestra
 
         $this->readJsonApi('/secure-api/albums')
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
     }
 
     #[Test]
@@ -170,7 +170,7 @@ abstract class SecurityConformanceTestCase extends Orchestra
 
         $this->readJsonApi('/secure-api/albums/1')
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
     }
 
     // --- create (renamed to `publish`) ---
@@ -195,7 +195,7 @@ abstract class SecurityConformanceTestCase extends Orchestra
 
         $this->writeJsonApi('POST', '/secure-api/albums', $this->albumDocument())
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
 
         // Denied before persist: the collection is unchanged.
         $this->readJsonApi('/secure-api/albums')->assertJsonCount(2, 'data');
@@ -245,7 +245,7 @@ abstract class SecurityConformanceTestCase extends Orchestra
 
         $this->writeJsonApi('PATCH', '/secure-api/albums/1', [
             'data' => ['type' => 'albums', 'id' => '1', 'attributes' => ['title' => 'Should Not Apply']],
-        ])->assertStatus(403)->assertJsonPath('errors.0.status', '403');
+        ])->assertStatus(403)->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
 
         // Denied on the PRISTINE model, before hydration — the title is unchanged.
         $this->readJsonApi('/secure-api/albums/1')->assertJsonPath('data.attributes.title', 'OK Computer');
@@ -306,10 +306,10 @@ abstract class SecurityConformanceTestCase extends Orchestra
         $this->actingAs($this->noAccessUser());
         $this->readJsonApi('/secure-api/albums/1/artist')
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
         $this->readJsonApi('/secure-api/albums/1/relationships/artist')
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
 
         $this->actingAs($this->reader());
         $this->readJsonApi('/secure-api/albums/1/artist')->assertOk();
@@ -343,7 +343,7 @@ abstract class SecurityConformanceTestCase extends Orchestra
         $this->actingAs($this->noAccessUser());
         $this->readJsonApi('/secure-api/albums/1/relationships/guardedArtist')
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
 
         $this->actingAs($this->reader());
         $this->readJsonApi('/secure-api/albums/1/relationships/guardedArtist')->assertOk();

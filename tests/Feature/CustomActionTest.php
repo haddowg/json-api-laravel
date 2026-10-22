@@ -73,7 +73,7 @@ final class CustomActionTest extends Orchestra
             'data' => ['type' => 'albums', 'attributes' => ['status' => 'released']],
         ])
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
 
         // Denied before the handler ran: the album is unchanged.
         $this->readJsonApi('/api/albums/1')->assertJsonPath('data.attributes.status', 'draft');

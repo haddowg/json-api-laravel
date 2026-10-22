@@ -57,6 +57,8 @@ use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipPagination;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
+use haddowg\JsonApiLaravel\Server\OutputTimezoneConfig;
+use haddowg\JsonApiLaravel\Server\PerServerInstances;
 use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use haddowg\JsonApiLaravel\Server\ServerFactory;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
@@ -150,7 +152,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->registerExceptionRenderer();
 
         $this->app->singleton(RouteRegistrar::class, static function (Container $app): RouteRegistrar {
-            /** @var array<string, array{prefix?: string, middleware?: list<string>|string, domain?: string|null, route_defaults?: array<string, string>, base_uri?: string|null}> $servers */
+            /** @var array<string, array{prefix?: string, middleware?: list<string>|string, domain?: string|null, route_defaults?: array<string, string>, base_uri?: string|null, output_timezone?: string|null}> $servers */
             $servers = config('jsonapi.servers', []);
             /** @var bool $atomicEnabled */
             $atomicEnabled = config('jsonapi.atomic_operations.enabled', false);
@@ -287,6 +289,8 @@ final class JsonApiServiceProvider extends ServiceProvider
             __DIR__ . '/../config/jsonapi.php' => $this->app->configPath('jsonapi.php'),
         ], 'jsonapi-config');
 
+        $this->assertOutputTimezones();
+
         $this->registerRouteMacro();
         JsonApiRoute::registerMacro();
         $this->registerEventSubscribers();
@@ -311,6 +315,17 @@ final class JsonApiServiceProvider extends ServiceProvider
 
         $this->registerExceptionRenderable();
         $this->registerConsole();
+    }
+
+    /**
+     * Fails the boot on an `output_timezone` PHP does not recognise, rather than on the
+     * first JSON:API request that builds the server.
+     */
+    private function assertOutputTimezones(): void
+    {
+        $servers = config('jsonapi.servers', []);
+
+        OutputTimezoneConfig::assertValid(config('jsonapi.output_timezone'), \is_array($servers) ? $servers : []);
     }
 
     /**
@@ -659,12 +674,9 @@ final class JsonApiServiceProvider extends ServiceProvider
             $psr17 = $app->make(Psr17Factory::class);
             $handler = $app->make(CrudOperationHandler::class);
 
-            $resolver = static function (string $class) use ($app): object {
-                $instance = $app->make($class);
-                \assert(\is_object($instance));
-
-                return $instance;
-            };
+            // One resolver per server, so a resource the container shares (a singleton) is
+            // never one instance across two servers' registries.
+            $instances = new PerServerInstances($app);
 
             /** @var string $baseUri */
             $baseUri = config('jsonapi.base_uri', '');
@@ -693,6 +705,7 @@ final class JsonApiServiceProvider extends ServiceProvider
 
             /** @var array<string, array<string, mixed>> $serversConfig */
             $serversConfig = config('jsonapi.servers', []);
+            $outputTimezone = config('jsonapi.output_timezone');
 
             // The stable seam holders are shared across every server and the handler.
             $relationshipCount = $app->make(RequestScopedRelationshipCount::class);
@@ -747,7 +760,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $psr17,
                     $psr17,
                     $handler,
-                    $resolver,
+                    $instances->resolverFor($server),
                     $resourceClasses,
                     \is_string($serverBaseUri) ? $serverBaseUri : $baseUri,
                     $version,
@@ -774,6 +787,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                     new \haddowg\JsonApiLaravel\Server\TranslatorErrorMessageResolver(
                         $app->make(\Illuminate\Contracts\Translation\Translator::class),
                     ),
+                    OutputTimezoneConfig::forServer($outputTimezone, $serversConfig, $server),
                 );
             }
 

@@ -23,6 +23,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Output timezone
+    |--------------------------------------------------------------------------
+    |
+    | The zone every DateTime attribute is converted into before it is
+    | formatted, such as 'UTC' for an app that stores local times. Date and Time
+    | attributes are left alone, because converting a calendar date can move it
+    | to another day. A field's own `outputTimezone()` beats this value. Null or
+    | an empty string renders each value in the zone it carries. A server's own
+    | `output_timezone` (below) overrides it. An identifier PHP does not
+    | recognise fails the boot.
+    |
+    */
+    'output_timezone' => env('JSONAPI_OUTPUT_TIMEZONE'),
+
+    /*
+    |--------------------------------------------------------------------------
     | JSON:API version
     |--------------------------------------------------------------------------
     |
@@ -180,9 +196,11 @@ return [
     | `jsonapi.{server}.{type}.{action}` for a named server.
     |
     | Optional per server: `base_uri` overrides the global `base_uri` (include the
-    | prefix in it), and `route_defaults` sets route defaults on every route of the
-    | server, such as a default for a `{tenant}` placeholder in the prefix, which
-    | the OpenAPI `servers` entry advertises as the variable's default.
+    | prefix in it), `output_timezone` overrides the global `output_timezone` (an
+    | empty string turns conversion off for that server), and `route_defaults`
+    | sets route defaults on every route of the server, such as a default for a
+    | `{tenant}` placeholder in the prefix, which the OpenAPI `servers` entry
+    | advertises as the variable's default.
     |
     */
     'servers' => [

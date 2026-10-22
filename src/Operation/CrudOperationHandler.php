@@ -39,8 +39,10 @@ use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Request\RelatedQuery;
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\AcceptsDefaultOutputTimezoneInterface;
 use haddowg\JsonApi\Resource\Field\BelongsTo;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
+use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\HasOne;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\MorphTo;
@@ -619,7 +621,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // per-member pivot map read off the parent (Eloquent renders it; the in-memory
             // witness returns none, so the wrap is a no-op there — pivot READ is Eloquent-only).
             if (!$polymorphic) {
-                $pivotMap = $this->pivotMap($type, $parent, $relation);
+                $pivotMap = $this->pivotMap($server, $type, $parent, $relation);
                 if ($pivotMap !== []) {
                     $serializer = new PivotMetaSerializer($serializer, $pivotMap);
                 }
@@ -1130,7 +1132,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
     {
         $serializer = $server->serializerFor($type);
 
-        $pivotMap = $this->pivotMap($type, $parent, $relation);
+        $pivotMap = $this->pivotMap($server, $type, $parent, $relation);
         if ($pivotMap === []) {
             return $serializer;
         }
@@ -1153,15 +1155,45 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * or `[]` when the relation is not a pivot relation / declares no pivot fields / the
      * provider stores none (the in-memory boundary — pivot READ is Eloquent-only).
      *
+     * A pivot value the provider returns as a `\DateTimeInterface` renders through its
+     * `DateTime` field when a zone applies to it: the field's own `outputTimezone()`, else
+     * the server's default (never for a `Date` or `Time`). Every other value renders as the
+     * provider returned it.
+     *
      * @return array<string, array<string, mixed>>
      */
-    private function pivotMap(string $type, object $parent, RelationInterface $relation): array
+    private function pivotMap(Server $server, string $type, object $parent, RelationInterface $relation): array
     {
         if (!$relation instanceof BelongsToMany || $relation->pivotFields() === []) {
             return [];
         }
 
-        return $this->providers->forType($type)->fetchRelationshipPivot($type, $parent, $relation);
+        $pivots = $this->providers->forType($type)->fetchRelationshipPivot($type, $parent, $relation);
+
+        $zoned = [];
+        foreach ($relation->pivotFields() as $field) {
+            if ($server->outputTimezone() !== null && $field instanceof AcceptsDefaultOutputTimezoneInterface) {
+                $field = $field->withDefaultOutputTimezone($server->outputTimezone());
+            }
+            if ($field instanceof DateTime && $field->outputTimezone() !== null) {
+                $zoned[$field->name()] = $field;
+            }
+        }
+
+        if ($zoned === []) {
+            return $pivots;
+        }
+
+        foreach ($pivots as $id => $values) {
+            foreach ($zoned as $name => $field) {
+                $value = $values[$name] ?? null;
+                if ($value instanceof \DateTimeInterface) {
+                    $pivots[$id][$name] = $field->serializeWithoutRequest([$field->column() ?? $name => $value]);
+                }
+            }
+        }
+
+        return $pivots;
     }
 
     /**

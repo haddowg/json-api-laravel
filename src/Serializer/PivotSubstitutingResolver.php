@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Serializer;
 
+use haddowg\JsonApi\Resource\ProvidesOutputTimezoneInterface;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
 use haddowg\JsonApi\Serializer\RelationshipCountInterface;
 use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
@@ -24,8 +25,11 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  * {@see \haddowg\JsonApi\Resource\Field\RelationInterface::buildRelationship()} binds the
  * {@see PivotMetaSerializer} to the linkage, so each identifier carries its `meta.pivot` —
  * riding core's existing identifier-meta render path with no core change.
+ *
+ * It passes the inner resolver's output timezone through, so anything that reads the
+ * server's default zone off this resolver sees the same zone the server has.
  */
-final class PivotSubstitutingResolver implements SerializerResolverInterface
+final class PivotSubstitutingResolver implements SerializerResolverInterface, ProvidesOutputTimezoneInterface
 {
     public function __construct(
         private readonly SerializerResolverInterface $inner,
@@ -66,5 +70,10 @@ final class PivotSubstitutingResolver implements SerializerResolverInterface
     public function resourceLinkContributor(): ?ResourceLinkContributorInterface
     {
         return $this->inner->resourceLinkContributor();
+    }
+
+    public function outputTimezone(): ?string
+    {
+        return $this->inner instanceof ProvidesOutputTimezoneInterface ? $this->inner->outputTimezone() : null;
     }
 }

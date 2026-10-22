@@ -67,7 +67,7 @@ final class RouteRegistrar
     private array $idRequirementCache = [];
 
     /**
-     * @param array<string, array{prefix?: string, middleware?: list<string>|string, domain?: string|null, route_defaults?: array<string, string>, base_uri?: string|null}> $servers the per-server route config
+     * @param array<string, array{prefix?: string, middleware?: list<string>|string, domain?: string|null, route_defaults?: array<string, string>, base_uri?: string|null, output_timezone?: string|null}> $servers the per-server route config
      * @param (\Closure(class-string): ?string)|null                                                         $idPatternResolver resolves a resource class to its {@see Id} field's declared route pattern (null when unconstrained); null disables the lookup (the single-segment default)
      */
     public function __construct(
@@ -493,7 +493,7 @@ final class RouteRegistrar
      * The route-group attributes for a server, dropping empty prefix/middleware/domain so a
      * bare server config produces an unqualified group.
      *
-     * @param array{prefix?: string, middleware?: list<string>|string, domain?: string|null, route_defaults?: array<string, string>, base_uri?: string|null} $config
+     * @param array{prefix?: string, middleware?: list<string>|string, domain?: string|null, route_defaults?: array<string, string>, base_uri?: string|null, output_timezone?: string|null} $config
      *
      * @return array<string, mixed>
      */

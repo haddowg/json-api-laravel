@@ -31,7 +31,8 @@ use Psr\Http\Message\StreamFactoryInterface;
  * constructor dependencies; its base URI + JSON:API version; the PSR-17 factories; the
  * server-wide default paginator (the built-in {@see PagePaginator} capped at the
  * configured `max_per_page`, or none when the cap is 0); the include-depth cap and the
- * strict-query-parameter toggle; and the read operation handler.
+ * strict-query-parameter toggle; the default output timezone; and the read operation
+ * handler.
  *
  * It deliberately does NOT install core's PSR-15 middleware chain — the Laravel
  * integration drives the request lifecycle from the invokable controller, which calls
@@ -135,6 +136,9 @@ final class ServerFactory
         // title/detail per its stable code through the Laravel translator. Null renders
         // core's inline English copy, byte-identical to today.
         private readonly ?ErrorMessageResolverInterface $errorMessageResolver = null,
+        // The zone every DateTime attribute renders in unless the field sets its own
+        // (`output_timezone`, already validated by OutputTimezoneConfig). Null converts nothing.
+        private readonly ?string $outputTimezone = null,
     ) {}
 
     /**
@@ -153,6 +157,7 @@ final class ServerFactory
             ->withDefaultPaginator($this->maxPerPage > 0 ? PagePaginator::make()->withMaxPerPage($this->maxPerPage) : null)
             ->withMaxIncludeDepth($this->maxIncludeDepth > 0 ? $this->maxIncludeDepth : null)
             ->withStrictQueryParameters($this->strictQueryParameters)
+            ->withOutputTimezone($this->outputTimezone)
             ->withRelationshipCount($this->relationshipCount)
             ->withRelationshipLoadState($this->relationshipLoadState)
             ->withRelationshipPagination($this->relationshipPagination)

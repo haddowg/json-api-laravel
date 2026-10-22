@@ -18,6 +18,44 @@ canonical base regardless of the request, for example behind a proxy; it must th
 the server's prefix itself (see [prefixes and the base](#prefixes-and-the-base)). Trailing
 slashes are tolerated. A server's own `base_uri` overrides this one.
 
+## `output_timezone`
+
+```php
+'output_timezone' => env('JSONAPI_OUTPUT_TIMEZONE'),   // null
+```
+
+The zone every `DateTime` attribute is converted into before it is formatted. Set it when
+your models carry local times but the API should answer in one zone:
+
+```php
+'output_timezone' => 'UTC',
+```
+
+A `releasedAt` held as `2024-06-01 20:00` in Paris then renders `2024-06-01T18:00:00+00:00`
+instead of `2024-06-01T20:00:00+02:00`. It applies to primary data, `included`, the related
+endpoints, attributes flattened with `on()`, `DateTime` children of a composite attribute,
+and `DateTime` pivot fields in `meta.pivot` (see below).
+
+`Date` and `Time` attributes are left alone. A calendar date held as midnight in Paris
+falls on the previous evening in UTC, so converting it would render the wrong day, and a
+time of day has no date to convert against. A field that calls `outputTimezone()` itself
+keeps its own zone, and that is also the way to convert a `Date` or `Time` that really
+should move. The rules are core's; see
+[output timezone](https://github.com/haddowg/json-api/blob/main/docs/server.md#output-timezone)
+and [timezones on the way in and out](https://github.com/haddowg/json-api/blob/main/docs/field-types.md#timezones-on-the-way-in-and-out).
+
+`null` (the default) or `''` renders each value in the zone it carries, as before. The value
+must be an identifier PHP's `\DateTimeZone` accepts, such as `UTC` or `Europe/London`;
+anything else fails the app's boot with an `\InvalidArgumentException` that names the key.
+A server's own `output_timezone` overrides this one, see [`servers`](#servers).
+
+A `belongsToMany` pivot value reaches `meta.pivot` as the pivot model returns it. Only a
+value the pivot model casts to a date can be converted; an uncast column is the stored
+string, which has no zone, and renders unchanged. When a zone applies, a cast value renders
+through its `DateTime` pivot field's format.
+
+A hand-written serializer formats its own values and is not affected.
+
 ## `version`
 
 ```php
@@ -141,11 +179,12 @@ its name to route names and to the OpenAPI path set. The music-catalog example a
 A resource joins a server with `#[AsJsonApiResource(server: 'admin')]` or
 `server: ['default', 'admin']`. See [multi-server-and-testing](multi-server-and-testing.md).
 
-Two optional keys per server:
+Three optional keys per server:
 
 | Key | What it does |
 | --- | --- |
 | `base_uri` | This server's base, overriding the global `base_uri`. Omit it to inherit. Used verbatim, so include the prefix. |
+| `output_timezone` | The zone this server's `DateTime` attributes render in, overriding the global [`output_timezone`](#output_timezone). Omit it or set `null` to inherit; `''` turns conversion off for this server. |
 | `route_defaults` | Route defaults set on every route of the server, such as `['tenant' => 'acme']` for a `{tenant}/api` prefix. The OpenAPI `servers` entry uses it as the variable's default. |
 
 ### Prefixes and the base

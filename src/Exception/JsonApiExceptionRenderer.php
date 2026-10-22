@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Exception;
 
+use haddowg\JsonApi\Exception\AccessDenied;
+use haddowg\JsonApi\Exception\AuthenticationRequired;
 use haddowg\JsonApi\Exception\JsonApiExceptionInterface;
 use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Schema\Error\Error;
@@ -30,10 +32,14 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
  *     `getStatusCode()` — ALWAYS first, never overridden (the seam's invariant);
  *  2. the tagged {@see ExceptionMapperInterface} mappers, first non-null wins (the
  *     application seam);
- *  3. a Laravel/Symfony {@see HttpExceptionInterface} (a `NotFoundHttpException`, …)
- *     maps to a status-keyed error;
- *  4. Laravel's {@see AuthorizationException} → `403`, {@see AuthenticationException} →
- *     `401`;
+ *  3. a `401` or `403`, whether Laravel's {@see AuthenticationException} /
+ *     {@see AuthorizationException} or an {@see HttpExceptionInterface} with that status,
+ *     renders through core's {@see AuthenticationRequired} / {@see AccessDenied}, so it
+ *     carries the stable `AUTHENTICATION_REQUIRED` / `ACCESS_DENIED` code. Laravel's
+ *     handler turns an `AuthorizationException` into a `403` HTTP exception before this
+ *     renderer sees it, so the status check is the path a policy denial takes;
+ *  4. any other {@see HttpExceptionInterface} (a `NotFoundHttpException`, …) maps to a
+ *     status-keyed error;
  *  5. anything else → a `500` via core's shared {@see InternalServerError::for()},
  *     with `{exception, file, line, trace}` in the error `meta` gated on debug.
  *
@@ -99,16 +105,26 @@ final class JsonApiExceptionRenderer
             }
         }
 
-        if ($throwable instanceof HttpExceptionInterface) {
-            return ErrorResponse::fromErrors($this->statusError($throwable->getStatusCode(), $throwable));
+        $status = match (true) {
+            $throwable instanceof HttpExceptionInterface => $throwable->getStatusCode(),
+            $throwable instanceof AuthorizationException => 403,
+            $throwable instanceof AuthenticationException => 401,
+            default => null,
+        };
+
+        // The detail stays debug-only, as for every other status error.
+        $detail = $this->debug ? $throwable->getMessage() : '';
+
+        if ($status === 401) {
+            return ErrorResponse::fromException(new AuthenticationRequired($detail, $throwable));
         }
 
-        if ($throwable instanceof AuthorizationException) {
-            return ErrorResponse::fromErrors($this->statusError(403, $throwable));
+        if ($status === 403) {
+            return ErrorResponse::fromException(new AccessDenied($detail, $throwable));
         }
 
-        if ($throwable instanceof AuthenticationException) {
-            return ErrorResponse::fromErrors($this->statusError(401, $throwable));
+        if ($status !== null) {
+            return ErrorResponse::fromErrors($this->statusError($status, $throwable));
         }
 
         return ErrorResponse::fromErrors(InternalServerError::for($throwable, $this->debug));
