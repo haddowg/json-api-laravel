@@ -11,9 +11,12 @@ are core's — this page documents the Laravel-side shape.
 'base_uri' => env('JSONAPI_BASE_URI', ''),
 ```
 
-The absolute base prepended to generated links. An **empty string** (the default) derives
-links from the incoming request's scheme + host — the right choice for a single-origin API.
-Set it to pin a canonical host when the API sits behind a proxy.
+The base prepended to every generated link. **Empty (the default): links are absolute,
+built from the request's scheme + host plus the `prefix` of the server whose route matched**,
+so each tenant or host gets correct links with no hardcoded host. Set a value to pin a fixed
+canonical base regardless of the request, for example behind a proxy; it must then include
+the server's prefix itself (see [prefixes and the base](#prefixes-and-the-base)). Trailing
+slashes are tolerated. A server's own `base_uri` overrides this one.
 
 ## `version`
 
@@ -137,6 +140,46 @@ its name to route names and to the OpenAPI path set. The music-catalog example a
 
 A resource joins a server with `#[AsJsonApiResource(server: 'admin')]` or
 `server: ['default', 'admin']`. See [multi-server-and-testing](multi-server-and-testing.md).
+
+An optional `base_uri` per server overrides the global `base_uri`. Omit it to inherit. It is
+used verbatim, so include the prefix.
+
+### Prefixes and the base
+
+With an empty `base_uri`, links follow the prefix. On every request the package bases the
+links on the request origin plus the matched route's prefix, so a request to
+`https://tenant.example/api/albums/1` renders `https://tenant.example/api/albums/1` as both
+the resource and the document `self`, and pagination links read
+`https://tenant.example/api/albums?page[number]=2…` with the prefix once. Relationship,
+related, included and error links, and the `Location` of a created resource, use the same
+base. Each server follows its own prefix, so `default` under `api` and `admin` under
+`admin` each link under their own.
+
+A prefix with route parameters (`'prefix' => '{tenant}/api'`) works too: the parameters
+come from the matched route, so `/acme/api/albums/1` links under `/acme/api`. An app served
+below the web root (`https://example.test/app/index.php/api/…`) adds its base path the same
+way. The prefix comes from the matched route, so a server placed by hand with
+`Route::jsonApi()` inside your own `Route::prefix('v2')` group follows `v2` as well (see
+[routing](routing.md#manual-placement)).
+
+A `domain` on a server doesn't change the base. When a route with a domain matched, the
+request host is that domain, so the origin already carries it.
+
+A configured `base_uri` is used as it is, so it has to include the prefix:
+
+```php
+'base_uri' => 'https://api.example/api',
+'servers' => [
+    'default' => ['prefix' => 'api', 'middleware' => [], 'domain' => null],
+    'admin'   => ['prefix' => 'admin', 'middleware' => [], 'domain' => null, 'base_uri' => 'https://api.example/admin'],
+],
+```
+
+Resource links append the server-relative path to that base. Document `self` and
+pagination links reuse the request path, which already starts with `/api`, so core drops
+the base's own path from the front of it and the prefix appears once. A configured base
+without the prefix (`https://api.example` for routes under `api`) renders resource links
+that miss the prefix.
 
 ## `atomic_operations`
 

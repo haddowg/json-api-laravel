@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Server;
 
 use haddowg\JsonApi\Server\Server;
+use haddowg\JsonApiLaravel\Operation\TargetResolver;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 
 /**
  * Resolves a configured {@see Server} by its `_jsonapi_server` route-default name.
@@ -38,5 +41,64 @@ final class ServerRegistry
         }
 
         return $this->factories[$name]->create();
+    }
+
+    /**
+     * The Server for the matched route's `_jsonapi_server` default, with its links based
+     * where the request found it.
+     *
+     * A configured `base_uri` is returned as it is. An empty one would make core base
+     * every link on the request origin alone, dropping the prefix the server's routes are
+     * registered under; so when the route has a prefix (or the app is served below the
+     * web root) the Server is given the effective base `origin + base path + prefix` for
+     * this request instead (ADR 0028).
+     *
+     * @throws \LogicException when the route names an unknown server
+     */
+    public function forRequest(Request $request): Server
+    {
+        $route = $request->route();
+        $route = $route instanceof Route ? $route : null;
+
+        $name = $route?->defaults[TargetResolver::SERVER_ATTRIBUTE] ?? null;
+        $server = $this->get(\is_string($name) && $name !== '' ? $name : null);
+
+        if ($server->baseUri() !== '') {
+            return $server;
+        }
+
+        $path = \rtrim($request->getBaseUrl(), '/') . ($route !== null ? self::prefixOf($route) : '');
+        if ($path === '') {
+            return $server;
+        }
+
+        return $server->withBaseUri($request->getSchemeAndHttpHost() . $path);
+    }
+
+    /**
+     * The matched route's group prefix as a path (`/api`), with any route parameter in
+     * it (`{tenant}/api`) filled in from the value the request matched, before any
+     * route-model binding.
+     */
+    private static function prefixOf(Route $route): string
+    {
+        $prefix = \trim((string) $route->getPrefix(), '/');
+        if ($prefix === '') {
+            return '';
+        }
+
+        $prefix = (string) \preg_replace_callback(
+            '/\{(\w+)\??\}/',
+            static function (array $match) use ($route): string {
+                $value = $route->originalParameter($match[1]);
+
+                return \is_string($value) ? \rawurlencode($value) : '';
+            },
+            $prefix,
+        );
+
+        $prefix = \trim((string) \preg_replace('#/{2,}#', '/', $prefix), '/');
+
+        return $prefix === '' ? '' : '/' . $prefix;
     }
 }

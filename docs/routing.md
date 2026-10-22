@@ -55,6 +55,11 @@ Attach middleware or a host constraint per server in the config:
 ],
 ```
 
+With an empty `base_uri`, a server's links carry the prefix its routes matched under, and
+the request host stands in for the domain (see
+[configuration](configuration.md#prefixes-and-the-base)). A configured `base_uri` must
+include the prefix.
+
 ## Manual placement
 
 Opt out of auto-registration and place the routes yourself with the `Route::jsonApi()` macro —
@@ -73,7 +78,9 @@ Route::middleware('auth:sanctum')->prefix('v2')->group(function () {
 ```
 
 `Route::jsonApi(?string $server = null)` emits the same operation-gated route set the
-auto-registration would, inside the surrounding group.
+auto-registration would, inside the surrounding group. Links built from an empty `base_uri`
+follow that group's prefix (`/v2` above), because the package reads the prefix off the
+matched route rather than from the server config.
 
 ## `route:cache` safety {#route-cache-safety}
 

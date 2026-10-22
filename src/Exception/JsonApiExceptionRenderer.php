@@ -8,7 +8,6 @@ use haddowg\JsonApi\Exception\JsonApiExceptionInterface;
 use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Schema\Error\Error;
 use haddowg\JsonApi\Schema\Error\InternalServerError;
-use haddowg\JsonApiLaravel\Operation\TargetResolver;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -74,9 +73,7 @@ final class JsonApiExceptionRenderer
      */
     public function render(\Throwable $throwable, Request $request): Response
     {
-        $route = $request->route();
-        $serverName = $route?->defaults[TargetResolver::SERVER_ATTRIBUTE] ?? null;
-        $server = $this->servers->get(\is_string($serverName) ? $serverName : null);
+        $server = $this->servers->forRequest($request);
 
         $psrRequest = $this->psrHttpFactory->createRequest($request);
 

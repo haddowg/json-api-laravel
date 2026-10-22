@@ -11,9 +11,12 @@ return [
     |--------------------------------------------------------------------------
     |
     | The absolute base URI prepended to generated links. An empty string means
-    | links derive from the incoming request's scheme + host (the common case for
-    | a single-origin API); set it explicitly when the API is served behind a
-    | proxy or on a canonical host distinct from the request origin.
+    | links derive from the request: its scheme + host, the app's base path when
+    | it is served below the web root, and the route prefix of the server that
+    | matched (`https://example.test/api`). A configured value is used verbatim,
+    | so it must include the server's prefix itself. Set it when the API is
+    | served behind a proxy or on a canonical host distinct from the request
+    | origin. A server's own `base_uri` (below) overrides it.
     |
     */
     'base_uri' => env('JSONAPI_BASE_URI', ''),
@@ -175,6 +178,9 @@ return [
     | optional host constraint. A single-API application needs only the `default`
     | server. Route names are `jsonapi.{type}.{action}` for the default server and
     | `jsonapi.{server}.{type}.{action}` for a named server.
+    |
+    | Optional per server: `base_uri` overrides the global `base_uri` (include the
+    | prefix in it).
     |
     */
     'servers' => [

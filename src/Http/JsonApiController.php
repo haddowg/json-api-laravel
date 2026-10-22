@@ -34,7 +34,8 @@ use Symfony\Component\HttpFoundation\Response;
  * bundle's request + view kernel listeners into one action (PLAN decision 5):
  *  1. resolve the {@see \haddowg\JsonApi\Operation\Target} from the matched route via the
  *     {@see TargetResolver} (a batch/action route carries the marker defaults instead);
- *  2. pick the server by the `_jsonapi_server` route default;
+ *  2. pick the server by the `_jsonapi_server` route default, based on the route prefix
+ *     when its `base_uri` is empty ({@see ServerRegistry::forRequest()});
  *  3. convert the Laravel request to a PSR-7 request and wrap it in core's
  *     {@see JsonApiRequest};
  *  4. run content negotiation + query-parameter validation, plus the write body's structure
@@ -103,7 +104,7 @@ final class JsonApiController
 
         $serverName = $defaults[TargetResolver::SERVER_ATTRIBUTE] ?? null;
         $serverName = \is_string($serverName) && $serverName !== '' ? $serverName : ServerRegistry::DEFAULT_SERVER;
-        $server = $this->servers->get($serverName);
+        $server = $this->servers->forRequest($request);
 
         // Stamp the resolved server name onto the request so the ActionInvoker (and any
         // request-aware collaborator) can key by it — the Laravel equivalent of the bundle's
@@ -160,7 +161,7 @@ final class JsonApiController
     {
         $serverName = $defaults[TargetResolver::SERVER_ATTRIBUTE] ?? null;
         $serverName = \is_string($serverName) && $serverName !== '' ? $serverName : ServerRegistry::DEFAULT_SERVER;
-        $server = $this->servers->get($serverName);
+        $server = $this->servers->forRequest($request);
 
         $jsonApiRequest = $this->jsonApiRequest($request)->withAttribute(TargetResolver::SERVER_ATTRIBUTE, $serverName);
         \assert($jsonApiRequest instanceof JsonApiRequestInterface);
