@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Workbench\App\MusicCatalog\JsonApi;
 
+use haddowg\JsonApi\Pagination\CursorPaginator;
+use haddowg\JsonApi\Pagination\MultiPaginator;
+use haddowg\JsonApi\Pagination\OffsetPaginator;
+use haddowg\JsonApi\Pagination\PagePaginator;
+use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Constraint\MinLength;
 use haddowg\JsonApi\Resource\Field\Accessor;
@@ -21,6 +26,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use Workbench\App\MusicCatalog\Domain\Track as TrackDomain;
 use Workbench\App\MusicCatalog\Models\Track as TrackModel;
 use Workbench\App\MusicCatalog\Query\FullTextSearch;
+use Workbench\App\MusicCatalog\Support\CatalogConfig;
 
 /**
  * The `tracks` resource type (music-catalog domain). An `ArrayList` with per-item rules
@@ -31,6 +37,10 @@ use Workbench\App\MusicCatalog\Query\FullTextSearch;
  * It is registered on both servers because {@see AlbumResource} is, and an album's
  * `tracks` relation exposes `GET /albums/{id}/tracks` — that endpoint returns track
  * resource objects, so `tracks` has to exist on every server that serves albums.
+ *
+ * It is also the pagination-menu witness: {@see pagination()} offers page, cursor and
+ * offset strategies on the primary `tracks` collection, and the client picks one per
+ * request.
  *
  * (The Symfony example additionally binds a hand-written `TrackSerializer` with a DI
  * constructor arg via `serializer:`; the Laravel `AsJsonApiResource` attribute does not
@@ -72,6 +82,25 @@ final class TrackResource extends AbstractResource
                 ->countable()
                 ->withData(),
         ];
+    }
+
+    /**
+     * A {@see MultiPaginator} menu for `GET /tracks`. `page[kind]` names a strategy; a
+     * key only one strategy reads (`after`/`before` for cursor, `offset`/`limit` for
+     * offset) selects it without a kind; anything else falls back to `page`. The page
+     * arm repeats the server default (count-free, capped at the configured max), so a
+     * request that doesn't pick a strategy gets the same response as before the menu.
+     *
+     * The album and playlist relations that reach `tracks` declare their own
+     * `paginate()`, so the menu stays on this collection alone.
+     */
+    public function pagination(?PaginatorInterface $serverDefault): PaginatorInterface
+    {
+        return MultiPaginator::make(
+            PagePaginator::make()->withMaxPerPage(CatalogConfig::MAX_PER_PAGE),
+            CursorPaginator::make()->withMaxPerPage(CatalogConfig::MAX_PER_PAGE),
+            OffsetPaginator::make()->withMaxPerPage(CatalogConfig::MAX_PER_PAGE),
+        )->default('page');
     }
 
     public function filters(): array

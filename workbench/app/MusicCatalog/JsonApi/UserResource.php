@@ -30,12 +30,12 @@ use haddowg\JsonApiLaravel\Validation\Constraint\UniqueEntity;
  * `passwordConfirm` (an AtLeastOneOf, a conditional When, and an equality CompareField).
  * `email` carries a {@see UniqueEntity} rule (Laravel: `Rule::unique` pre-hydration).
  *
- * It is finally the catalogue's sole cursor (keyset) pagination witness: {@see pagination()}
+ * It is finally the catalogue's only cursor-only (keyset) collection: {@see pagination()}
  * pins a {@see CursorPaginator} for the primary `users` collection, so `GET /admin/users`
  * pages by opaque `page[after]`/`page[before]` cursor tokens rather than `page[number]`.
- * Because `users` is admin-only, the cursor `page[…]` vocabulary appears ONLY in the admin
- * OpenAPI document; every other collection and relation (including `users.playlists`, which
- * resolves its paginator off the related `playlists` resource) stays page-based.
+ * `tracks` offers cursor as one choice in its pagination menu; every other collection and
+ * relation (including `users.playlists`, which resolves its paginator off the related
+ * `playlists` resource) stays page-based.
  */
 #[AsJsonApiResource(server: 'admin')]
 final class UserResource extends AbstractResource
@@ -73,7 +73,7 @@ final class UserResource extends AbstractResource
 
     /**
      * Pin the cursor (keyset) strategy for this resource's primary collection — the
-     * catalogue's sole cursor witness. Returning a {@see CursorPaginator} verbatim replaces
+     * catalogue's only cursor-only collection. Returning a {@see CursorPaginator} verbatim replaces
      * the server default (page-based) for `GET /admin/users` alone: the endpoint pages by
      * opaque `page[after]`/`page[before]` tokens (count-free, no total), and the OpenAPI
      * projector advertises exactly that cursor `page[…]` vocabulary for it. The keyset needs

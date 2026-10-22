@@ -15,7 +15,7 @@ Twelve types, each chosen to witness a distinct capability:
 | --- | --- |
 | `artists` | store-provided id; computed `trackCount`; public reads (`abilities: false`); full-text `filter[q]` |
 | `albums` | multi-server (default + admin); backed-enum `status`; JSON `Map`; directional `CompareField`; relation-scoped filters; default include; the three actions |
-| `tracks` | `ArrayList` with per-item rules; `Time`; computed `displayTitle`; a plain `belongsToMany` |
+| `tracks` | `ArrayList` with per-item rules; `Time`; computed `displayTitle`; a plain `belongsToMany`; a [pagination menu](pagination.md) on its collection (`MultiPaginator`: page by default, cursor or offset by `page[kind]` or a strategy-unique key) |
 | `playlists` | UUID id; lifecycle hooks; API-distinct policy; per-relation security; one-model-two-types; pivot (`orderedTracks`) |
 | `users` | admin-only server; `Email`/`Ip`/`ArrayHash`; write-only `password`; validation composition; `Rule::unique`; include whitelist |
 | `public-profiles` | one model, two types (a curated read-only `User` view) |
