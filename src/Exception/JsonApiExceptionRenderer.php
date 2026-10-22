@@ -10,6 +10,7 @@ use haddowg\JsonApi\Exception\JsonApiExceptionInterface;
 use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Schema\Error\Error;
 use haddowg\JsonApi\Schema\Error\InternalServerError;
+use haddowg\JsonApiLaravel\Http\WireQuery;
 use haddowg\JsonApiLaravel\Routing\JsonApiRoute;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -83,7 +84,7 @@ final class JsonApiExceptionRenderer
     {
         $server = $this->servers->forRequest($request);
 
-        $psrRequest = $this->psrHttpFactory->createRequest($request);
+        $psrRequest = $this->psrHttpFactory->createRequest($request)->withQueryParams(WireQuery::params($request));
 
         $psrResponse = $this->toErrorResponse($throwable)->toPsrResponse($server, $psrRequest);
 

@@ -6,6 +6,11 @@ then core's response value object is rendered back to an Illuminate response. Ar
 operation, the package dispatches **real Laravel events** (PLAN decision 10) — so
 `Event::listen`, `Event::fake`, queued listeners, and event auto-discovery all work.
 
+Core reads the query parameters as the client sent them, re-parsed from the raw query string.
+Laravel's `TrimStrings` and `ConvertEmptyStringsToNull` middleware still run, but their rewrite
+of the query bag doesn't reach a JSON:API route, so `fields[artists]=` stays an empty fieldset and
+`filter[name]=%20Radio` keeps its leading space ([ADR 0030](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0030-json-api-query-parameters-bypass-input-middleware.md)).
+
 ## The events
 
 Eighteen event classes are dispatched via Laravel's dispatcher, before and after each
