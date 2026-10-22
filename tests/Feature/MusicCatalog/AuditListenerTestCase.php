@@ -109,7 +109,7 @@ abstract class AuditListenerTestCase extends Orchestra
             'data' => ['type' => 'playlists', 'attributes' => ['title' => 'Blocked', 'public' => true]],
         ], ['X-Read-Only' => 'on'])
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
         self::assertSame([], $this->audit()->entries());
 
         // A read is unaffected by the gate (it only blocks mutating methods).

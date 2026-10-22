@@ -88,7 +88,7 @@ final class EloquentGatePolicyAuthorizationTest extends Orchestra
         $this->readJsonApi('/api/artists')->assertOk()->assertJsonCount(2, 'data');
 
         $this->actingAs($this->reader());
-        $this->readJsonApi('/api/artists')->assertStatus(403)->assertJsonPath('errors.0.status', '403');
+        $this->readJsonApi('/api/artists')->assertStatus(403)->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
     }
 
     #[Test]
@@ -98,7 +98,7 @@ final class EloquentGatePolicyAuthorizationTest extends Orchestra
         // No auth middleware on this server, so the guest reaches the gate and is denied
         // (the defined ability's non-nullable user parameter forbids guests) — a 403, not
         // a 401 (the Laravel guest-denial semantics).
-        $this->readJsonApi('/api/artists')->assertStatus(403)->assertJsonPath('errors.0.status', '403');
+        $this->readJsonApi('/api/artists')->assertStatus(403)->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
     }
 
     // --- model-registered policy path: view / create / update / delete ---
@@ -111,7 +111,7 @@ final class EloquentGatePolicyAuthorizationTest extends Orchestra
         $this->readJsonApi('/api/artists/1')->assertOk()->assertJsonPath('data.id', '1');
 
         $this->actingAs($this->reader());
-        $this->readJsonApi('/api/artists/1')->assertStatus(403)->assertJsonPath('errors.0.status', '403');
+        $this->readJsonApi('/api/artists/1')->assertStatus(403)->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
     }
 
     #[Test]
@@ -120,7 +120,7 @@ final class EloquentGatePolicyAuthorizationTest extends Orchestra
     {
         // The model loads (a miss would be a 404 first), then the policy denies the guest
         // — a 403 on an existing resource.
-        $this->readJsonApi('/api/artists/1')->assertStatus(403)->assertJsonPath('errors.0.status', '403');
+        $this->readJsonApi('/api/artists/1')->assertStatus(403)->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
     }
 
     #[Test]
@@ -135,7 +135,7 @@ final class EloquentGatePolicyAuthorizationTest extends Orchestra
         $this->actingAs($this->reader());
         $this->writeJsonApi('POST', '/api/artists', $this->artistDocument())
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
     }
 
     #[Test]
@@ -150,7 +150,7 @@ final class EloquentGatePolicyAuthorizationTest extends Orchestra
         $this->actingAs($this->reader());
         $this->writeJsonApi('PATCH', '/api/artists/1', [
             'data' => ['type' => 'artists', 'id' => '1', 'attributes' => ['name' => 'Nope']],
-        ])->assertStatus(403)->assertJsonPath('errors.0.status', '403');
+        ])->assertStatus(403)->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
     }
 
     #[Test]
@@ -159,7 +159,7 @@ final class EloquentGatePolicyAuthorizationTest extends Orchestra
     {
         // delete() requires an admin; a write-capable non-admin is denied.
         $this->actingAs($this->writer());
-        $this->deleteJsonApi('/api/artists/1')->assertStatus(403)->assertJsonPath('errors.0.status', '403');
+        $this->deleteJsonApi('/api/artists/1')->assertStatus(403)->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
 
         $this->actingAs($this->admin());
         $this->deleteJsonApi('/api/artists/2')->assertStatus(204);

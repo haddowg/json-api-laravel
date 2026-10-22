@@ -54,7 +54,7 @@ final class ReadOnlyPolicyAuthorizationTest extends Orchestra
 
         $this->getJsonApi('/api/charts')
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
     }
 
     #[Test]
@@ -67,7 +67,7 @@ final class ReadOnlyPolicyAuthorizationTest extends Orchestra
 
         $this->getJsonApi('/api/charts/1')
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
     }
 
     #[Test]

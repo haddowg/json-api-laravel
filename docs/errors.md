@@ -17,9 +17,15 @@ An exception thrown on a JSON:API route is mapped in order, first match wins:
    `ResourceNotFound` → `404`, a validation bag → `422`, a `ClientGeneratedIdRequired` →
    `403`, …) — never intercepted or overridden.
 2. **Your tagged exception mappers** — first non-null result wins (below).
-3. **A Laravel/Symfony `HttpExceptionInterface`** (a `NotFoundHttpException`,
-   `ConflictHttpException`, …) maps to a status-keyed error.
-4. **`AuthorizationException` → `403`**, **`AuthenticationException` → `401`**.
+3. **A `401` or `403`** renders through core's `AuthenticationRequired` or `AccessDenied`,
+   so it carries the stable code `AUTHENTICATION_REQUIRED` or `ACCESS_DENIED`. That covers
+   Laravel's `AuthenticationException` and `AuthorizationException` (a denied policy or
+   Gate) as well as any `HttpExceptionInterface` with that status, such as `abort(403)`.
+   Laravel turns an `AuthorizationException` into a `403` HTTP exception before the
+   renderable sees it, so both paths end up here. The title is `Unauthorized` or
+   `Forbidden`, and the exception's message becomes the `detail` only under `app.debug`.
+4. **Any other Laravel/Symfony `HttpExceptionInterface`** (a `NotFoundHttpException`,
+   `ConflictHttpException`, …) maps to a status-keyed error with no `code`.
 5. **Anything else → `500`** via core's `InternalServerError`, with
    `{exception, file, line, trace}` in the error `meta` **gated on `app.debug`**.
 
@@ -28,6 +34,16 @@ An exception thrown on a JSON:API route is mapped in order, first match wins:
   "status": "404",
   "title": "Not Found",
   "detail": "No albums resource matches the id \"999\"."
+} ] }
+```
+
+A denied policy check renders as:
+
+```json
+{ "errors": [ {
+  "status": "403",
+  "code": "ACCESS_DENIED",
+  "title": "Forbidden"
 } ] }
 ```
 

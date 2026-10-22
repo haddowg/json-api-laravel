@@ -148,7 +148,7 @@ final class EloquentSoftDeleteTest extends Orchestra
         $this->actingAs($this->reader());
         $this->writeJsonApi('POST', '/api/documents/1/-actions/restore', [])
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
 
         // A write-capable user passes restore() — restore is gated separately from delete.
         $this->actingAs($this->writer());
@@ -167,7 +167,7 @@ final class EloquentSoftDeleteTest extends Orchestra
         $this->actingAs($this->writer());
         $this->writeJsonApi('POST', '/api/documents/1/-actions/force-delete', [])
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
 
         // Only an admin may permanently destroy.
         $this->actingAs($this->admin());

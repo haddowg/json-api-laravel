@@ -97,7 +97,7 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
         // A valid document, so the 403 is the ability gate (validate-then-authorize), not a 422.
         $this->writeJsonApi('POST', '/api/albums/1/-actions/reissue', $this->reissueDocument('withdrawn'))
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
 
         // Denied before the handler ran: album 1 keeps its seeded status.
         $this->readJsonApi('/api/albums/1')->assertJsonPath('data.attributes.status', 'released');
@@ -147,7 +147,7 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
 
         $this->writeJsonApi('PATCH', '/api/playlists/' . Fixtures::PLAYLIST_ONE, $this->retitleDocument('Hijacked'))
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
 
         // Unchanged: the seeded title/slug survive the denied update.
         $this->readJsonApi('/api/playlists/' . Fixtures::PLAYLIST_ONE)
@@ -171,7 +171,7 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
 
         $this->deleteJsonApi('/api/playlists/' . Fixtures::PLAYLIST_ONE)
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
     }
 
     public function test_deleting_a_non_empty_playlist_as_admin_is_a_409_from_the_before_delete_guard(): void
@@ -201,7 +201,7 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
         $this->actingAs($this->stranger());
         $this->readJsonApi('/api/playlists/' . Fixtures::PLAYLIST_ONE . '/relationships/owner')
             ->assertStatus(403)
-            ->assertJsonPath('errors.0.status', '403');
+            ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
 
         // A guest is likewise denied (inspectOwner declines a null user).
         $this->readJsonApi('/api/playlists/' . Fixtures::PLAYLIST_ONE . '/relationships/owner')
