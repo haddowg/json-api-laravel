@@ -681,7 +681,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         }
 
         $resource = $fragment['data'] ?? null;
-        $id = \is_array($resource) ? ($resource['id'] ?? null) : null;
+        $id = $resource instanceof \stdClass ? ($resource->id ?? null) : null;
         if (!\is_string($id)) {
             return;
         }
@@ -705,15 +705,16 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
             return [];
         }
 
-        /** @var array<string, mixed> $decoded */
-        $decoded = \json_decode($body, true, 512, \JSON_THROW_ON_ERROR);
+        // Objects stay objects so an empty map re-encodes as `{}`, not `[]`.
+        $decoded = \json_decode($body, false, 512, \JSON_THROW_ON_ERROR);
+        \assert($decoded instanceof \stdClass);
 
         $fragment = [];
-        if (\array_key_exists('data', $decoded)) {
-            $fragment['data'] = $decoded['data'];
+        if (\property_exists($decoded, 'data')) {
+            $fragment['data'] = $decoded->data;
         }
-        if (\array_key_exists('meta', $decoded)) {
-            $fragment['meta'] = $decoded['meta'];
+        if (\property_exists($decoded, 'meta')) {
+            $fragment['meta'] = $decoded->meta;
         }
 
         return $fragment;

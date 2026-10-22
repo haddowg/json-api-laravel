@@ -288,6 +288,25 @@ abstract class CompositeConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:atomic')]
+    public function anAtomicResultKeepsAnEmptyMapAnObject(): void
+    {
+        $response = $this->rawAtomic('{"atomic:operations":['
+            . '{"op":"add","data":{"type":"composite-settings","attributes":{"name":"Gadget","settings":{}}}},'
+            . '{"op":"update","ref":{"type":"composite-settings","id":"1"},"data":{"type":"composite-settings","id":"1","attributes":{"settings":{}}}},'
+            . '{"op":"update","ref":{"type":"composite-settings","id":"1"},"data":{"type":"composite-settings","id":"1","attributes":{"settings":{"theme":"dark"}}}}'
+            . ']}');
+
+        $response->assertStatus(200);
+        $body = $this->body($response);
+        self::assertSame(2, \substr_count($body, '"settings":{}'), $body);
+        self::assertStringContainsString('"settings":{"theme":"dark"}', $body);
+        self::assertStringNotContainsString('"settings":[]', $body);
+        self::assertStringNotContainsString('"links":[]', $body);
+        self::assertStringNotContainsString('"source":[]', $body);
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
     public function anAtomicValidationErrorPointsAtTheOperationAttribute(): void
     {
         $response = $this->rawAtomic('{"atomic:operations":['
