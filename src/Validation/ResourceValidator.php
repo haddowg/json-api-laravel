@@ -119,9 +119,11 @@ final class ResourceValidator
         }
 
         /** @var array<string, mixed> $incoming */
-        $attributes = !$creating && $existingObject !== null
-            ? \array_merge($this->storedAttributes($resource, $existingObject, $request), $incoming)
-            : $incoming;
+        $stored = !$creating && $existingObject !== null
+            ? $this->storedAttributes($resource, $existingObject, $request)
+            : [];
+        // A stored empty map renders as an object; the illuminate rules expect arrays.
+        $attributes = \array_merge(\array_map(self::associative(...), $stored), $incoming);
 
         $model = $existingObject instanceof Model
             ? $existingObject
@@ -189,7 +191,7 @@ final class ResourceValidator
         foreach ($this->oneOfErrors($resource, $attributes, $creating, $request) as $error) {
             $errors[] = $error;
         }
-        foreach ($this->shapeErrors($resource, $attributes, $incoming, $creating, $request) as $error) {
+        foreach ($this->shapeErrors($resource, \array_merge($stored, $incoming), $incoming, $creating, $request) as $error) {
             $errors[] = $error;
         }
 
@@ -608,6 +610,18 @@ final class ResourceValidator
         }
 
         return $stored;
+    }
+
+    /**
+     * `$value` with every JSON object (`\stdClass`) turned into an associative array.
+     */
+    private static function associative(mixed $value): mixed
+    {
+        if ($value instanceof \stdClass) {
+            $value = \get_object_vars($value);
+        }
+
+        return \is_array($value) ? \array_map(self::associative(...), $value) : $value;
     }
 
     /**

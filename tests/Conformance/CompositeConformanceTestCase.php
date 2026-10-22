@@ -270,6 +270,23 @@ abstract class CompositeConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    #[Group('spec:crud')]
+    public function aStoredEmptyMapSurvivesAPartialUpdate(): void
+    {
+        // The update folds the stored attributes under the incoming partial; the stored
+        // empty map must not fail the rules of a field the client did not send.
+        $created = $this->rawJsonApi('POST', '/api/composite-settings', '{"data":{"type":"composite-settings","attributes":{"name":"Gadget","settings":{}}}}');
+        $created->assertStatus(201);
+        $id = $created->json('data.id');
+        self::assertIsString($id);
+
+        $updated = $this->rawJsonApi('PATCH', '/api/composite-settings/' . $id, '{"data":{"type":"composite-settings","id":"' . $id . '","attributes":{"name":"Renamed"}}}');
+
+        $updated->assertStatus(200);
+        self::assertStringContainsString('"settings":{}', $this->body($updated));
+    }
+
+    #[Test]
     #[Group('spec:atomic')]
     public function anAtomicValidationErrorPointsAtTheOperationAttribute(): void
     {
