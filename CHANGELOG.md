@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/haddowg/json-api-laravel/compare/v1.1.0...v1.2.0) (2026-10-22)
+
+
+### Features
+
+* describe the JSON:API route a request matched ([#55](https://github.com/haddowg/json-api-laravel/issues/55)) ([970ed53](https://github.com/haddowg/json-api-laravel/commit/970ed53478e61f40408a59494ca1479ca436607c))
+
 ## [1.1.0](https://github.com/haddowg/json-api-laravel/compare/v1.0.0...v1.1.0) (2026-10-22)
 
 
