@@ -28,7 +28,7 @@ abstract class CoinFields extends AbstractResource
             Str::make('label')->sortable(),
             BelongsToMany::make('marks', 'marks')
                 ->withData()
-                ->fields(Integer::make('position')->readOnly()->build()),
+                ->fields(Integer::make('position')->build()),
         ];
     }
 

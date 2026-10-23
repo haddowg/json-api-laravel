@@ -81,6 +81,7 @@ use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\RelationshipWindowBatcher;
+use haddowg\JsonApiLaravel\DataProvider\ScopedRelationshipWrites;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Event\AfterCreateEvent;
 use haddowg\JsonApiLaravel\Event\AfterDeleteEvent;
@@ -156,6 +157,8 @@ use Psr\Log\LoggerInterface;
  */
 final class CrudOperationHandler implements OperationHandlerInterface
 {
+    private ?ScopedRelationshipWrites $scopedWrites = null;
+
     public function __construct(
         private readonly DataProviderRegistry $providers,
         private readonly DataPersisterRegistry $persisters,
@@ -1343,7 +1346,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             );
         }
         [$beforeCreate, $deferred] = $this->partitionForCreateOrder($relationships);
-        $this->applyRelationships($persister, $type, $entity, $beforeCreate, $body, true, flush: false);
+        $this->applyRelationships($persister, $type, $entity, $beforeCreate, $body, true, $server, $request, flush: false);
 
         // Core's hydrator applies the id policy (client vs server-generated; a wrong
         // `type` 409s, a forbidden client id 403s) then allow-list-hydrates the
@@ -1373,7 +1376,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // This restores the atomicity the bundle's single flush guarantees, despite the
         // Eloquent PK-before-join reordering (docs/adr/0009); a non-transactional persister
         // runs the closure directly (it owns its own atomicity).
-        $entity = $this->writeTransactionally($persister, function () use ($persister, $type, $entity, $deferred, $body): object {
+        $entity = $this->writeTransactionally($persister, function () use ($persister, $type, $entity, $deferred, $body, $server, $request): object {
             // The persister commits and returns the entity with any store-generated id
             // populated (Eloquent auto-increment / the in-memory store's minted id). The
             // deferred embeds then apply now the parent carries its key (an Eloquent join
@@ -1389,7 +1392,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 return $created;
             }
 
-            $this->applyRelationships($persister, $type, $created, $deferred, $body, true, flush: true);
+            $this->applyRelationships($persister, $type, $created, $deferred, $body, true, $server, $request, flush: true);
 
             return $created;
         });
@@ -1511,11 +1514,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // back to its pre-hydration state — the in-memory analogue of Eloquent's
         // rollback-on-throw, keeping the two providers' failed-write semantics identical.
         $hydrator = $server->hydratorFor($type);
-        $entity = $this->writeTransactionally($persister, function () use ($hydrator, $body, $resource, $type, $persister, $entity, $original, $request, $relationships): object {
+        $entity = $this->writeTransactionally($persister, function () use ($hydrator, $body, $resource, $type, $persister, $entity, $original, $request, $relationships, $server): object {
             // The embedded associations apply on the loaded (keyed) parent BEFORE hydration,
             // each gated by the relation's request-aware `cannot*` flags in Mode::Replace —
             // the same `403` a PATCH …/relationships/{rel} would raise.
-            $this->applyRelationships($persister, $type, $entity, $relationships, $body, false, flush: false);
+            $this->applyRelationships($persister, $type, $entity, $relationships, $body, false, $server, $request, flush: false);
 
             $entity = $hydrator->hydrate($this->withoutRelationships($body), $entity);
             \assert(\is_object($entity));
@@ -1719,12 +1722,29 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         $request = $this->jsonApiRequest($operation->context());
 
+        // Ids the related type's own provider does not serve are rejected, and a replace keeps
+        // the members it hides. The echo then lists the members the relationship endpoint
+        // would, so a scoped to-many that cannot be read that way is refused before the write.
+        $applied = $this->scopeWrittenLinkage($parent, $relation, $linkage, $mode, $server, $request);
+        $scopeEcho = $relation->isToMany() && $this->providers->relatesToScopedType($type, $relation);
+        if ($scopeEcho && \count($relation->relatedTypes()) !== 1) {
+            throw new \LogicException(\sprintf(
+                'The polymorphic relation "%s" of type "%s" relates to a type served by its own data provider, so its '
+                . 'linkage cannot be read through that provider\'s scope.',
+                $relation->name(),
+                $type,
+            ));
+        }
+
         // The before-relationship-mutate lifecycle gate (a throw aborts before the
         // persister applies the change), then the storage-correct apply, then the after
         // hook which may replace the linkage response (post-commit).
         $this->dispatch(new BeforeRelationshipMutateEvent($type, $request, $parent, $relation, $linkage, $mode, $this->serverName($request)));
 
-        $parent = $this->persisters->forType($type)->mutateRelationship($type, $parent, $relation, $linkage, $mode);
+        $parent = $this->persisters->forType($type)->mutateRelationship($type, $parent, $relation, $applied, $mode);
+        if ($scopeEcho) {
+            $this->scopeRelationshipEndpoint($type, $parent, $relation, $operation->queryParameters(), $request);
+        }
 
         // The 200 linkage echo carries `meta.pivot` for a pivot relation (Eloquent-only),
         // exactly as the relationship-read endpoint does.
@@ -1870,15 +1890,44 @@ final class CrudOperationHandler implements OperationHandlerInterface
         array $relationships,
         JsonApiRequestInterface $body,
         bool $creating,
+        Server $server,
+        JsonApiRequestInterface $request,
         bool $flush,
     ): void {
         foreach ($relationships as $relationship) {
+            $relation = $relationship['relation'];
             if ($creating === false) {
-                $this->guardMutability($relationship['relation'], $relationship['relation']->name(), $relationship['linkage'], Mode::Replace, $body, $entity);
+                $this->guardMutability($relation, $relation->name(), $relationship['linkage'], Mode::Replace, $body, $entity);
             }
 
-            $persister->mutateRelationship($type, $entity, $relationship['relation'], $relationship['linkage'], Mode::Replace, flush: $flush);
+            $linkage = $this->scopeWrittenLinkage($entity, $relation, $relationship['linkage'], Mode::Replace, $server, $request, $creating);
+            $persister->mutateRelationship($type, $entity, $relation, $linkage, Mode::Replace, flush: $flush);
         }
+    }
+
+    /**
+     * The linkage a persister applies for a relationship write, scoped by each related type's
+     * own provider ({@see ScopedRelationshipWrites}): an id that provider does not serve is a
+     * `404` like an absent one, and a to-many replace on an existing parent keeps the members
+     * the client cannot see.
+     */
+    private function scopeWrittenLinkage(
+        object $parent,
+        RelationInterface $relation,
+        ToOneRelationship|ToManyRelationship $linkage,
+        Mode $mode,
+        Server $server,
+        JsonApiRequestInterface $request,
+        bool $creating = false,
+    ): ToOneRelationship|ToManyRelationship {
+        $this->scopedWrites ??= new ScopedRelationshipWrites($this->providers);
+        $this->scopedWrites->assertVisible($relation, $linkage);
+
+        if ($creating || $mode !== Mode::Replace || !$linkage instanceof ToManyRelationship) {
+            return $linkage;
+        }
+
+        return $this->scopedWrites->withHiddenMembers($parent, $relation, $linkage, $server, $request);
     }
 
     /**

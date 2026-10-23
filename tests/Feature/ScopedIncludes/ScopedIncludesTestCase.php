@@ -41,6 +41,8 @@ use PHPUnit\Framework\Attributes\Test;
  */
 abstract class ScopedIncludesTestCase extends Orchestra
 {
+    use WritesThroughScopedTypes;
+
     public const string MEDIA_TYPE = 'application/vnd.api+json';
 
     private const string RELATIONSHIP_QUERIES_PROFILE = 'https://haddowg.github.io/json-api/profiles/relationship-queries/';
@@ -96,6 +98,7 @@ abstract class ScopedIncludesTestCase extends Orchestra
             'default' => ['prefix' => 'api', 'middleware' => [], 'domain' => null],
             'partner' => ['prefix' => 'partner-api', 'middleware' => [], 'domain' => null],
         ]);
+        $config->set('jsonapi.atomic_operations.enabled', true);
         $config->set('database.default', 'testing');
         $config->set('database.connections.testing', [
             'driver' => 'sqlite',
@@ -120,7 +123,7 @@ abstract class ScopedIncludesTestCase extends Orchestra
         });
         Schema::create('si_coins', static function (Blueprint $table): void {
             $table->increments('id');
-            $table->unsignedInteger('vault_id');
+            $table->unsignedInteger('vault_id')->nullable();
             $table->string('label');
             $table->boolean('hidden')->default(false);
         });
@@ -523,7 +526,14 @@ abstract class ScopedIncludesTestCase extends Orchestra
     private function assertNoHiddenRows(TestResponse $response): void
     {
         $response->assertOk();
+        $this->assertNothingHidden($response);
+    }
 
+    /**
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
+     */
+    private function assertNothingHidden(TestResponse $response): void
+    {
         $seen = [];
         $collect = static function (mixed $node) use (&$collect, &$seen): void {
             if (!\is_array($node)) {
