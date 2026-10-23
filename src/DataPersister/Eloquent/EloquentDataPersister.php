@@ -395,11 +395,15 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
             $ids[] = $storageId;
         }
 
+        // The join is written by raw id, past any global scope on the related model, so the ids
+        // are checked against the scoped read first, and a replace keeps the hidden members.
+        $hidden = $this->hiddenJoinedIds($eloquentRelation, $ids, $mode);
+
         // A Remove carries no pivot meta, and a bare join has no pivot columns — the id-only
         // sync/attach/detach form covers both.
         if ($mode === Mode::Remove || !$relation instanceof PivotRelation || $relation->pivotFields() === []) {
             match ($mode) {
-                Mode::Replace => $eloquentRelation->sync($ids),
+                Mode::Replace => $eloquentRelation->sync([...$ids, ...$hidden]),
                 Mode::Add => $eloquentRelation->syncWithoutDetaching($ids),
                 Mode::Remove => $eloquentRelation->detach($ids),
             };
@@ -436,7 +440,65 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
             return;
         }
 
+        // A hidden member's pivot row is left as it is: sync() updates an attached row only
+        // when given attributes.
+        foreach ($hidden as $id) {
+            $payload[$id] ??= [];
+        }
+
         $eloquentRelation->sync($payload);
+    }
+
+    /**
+     * For a join whose related model has global scopes: throws {@see ResourceNotFound} when an
+     * incoming id is not served by the scoped read (hidden or absent alike), and, for a replace,
+     * returns the attached ids the scopes hide so the sync keeps them. Without global scopes it
+     * returns none and checks nothing.
+     *
+     * @param BelongsToMany<Model, Model> $eloquentRelation
+     * @param list<mixed>                 $ids              the incoming storage ids
+     *
+     * @return list<string>
+     */
+    private function hiddenJoinedIds(BelongsToMany $eloquentRelation, array $ids, Mode $mode): array
+    {
+        $related = $eloquentRelation->getRelated();
+        if ($related->getGlobalScopes() === []) {
+            return [];
+        }
+
+        $keyColumn = $related->qualifyColumn($eloquentRelation->getRelatedKeyName());
+        $visible = $this->stringKeys($related->newQuery()->whereIn($keyColumn, $ids)->pluck($keyColumn)->all());
+        foreach ($ids as $id) {
+            if (!\is_scalar($id) || !\in_array((string) $id, $visible, true)) {
+                throw new ResourceNotFound();
+            }
+        }
+
+        if ($mode !== Mode::Replace) {
+            return [];
+        }
+
+        $attachedVisible = $this->stringKeys($eloquentRelation->pluck($keyColumn)->all());
+
+        return \array_values(\array_diff($this->stringKeys($eloquentRelation->allRelatedIds()->all()), $attachedVisible));
+    }
+
+    /**
+     * @param array<mixed> $keys
+     *
+     * @return list<string>
+     */
+    private function stringKeys(array $keys): array
+    {
+        $strings = [];
+        foreach ($keys as $key) {
+            if (\is_scalar($key)) {
+                $strings[] = (string) $key;
+            }
+        }
+
+        return $strings;
     }
 
     /**
@@ -491,6 +553,8 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
             $model = $this->findRelated($relation, $identifier);
             if ($model instanceof Model) {
                 $models[] = $model;
+            } else {
+                $this->assertUnscoped($relation, $identifier);
             }
         }
 
@@ -530,6 +594,8 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
             return $found;
         }
 
+        $this->assertUnscoped($relation, $identifier);
+
         $class = $this->modelByType[$this->relatedType($relation, $identifier)] ?? throw new \LogicException(\sprintf(
             'The %s cannot resolve the related model for the unmapped type "%s".',
             self::class,
@@ -547,6 +613,19 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
         }
 
         return $blank;
+    }
+
+    /**
+     * Throws {@see ResourceNotFound} for an id {@see findRelated()} missed when the related model
+     * has global scopes: the row may exist but be hidden by them, so it is treated as absent
+     * rather than attached by key. A model without global scopes keeps the unscoped behaviour.
+     */
+    private function assertUnscoped(RelationInterface $relation, ResourceIdentifier $identifier): void
+    {
+        $class = $this->modelByType[$this->relatedType($relation, $identifier)] ?? null;
+        if ($class !== null && $identifier->id !== null && (new $class())->getGlobalScopes() !== []) {
+            throw new ResourceNotFound();
+        }
     }
 
     /**

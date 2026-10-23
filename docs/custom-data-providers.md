@@ -136,6 +136,17 @@ A polymorphic to-many that reaches such a type has no single provider to read th
 rendering its members fails with a server error rather than showing unscoped rows. See
 [ADR 0032](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0032-a-related-type-with-its-own-provider-loads-its-members-through-it.md).
 
+Writes go through the same provider. A persister looks related ids up in its own storage, so
+before it applies a relationship write, each id the client names for such a type must come back
+from the provider's `fetchOne()`. One that doesn't is a `404`, the same response as an id with
+no row behind it, so a client can't tell the two apart. This covers create and update bodies,
+`PATCH`/`POST`/`DELETE` on a relationship endpoint, pivot members with their `meta.pivot`, a
+`MorphTo`, and every operation in an atomic batch, where the `404` rolls the whole batch back.
+A to-many replace changes only the members the client can see: the persister is handed the
+hidden current members as well, so they stay attached with their pivot rows untouched. The
+response to a relationship write lists the members the relationship endpoint would. See
+[ADR 0034](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0034-a-relationship-write-resolves-related-ids-through-the-related-types-scope.md).
+
 ## Custom filters and sorts
 
 A `DataProviderInterface` owns how it translates core's filter/sort vocabulary for its store:

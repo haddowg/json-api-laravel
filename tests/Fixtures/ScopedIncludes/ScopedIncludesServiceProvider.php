@@ -11,6 +11,7 @@ use haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentRelationshipLoadState;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
+use haddowg\JsonApiLaravel\DataProvider\InMemorySnapshotCoordinator;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
 
@@ -50,7 +51,12 @@ final class ScopedIncludesServiceProvider extends ServiceProvider
             'chests' => Chest::class,
         ]);
         JsonApi::provider($eloquent, priority: -128);
-        JsonApi::persister(new EloquentDataPersister(['vaults' => Vault::class]), priority: -128);
+        JsonApi::persister(new EloquentDataPersister([
+            'vaults' => Vault::class,
+            'coins' => Coin::class,
+            'marks' => Mark::class,
+            'chests' => Chest::class,
+        ]), priority: -128);
 
         if (config('scoped_includes.scope') === 'provider') {
             JsonApi::provider(new HidesHiddenRows('coins', $eloquent));
@@ -85,16 +91,33 @@ final class ScopedIncludesServiceProvider extends ServiceProvider
 
             return \is_scalar($id) ? (string) $id : '';
         };
-
+        $assignId = static function (object $item, string $id): void {
+            Accessor::set($item, 'id', $id);
+        };
         $chests = [
             '1' => new ChestRecord('1', 'Oak', [$coins['1'], $coins['2'], $marks['1'], $marks['3']]),
         ];
 
-        $vaultProvider = new InMemoryDataProvider('vaults', $vaults, identify: $identify);
+        // One coordinator over every store, so a rollback restores the shared object graph.
+        /** @var InMemorySnapshotCoordinator $coordinator */
+        $coordinator = $this->app->make(InMemorySnapshotCoordinator::class);
+        $vaultProvider = new InMemoryDataProvider('vaults', $vaults, identify: $identify, assignId: $assignId, coordinator: $coordinator);
+        $coinStore = new InMemoryDataProvider('coins', $coins, identify: $identify, assignId: $assignId, coordinator: $coordinator);
+        $markStore = new InMemoryDataProvider('marks', $marks, identify: $identify, coordinator: $coordinator);
+
+        // The persisters resolve linkage ids straight from the stores, hidden rows included,
+        // the way an application's own storage lookup would.
+        $resolve = static fn(string $type, string $id): ?object => match ($type) {
+            'coins' => $coinStore->store()->find($id),
+            'marks' => $markStore->store()->find($id),
+            default => null,
+        };
+
         JsonApi::provider($vaultProvider);
-        JsonApi::persister(new InMemoryDataPersister('vaults', $vaultProvider->store(), static fn(): VaultRecord => new VaultRecord('', '')));
-        JsonApi::provider(new InMemoryDataProvider('chests', $chests, identify: $identify));
-        JsonApi::provider(new HidesHiddenRows('coins', new InMemoryDataProvider('coins', $coins, identify: $identify)));
-        JsonApi::provider(new HidesHiddenRows('marks', new InMemoryDataProvider('marks', $marks, identify: $identify)));
+        JsonApi::persister(new InMemoryDataPersister('vaults', $vaultProvider->store(), static fn(): VaultRecord => new VaultRecord('', ''), $resolve));
+        JsonApi::persister(new InMemoryDataPersister('coins', $coinStore->store(), static fn(): CoinRecord => new CoinRecord('', ''), $resolve));
+        JsonApi::provider(new InMemoryDataProvider('chests', $chests, identify: $identify, coordinator: $coordinator));
+        JsonApi::provider(new HidesHiddenRows('coins', $coinStore));
+        JsonApi::provider(new HidesHiddenRows('marks', $markStore));
     }
 }

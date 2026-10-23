@@ -172,6 +172,13 @@ BelongsToMany::make('playlists', 'playlists')->cannotReplace()->countable()->wit
 belongs-to-many writes in a whole-resource `POST` are applied after the parent is created
 ([ADR 0009](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0009-embedded-relationship-writes-defer-belongs-to-many-to-after-create.md)).
 
+A related id is resolved through the same scope its type's own endpoint reads through: an
+Eloquent global scope on the related model (soft deletes included), or a
+[provider that scopes its rows](custom-data-providers.md#a-provider-that-scopes-its-rows). An id
+that scope hides is a `404`, the same as an id with no row, and a full replacement leaves the
+hidden members attached. A related model without global scopes, served by the reference
+providers, resolves ids as it always has.
+
 ## Polymorphic relations
 
 - **`MorphTo` (to-one)** — the member's type is resolved from the related object
