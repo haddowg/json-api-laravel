@@ -36,5 +36,6 @@ final class CompositeWidget extends Model
         'address' => 'array',
         'block' => 'array',
         'contact' => 'array',
+        'settings' => 'array',
     ];
 }

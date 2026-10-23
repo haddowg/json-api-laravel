@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
+use haddowg\JsonApi\Atomic\AtomicExtension;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -51,6 +52,7 @@ abstract class CompositeConformanceTestCase extends Orchestra
         /** @var \Illuminate\Contracts\Config\Repository $config */
         $config = $app['config'];
         $config->set('jsonapi.base_uri', 'http://localhost/api');
+        $config->set('jsonapi.atomic_operations.enabled', true);
     }
 
     protected function seedConformanceData(): void {}
@@ -229,6 +231,169 @@ abstract class CompositeConformanceTestCase extends Orchestra
         foreach ($pointers as $pointer) {
             self::assertStringStartsWith('/data/attributes/contact', $pointer);
         }
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function anEmptyObjectSatisfiesAnObjectShapedConstraint(): void
+    {
+        $created = $this->rawJsonApi('POST', '/api/composite-settings', '{"data":{"type":"composite-settings","attributes":{"name":"Gadget","settings":{}}}}');
+
+        $created->assertStatus(201);
+        self::assertStringContainsString('"settings":{}', $this->body($created));
+
+        $id = $created->json('data.id');
+        self::assertIsString($id);
+
+        $fetched = $this->getJson('/api/composite-settings/' . $id, ['Accept' => self::MEDIA_TYPE]);
+        $fetched->assertStatus(200);
+        self::assertStringContainsString('"settings":{}', $this->body($fetched));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function anEmptyArrayFailsAnObjectShapedConstraint(): void
+    {
+        $response = $this->rawJsonApi('POST', '/api/composite-settings', '{"data":{"type":"composite-settings","attributes":{"name":"Gadget","settings":[]}}}');
+
+        $this->assertOnlyPointer('/data/attributes/settings', $response);
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function aNonEmptyMapIsUnchanged(): void
+    {
+        $created = $this->rawJsonApi('POST', '/api/composite-settings', '{"data":{"type":"composite-settings","attributes":{"name":"Gadget","settings":{"theme":"dark","density":2}}}}');
+
+        $created->assertStatus(201);
+        self::assertStringContainsString('"settings":{"theme":"dark","density":2}', $this->body($created));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function aStoredEmptyMapSurvivesAPartialUpdate(): void
+    {
+        // The update folds the stored attributes under the incoming partial; the stored
+        // empty map must not fail the rules of a field the client did not send.
+        $created = $this->rawJsonApi('POST', '/api/composite-settings', '{"data":{"type":"composite-settings","attributes":{"name":"Gadget","settings":{}}}}');
+        $created->assertStatus(201);
+        $id = $created->json('data.id');
+        self::assertIsString($id);
+
+        $updated = $this->rawJsonApi('PATCH', '/api/composite-settings/' . $id, '{"data":{"type":"composite-settings","id":"' . $id . '","attributes":{"name":"Renamed"}}}');
+
+        $updated->assertStatus(200);
+        self::assertStringContainsString('"settings":{}', $this->body($updated));
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function anAtomicResultKeepsAnEmptyMapAnObject(): void
+    {
+        $response = $this->rawAtomic('{"atomic:operations":['
+            . '{"op":"add","data":{"type":"composite-settings","attributes":{"name":"Gadget","settings":{}}}},'
+            . '{"op":"update","ref":{"type":"composite-settings","id":"1"},"data":{"type":"composite-settings","id":"1","attributes":{"settings":{}}}},'
+            . '{"op":"update","ref":{"type":"composite-settings","id":"1"},"data":{"type":"composite-settings","id":"1","attributes":{"settings":{"theme":"dark"}}}}'
+            . ']}');
+
+        $response->assertStatus(200);
+        $body = $this->body($response);
+        self::assertSame(2, \substr_count($body, '"settings":{}'), $body);
+        self::assertStringContainsString('"settings":{"theme":"dark"}', $body);
+        self::assertStringNotContainsString('"settings":[]', $body);
+        self::assertStringNotContainsString('"links":[]', $body);
+        self::assertStringNotContainsString('"source":[]', $body);
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function anAtomicValidationErrorPointsAtTheOperationAttribute(): void
+    {
+        $response = $this->rawAtomic('{"atomic:operations":['
+            . '{"op":"add","data":{"type":"composite-settings","attributes":{"name":"Gadget","settings":{}}}},'
+            . '{"op":"add","data":{"type":"composite-settings","attributes":{"name":"Gadget","settings":[]}}}'
+            . ']}');
+
+        $this->assertOnlyPointer('/atomic:operations/1/data/attributes/settings', $response);
+        $this->assertNoEmptyArrayMembers($response);
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function aReturnedAtomicErrorRendersNoEmptyMembers(): void
+    {
+        // A missing update target is RETURNED as an error response (not thrown), which the
+        // backend re-raises; the rebuilt error document carries no empty `source`/`links`.
+        $response = $this->rawAtomic('{"atomic:operations":['
+            . '{"op":"add","data":{"type":"composite-settings","attributes":{"name":"Gadget","settings":{}}}},'
+            . '{"op":"remove","ref":{"type":"composite-settings","id":"999"}}'
+            . ']}');
+
+        $response->assertStatus(404);
+        $this->assertNoEmptyArrayMembers($response);
+        self::assertSame('/atomic:operations/1', $response->json('errors.0.source.pointer'));
+    }
+
+    /**
+     * Every error points at `$pointer`. Core's opis value validator appends the root
+     * instance pointer `/` to a whole-value violation, so a trailing slash is tolerated.
+     *
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
+     */
+    private function assertOnlyPointer(string $pointer, TestResponse $response): void
+    {
+        $pointers = $this->pointers($response);
+        self::assertNotSame([], $pointers);
+        foreach ($pointers as $actual) {
+            self::assertSame($pointer, \rtrim($actual, '/'));
+        }
+    }
+
+    /**
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
+     */
+    private function assertNoEmptyArrayMembers(TestResponse $response): void
+    {
+        $body = $this->body($response);
+        self::assertStringNotContainsString('"source":[]', $body);
+        self::assertStringNotContainsString('"links":[]', $body);
+        self::assertStringNotContainsString('"meta":[]', $body);
+        self::assertStringNotContainsString('"jsonapi":[]', $body);
+    }
+
+    /**
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
+     */
+    private function body(TestResponse $response): string
+    {
+        return (string) $response->baseResponse->getContent();
+    }
+
+    /**
+     * Sends a hand-written JSON body, so a `{}` reaches the server as an object rather than
+     * whatever a PHP array would encode to.
+     *
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    private function rawJsonApi(string $method, string $uri, string $json): TestResponse
+    {
+        return $this->call($method, $uri, [], [], [], [
+            'HTTP_ACCEPT' => self::MEDIA_TYPE,
+            'CONTENT_TYPE' => self::MEDIA_TYPE,
+        ], $json);
+    }
+
+    /**
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    private function rawAtomic(string $json): TestResponse
+    {
+        $mediaType = self::MEDIA_TYPE . '; ext="' . AtomicExtension::URI . '"';
+
+        return $this->call('POST', '/api/operations', [], [], [], [
+            'HTTP_ACCEPT' => $mediaType,
+            'CONTENT_TYPE' => $mediaType,
+        ], $json);
     }
 
     /**

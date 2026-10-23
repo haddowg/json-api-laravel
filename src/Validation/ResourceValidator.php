@@ -119,9 +119,11 @@ final class ResourceValidator
         }
 
         /** @var array<string, mixed> $incoming */
-        $attributes = !$creating && $existingObject !== null
-            ? \array_merge($this->storedAttributes($resource, $existingObject, $request), $incoming)
-            : $incoming;
+        $stored = !$creating && $existingObject !== null
+            ? $this->storedAttributes($resource, $existingObject, $request)
+            : [];
+        // A stored empty map renders as an object; the illuminate rules expect arrays.
+        $attributes = \array_merge(\array_map(self::associative(...), $stored), $incoming);
 
         $model = $existingObject instanceof Model
             ? $existingObject
@@ -189,7 +191,7 @@ final class ResourceValidator
         foreach ($this->oneOfErrors($resource, $attributes, $creating, $request) as $error) {
             $errors[] = $error;
         }
-        foreach ($this->shapeErrors($resource, $attributes, $creating, $request) as $error) {
+        foreach ($this->shapeErrors($resource, \array_merge($stored, $incoming), $incoming, $creating, $request) as $error) {
             $errors[] = $error;
         }
 
@@ -611,6 +613,18 @@ final class ResourceValidator
     }
 
     /**
+     * `$value` with every JSON object (`\stdClass`) turned into an associative array.
+     */
+    private static function associative(mixed $value): mixed
+    {
+        if ($value instanceof \stdClass) {
+            $value = \get_object_vars($value);
+        }
+
+        return \is_array($value) ? \array_map(self::associative(...), $value) : $value;
+    }
+
+    /**
      * The rule-set for one attribute field: its translated value rules wrapped by the
      * create/update presence + nullability resolution.
      *
@@ -823,15 +837,22 @@ final class ResourceValidator
      * explicit-null values are the main pass's concern (presence / nullability), so
      * they are skipped here. (ADR 0013.)
      *
+     * An incoming value is read from the body's object-decoded view, so a client's `{}`
+     * reaches opis as an object rather than the `[]` the associative decode made of it.
+     *
      * @param array<string, mixed> $attributes the merged incoming attribute map
+     * @param array<string, mixed> $incoming   the attributes the client sent
      *
      * @return list<Error>
      */
-    private function shapeErrors(AbstractResource $resource, array $attributes, bool $creating, JsonApiRequestInterface $request): array
+    private function shapeErrors(AbstractResource $resource, array $attributes, array $incoming, bool $creating, JsonApiRequestInterface $request): array
     {
         if ($this->schemaValues === null) {
             return []; // opis not installed — a Shape documents but does not validate
         }
+
+        $objectView = null;
+        $viewDecoded = false;
 
         $errors = [];
         foreach ($resource->allFields() as $field) {
@@ -850,6 +871,13 @@ final class ResourceValidator
             foreach ($field->constraints() as $constraint) {
                 if (!$constraint instanceof Shape || !$constraint->context()->appliesTo($creating)) {
                     continue;
+                }
+                if (!$viewDecoded) {
+                    $objectView = ObjectAttributes::of($request);
+                    $viewDecoded = true;
+                }
+                if ($objectView !== null && \array_key_exists($field->name(), $incoming) && \property_exists($objectView, $field->name())) {
+                    $value = $objectView->{$field->name()};
                 }
                 foreach ($this->schemaValues->validate(
                     $constraint->contribute(Schema::create()),
