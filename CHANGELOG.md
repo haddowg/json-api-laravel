@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.1](https://github.com/haddowg/json-api-laravel/compare/v1.3.0...v1.3.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* load rendered members of a scoped related type through its provider ([3f7d573](https://github.com/haddowg/json-api-laravel/commit/3f7d573367c407132b37afb36e929cb014eb4a13))
+* render a to-one target only while its own provider serves it ([3f7d573](https://github.com/haddowg/json-api-laravel/commit/3f7d573367c407132b37afb36e929cb014eb4a13))
+
+
+### Miscellaneous Chores
+
+* **deps:** require haddowg/json-api ^1.4 ([3f7d573](https://github.com/haddowg/json-api-laravel/commit/3f7d573367c407132b37afb36e929cb014eb4a13))
+
 ## [1.3.0](https://github.com/haddowg/json-api-laravel/compare/v1.2.0...v1.3.0) (2026-10-23)
 
 
