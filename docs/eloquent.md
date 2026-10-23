@@ -57,6 +57,19 @@ priority (`0`) shadows it, and it in turn shadows the `-256` auto pair.
 The provider owns the base query per type; the persister owns create/update/delete inside a
 `DB::transaction`, returning `201` + `Location` on create, `200` on update, `204` on delete.
 
+### Writes through `on()` attributes
+
+An attribute flattened with `on('author')` or `on('publisher.country')` writes onto the related
+model, not the parent. Core sets the value on the model the parent holds as a loaded relation,
+and the persister saves that model in the parent's transaction, right after the parent's own
+`save()`. A failure in either rolls back both, and inside an
+[atomic operations](atomic-operations.md) batch the related save rolls back with the batch.
+
+Only a related model with unsaved changes is saved. A multi-hop chain saves its last model and
+skips the hops in between unless they changed too, and a write that sends the stored value
+issues no `UPDATE`. The persister finds these models by walking the parent's loaded to-one
+relations, so a loaded to-one model that a before-save hook changed is saved as well. It doesn't use `push()`, which would also save loaded to-many collections.
+
 ## Filters → query builder
 
 Core's filter vocabulary is pushed down to the Eloquent builder. The example's resources

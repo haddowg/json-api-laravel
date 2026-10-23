@@ -43,7 +43,9 @@ use Illuminate\Support\Facades\DB;
  *  - {@see create()} / {@see update()} → `$model->save()` (the hydrator has mutated the
  *    loaded instance in place via core's `Accessor`, which hits `__set`/`setAttribute` so
  *    casts + mutators run and `$guarded`/`$fillable` are bypassed — the JSON:API field
- *    declaration is the sole allow-list);
+ *    declaration is the sole allow-list), then, in the same transaction, a save of each loaded
+ *    to-one related model with unsaved changes, which is where an `on()` attribute writes
+ *    (see {@see saveChangedToOneTargets()});
  *  - {@see delete()} → `$model->delete()`.
  *
  * Each write runs inside a `transaction()` on the model's own connection: a single write
@@ -124,8 +126,9 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
             throw new ClientGeneratedIdAlreadyExists(\is_scalar($key) ? (string) $key : '');
         }
 
-        $entity->getConnection()->transaction(static function () use ($entity): void {
+        $entity->getConnection()->transaction(function () use ($entity): void {
             $entity->save();
+            $this->saveChangedToOneTargets($entity);
         });
 
         return $entity;
@@ -135,8 +138,9 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
     {
         \assert($entity instanceof Model);
 
-        $entity->getConnection()->transaction(static function () use ($entity): void {
+        $entity->getConnection()->transaction(function () use ($entity): void {
             $entity->save();
+            $this->saveChangedToOneTargets($entity);
         });
 
         return $entity;
@@ -270,6 +274,38 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
         // transaction" error.
         if ($connection->transactionLevel() > 0) {
             $connection->rollBack();
+        }
+    }
+
+    /**
+     * Saves every model reachable from `$model` through loaded to-one relations that exists and
+     * has unsaved changes.
+     *
+     * A write through an `on()` attribute lands on a related model the parent holds as a loaded
+     * relation: core reads each hop through the relation, and Eloquent caches it there.
+     * `$model->save()` writes only the parent's row. Walking the loaded to-one relations reaches
+     * the last hop of a multi-hop chain, and the dirty check keeps a hop the write left alone
+     * from issuing a query or firing model events. Loaded to-many collections are skipped, since
+     * no `on()` chain crosses one, and so is a model that doesn't exist yet, since a flattened
+     * write never creates its target. `push()` would save every loaded relation, collections
+     * and clean models included.
+     *
+     * @param array<int, true> $seen the models already walked, by object id
+     */
+    private function saveChangedToOneTargets(Model $model, array &$seen = []): void
+    {
+        $seen[\spl_object_id($model)] = true;
+
+        foreach ($model->getRelations() as $related) {
+            if (!$related instanceof Model || isset($seen[\spl_object_id($related)])) {
+                continue;
+            }
+
+            if ($related->exists && $related->isDirty()) {
+                $related->save();
+            }
+
+            $this->saveChangedToOneTargets($related, $seen);
         }
     }
 
