@@ -113,6 +113,29 @@ This is how the example serves `charts`/`countries` from custom providers while 
 type falls through to Eloquent, and how a `libraries` polymorphic-to-many can be served by a
 custom provider if you don't use the reference morph resolution.
 
+## A provider that scopes its rows
+
+A provider that owns a type decides which of its rows exist for a request, for example by
+dropping rows the user may not see from `fetchOne()`, `fetchCollection()` and
+`fetchRelatedCollection()`. Those rows stay hidden wherever the type is rendered from another
+type's document. When a to-many relates to a type served by its own provider (not the parent's,
+and not the reference Eloquent or in-memory provider), its members load through that provider's
+`fetchRelatedCollection()` for every parent that renders them. That covers `?include`, nested
+includes, linkage rendered without an include, `?withCount` totals, the Relationship Queries
+window and the relationship endpoint, so each shows exactly what the related endpoint shows.
+
+These loads run once per parent rather than batched. An Eloquent global scope needs none of
+this: Eloquent applies it to every relation read already.
+
+A to-one target of such a type is read off the parent and kept only while the provider's
+`fetchOne()` still returns it. Otherwise the relation renders as empty everywhere: linkage,
+`included`, the relationship and related endpoints, a `MorphTo`, and any attribute flattened
+through it with `on()`. Writing such an attribute through a hidden target is a `422`.
+
+A polymorphic to-many that reaches such a type has no single provider to read through, so
+rendering its members fails with a server error rather than showing unscoped rows. See
+[ADR 0032](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0032-a-related-type-with-its-own-provider-loads-its-members-through-it.md).
+
 ## Custom filters and sorts
 
 A `DataProviderInterface` owns how it translates core's filter/sort vocabulary for its store:

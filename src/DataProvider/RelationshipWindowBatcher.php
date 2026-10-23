@@ -287,11 +287,17 @@ final class RelationshipWindowBatcher
         // the provider keys each parent's page by the parent's own WIRE id. The per-parent
         // scoping, merged-vocabulary key validation (unknown key -> the endpoint's 400), and the
         // count-free vs countable distinction are all reused verbatim from
-        // fetchRelatedCollection's tail.
-        $batch = $this->providers->forType($type)
-            ->fetchRelatedCollectionBatch($type, $parents, $relation, $criteria, $pageRequest);
-
+        // fetchRelatedCollection's tail. A related type served by its own scoping provider is
+        // windowed through that provider per parent instead, exactly as its related endpoint.
         $serializer = $server->serializerFor($type);
+        $batch = $this->providers->fetchRelatedBatch(
+            $type,
+            $parents,
+            $relation,
+            $criteria,
+            $pageRequest,
+            static fn(object $parent): string => $serializer->getId($parent),
+        );
 
         $windows = [];
         foreach ($parents as $parent) {
