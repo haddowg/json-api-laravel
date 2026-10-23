@@ -267,10 +267,8 @@ trait SchemaConformanceTrait
             return '(no error detail)';
         }
 
-        $keyed = (new ErrorFormatter())->formatKeyed(
-            $error,
-            static fn(ValidationError $e): string => $e->message(),
-        );
+        // The default formatter fills in the message template's `{type}`-style placeholders.
+        $keyed = (new ErrorFormatter())->formatKeyed($error);
 
         $lines = [];
         foreach ($keyed as $pointer => $messages) {

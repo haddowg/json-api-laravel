@@ -11,6 +11,13 @@ Laravel's `TrimStrings` and `ConvertEmptyStringsToNull` middleware still run, bu
 of the query bag doesn't reach a JSON:API route, so `fields[artists]=` stays an empty fieldset and
 `filter[name]=%20Radio` keeps its leading space ([ADR 0030](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0030-json-api-query-parameters-bypass-input-middleware.md)).
 
+The same goes for the request body. Core decodes a JSON:API document from the raw content, not
+from the input bag the middleware rewrote, so `"title": "  Spaced  "` is stored with its spaces
+and `"status": ""` stays an empty string rather than a `null` that fails validation. This
+covers every write: CRUD, relationship mutations, Document-input actions and Atomic Operations
+batches. A Raw-input action still reads the exact bytes off the body stream, and for a JSON
+upload `getParsedBody()` now matches them ([ADR 0031](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0031-json-api-request-bodies-bypass-input-middleware.md)).
+
 ## The events
 
 Eighteen event classes are dispatched via Laravel's dispatcher, before and after each
