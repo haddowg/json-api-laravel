@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\DataProvider;
 use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Serializer\BatchedRelationshipCount;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
@@ -83,7 +84,9 @@ final class RelationCountBatcher
         foreach ($relations as $relation) {
             $criteria = $this->countCriteria($server, $relation, $request);
 
-            $relationCounts = $provider->countRelated($type, $parents, $relation, $criteria, $request);
+            $relationCounts = $this->providers->relatesToScopedType($type, $relation)
+                ? $this->countScoped($type, $parents, $relation, $criteria, $request, $serializer)
+                : $provider->countRelated($type, $parents, $relation, $criteria, $request);
             foreach ($relationCounts as $wireId => $count) {
                 foreach ($byWireId[(string) $wireId] ?? [] as $parent) {
                     $counts[\spl_object_id($parent)][$relation->name()] = $count;
@@ -92,6 +95,52 @@ final class RelationCountBatcher
         }
 
         return $counts === [] ? null : new BatchedRelationshipCount($counts);
+    }
+
+    /**
+     * Counts a relation whose related type is served by its own scoping provider by fetching
+     * each parent's members through that provider (the related endpoint's read), so a total
+     * never counts a row the related endpoint hides. A polymorphic relation has no single
+     * provider to count through and is refused.
+     *
+     * @param list<object> $parents
+     *
+     * @return array<string, int>
+     */
+    private function countScoped(
+        string $type,
+        array $parents,
+        RelationInterface $relation,
+        CollectionCriteria $criteria,
+        JsonApiRequestInterface $request,
+        SerializerInterface $serializer,
+    ): array {
+        if (\count($relation->relatedTypes()) !== 1) {
+            throw new \LogicException(\sprintf(
+                'The polymorphic relation "%s" of type "%s" relates to a type served by its own data provider, so it '
+                . 'cannot be counted through that provider\'s scope.',
+                $relation->name(),
+                $type,
+            ));
+        }
+
+        $batch = $this->providers->fetchRelatedBatch(
+            $type,
+            $parents,
+            $relation,
+            $criteria,
+            $request,
+            static fn(object $parent): string => $serializer->getId($parent),
+        );
+
+        $counts = [];
+        foreach ($parents as $parent) {
+            $wireId = $serializer->getId($parent);
+            $result = $batch->for($wireId);
+            $counts[$wireId] = \is_array($result->items) ? \count($result->items) : \iterator_count($result->items);
+        }
+
+        return $counts;
     }
 
     /**

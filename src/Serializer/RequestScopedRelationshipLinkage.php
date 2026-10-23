@@ -27,13 +27,23 @@ use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
  * just windowed and never a previous request's. With no backing set it answers `null` for
  * every relation, so core reads linkage off the model (the profile-not-negotiated default).
  *
- * The handler clears it (with the pagination and count holders) at the very start of EVERY
+ * It carries a second backing, {@see scope()}: the members of every rendered to-many whose
+ * related type is served by its own scoping provider, loaded through that provider by the
+ * {@see \haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher}. A windowed page wins
+ * over it, since the window is itself fetched through the same provider.
+ *
+ * The handler clears both (with the pagination and count holders) at the very start of EVERY
  * dispatch, so a long-lived worker reusing the singleton never inherits a prior message's
  * windowed linkage — the Laravel-side equivalent of the bundle's `kernel.reset`.
  */
 final class RequestScopedRelationshipLinkage implements RelationshipLinkageInterface
 {
     private ?RelationshipLinkageInterface $delegate = null;
+
+    /**
+     * @var list<RelationshipLinkageInterface>
+     */
+    private array $scoped = [];
 
     /**
      * Installs (or clears, with `null`) the windowed linkage backing for the read currently
@@ -46,11 +56,35 @@ final class RequestScopedRelationshipLinkage implements RelationshipLinkageInter
         $this->delegate = $delegate;
     }
 
+    /**
+     * Installs (or clears, with `null`) the scoped-provider linkage for the read currently
+     * being handled.
+     */
+    public function scope(?RelationshipLinkageInterface $scoped): void
+    {
+        $this->scoped = $scoped === null ? [] : [$scoped];
+    }
+
+    /**
+     * Adds scoped-provider linkage for further parents of the same read (the members of a
+     * windowed page, which are not the objects the include preload walked).
+     */
+    public function addScope(RelationshipLinkageInterface $scoped): void
+    {
+        $this->scoped[] = $scoped;
+    }
+
     public function linkageForRelationship(
         mixed $model,
         RelationInterface $relation,
         JsonApiRequestInterface $request,
     ): ?RelationshipLinkage {
-        return $this->delegate?->linkageForRelationship($model, $relation, $request);
+        $linkage = $this->delegate?->linkageForRelationship($model, $relation, $request);
+
+        foreach ($this->scoped as $scoped) {
+            $linkage ??= $scoped->linkageForRelationship($model, $relation, $request);
+        }
+
+        return $linkage;
     }
 }

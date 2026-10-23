@@ -209,6 +209,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->relationshipCount->set(null);
         $this->relationshipPagination->set(null);
         $this->relationshipLinkage->set(null);
+        $this->relationshipLinkage->scope(null);
 
         return match (true) {
             $operation instanceof FetchResourceOperation => $this->fetch($operation),
@@ -598,6 +599,24 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
             $relatedProvider = $this->providers->forType($relatedType);
 
+            // A polymorphic page is read through its first type's provider alone. A member type
+            // with a different scoping provider would never see its rows filtered, so refuse.
+            if ($polymorphic) {
+                foreach ($relatedTypes as $memberType) {
+                    $scoped = $this->providers->scopedRelatedProvider($type, $memberType);
+                    if ($scoped !== null && $scoped !== $relatedProvider) {
+                        throw new \LogicException(\sprintf(
+                            'The polymorphic relation "%s" of type "%s" relates to "%s", which is served by a different data '
+                            . 'provider than "%s", so its members cannot be read through one provider\'s scope.',
+                            $relationshipName,
+                            $type,
+                            $memberType,
+                            $relatedType,
+                        ));
+                    }
+                }
+            }
+
             $criteria = $this->relationCriteria->criteriaFor(
                 $operation->queryParameters(),
                 $relatedResource,
@@ -817,6 +836,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 // pivot page + its `meta.pivot`) is a deliberately-deferred tail. See docs/adr/0010.
                 return $this->rejectRelationshipEndpointQuery($operation->queryParameters(), $request);
             }
+        } elseif ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation)) {
+            // The whole association, but loaded through the related type's own scoping provider
+            // rather than read off the parent, so it lists exactly what the related endpoint does.
+            $this->scopeRelationshipEndpoint($type, $parent, $relation, $operation->queryParameters(), $request);
         }
 
         $response = IdentifierResponse::forRelationship(
@@ -891,6 +914,40 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $items = $this->materialize($result);
 
         return $this->supplyWindowedRelationship($parent, $relation->name(), $items, $paginator, $result, $wantsCount, $request, $queryParameters);
+    }
+
+    /**
+     * Supplies a plain (unqueried) to-many relationship endpoint's linkage out-of-band from the
+     * related type's own scoping provider. A polymorphic relation has no single provider to
+     * read through, so it is refused rather than read off the parent.
+     */
+    private function scopeRelationshipEndpoint(
+        string $type,
+        object $parent,
+        RelationInterface $relation,
+        QueryParameters $queryParameters,
+        JsonApiRequestInterface $request,
+    ): void {
+        $relatedTypes = $relation->relatedTypes();
+        if (\count($relatedTypes) !== 1) {
+            throw new \LogicException(\sprintf(
+                'The polymorphic relation "%s" of type "%s" relates to a type served by its own data provider, so its '
+                . 'linkage cannot be read through that provider\'s scope.',
+                $relation->name(),
+                $type,
+            ));
+        }
+
+        $provider = $this->providers->scopedRelatedProvider($type, $relatedTypes[0]);
+        \assert($provider !== null);
+
+        $items = $this->materialize(
+            $provider->fetchRelatedCollection($relatedTypes[0], $parent, $relation, new CollectionCriteria($queryParameters), $request),
+        );
+
+        $this->relationshipLinkage->scope(new WindowedRelationshipLinkage(
+            [\spl_object_id($parent) => [$relation->name() => new RelationshipLinkage($items)]],
+        ));
     }
 
     /**
@@ -983,17 +1040,16 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * Batch eager-loads the effective `?include` tree rooted at `$entities` so an included
-     * relationship does not N+1. A no-op with no request or no entities.
+     * relationship does not N+1, and installs the out-of-band linkage of every rendered to-many
+     * whose related type has its own scoping provider (cleared with no request or no entities).
      *
      * @param list<object> $entities
      */
     private function preloadIncludes(Server $server, array $entities, string $type, ?JsonApiRequestInterface $request): void
     {
-        if ($request === null || $entities === []) {
-            return;
-        }
-
-        $this->includeBatcher->preload($server, $entities, $type, $request);
+        $this->relationshipLinkage->scope(
+            $request === null || $entities === [] ? null : $this->includeBatcher->preload($server, $entities, $type, $request),
+        );
     }
 
     /**
@@ -1044,6 +1100,15 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         $this->relationshipPagination->set($result?->pagination);
         $this->relationshipLinkage->set($result?->linkage);
+
+        // A windowed page holds its own copies of the related members, so their nested
+        // includes and linkage are walked again for any related type with its own scoping provider.
+        if ($request !== null && $result?->linkage !== null) {
+            $scoped = $this->includeBatcher->preloadWindowed($server, $type, $items, $result->linkage, $request);
+            if ($scoped !== null) {
+                $this->relationshipLinkage->addScope($scoped);
+            }
+        }
 
         return $result?->pagination?->activatedProfiles() ?? [];
     }
