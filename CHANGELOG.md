@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.3.0](https://github.com/haddowg/json-api-laravel/compare/v1.2.0...v1.3.0) (2026-10-23)
+
+
+### Features
+
+* give 401 and 403 errors their stable codes ([cf3b88f](https://github.com/haddowg/json-api-laravel/commit/cf3b88f5ec63da5d4f1127b85258345a09093eb6))
+* render date-time attributes in a configured output timezone ([cf3b88f](https://github.com/haddowg/json-api-laravel/commit/cf3b88f5ec63da5d4f1127b85258345a09093eb6))
+* **testing:** validate included resources against their own type's schema ([fd581b0](https://github.com/haddowg/json-api-laravel/commit/fd581b0945558e7e6f2bcbbb302dbc2c18f8bf5c))
+
+
+### Bug Fixes
+
+* accept {} for an attribute whose shape requires an object ([e898083](https://github.com/haddowg/json-api-laravel/commit/e898083abc04dde69a160eb3a029686906fd1d13))
+* give each server its own instance of a shared resource ([cf3b88f](https://github.com/haddowg/json-api-laravel/commit/cf3b88f5ec63da5d4f1127b85258345a09093eb6))
+* keep a stored empty map from failing a partial update ([e898083](https://github.com/haddowg/json-api-laravel/commit/e898083abc04dde69a160eb3a029686906fd1d13))
+* keep empty maps as objects in atomic:results ([e898083](https://github.com/haddowg/json-api-laravel/commit/e898083abc04dde69a160eb3a029686906fd1d13))
+* read JSON:API query parameters from the raw query string ([54edb82](https://github.com/haddowg/json-api-laravel/commit/54edb82ff089e99d75887cd1ab0dc4295f6e6a08))
+* read JSON:API request bodies from the raw content ([f4dcdbd](https://github.com/haddowg/json-api-laravel/commit/f4dcdbd43f154fe9952c8063988b5f5cb9a6ef7e))
+* **testing:** accept sparse fieldset responses in schema conformance ([fd581b0](https://github.com/haddowg/json-api-laravel/commit/fd581b0945558e7e6f2bcbbb302dbc2c18f8bf5c))
+* **testing:** fill in schema conformance failure messages ([f4dcdbd](https://github.com/haddowg/json-api-laravel/commit/f4dcdbd43f154fe9952c8063988b5f5cb9a6ef7e))
+
+
+### Miscellaneous Chores
+
+* **deps:** require haddowg/json-api ^1.2 ([cf3b88f](https://github.com/haddowg/json-api-laravel/commit/cf3b88f5ec63da5d4f1127b85258345a09093eb6))
+* **deps:** require haddowg/json-api ^1.2.1 ([e898083](https://github.com/haddowg/json-api-laravel/commit/e898083abc04dde69a160eb3a029686906fd1d13))
+
 ## [1.2.0](https://github.com/haddowg/json-api-laravel/compare/v1.1.0...v1.2.0) (2026-10-22)
 
 
