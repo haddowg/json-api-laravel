@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2](https://github.com/haddowg/json-api-laravel/compare/v1.3.1...v1.3.2) (2026-10-23)
+
+
+### Bug Fixes
+
+* resolve related ids in writes through the related type's scope ([#67](https://github.com/haddowg/json-api-laravel/issues/67)) ([239a19f](https://github.com/haddowg/json-api-laravel/commit/239a19f05fc45cb09a8f213c4f2c037a78f5c7f5))
+
 ## [1.3.1](https://github.com/haddowg/json-api-laravel/compare/v1.3.0...v1.3.1) (2026-10-23)
 
 
