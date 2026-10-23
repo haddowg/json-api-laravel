@@ -25,7 +25,11 @@ alike, and the in-memory witness reads the parent's own property.
   core reads its linkage off the parent. Rendering its members (include, linkage, count,
   relationship endpoint) throws a `LogicException`, a 500. The polymorphic related endpoint
   throws too when a member type's provider differs from the first type's.
-- To-one relations still read the related object off the parent, on the related endpoint and in
-  includes alike. A scoping provider for a to-one target is not consulted there.
+- A to-one has no related read in the provider interface, so its target is read off the parent
+  and then checked with the target type's `fetchOne()`. When that returns nothing the relation
+  renders as empty, through core's to-one linkage seam: linkage, `included`, the relationship
+  endpoint, `MorphTo` and every `on()` hop on read and write (a write through a hidden hop is a
+  422). The to-one related endpoint makes the same check. Here only a reference provider is
+  trusted, whichever provider serves the parent, because nothing on that path calls a provider.
 - The server never mattered here. Every load takes the request's server from the operation, and
   a type registered only on a named server is preloaded like any other.

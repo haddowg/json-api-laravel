@@ -30,7 +30,9 @@ use PHPUnit\Framework\Attributes\Test;
  * scope and the server the types are registered on.
  *
  * Visible membership: vault 1 → coins 1, 3; vault 2 → coin 5; coin 1 → mark 1; coin 3 → none;
- * coin 5 → mark 4; chest 1 holds coin 1 and mark 1 (and hidden coin 2 and mark 3).
+ * coin 5 → mark 4; chest 1 holds coin 1 and mark 1 (and hidden coin 2 and mark 3). Vault 1
+ * features coin 1 and spotlights hidden coin 2; vault 2 features hidden coin 4 and spotlights
+ * mark 1, so those hidden to-one targets render as empty.
  *
  * A polymorphic relation spanning types with their own providers has no single scoped read,
  * so under a provider scope rendering its members is refused (a 500) rather than shown.
@@ -113,6 +115,8 @@ abstract class ScopedIncludesTestCase extends Orchestra
             $table->increments('id');
             $table->string('label');
             $table->unsignedInteger('featured_coin_id')->nullable();
+            $table->unsignedInteger('spotlight_id')->nullable();
+            $table->string('spotlight_type')->nullable();
         });
         Schema::create('si_coins', static function (Blueprint $table): void {
             $table->increments('id');
@@ -155,8 +159,8 @@ abstract class ScopedIncludesTestCase extends Orchestra
         }
 
         DB::table('si_vaults')->insert([
-            ['id' => 1, 'label' => 'North', 'featured_coin_id' => 1],
-            ['id' => 2, 'label' => 'South', 'featured_coin_id' => 5],
+            ['id' => 1, 'label' => 'North', 'featured_coin_id' => 1, 'spotlight_id' => 2, 'spotlight_type' => Coin::class],
+            ['id' => 2, 'label' => 'South', 'featured_coin_id' => 4, 'spotlight_id' => 1, 'spotlight_type' => Mark::class],
         ]);
         DB::table('si_coins')->insert([
             ['id' => 1, 'vault_id' => 1, 'label' => 'alpha', 'hidden' => false],
@@ -318,7 +322,7 @@ abstract class ScopedIncludesTestCase extends Orchestra
         $response = $this->read('/vaults?include=featuredCoin.marks');
 
         $this->assertNoHiddenRows($response);
-        self::assertSame(['marks:1', 'marks:4'], $this->included($response, 'marks'));
+        self::assertSame(['marks:1'], $this->included($response, 'marks'));
     }
 
     #[Test]
@@ -385,6 +389,88 @@ abstract class ScopedIncludesTestCase extends Orchestra
     }
 
     #[Test]
+    public function toOneLinkageNeverExposesAHiddenTarget(): void
+    {
+        $response = $this->read('/vaults');
+
+        $this->assertNoHiddenRows($response);
+        self::assertSame('1', $response->json('data.0.relationships.featuredCoin.data.id'));
+        self::assertNull($response->json('data.1.relationships.featuredCoin.data'));
+    }
+
+    #[Test]
+    public function aToOneIncludeNeverExposesAHiddenTarget(): void
+    {
+        $response = $this->read('/vaults?include=featuredCoin');
+
+        $this->assertNoHiddenRows($response);
+        self::assertSame(['coins:1'], $this->included($response, 'coins'));
+        self::assertNull($response->json('data.1.relationships.featuredCoin.data'));
+    }
+
+    #[Test]
+    public function theToOneRelationshipEndpointNeverExposesAHiddenTarget(): void
+    {
+        self::assertSame('1', $this->read('/vaults/1/relationships/featuredCoin')->json('data.id'));
+
+        $hidden = $this->read('/vaults/2/relationships/featuredCoin');
+        $this->assertNoHiddenRows($hidden);
+        self::assertNull($hidden->json('data'));
+    }
+
+    #[Test]
+    public function theToOneRelatedEndpointNeverExposesAHiddenTarget(): void
+    {
+        self::assertSame('1', $this->read('/vaults/1/featuredCoin')->json('data.id'));
+
+        $hidden = $this->read('/vaults/2/featuredCoin?include=marks');
+        $this->assertNoHiddenRows($hidden);
+        self::assertNull($hidden->json('data'));
+    }
+
+    #[Test]
+    public function aFlattenedAttributeNeverReadsAHiddenTarget(): void
+    {
+        $response = $this->read('/vaults');
+
+        self::assertSame('alpha', $response->json('data.0.attributes.featuredLabel'));
+        self::assertNull($response->json('data.1.attributes.featuredLabel'));
+    }
+
+    #[Test]
+    public function aFlattenedAttributeNeverWritesAHiddenTarget(): void
+    {
+        $hidden = $this->write('/vaults/2', ['data' => ['type' => 'vaults', 'id' => '2', 'attributes' => ['featuredLabel' => 'renamed']]]);
+        $hidden->assertStatus(422);
+        self::assertSame('RELATED_ATTRIBUTE_OWNER_MISSING', $hidden->json('errors.0.code'));
+
+        $visible = $this->write('/vaults/1', ['data' => ['type' => 'vaults', 'id' => '1', 'attributes' => ['featuredLabel' => 'renamed']]]);
+        $visible->assertOk();
+
+        // The Eloquent persister saves only the parent, so only the in-memory witness keeps
+        // a write made through an `on()` hop.
+        if ($this->store() === 'memory') {
+            self::assertSame('renamed', $visible->json('data.attributes.featuredLabel'));
+        }
+    }
+
+    #[Test]
+    public function aPolymorphicToOneNeverExposesAHiddenTarget(): void
+    {
+        $response = $this->read('/vaults?include=spotlight');
+
+        $this->assertNoHiddenRows($response);
+        self::assertNull($response->json('data.0.relationships.spotlight.data'));
+        self::assertSame(['type' => 'marks', 'id' => '1'], $response->json('data.1.relationships.spotlight.data'));
+        self::assertSame(['marks:1'], $this->included($response, 'marks'));
+        self::assertSame([], $this->included($response, 'coins'));
+
+        self::assertNull($this->read('/vaults/1/spotlight')->json('data'));
+        self::assertNull($this->read('/vaults/1/relationships/spotlight')->json('data'));
+        self::assertSame('1', $this->read('/vaults/2/spotlight')->json('data.id'));
+    }
+
+    #[Test]
     public function aHiddenRowIsNotFoundByItsOwnEndpoint(): void
     {
         $this->read('/coins/2', expectOk: false)->assertNotFound();
@@ -411,6 +497,21 @@ abstract class ScopedIncludesTestCase extends Orchestra
         }
 
         return $response;
+    }
+
+    /**
+     * @param array<string, mixed> $document
+     *
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    protected function write(string $path, array $document): TestResponse
+    {
+        $prefix = $this->server() === 'partner' ? '/partner-api' : '/api';
+
+        return $this->call('PATCH', $prefix . $path, [], [], [], [
+            'CONTENT_TYPE' => self::MEDIA_TYPE,
+            'HTTP_ACCEPT' => self::MEDIA_TYPE,
+        ], \json_encode($document, \JSON_THROW_ON_ERROR));
     }
 
     /**

@@ -7,7 +7,11 @@ namespace haddowg\JsonApiLaravel\Serializer;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
+use haddowg\JsonApi\Schema\Relationship\ToOneRelationshipLinkage;
 use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
+use haddowg\JsonApi\Serializer\ToOneRelationshipLinkageInterface;
+use haddowg\JsonApi\Server\Server;
+use haddowg\JsonApiLaravel\DataProvider\ScopedToOneTargets;
 
 /**
  * A stable, swappable holder for core's {@see RelationshipLinkageInterface} seam under the
@@ -36,7 +40,7 @@ use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
  * dispatch, so a long-lived worker reusing the singleton never inherits a prior message's
  * windowed linkage — the Laravel-side equivalent of the bundle's `kernel.reset`.
  */
-final class RequestScopedRelationshipLinkage implements RelationshipLinkageInterface
+final class RequestScopedRelationshipLinkage implements ToOneRelationshipLinkageInterface
 {
     private ?RelationshipLinkageInterface $delegate = null;
 
@@ -44,6 +48,36 @@ final class RequestScopedRelationshipLinkage implements RelationshipLinkageInter
      * @var list<RelationshipLinkageInterface>
      */
     private array $scoped = [];
+
+    public function __construct(private readonly ScopedToOneTargets $toOne) {}
+
+    /**
+     * Starts an operation on `$server`: drops both backings and every to-one answer.
+     */
+    public function bind(?Server $server): void
+    {
+        $this->delegate = null;
+        $this->scoped = [];
+        $this->toOne->bind($server);
+    }
+
+    /**
+     * Drops the scoped backing and every to-one answer before a render's preload, so a target a
+     * write just changed is decided again and the preload walks what the render will show.
+     */
+    public function resetScope(): void
+    {
+        $this->scoped = [];
+        $this->toOne->forget();
+    }
+
+    /**
+     * The object to-one `$relation` renders on `$model`, for the to-one related endpoint.
+     */
+    public function toOneTargetFor(object $model, RelationInterface $relation, JsonApiRequestInterface $request): mixed
+    {
+        return $this->toOne->targetFor($model, $relation, $request);
+    }
 
     /**
      * Installs (or clears, with `null`) the windowed linkage backing for the read currently
@@ -86,5 +120,13 @@ final class RequestScopedRelationshipLinkage implements RelationshipLinkageInter
         }
 
         return $linkage;
+    }
+
+    public function toOneLinkageForRelationship(
+        mixed $model,
+        RelationInterface $relation,
+        JsonApiRequestInterface $request,
+    ): ?ToOneRelationshipLinkage {
+        return $this->toOne->linkageFor($model, $relation, $request);
     }
 }

@@ -127,11 +127,13 @@ window and the relationship endpoint, so each shows exactly what the related end
 These loads run once per parent rather than batched. An Eloquent global scope needs none of
 this: Eloquent applies it to every relation read already.
 
-Two shapes can't be scoped this way. A polymorphic to-many that reaches such a type has no single
-provider to read through, so rendering its members fails with a server error rather than showing
-unscoped rows. A to-one reads its target off the parent, on the related endpoint as well as in an
-include, so a provider's scope does not reach it there. Scope a to-one target with an Eloquent
-global scope instead. See
+A to-one target of such a type is read off the parent and kept only while the provider's
+`fetchOne()` still returns it. Otherwise the relation renders as empty everywhere: linkage,
+`included`, the relationship and related endpoints, a `MorphTo`, and any attribute flattened
+through it with `on()`. Writing such an attribute through a hidden target is a `422`.
+
+A polymorphic to-many that reaches such a type has no single provider to read through, so
+rendering its members fails with a server error rather than showing unscoped rows. See
 [ADR 0032](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0032-a-related-type-with-its-own-provider-loads-its-members-through-it.md).
 
 ## Custom filters and sorts

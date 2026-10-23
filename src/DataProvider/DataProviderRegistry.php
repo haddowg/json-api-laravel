@@ -110,6 +110,26 @@ final class DataProviderRegistry
     }
 
     /**
+     * The provider that decides whether a to-one target of `$type` may render, or `null` when a
+     * read off the parent already agrees with it. A to-one is read off the parent on every path,
+     * with no provider call in between, so unlike {@see scopedRelatedProvider()} it does not
+     * matter which provider serves the parent: only a reference provider (Eloquent, in-memory)
+     * is trusted, since its rows are exactly what a relation read yields.
+     *
+     * @return DataProviderInterface<object>|null
+     */
+    public function scopingProviderFor(string $type): ?DataProviderInterface
+    {
+        if (!$this->supportsType($type)) {
+            return null;
+        }
+
+        $provider = $this->forType($type);
+
+        return $provider instanceof EloquentDataProvider || $provider instanceof InMemoryDataProvider ? null : $provider;
+    }
+
+    /**
      * Whether any type `$relation` can relate to is served by a {@see scopedRelatedProvider()}
      * for a `$parentType` parent.
      */

@@ -18,5 +18,6 @@ final class VaultRecord
         public string $label,
         public array $coins = [],
         public ?CoinRecord $featuredCoin = null,
+        public CoinRecord|MarkRecord|null $spotlight = null,
     ) {}
 }

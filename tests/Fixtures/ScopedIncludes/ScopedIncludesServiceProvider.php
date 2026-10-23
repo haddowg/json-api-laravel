@@ -6,6 +6,8 @@ namespace haddowg\JsonApiLaravel\Tests\Fixtures\ScopedIncludes;
 
 use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Serializer\RelationshipLoadStateInterface;
+use haddowg\JsonApiLaravel\DataPersister\Eloquent\EloquentDataPersister;
+use haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentRelationshipLoadState;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
@@ -48,6 +50,7 @@ final class ScopedIncludesServiceProvider extends ServiceProvider
             'chests' => Chest::class,
         ]);
         JsonApi::provider($eloquent, priority: -128);
+        JsonApi::persister(new EloquentDataPersister(['vaults' => Vault::class]), priority: -128);
 
         if (config('scoped_includes.scope') === 'provider') {
             JsonApi::provider(new HidesHiddenRows('coins', $eloquent));
@@ -73,8 +76,8 @@ final class ScopedIncludesServiceProvider extends ServiceProvider
             '5' => new CoinRecord('5', 'echo', marks: [$marks['4']]),
         ];
         $vaults = [
-            '1' => new VaultRecord('1', 'North', [$coins['1'], $coins['2'], $coins['3']], $coins['1']),
-            '2' => new VaultRecord('2', 'South', [$coins['4'], $coins['5']], $coins['5']),
+            '1' => new VaultRecord('1', 'North', [$coins['1'], $coins['2'], $coins['3']], $coins['1'], $coins['2']),
+            '2' => new VaultRecord('2', 'South', [$coins['4'], $coins['5']], $coins['4'], $marks['1']),
         ];
 
         $identify = static function (object $item): string {
@@ -87,7 +90,9 @@ final class ScopedIncludesServiceProvider extends ServiceProvider
             '1' => new ChestRecord('1', 'Oak', [$coins['1'], $coins['2'], $marks['1'], $marks['3']]),
         ];
 
-        JsonApi::provider(new InMemoryDataProvider('vaults', $vaults, identify: $identify));
+        $vaultProvider = new InMemoryDataProvider('vaults', $vaults, identify: $identify);
+        JsonApi::provider($vaultProvider);
+        JsonApi::persister(new InMemoryDataPersister('vaults', $vaultProvider->store(), static fn(): VaultRecord => new VaultRecord('', '')));
         JsonApi::provider(new InMemoryDataProvider('chests', $chests, identify: $identify));
         JsonApi::provider(new HidesHiddenRows('coins', new InMemoryDataProvider('coins', $coins, identify: $identify)));
         JsonApi::provider(new HidesHiddenRows('marks', new InMemoryDataProvider('marks', $marks, identify: $identify)));

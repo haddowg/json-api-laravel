@@ -208,8 +208,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // windowing arm re-sets them below).
         $this->relationshipCount->set(null);
         $this->relationshipPagination->set(null);
-        $this->relationshipLinkage->set(null);
-        $this->relationshipLinkage->scope(null);
+        $server = $operation->context()->server;
+        $this->relationshipLinkage->bind($server instanceof Server ? $server : null);
 
         return match (true) {
             $operation instanceof FetchResourceOperation => $this->fetch($operation),
@@ -706,7 +706,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
             throw new RelationshipCountNotAllowed(['_self_']);
         }
 
-        $related = $relation->readValue($parent, $request);
+        // A target whose type has its own scoping provider shows only if that provider serves it.
+        $related = $this->relationshipLinkage->toOneTargetFor($parent, $relation, $request);
 
         // A polymorphic to-one (MorphTo) has no single related resource and so no shared
         // filter vocabulary — any requested filter key is unrecognised (a 400), gated on the
@@ -1047,9 +1048,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
      */
     private function preloadIncludes(Server $server, array $entities, string $type, ?JsonApiRequestInterface $request): void
     {
-        $this->relationshipLinkage->scope(
-            $request === null || $entities === [] ? null : $this->includeBatcher->preload($server, $entities, $type, $request),
-        );
+        $this->relationshipLinkage->resetScope();
+        if ($request !== null && $entities !== []) {
+            $this->relationshipLinkage->scope($this->includeBatcher->preload($server, $entities, $type, $request));
+        }
     }
 
     /**
