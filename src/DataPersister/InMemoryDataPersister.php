@@ -167,18 +167,29 @@ final class InMemoryDataPersister implements DataPersisterInterface, Transaction
         $property = $relation->column() ?? $relation->name();
         $parentId = $this->store->idOf($parent);
         $owners = [];
+        $placed = [];
         foreach ($this->store->all() as $candidate) {
-            if ($candidate === $parent || ($parentId !== null && $this->store->idOf($candidate) === $parentId)) {
-                continue;
-            }
+            $isParent = $candidate === $parent || ($parentId !== null && $this->store->idOf($candidate) === $parentId);
 
             /** @var mixed $held */
             $held = $candidate->{$property} ?? null;
             $members = \is_iterable($held) ? [...$held] : [$held];
             foreach ($members as $member) {
-                if (\is_object($member) && isset($incoming[$this->idOf($member)])) {
+                if (!\is_object($member) || !isset($incoming[$this->idOf($member)])) {
+                    continue;
+                }
+                $placed[$this->idOf($member)] = true;
+                if (!$isParent) {
                     $owners[] = ['memberType' => $incoming[$this->idOf($member)], 'member' => $member, 'ownerType' => $this->type, 'owner' => $candidate];
                 }
+            }
+        }
+
+        // A member no stored parent holds has no owner, so the handler checks it alone.
+        foreach ($incoming as $id => $memberType) {
+            $member = isset($placed[(string) $id]) ? null : $this->resolveRelated($memberType, (string) $id);
+            if ($member !== null) {
+                $owners[] = ['memberType' => $memberType, 'member' => $member, 'ownerType' => null, 'owner' => null];
             }
         }
 

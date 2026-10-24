@@ -1946,8 +1946,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * Refuses to move a related row away from another parent unless the client may update
-     * that parent, or the row itself (ADR 0042). Only relations where a row has one parent
-     * (an inverse foreign key) report owners; a Remove never moves a row.
+     * that parent, or the row itself (ADR 0042), and refuses to move a row no parent holds
+     * unless the client may update the row (ADR 0047). Only relations where a row has one
+     * parent (an inverse foreign key) report owners; a Remove never moves a row.
      */
     private function guardReparenting(string $type, object $parent, RelationInterface $relation, ToOneRelationship|ToManyRelationship $linkage, Mode $mode): void
     {

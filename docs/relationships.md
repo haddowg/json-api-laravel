@@ -211,6 +211,8 @@ On a `HasMany`/`HasOne` (the foreign key is on the related row, so a row has one
 adding a row that another parent holds moves it. That needs the `update` ability on the parent
 that holds it now, or on the row itself, or the write is a `403`
 ([ADR 0042](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0042-moving-a-related-row-needs-update-on-its-current-parent.md)).
+Adding a row that no parent holds needs the `update` ability on the row
+([ADR 0047](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0047-adding-a-row-no-parent-holds-needs-update-on-the-row.md)).
 Removing a row the parent doesn't hold changes nothing. Removing one whose foreign key column
 is `NOT NULL` is a `403` (`REMOVAL_PROHIBITED`, or `FULL_REPLACEMENT_PROHIBITED` for a
 replacement that would drop it), since the row can't be left without a parent.

@@ -105,8 +105,10 @@ over `DB::transaction`.
 
 If your store has relations where a related row has one parent (a has-many over a foreign key
 on the related row), implement `ReportsCurrentOwners`. Its `currentOwners()` returns the
-incoming linkage members another parent holds now, and the handler then checks `update` on
-that parent (or the row) before the write moves it. Without it, rows move unchecked.
+incoming linkage members the parent doesn't hold yet, each with the parent that holds it now or
+a null owner when none does. The handler then checks `update` on that parent (or the row), or
+on the row alone when it has no parent, before the write moves it. Without it, rows move
+unchecked.
 
 ## Priority and shadowing
 

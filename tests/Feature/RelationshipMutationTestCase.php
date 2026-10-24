@@ -187,15 +187,36 @@ abstract class RelationshipMutationTestCase extends Orchestra
         self::assertSame(['1', '2'], $this->linkageIds($this->readRel('/api/authors/1/relationships/posts')));
     }
 
-    public function test_adding_an_unowned_member_needs_no_other_update(): void
+    public function test_adding_an_unowned_member_needs_update_on_the_member(): void
     {
         $this->allowUpdateOnlyOn('authors', '1');
 
-        // Post 3 has no author.
+        // Post 3 has no author, so only its own update ability can allow the move.
+        $this->writeManyRel('POST', '/api/authors/1/relationships/posts', [['type' => 'posts', 'id' => '3']])
+            ->assertStatus(403);
+        $this->writeManyRel('PATCH', '/api/authors/1/relationships/posts', [['type' => 'posts', 'id' => '1'], ['type' => 'posts', 'id' => '3']])
+            ->assertStatus(403);
+
+        self::assertSame(['1'], $this->linkageIds($this->readRel('/api/authors/1/relationships/posts')));
+    }
+
+    public function test_adding_an_unowned_member_with_update_on_the_member_moves_it(): void
+    {
+        $this->allowUpdateOnlyOn('authors', '1');
+        $this->allowUpdateOnlyOn('posts', '3');
+
         $this->writeManyRel('POST', '/api/authors/1/relationships/posts', [['type' => 'posts', 'id' => '3']])
             ->assertOk();
 
         self::assertSame(['1', '3'], $this->linkageIds($this->readRel('/api/authors/1/relationships/posts')));
+    }
+
+    public function test_re_adding_a_current_member_needs_no_other_update(): void
+    {
+        $this->allowUpdateOnlyOn('authors', '1');
+
+        $this->writeManyRel('POST', '/api/authors/1/relationships/posts', [['type' => 'posts', 'id' => '1']])
+            ->assertOk();
     }
 
     // --- polymorphic to-one (MorphTo) -----------------------------------------
