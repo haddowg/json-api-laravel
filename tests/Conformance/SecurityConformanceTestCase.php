@@ -354,6 +354,31 @@ abstract class SecurityConformanceTestCase extends Orchestra
         $this->readJsonApi('/secure-api/albums/1/relationships/guardedArtist')->assertOk();
     }
 
+    #[Test]
+    #[Group('spec:authorization')]
+    public function aRelationHiddenFromTheCallerIsAbsentAtBothEndpoints(): void
+    {
+        // `staffArtist` is hidden from everyone but an admin, so a reader who may view the
+        // album sees neither the relationship nor its endpoints.
+        $this->actingAs($this->reader());
+        $this->readJsonApi('/secure-api/albums/1')
+            ->assertOk()
+            ->assertJsonMissingPath('data.relationships.staffArtist');
+        $this->readJsonApi('/secure-api/albums/1/staffArtist')
+            ->assertStatus(404)
+            ->assertJsonPath('errors.0.code', 'RELATIONSHIP_NOT_EXISTS');
+        $this->readJsonApi('/secure-api/albums/1/relationships/staffArtist')
+            ->assertStatus(404)
+            ->assertJsonPath('errors.0.code', 'RELATIONSHIP_NOT_EXISTS');
+
+        $this->actingAs($this->admin());
+        $this->readJsonApi('/secure-api/albums/1')
+            ->assertOk()
+            ->assertJsonPath('data.relationships.staffArtist.links.related.href', 'http://localhost/secure-api/albums/1/staffArtist');
+        $this->readJsonApi('/secure-api/albums/1/staffArtist')->assertOk();
+        $this->readJsonApi('/secure-api/albums/1/relationships/staffArtist')->assertOk();
+    }
+
     /**
      * @return array<string, mixed>
      */

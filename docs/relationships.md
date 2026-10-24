@@ -215,6 +215,20 @@ Removing a row the parent doesn't hold changes nothing. Removing one whose forei
 is `NOT NULL` is a `403` (`REMOVAL_PROHIBITED`, or `FULL_REPLACEMENT_PROHIBITED` for a
 replacement that would drop it), since the row can't be left without a parent.
 
+## Hidden relations
+
+`hidden()` keeps a relation out of every response. `hidden(fn ($model, $request) => …)`
+decides per parent and request:
+
+```php
+BelongsTo::make('reviewer', 'users')->hidden(fn ($post) => !Auth::user()?->can('review', $post));
+```
+
+When the predicate holds, the relation is left out of the resource, and its related and
+relationship `GET`s answer `404` (`RELATIONSHIP_NOT_EXISTS`), the same as an undeclared
+relation, so it reads as absent everywhere. The mutation endpoints still find it and keep their
+own `403`s.
+
 ## Write-only relations
 
 `writeOnly()` makes a relation accept writes and never show up on a read:

@@ -526,8 +526,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * `GET /{type}/{id}/{relationship}` — the related-resource(s) document. Loads the
-     * parent, resolves the named relation (a `404` if absent or its related endpoint is
-     * suppressed), gates the read (the parent's `view` policy, or the relation's own
+     * parent, refuses a relation hidden from this caller, resolves the named relation (a
+     * `404` if absent or its related endpoint is suppressed), gates the read (the parent's `view` policy, or the relation's own
      * `securityRead` override), then renders through the related type's serializer per
      * cardinality:
      *  - a **to-many** resolves the related resource's filter/sort/pagination vocabulary
@@ -561,6 +561,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
         if ($parent === null) {
             return ErrorResponse::fromException(new ResourceNotFound());
         }
+
+        // A relation hidden from this caller (a `hidden($when)` predicate needs the parent)
+        // is a 404, the same as in the rendered resource.
+        $server->refuseHiddenRelationRead($target, $parent, $this->jsonApiRequest($operation->context()));
 
         $relation = $this->resolveRelation($server, $type, $relationshipName);
         if ($relation === null || !$relation->exposesRelatedEndpoint()) {
@@ -772,8 +776,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * `GET /{type}/{id}/relationships/{relationship}` — the relationship-linkage document
-     * (resource identifiers only). Loads the parent, resolves the named relation (a `404` if
-     * absent or its relationship endpoint is suppressed), gates the read, and routes the
+     * (resource identifiers only). Loads the parent, refuses a relation hidden from this
+     * caller, resolves the named relation (a `404` if absent or its relationship endpoint is
+     * suppressed), gates the read, and routes the
      * parent through the *parent* type's serializer with the relationship name set so the
      * transformer emits linkage.
      *
@@ -804,6 +809,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
         if ($parent === null) {
             return ErrorResponse::fromException(new ResourceNotFound());
         }
+
+        $server->refuseHiddenRelationRead($target, $parent, $this->jsonApiRequest($operation->context()));
 
         $relation = $this->resolveRelation($server, $type, $relationshipName);
         if ($relation === null || !$relation->exposesRelationshipEndpoint()) {
