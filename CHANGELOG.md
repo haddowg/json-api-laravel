@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.7.0](https://github.com/haddowg/json-api-laravel/compare/v1.6.1...v1.7.0) (2026-10-24)
+
+
+### Features
+
+* adopt core generator contract 8 ([37c35d9](https://github.com/haddowg/json-api-laravel/commit/37c35d926ccc0b277b2cc0a3df2f0b00f421114b))
+
+
+### Bug Fixes
+
+* page and query a pivot relationship endpoint like the related endpoint ([#90](https://github.com/haddowg/json-api-laravel/issues/90)) ([4597d67](https://github.com/haddowg/json-api-laravel/commit/4597d6746c6e2d5dd4a92703e2ad772b1ad08c5a))
+* render pivot dates in their field's format ([37c35d9](https://github.com/haddowg/json-api-laravel/commit/37c35d926ccc0b277b2cc0a3df2f0b00f421114b))
+
 ## [1.6.1](https://github.com/haddowg/json-api-laravel/compare/v1.6.0...v1.6.1) (2026-10-24)
 
 
