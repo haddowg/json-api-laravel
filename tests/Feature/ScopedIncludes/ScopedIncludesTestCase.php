@@ -449,12 +449,9 @@ abstract class ScopedIncludesTestCase extends Orchestra
 
         $visible = $this->write('/vaults/1', ['data' => ['type' => 'vaults', 'id' => '1', 'attributes' => ['featuredLabel' => 'renamed']]]);
         $visible->assertOk();
-
-        // The Eloquent persister saves only the parent, so only the in-memory witness keeps
-        // a write made through an `on()` hop.
-        if ($this->store() === 'memory') {
-            self::assertSame('renamed', $visible->json('data.attributes.featuredLabel'));
-        }
+        self::assertSame('renamed', $visible->json('data.attributes.featuredLabel'));
+        self::assertSame('renamed', $this->read('/vaults/1')->json('data.attributes.featuredLabel'));
+        self::assertSame('renamed', $this->read('/coins/1')->json('data.attributes.label'));
     }
 
     #[Test]
