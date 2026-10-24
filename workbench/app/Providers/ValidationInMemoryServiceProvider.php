@@ -11,6 +11,8 @@ use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\Validation\Article;
 use Workbench\App\Validation\ArticleResource;
+use Workbench\App\Validation\Checklist;
+use Workbench\App\Validation\ChecklistResource;
 
 /**
  * The **in-memory** half of the validation-conformance wiring: it registers the
@@ -25,11 +27,17 @@ final class ValidationInMemoryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([ArticleResource::class]);
+        JsonApi::register([ArticleResource::class, ChecklistResource::class]);
 
         $articles = new InMemoryDataProvider('articles', $this->articles(), identify: self::identify(), assignId: self::assignId());
         JsonApi::provider($articles);
         JsonApi::persister(new InMemoryDataPersister('articles', $articles->store(), static fn(): Article => new Article()));
+
+        $checklists = new InMemoryDataProvider('checklists', [
+            '1' => new Checklist(id: '1', done: true, count: 3, ratio: 1.5, title: 'Pack', tags: ['a'], settings: ['k' => 'v'], note: 'Soon'),
+        ], identify: self::identify(), assignId: self::assignId());
+        JsonApi::provider($checklists);
+        JsonApi::persister(new InMemoryDataPersister('checklists', $checklists->store(), static fn(): Checklist => new Checklist()));
     }
 
     /**

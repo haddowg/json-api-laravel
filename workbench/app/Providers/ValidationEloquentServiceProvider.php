@@ -9,7 +9,9 @@ use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\Models\Article;
+use Workbench\App\Models\Checklist;
 use Workbench\App\Validation\ArticleResource;
+use Workbench\App\Validation\ChecklistResource;
 
 /**
  * The **Eloquent** half of the validation-conformance wiring: it registers the SAME
@@ -24,9 +26,9 @@ final class ValidationEloquentServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([ArticleResource::class]);
+        JsonApi::register([ArticleResource::class, ChecklistResource::class]);
 
-        $modelByType = ['articles' => Article::class];
+        $modelByType = ['articles' => Article::class, 'checklists' => Checklist::class];
 
         JsonApi::provider(new EloquentDataProvider($modelByType), priority: -128);
         JsonApi::persister(new EloquentDataPersister($modelByType), priority: -128);

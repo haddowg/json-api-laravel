@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
 use PHPUnit\Framework\Attributes\CoversNothing;
 use Workbench\App\Models\Article;
+use Workbench\App\Models\Checklist;
 use Workbench\App\Providers\ValidationEloquentServiceProvider;
 
 /**
@@ -52,5 +53,6 @@ final class EloquentValidationConformanceTest extends ValidationConformanceTestC
     {
         Article::query()->create(['id' => 1, 'title' => 'JSON:API in PHP', 'category' => 'guide', 'slug' => 'json-api-in-php']);
         Article::query()->create(['id' => 2, 'title' => 'Second Article', 'category' => 'news', 'slug' => 'second-article']);
+        Checklist::query()->create(['id' => 1, 'done' => true, 'count' => 3, 'ratio' => 1.5, 'title' => 'Pack', 'tags' => ['a'], 'settings' => ['k' => 'v'], 'note' => 'Soon']);
     }
 }

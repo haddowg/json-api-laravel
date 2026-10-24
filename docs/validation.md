@@ -54,6 +54,12 @@ Core's constraint VOs translate to the natural Laravel rule:
 | `OneOf` variants | the discriminator selects the variant; its children cascade like `Map`'s, an unknown discriminator is a `422` at `/data/attributes/<field>/<discriminator>` |
 | `Shape` | not translated — value-validated by core's opis `SchemaValueValidator` when opis is installed (see [composite attributes](composite-attributes.md)) |
 
+A required field must be present on create and may be left out of an update. When it is
+sent, Laravel's `required` applies: a string can't be empty or whitespace-only, a list or
+map can't be empty, and a boolean or number only has to be non-null, so `false` and `0`
+are valid. A field that is both required and nullable also accepts an explicit `null`, on
+create and on update, and still rejects a blank value.
+
 The example's `users.passwordConfirm` composes three of these (an `AtLeastOneOf`, a
 conditional `When`, and an equality `CompareField`).
 
