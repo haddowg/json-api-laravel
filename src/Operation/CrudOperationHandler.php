@@ -270,6 +270,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->router,
             $this->exposedOperations(),
             $this->logger,
+            $this->types,
         );
 
         return (new AtomicLoop())->run($operation->descriptors(), $backend);
@@ -654,7 +655,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $pivotMap = $this->pivotMap($server, $type, $parent, $relation, $items);
                 if ($pivotMap !== []) {
                     \assert($relation instanceof BelongsToMany);
-                    $serializer = new PivotMetaSerializer($serializer, $pivotMap, $relation->pivotFields());
+                    $serializer = new PivotMetaSerializer($serializer, $pivotMap, $relation);
                 }
             }
 
@@ -1243,7 +1244,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $relationshipName,
             $relation,
             $server,
-            new PivotMetaSerializer($server->serializerFor($relatedType), $pivotMap, $relation instanceof BelongsToMany ? $relation->pivotFields() : []),
+            new PivotMetaSerializer($server->serializerFor($relatedType), $pivotMap, $relation instanceof BelongsToMany ? $relation : null),
         );
     }
 
@@ -1259,9 +1260,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * query; otherwise the parent's provider reads the whole association's pivot rows.
      *
      * A pivot value the provider returns as a `\DateTimeInterface` renders through its
-     * `DateTime` field when a zone applies to it: the field's own `outputTimezone()`, else
-     * the server's default (never for a `Date` or `Time`). Every other value renders as the
-     * provider returned it.
+     * `DateTime`, `Date` or `Time` field, in the field's format and, for a `DateTime`, in
+     * the field's own `outputTimezone()` or else the server's (ADR 0036). Every other value
+     * renders as the provider returned it.
      *
      * @param list<object>|null $members
      *
@@ -1278,22 +1279,22 @@ final class CrudOperationHandler implements OperationHandlerInterface
             ? $pivotProvider->pivotMapOf($parent, $relation, $members)
             : $this->providers->forType($type)->fetchRelationshipPivot($type, $parent, $relation);
 
-        $zoned = [];
+        $dates = [];
         foreach ($relation->pivotFields() as $field) {
             if ($server->outputTimezone() !== null && $field instanceof AcceptsDefaultOutputTimezoneInterface) {
                 $field = $field->withDefaultOutputTimezone($server->outputTimezone());
             }
-            if ($field instanceof DateTime && $field->outputTimezone() !== null) {
-                $zoned[$field->name()] = $field;
+            if ($field instanceof DateTime) {
+                $dates[$field->name()] = $field;
             }
         }
 
-        if ($zoned === []) {
+        if ($dates === []) {
             return $pivots;
         }
 
         foreach ($pivots as $id => $values) {
-            foreach ($zoned as $name => $field) {
+            foreach ($dates as $name => $field) {
                 $value = $values[$name] ?? null;
                 if ($value instanceof \DateTimeInterface) {
                     $pivots[$id][$name] = $field->serializeWithoutRequest([$field->column() ?? $name => $value]);

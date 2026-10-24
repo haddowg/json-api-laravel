@@ -50,6 +50,23 @@ final class TypeMetadataResolver
     }
 
     /**
+     * The declared, non-hidden relation a `/{type}/{id}/{segment}` or
+     * `/{type}/{id}/relationships/{segment}` URL addresses, or `null` when none does.
+     *
+     * The segment is matched against each relation's URI field name first (its name
+     * unless `withUriFieldName()` set another). When no relation is served under it, the
+     * segment is tried as a relation name, so a client still calling a renamed relation's
+     * old URL keeps working; the links and the OpenAPI document only name the URI field
+     * name (ADR 0035).
+     */
+    public function relationAtUriSegment(Server $server, string $type, string $segment): ?RelationInterface
+    {
+        $resource = $this->resourceFor($server, $type);
+
+        return $resource?->relationAtUriFieldName($segment) ?? $resource?->relationNamed($segment);
+    }
+
+    /**
      * The declared relation named `$name` on `$type` **including hidden relations** —
      * the hidden-inclusive twin of {@see relationNamed()}. `null` when neither a
      * non-hidden nor a hidden relation of that name is declared.

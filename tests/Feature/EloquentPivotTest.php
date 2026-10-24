@@ -74,7 +74,7 @@ final class EloquentPivotTest extends PivotWriteTestCase
         self::assertNotNull($pivot);
         self::assertSame(1, $pivot['position'] ?? null);
         self::assertSame(1, $pivot['weight'] ?? null);
-        self::assertSame('2024-01-01 00:00:00', $pivot['addedAt'] ?? null);
+        self::assertSame('2024-01-01T00:00:00+00:00', $pivot['addedAt'] ?? null);
     }
 
     public function test_meta_pivot_renders_on_the_relationship_endpoint(): void

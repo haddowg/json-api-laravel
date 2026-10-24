@@ -14,7 +14,9 @@ use Illuminate\Routing\Route;
  * `{relationship}` path parameters. When a `{relationship}` segment is present the
  * target names a relationship, and the `_jsonapi_relationship_endpoint` route default
  * distinguishes the linkage endpoint (`/relationships/{relationship}`, `true`) from
- * the related-resource endpoint (`/{relationship}`, `false`).
+ * the related-resource endpoint (`/{relationship}`, `false`). By the time it runs on a
+ * matched request, {@see \haddowg\JsonApiLaravel\EventListener\RelationshipSegmentListener}
+ * has swapped a relation's URI field name in `{relationship}` for the relation's name.
  *
  * It is a pure mapper with no container or I/O — the public seam an explicit-route
  * user (the `Route::jsonApi()` macro) relies on, and trivially unit-testable.

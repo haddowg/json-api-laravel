@@ -33,6 +33,7 @@ use haddowg\JsonApiLaravel\DataProvider\RelationshipWindowBatcher;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\DiscoveryScanner;
 use haddowg\JsonApiLaravel\Eloquent\ModelMapResolver;
+use haddowg\JsonApiLaravel\EventListener\RelationshipSegmentListener;
 use haddowg\JsonApiLaravel\EventListener\ResourceHookSubscriber;
 use haddowg\JsonApiLaravel\Exception\ExceptionMapperInterface;
 use haddowg\JsonApiLaravel\Exception\JsonApiExceptionRenderer;
@@ -79,6 +80,7 @@ use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Foundation\CachesRoutes;
 use Illuminate\Contracts\Routing\UrlGenerator;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Events\RouteMatched;
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -1150,7 +1152,8 @@ final class JsonApiServiceProvider extends ServiceProvider
      * construct the subscriber — and its {@see \haddowg\JsonApiLaravel\Server\ServerRegistry}/discovery
      * — at boot); the subscriber resolves from the container only when an event fires.
      * Always registered (independent of route caching), since dispatch is a runtime
-     * concern.
+     * concern. The {@see RelationshipSegmentListener} rides the same dispatcher on
+     * `RouteMatched`.
      */
     private function registerEventSubscribers(): void
     {
@@ -1160,6 +1163,8 @@ final class JsonApiServiceProvider extends ServiceProvider
         foreach (ResourceHookSubscriber::eventMap() as $event => $method) {
             $events->listen($event, [ResourceHookSubscriber::class, $method]);
         }
+
+        $events->listen(RouteMatched::class, [RelationshipSegmentListener::class, 'handle']);
     }
 
     private function registerRouteMacro(): void
