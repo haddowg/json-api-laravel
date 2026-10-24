@@ -32,6 +32,16 @@ final class Playlist extends Model
     protected $keyType = 'string';
 
     /**
+     * The column defaults, so a playlist created without them renders the stored value.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'slug' => '',
+        'public' => true,
+    ];
+
+    /**
      * @var list<string>
      */
     protected $guarded = [];

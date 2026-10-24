@@ -49,7 +49,7 @@ final class ArtistResource extends AbstractResource
         return [
             Id::make(),
             Str::make('name')->required()->maxLength(120)->sortable(),
-            Str::make('slug')->sortable(),
+            Str::make('slug')->sortable()->guaranteed(),
             Url::make('website')->nullable(),
             Str::make('bio')->nullable()->maxLength(1000),
             Integer::make('trackCount')

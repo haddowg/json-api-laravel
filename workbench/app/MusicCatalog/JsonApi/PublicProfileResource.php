@@ -37,7 +37,7 @@ final class PublicProfileResource extends AbstractResource
     {
         return [
             Id::make(),
-            Str::make('displayName')->storedAs('display_name')->sortable(),
+            Str::make('displayName')->storedAs('display_name')->sortable()->guaranteed(),
         ];
     }
 

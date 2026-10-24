@@ -56,13 +56,14 @@ final class TrackResource extends AbstractResource
         return [
             Id::make(),
             Str::make('title')->required()->sortable(),
-            Integer::make('trackNumber')->storedAs('track_number')->min(1)->sortable(),
-            Integer::make('durationSeconds')->storedAs('length_seconds'),
-            Boolean::make('explicit'),
+            Integer::make('trackNumber')->storedAs('track_number')->min(1)->sortable()->guaranteed(),
+            Integer::make('durationSeconds')->storedAs('length_seconds')->guaranteed(),
+            Boolean::make('explicit')->guaranteed(),
             ArrayList::make('genres')
                 ->minItems(1)
                 ->each(new MinLength(1))
-                ->uniqueItems(),
+                ->uniqueItems()
+                ->guaranteed(),
             Time::make('previewOffset')->storedAs('preview_offset')->nullable(),
             Str::make('displayTitle')
                 ->computed()

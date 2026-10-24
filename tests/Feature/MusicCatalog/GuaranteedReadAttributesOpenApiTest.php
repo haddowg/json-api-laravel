@@ -15,9 +15,9 @@ use Workbench\App\MusicCatalog\Providers\MusicCatalogEloquentServiceProvider;
 use Workbench\App\MusicCatalog\Support\CatalogConfig;
 
 /**
- * The catalogue's server-filled read-only attributes are always set, so they are marked
- * `guaranteed()` and the read schema types them without `null`. An optional attribute the
- * server may leave unset keeps admitting `null`.
+ * The catalogue's attributes that always carry a value (server-filled, or defaulted by the
+ * model) are marked `guaranteed()`, so the read schema types them without `null`. An
+ * attribute the server may leave unset keeps admitting `null`.
  *
  * @internal
  */
@@ -35,6 +35,8 @@ final class GuaranteedReadAttributesOpenApiTest extends Orchestra
         $this->assertSame('string', $this->attributeType($doc, 'PlaylistsAttributes', 'slug'));
         $this->assertSame('string', $this->attributeType($doc, 'CatalogExportsAttributes', 'status'));
         $this->assertSame('string', $this->attributeType($doc, 'ExportJobsAttributes', 'state'));
+        $this->assertSame('boolean', $this->attributeType($doc, 'AlbumsAttributes', 'explicit'));
+        $this->assertSame('integer', $this->attributeType($doc, 'TracksAttributes', 'trackNumber'));
 
         $this->assertSame(['string', 'null'], $this->attributeType($doc, 'AlbumsAttributes', 'artwork'));
     }

@@ -55,11 +55,12 @@ final class AlbumResource extends AbstractResource
                 ->before(static fn(): \DateTimeImmutable => new \DateTimeImmutable())
                 ->useTimezone('UTC')
                 ->sortable(),
-            Boolean::make('explicit'),
+            Boolean::make('explicit')->guaranteed(),
             Str::make('status')
                 ->enum(AlbumStatus::class)
                 ->sortable()
-                ->describedAs('Where the album sits in its release lifecycle.'),
+                ->describedAs('Where the album sits in its release lifecycle.')
+                ->guaranteed(),
             Date::make('availableFrom')->storedAs('available_from')->nullable(),
             Date::make('availableUntil')
                 ->storedAs('available_until')
