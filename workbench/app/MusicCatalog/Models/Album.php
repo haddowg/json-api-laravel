@@ -33,6 +33,16 @@ final class Album extends Model
     public $timestamps = false;
 
     /**
+     * The column defaults, so an album created without them renders the stored value.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'explicit' => false,
+        'status' => 'released',
+    ];
+
+    /**
      * @var list<string>
      */
     protected $guarded = [];

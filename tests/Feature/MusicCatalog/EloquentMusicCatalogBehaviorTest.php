@@ -235,6 +235,57 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
         ];
     }
 
+    // --- guaranteed() read attributes carry a value on a fresh create ----------------------
+
+    public function test_a_created_album_and_track_render_their_column_defaults(): void
+    {
+        $this->actingAs($this->admin());
+
+        $album = $this->writeJsonApi('POST', '/api/albums', ['data' => [
+            'type' => 'albums',
+            'attributes' => ['title' => 'Fresh', 'releasedAt' => '2020-01-01T00:00:00+00:00'],
+        ]])->assertCreated();
+        $album->assertJsonPath('data.attributes.explicit', false);
+        $album->assertJsonPath('data.attributes.status', 'released');
+
+        $track = $this->writeJsonApi('POST', '/api/tracks', ['data' => [
+            'type' => 'tracks',
+            'attributes' => ['title' => 'Fresh'],
+        ]])->assertCreated();
+        $track->assertJsonPath('data.attributes.trackNumber', 1);
+        $track->assertJsonPath('data.attributes.durationSeconds', 0);
+        $track->assertJsonPath('data.attributes.explicit', false);
+        $track->assertJsonPath('data.attributes.genres', []);
+    }
+
+    public function test_a_created_playlist_renders_its_public_default_and_a_new_pivot_member_its_added_at(): void
+    {
+        $this->actingAs($this->owner());
+
+        $playlist = $this->writeJsonApi('POST', '/api/playlists', ['data' => [
+            'type' => 'playlists',
+            'attributes' => ['title' => 'Fresh Mix'],
+        ]])->assertCreated();
+        $playlist->assertJsonPath('data.attributes.public', true);
+        $playlist->assertJsonPath('data.attributes.slug', 'fresh-mix');
+
+        // A member attached over the API leaves `addedAt` out (it is read-only), so the
+        // database stamps it.
+        $this->actingAs($this->admin());
+        $this->writeJsonApi('POST', '/api/playlists/' . Fixtures::PLAYLIST_ONE . '/relationships/orderedTracks', ['data' => [
+            ['type' => 'tracks', 'id' => '3', 'meta' => ['pivot' => ['position' => 3]]],
+        ]])->assertSuccessful();
+
+        $members = $this->readJsonApi('/api/playlists/' . Fixtures::PLAYLIST_ONE . '/orderedTracks?page[size]=10')
+            ->assertOk()
+            ->json('data');
+        self::assertIsArray($members);
+        $added = \array_values(\array_filter($members, static fn(mixed $member): bool => \is_array($member) && ($member['id'] ?? null) === '3'));
+        self::assertCount(1, $added);
+        self::assertIsArray($added[0]);
+        self::assertIsString(\data_get($added[0], 'meta.pivot.addedAt'));
+    }
+
     /**
      * @return array<string, mixed>
      */

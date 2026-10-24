@@ -76,8 +76,8 @@ final class PlaylistResource extends AbstractResource implements ResourceLifecyc
         return [
             Id::make()->uuid()->generated()->build(),
             Str::make('title')->required(),
-            Slug::make('slug')->readOnly(),
-            Boolean::make('public')->build(),
+            Slug::make('slug')->readOnly()->guaranteed(),
+            Boolean::make('public')->guaranteed()->build(),
             Uuid::make('externalId')->storedAs('external_id')->nullable(),
             // `owner` targets the admin-only `users` type — the full record — and is
             // therefore linkage-only: withoutRelatedEndpoint() drops
@@ -102,7 +102,7 @@ final class PlaylistResource extends AbstractResource implements ResourceLifecyc
                 ->fields(
                     Integer::make('position')->required()->min(1)->build(),
                     Integer::make('weight')->compareWith('position', Comparison::GreaterThanOrEqual)->build(),
-                    DateTime::make('addedAt')->storedAs('added_at')->readOnly()->build(),
+                    DateTime::make('addedAt')->storedAs('added_at')->readOnly()->guaranteed()->build(),
                 )
                 // `->integer()` types the documented value: `pivot.` is an Eloquent
                 // convention this package resolves, so core cannot read a type off the

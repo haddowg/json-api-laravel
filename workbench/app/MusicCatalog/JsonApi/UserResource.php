@@ -49,7 +49,7 @@ final class UserResource extends AbstractResource
             Email::make('email')->required()->strict()->constrain(new UniqueEntity(['email'])),
             Str::make('displayName')->storedAs('display_name')->required(),
             Date::make('birthDate')->storedAs('birth_date')->nullable(),
-            ArrayHash::make('preferences')->minProperties(0)->maxProperties(20)->sortKeys(),
+            ArrayHash::make('preferences')->minProperties(0)->maxProperties(20)->sortKeys()->guaranteed(),
             Ip::make('lastSeenIp')->storedAs('last_seen_ip')->nullable(),
             Str::make('password')->writeOnly()->minLength(8)->requiredOnCreate(),
             Str::make('passwordConfirm')

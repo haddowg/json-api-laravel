@@ -29,6 +29,18 @@ final class Track extends Model
     public $timestamps = false;
 
     /**
+     * The column defaults, so a track created without them renders the stored value.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'track_number' => 1,
+        'length_seconds' => 0,
+        'explicit' => false,
+        'genres' => '[]',
+    ];
+
+    /**
      * @var list<string>
      */
     protected $guarded = [];

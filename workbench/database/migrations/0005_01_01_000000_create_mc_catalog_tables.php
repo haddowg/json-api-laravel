@@ -111,7 +111,8 @@ return new class extends Migration {
             $table->unsignedInteger('track_id');
             $table->integer('position');
             $table->integer('weight')->nullable();
-            $table->dateTime('added_at')->nullable();
+            // Stamped by the database when a write leaves it out, so every row carries one.
+            $table->dateTime('added_at')->useCurrent();
             $table->unique(['playlist_id', 'track_id']);
         });
 
