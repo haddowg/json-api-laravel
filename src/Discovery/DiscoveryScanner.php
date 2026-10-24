@@ -397,6 +397,8 @@ final class DiscoveryScanner
             $this->modelClass($attribute?->model, $class),
             $this->responses($attribute),
             $this->softDeletes($attribute),
+            $attribute !== null ? $attribute->extensions : [],
+            $attribute !== null ? $attribute->operationExtensions : [],
         );
     }
 
