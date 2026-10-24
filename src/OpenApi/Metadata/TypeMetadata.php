@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
 use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationExtensions;
 use haddowg\JsonApi\OpenApi\Metadata\OperationResponseInterface;
 use haddowg\JsonApi\OpenApi\Metadata\OperationResponses;
 use haddowg\JsonApi\OpenApi\Metadata\OperationType;
 use haddowg\JsonApi\OpenApi\Metadata\RelationMetadataInterface;
-use haddowg\JsonApi\OpenApi\Metadata\TypeMetadataInterface;
 use haddowg\JsonApi\OpenApi\Schema;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
@@ -26,7 +26,7 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  * permissive resource-object schema. Everything else — uriType, operations, tags,
  * the page schema — is sourced independently of the field inventory.
  */
-final readonly class TypeMetadata implements TypeMetadataInterface
+final readonly class TypeMetadata implements DeclaresOperationExtensions
 {
     /**
      * @param list<FieldInterface>            $fields
@@ -41,6 +41,8 @@ final readonly class TypeMetadata implements TypeMetadataInterface
      * @param array<string, ?string>          $operationDescriptions per-CRUD-operation description overrides, keyed by {@see OperationType::value}; a missing key (and a null value) means "no override"
      * @param list<string>                    $includablePaths
      * @param array<string, list<array{status: int, jobType: string|null}>> $responses per-operation success-response overrides, keyed by {@see OperationType::value} → an ordered list of `{status, jobType}` scalar pairs; a missing key means "the operation's default" ({@see OperationResponses::defaultFor()})
+     * @param array<string, mixed>          $extensions          vendor extensions stamped on every operation of the type
+     * @param array<string, array<string, mixed>> $operationExtensions per-CRUD-operation vendor extensions, keyed by {@see OperationType::value}
      */
     public function __construct(
         private string $type,
@@ -64,7 +66,19 @@ final readonly class TypeMetadata implements TypeMetadataInterface
         private array $operationDescriptions,
         private array $includablePaths,
         private array $responses = [],
+        private array $extensions = [],
+        private array $operationExtensions = [],
     ) {}
+
+    public function extensions(): array
+    {
+        return $this->extensions;
+    }
+
+    public function operationExtensions(OperationType $operation): array
+    {
+        return $this->operationExtensions[$operation->value] ?? [];
+    }
 
     public function type(): string
     {

@@ -40,6 +40,39 @@ pointing at an `export-jobs` resource, and that `GET /export-jobs/{id}` may `303
 finished export. Because the responses ride core's shared projection, they are part of the
 [byte-compatible](#byte-compatibility-with-the-symfony-bundle) output.
 
+## Vendor extensions (`x-`) {#vendor-extensions}
+
+A resource can stamp OpenAPI vendor extensions on its operations, for tooling that reads them
+(a gateway, a docs portal, a client generator). Declare them on `#[AsJsonApiResource]`:
+
+```php
+#[AsJsonApiResource(
+    extensions: ['x-feature' => 'agency'],
+    operationExtensions: [
+        'Create' => ['x-rate-limit' => ['per' => 'minute', 'limit' => 10]],
+        'Delete' => ['x-feature' => 'agency-admin'],
+    ],
+)]
+final class AgencyResource extends AbstractResource { /* ... */ }
+```
+
+`extensions` lands on every operation the document emits for the type: the CRUD operations,
+the related and relationship endpoints of its relations, and its [custom actions](actions.md).
+`operationExtensions` adds members to one CRUD operation, keyed by the `Operation` case value
+(`FetchCollection`, `FetchOne`, `Create`, `Update`, `Delete`), and is merged over `extensions`,
+so the operation's value wins on a shared key. Here `DELETE /agencies/{id}` carries
+`x-feature: agency-admin` and every other operation `x-feature: agency`.
+
+Discovery checks the declaration, so a mistake fails at boot rather than in the document:
+
+- every key must start with `x-` and name something after it;
+- `x-oai-` and `x-oas-` are reserved by the OpenAPI Initiative and rejected;
+- a value is a scalar, `null`, or an array of them, since it is stored in the
+  [discovery cache](optimize.md);
+- an `operationExtensions` key must be an `Operation` case the type exposes.
+
+A type that declares none projects exactly as before.
+
 ## The HTTP routes
 
 When `jsonapi.openapi.enabled` is true **and** (`app.debug` OR `openapi.expose_in_prod`), the

@@ -105,4 +105,66 @@ final class AsJsonApiResourceTest extends TestCase
 
         new AsJsonApiResource(operations: [Operation::FetchOne], update: new NoContent());
     }
+
+    public function test_it_carries_vendor_extensions(): void
+    {
+        $attribute = new AsJsonApiResource(
+            extensions: ['x-feature' => 'agency', 'x-tags' => ['a', 'b']],
+            operationExtensions: ['Create' => ['x-feature' => 'agency-write']],
+        );
+
+        self::assertSame(['x-feature' => 'agency', 'x-tags' => ['a', 'b']], $attribute->extensions);
+        self::assertSame(['Create' => ['x-feature' => 'agency-write']], $attribute->operationExtensions);
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function invalidExtensions(): iterable
+    {
+        yield 'no x- prefix' => [['feature' => 'agency']];
+        yield 'bare x-' => [['x-' => 'agency']];
+        yield 'reserved x-oai-' => [['x-oai-thing' => true]];
+        yield 'reserved x-oas- in any case' => [['X-OAS-thing' => true]];
+        yield 'an object value' => [['x-thing' => new \stdClass()]];
+        yield 'an object nested in an array' => [['x-thing' => ['ok', new \stdClass()]]];
+    }
+
+    /**
+     * @param array<string, mixed> $extensions
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidExtensions')]
+    public function test_it_rejects_an_invalid_type_wide_extension(array $extensions): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new AsJsonApiResource(extensions: $extensions);
+    }
+
+    /**
+     * @param array<string, mixed> $extensions
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidExtensions')]
+    public function test_it_rejects_an_invalid_per_operation_extension(array $extensions): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new AsJsonApiResource(operationExtensions: ['Update' => $extensions]);
+    }
+
+    public function test_it_rejects_per_operation_extensions_for_an_unknown_operation(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('"Publish"');
+
+        new AsJsonApiResource(operationExtensions: ['Publish' => ['x-feature' => 'agency']]);
+    }
+
+    public function test_it_rejects_per_operation_extensions_for_an_unexposed_operation(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('Create');
+
+        new AsJsonApiResource(readOnly: true, operationExtensions: ['Create' => ['x-feature' => 'agency']]);
+    }
 }

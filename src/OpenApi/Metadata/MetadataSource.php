@@ -366,6 +366,8 @@ final class MetadataSource
             operationDescriptions: $this->operationDescriptions($resource),
             includablePaths: $resource !== null ? $this->includePaths->pathsFor($server, $type) : [],
             responses: $descriptor->responses,
+            extensions: $descriptor->extensions,
+            operationExtensions: $descriptor->operationExtensions,
         );
     }
 
