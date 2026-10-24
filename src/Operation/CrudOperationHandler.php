@@ -1402,6 +1402,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 resolveResource: $resolveResource,
             );
         }
+        $this->gateEmbeddedMutations($type, $entity, $relationships);
         [$beforeCreate, $deferred] = $this->partitionForCreateOrder($relationships);
         $this->applyRelationships($persister, $type, $entity, $beforeCreate, $body, true, $server, $request, flush: false);
 
@@ -1563,6 +1564,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 resolveResource: $resolveResource,
             );
         }
+        $this->gateEmbeddedMutations($type, $entity, $relationships);
 
         // Hydration mutates the loaded target in place (the in-memory witness returns the
         // stored instance by reference), so a mid-hydration throw or a post-hydration
@@ -1897,6 +1899,23 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         $this->authorizer->authorize($type, Operation::Update, $parent);
+    }
+
+    /**
+     * Applies each embedded relation's own `securityMutate` ability to the parent, as the
+     * relationship endpoint does. A relation without a declared ability is already covered by
+     * the create/update gate.
+     *
+     * @param list<array{relation: RelationInterface, linkage: ToOneRelationship|ToManyRelationship}> $relationships
+     */
+    private function gateEmbeddedMutations(string $type, object $parent, array $relationships): void
+    {
+        foreach ($relationships as $relationship) {
+            $mutate = $relationship['relation']->securityMutate();
+            if (\is_string($mutate)) {
+                $this->authorizer->authorizeAbility($type, $mutate, $parent);
+            }
+        }
     }
 
     /**

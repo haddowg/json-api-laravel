@@ -103,6 +103,11 @@ BelongsTo::make('owner', 'users')->security(read: 'inspectOwner');
 The example's `playlists.owner` gates its related/relationship reads on `inspectOwner`
 (admin-only), while the sibling `publicOwner` (same FK, curated type) stays open.
 
+`->security(mutate: …)` replaces the parent's `update` ability for that relation's
+`/relationships/{rel}` writes. The same ability also applies when the relation is set inside a
+whole-resource create or update (including an Atomic Operations `add`/`update`), checked against
+the parent after the create/update ability passes.
+
 ## Custom actions
 
 A custom action declares its own ability on the attribute (not on the type):

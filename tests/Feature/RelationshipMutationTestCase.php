@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Testing\TestResponse;
+use Orchestra\Testbench\Attributes\DefineEnvironment;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
 
@@ -277,6 +278,129 @@ abstract class RelationshipMutationTestCase extends Orchestra
 
         $response->assertOk();
         self::assertSame(['type' => 'authors', 'id' => '2'], $response->json('data'));
+    }
+
+    public function test_an_embedded_create_honours_the_relation_mutate_ability(): void
+    {
+        Gate::define('curate', static fn(?Authenticatable $user): bool => false);
+
+        $this->writeJsonApi('POST', '/api/posts', $this->postWithModerator(null, '2'))
+            ->assertStatus(403);
+
+        $this->readRel('/api/posts')->assertJsonCount(3, 'data');
+    }
+
+    public function test_an_embedded_update_honours_the_relation_mutate_ability(): void
+    {
+        Gate::define('curate', static fn(?Authenticatable $user): bool => false);
+
+        $this->writeJsonApi('PATCH', '/api/posts/1', $this->postWithModerator('1', '2'))
+            ->assertStatus(403);
+
+        self::assertNull($this->readRel('/api/posts/1/relationships/moderator')->json('data'));
+        self::assertSame('Hello', $this->readRel('/api/posts/1')->json('data.attributes.title'));
+    }
+
+    public function test_an_embedded_write_with_the_relation_mutate_ability_succeeds(): void
+    {
+        Gate::define('curate', static fn(?Authenticatable $user): bool => true);
+
+        $created = $this->writeJsonApi('POST', '/api/posts', $this->postWithModerator(null, '2'));
+        $created->assertStatus(201);
+        $id = $created->json('data.id');
+        self::assertIsString($id);
+        self::assertSame(['type' => 'authors', 'id' => '2'], $this->readRel('/api/posts/' . $id . '/relationships/moderator')->json('data'));
+
+        $this->writeJsonApi('PATCH', '/api/posts/1', $this->postWithModerator('1', '1'))->assertOk();
+        self::assertSame(['type' => 'authors', 'id' => '1'], $this->readRel('/api/posts/1/relationships/moderator')->json('data'));
+    }
+
+    public function test_an_embedded_write_without_the_gated_relation_skips_its_ability(): void
+    {
+        Gate::define('curate', static fn(?Authenticatable $user): bool => false);
+
+        $this->writeJsonApi('PATCH', '/api/posts/1', [
+            'data' => [
+                'type' => 'posts',
+                'id' => '1',
+                'relationships' => ['author' => ['data' => ['type' => 'authors', 'id' => '2']]],
+            ],
+        ])->assertOk();
+    }
+
+    #[DefineEnvironment('enableAtomicOperations')]
+    public function test_an_atomic_add_honours_the_relation_mutate_ability(): void
+    {
+        Gate::define('curate', static fn(?Authenticatable $user): bool => false);
+
+        $this->atomic([['op' => 'add', 'data' => $this->postWithModerator(null, '2')['data']]])
+            ->assertStatus(403);
+
+        $this->readRel('/api/posts')->assertJsonCount(3, 'data');
+    }
+
+    #[DefineEnvironment('enableAtomicOperations')]
+    public function test_an_atomic_update_honours_the_relation_mutate_ability(): void
+    {
+        Gate::define('curate', static fn(?Authenticatable $user): bool => false);
+
+        $this->atomic([['op' => 'update', 'ref' => ['type' => 'posts', 'id' => '1'], 'data' => $this->postWithModerator('1', '2')['data']]])
+            ->assertStatus(403);
+
+        self::assertNull($this->readRel('/api/posts/1/relationships/moderator')->json('data'));
+    }
+
+    #[DefineEnvironment('enableAtomicOperations')]
+    public function test_an_atomic_write_with_the_relation_mutate_ability_succeeds(): void
+    {
+        Gate::define('curate', static fn(?Authenticatable $user): bool => true);
+
+        $this->atomic([['op' => 'update', 'ref' => ['type' => 'posts', 'id' => '1'], 'data' => $this->postWithModerator('1', '2')['data']]])
+            ->assertOk();
+
+        self::assertSame(['type' => 'authors', 'id' => '2'], $this->readRel('/api/posts/1/relationships/moderator')->json('data'));
+    }
+
+    /**
+     * @param \Illuminate\Foundation\Application $app
+     */
+    protected function enableAtomicOperations($app): void
+    {
+        /** @var \Illuminate\Contracts\Config\Repository $config */
+        $config = $app['config'];
+        $config->set('jsonapi.atomic_operations.enabled', true);
+    }
+
+    /**
+     * A posts document embedding the `moderator` relation, which declares `security(mutate: 'curate')`.
+     *
+     * @return array{data: array<string, mixed>}
+     */
+    protected function postWithModerator(?string $id, string $moderatorId): array
+    {
+        $data = ['type' => 'posts'];
+        if ($id !== null) {
+            $data['id'] = $id;
+        }
+        $data['attributes'] = ['title' => 'Moderated'];
+        $data['relationships'] = ['moderator' => ['data' => ['type' => 'authors', 'id' => $moderatorId]]];
+
+        return ['data' => $data];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $operations
+     *
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    protected function atomic(array $operations): TestResponse
+    {
+        $mediaType = self::MEDIA_TYPE . ';ext="https://jsonapi.org/ext/atomic"';
+
+        return $this->call('POST', '/api/operations', [], [], [], [
+            'HTTP_ACCEPT' => $mediaType,
+            'CONTENT_TYPE' => $mediaType,
+        ], (string) \json_encode(['atomic:operations' => $operations]));
     }
 
     /**
