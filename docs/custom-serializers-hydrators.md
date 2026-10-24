@@ -57,6 +57,12 @@ see [capability-composition](capability-composition.md#dependency-injection). Pa
 [custom provider](custom-data-providers.md) to make the type fetchable — the example's
 `charts`/`countries` do exactly this.
 
+The attribute also takes `tags`, and the same `extensions`/`operationExtensions` as
+`#[AsJsonApiResource]` for [OpenAPI vendor extensions](openapi.md#vendor-extensions). A
+per-operation set can only name an operation the `operations` list exposes, so a
+serialize-only type takes type-wide `extensions` alone (they still reach any custom action
+mounted on it).
+
 ## A standalone hydrator
 
 The write twin: `#[AsJsonApiHydrator(type: …)]` on a class implementing core's

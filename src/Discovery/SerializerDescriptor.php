@@ -18,8 +18,8 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * standalone serializer declares its runtime segment through
  * {@see \haddowg\JsonApi\Serializer\UriTypeAwareInterface}, but the route/descriptor
  * segment is the type, matching the bundle), the server(s) it is exposed on, its exposed
- * operation allow-list (**empty by default** — serialize-only, no endpoints), and its
- * explicit OpenAPI tag refs.
+ * operation allow-list (**empty by default** — serialize-only, no endpoints), its
+ * explicit OpenAPI tag refs, and its OpenAPI vendor extensions.
  *
  * Only scalars + lists, so a set of descriptors round-trips through {@see toArray()} /
  * {@see fromArray()} to the `var_export`-able discovery cache (keeping route registration
@@ -34,6 +34,8 @@ final readonly class SerializerDescriptor
      * @param list<string>                                                  $servers    the server name(s) exposing this type (at least `['default']`)
      * @param list<string>                                                  $operations the exposed operations as {@see Operation} case-value strings (empty = serialize-only)
      * @param list<string>                                                  $tags       the explicit OpenAPI tag names the type's operations are grouped under (empty = the humanized-type default)
+     * @param array<string, mixed>                                          $extensions          the OpenAPI vendor extensions (`x-…`) stamped on every operation of the type
+     * @param array<string, array<string, mixed>>                           $operationExtensions per-CRUD-operation vendor extensions keyed by {@see Operation} case value, merged over `$extensions`
      */
     public function __construct(
         public string $class,
@@ -42,6 +44,8 @@ final readonly class SerializerDescriptor
         public array $servers,
         public array $operations,
         public array $tags = [],
+        public array $extensions = [],
+        public array $operationExtensions = [],
     ) {}
 
     /**
@@ -61,7 +65,7 @@ final readonly class SerializerDescriptor
     }
 
     /**
-     * @return array{class: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>, type: string, uriType: string, servers: list<string>, operations: list<string>, tags: list<string>}
+     * @return array{class: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>, type: string, uriType: string, servers: list<string>, operations: list<string>, tags: list<string>, extensions: array<string, mixed>, operationExtensions: array<string, array<string, mixed>>}
      */
     public function toArray(): array
     {
@@ -72,11 +76,13 @@ final readonly class SerializerDescriptor
             'servers' => $this->servers,
             'operations' => $this->operations,
             'tags' => $this->tags,
+            'extensions' => $this->extensions,
+            'operationExtensions' => $this->operationExtensions,
         ];
     }
 
     /**
-     * @param array{class: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>, type: string, uriType: string, servers: list<string>, operations: list<string>, tags?: list<string>} $data
+     * @param array{class: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>, type: string, uriType: string, servers: list<string>, operations: list<string>, tags?: list<string>, extensions?: array<string, mixed>, operationExtensions?: array<string, array<string, mixed>>} $data
      */
     public static function fromArray(array $data): self
     {
@@ -87,6 +93,8 @@ final readonly class SerializerDescriptor
             $data['servers'],
             $data['operations'],
             $data['tags'] ?? [],
+            $data['extensions'] ?? [],
+            $data['operationExtensions'] ?? [],
         );
     }
 }

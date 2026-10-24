@@ -304,6 +304,8 @@ final class DiscoveryScanner
             $this->capabilityServers($attribute->server),
             \array_values(\array_map(static fn(Operation $op): string => $op->value, $attribute->operations)),
             \array_values($attribute->tags),
+            $attribute->extensions,
+            $attribute->operationExtensions,
         );
     }
 
