@@ -12,5 +12,7 @@ final class CountryRecord
     public function __construct(
         public string $id = '',
         public string $name = '',
+        /** @var list<AuthorRecord> */
+        public array $authors = [],
     ) {}
 }

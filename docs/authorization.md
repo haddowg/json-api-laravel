@@ -120,6 +120,31 @@ unless the caller may update that row. A refusal is a `403` and nothing is saved
 whole-resource create or update (including an Atomic Operations `add`/`update`), checked against
 the parent after the create/update ability passes.
 
+## Related rows and their own type's policy
+
+A row of another type that a response renders, as an `included` resource, as an identifier in
+a relationship's `data`, or as the data of a related endpoint, has to pass its own type's read
+gate: the same `view` ability (or its rename) that `GET /{type}/{id}` checks on that row. A row
+the gate refuses reads as absent. It is left out of `included`, out of the relationship's
+`data` (a to-one renders `null`), and out of the related and relationship endpoints, the same
+way a row hidden by a [scoping provider](custom-data-providers.md#a-provider-that-scopes-its-rows)
+is. An attribute flattened with `on()` through that row reads as `null`, and a write through it
+is a `422` like any write through a missing row.
+
+The check runs per row on the rows already loaded for the response, with no extra queries. A
+type with no policy and no defined `view` ability is not checked. Collections work as before:
+`GET /{type}` checks `viewAny` and leaves row filtering to the query scope, and a page with
+hidden rows comes back shorter than its size, with any total still counting them. Use a query
+scope for rows that should never be listed.
+
+A polymorphic to-many is read off the model in one piece, so when it holds a row the caller
+may not view, the relationship shows only its `links`, with no `data` and nothing in
+`included`.
+
+This is a change for apps that let a client read rows through `?include` that the row's own
+`view` policy refuses. Those rows are now hidden. Allow them in the policy if they should stay
+visible.
+
 ## Custom actions
 
 A custom action declares its own ability on the attribute (not on the type):

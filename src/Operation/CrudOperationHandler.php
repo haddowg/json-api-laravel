@@ -652,7 +652,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 ? $this->polymorphicSerializer($relation, $server)
                 : $server->serializerFor($relatedType);
 
-            $items = $this->materialize($result);
+            // A member the caller may not `view` reads as absent here too (ADR 0045).
+            $items = $this->relationshipLinkage->viewableMembers($this->materialize($result), $relation);
 
             // A belongsToMany with declared pivot fields renders each related member's stored
             // pivot values as `meta.pivot` (ADR 0008): wrap the related serializer with the

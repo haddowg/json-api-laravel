@@ -15,6 +15,7 @@ use haddowg\JsonApiLaravel\Action\ActionRegistry;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
 use haddowg\JsonApiLaravel\Authorization\RelationAuthorizer;
 use haddowg\JsonApiLaravel\Authorization\ResourceAuthorization;
+use haddowg\JsonApiLaravel\Authorization\ViewableRows;
 use haddowg\JsonApiLaravel\Console\ClearCommand;
 use haddowg\JsonApiLaravel\Console\JsonSchemaExportCommand;
 use haddowg\JsonApiLaravel\Console\OpenApiExportCommand;
@@ -663,6 +664,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         // the memoized Server and the singleton handler capture the instances at construction.
         $this->app->singleton(RequestScopedRelationshipCount::class);
         $this->app->singleton(RequestScopedRelationshipPagination::class);
+        $this->app->singleton(ViewableRows::class);
         $this->app->singleton(RequestScopedRelationshipLinkage::class);
 
         $this->app->singleton(RelatedIncludeBatcher::class, static function (Container $app): RelatedIncludeBatcher {
@@ -846,6 +848,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                     new RelationAuthorizer(
                         $app->make(Authorizer::class),
                         static fn(): \haddowg\JsonApi\Server\Server => $app->make(ServerRegistry::class)->get($server),
+                        $app->make(ViewableRows::class),
                     ),
                 );
             }

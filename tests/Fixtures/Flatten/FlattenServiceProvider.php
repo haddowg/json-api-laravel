@@ -48,6 +48,7 @@ final class FlattenServiceProvider extends ServiceProvider
         $wonderland = new CountryRecord('1', 'Wonderland');
         $ada = new AuthorRecord('1', 'Ada Lovelace', $wonderland);
         $grace = new AuthorRecord('2', 'Grace Hopper', $wonderland);
+        $wonderland->authors = [$ada, $grace];
         $books = [
             '1' => new BookRecord('1', 'Algorithms', $ada, $ada),
             '2' => new BookRecord('2', 'Compilers', $grace, $grace),

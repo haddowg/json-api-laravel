@@ -23,6 +23,8 @@ use Workbench\App\Models\User;
  *
  * The same graph checks the relation authorizer: a flattened write needs `update` on the row it
  * lands on, and a relation's read ability decides whether its linkage and included data render.
+ * It also checks that a related row the caller may not `view` reads as absent wherever another
+ * type renders it.
  *
  * Seed: country 1 "Wonderland"; authors 1 "Ada Lovelace" and 2 "Grace Hopper", both in country 1;
  * book 1 by and edited by author 1, book 2 by and edited by author 2, book 3 with neither.
@@ -298,6 +300,87 @@ abstract class FlattenWriteConformanceTestCase extends Orchestra
         $this->actingAs(new User(['id' => 1, 'name' => 'Reader']));
         $user = $this->read('/api/books?include=editor.homeCountry');
         self::assertSame(['authors:1', 'authors:2', 'countries:1'], $this->includedIdentities($user));
+    }
+
+    #[Test]
+    #[Group('spec:fetching')]
+    public function anIncludedRowTheCallerMayNotViewIsLeftOutOfIncludedAndLinkage(): void
+    {
+        $this->denyViewOnAuthor('2');
+
+        $books = $this->read('/api/books?include=editor');
+        self::assertSame(['authors:1'], $this->includedIdentities($books));
+        self::assertSame(['type' => 'authors', 'id' => '1'], $this->relationshipData($books, '1', 'editor'));
+        self::assertNull($this->relationshipData($books, '2', 'editor'));
+
+        $country = $this->read('/api/countries/1?include=authors');
+        self::assertSame(['authors:1'], $this->includedIdentities($country));
+        $country->assertJsonPath('data.relationships.authors.data', [['type' => 'authors', 'id' => '1']]);
+
+        // A flattened attribute read through the row is absent too, and the type's own
+        // endpoint refuses the row.
+        $this->read('/api/books/2')->assertJsonPath('data.attributes.editorName', null);
+        $this->get('/api/authors/2', ['Accept' => self::MEDIA_TYPE])->assertStatus(403);
+    }
+
+    #[Test]
+    #[Group('spec:fetching')]
+    public function aRowTheCallerMayNotViewIsAbsentAtTheRelationEndpoints(): void
+    {
+        $this->denyViewOnAuthor('2');
+
+        $this->read('/api/books/2/relationships/editor')->assertJsonPath('data', null);
+        $this->read('/api/books/2/editor')->assertJsonPath('data', null);
+        $this->read('/api/countries/1/relationships/authors')->assertJsonPath('data', [['type' => 'authors', 'id' => '1']]);
+        /** @var list<array{id: string}> $related */
+        $related = $this->read('/api/countries/1/authors')->json('data');
+        self::assertSame(['1'], \array_column($related, 'id'));
+    }
+
+    #[Test]
+    #[Group('spec:fetching')]
+    public function rowsTheCallerMayViewAreAllIncluded(): void
+    {
+        $this->denyViewOnAuthor('99');
+
+        self::assertSame(['authors:1', 'authors:2'], $this->includedIdentities($this->read('/api/countries/1?include=authors')));
+        self::assertSame(['authors:1', 'authors:2'], $this->includedIdentities($this->read('/api/books?include=editor')));
+    }
+
+    /**
+     * Lets `view` pass on everything except the author with `$id`.
+     */
+    protected function denyViewOnAuthor(string $id): void
+    {
+        Gate::define('view', static function (?Authenticatable $user, mixed $subject = null) use ($id): bool {
+            if (!\is_object($subject) || !\str_starts_with((new \ReflectionClass($subject))->getShortName(), 'Author')) {
+                return true;
+            }
+            /** @var mixed $subjectId */
+            $subjectId = $subject->id ?? null;
+
+            return !\is_scalar($subjectId) || (string) $subjectId !== $id;
+        });
+    }
+
+    /**
+     * The `data` of `$relationship` on the primary resource with `$id` in a collection document.
+     *
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
+     */
+    protected function relationshipData(TestResponse $response, string $id, string $relationship): mixed
+    {
+        /** @var list<array{id: string, relationships: array<string, array<string, mixed>>}> $resources */
+        $resources = $response->json('data');
+        foreach ($resources as $resource) {
+            if ($resource['id'] === $id) {
+                self::assertArrayHasKey('data', $resource['relationships'][$relationship] ?? []);
+
+                return $resource['relationships'][$relationship]['data'];
+            }
+        }
+
+        self::fail('No resource with id ' . $id);
     }
 
     /**
