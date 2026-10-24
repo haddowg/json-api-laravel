@@ -19,6 +19,7 @@ final class AuthorResource extends AbstractResource
             Id::make(),
             Str::make('name'),
             BelongsTo::make('country', 'countries')->hidden(),
+            BelongsTo::make('homeCountry', 'countries')->storedAs('country')->security(read: 'seeAuthorData'),
         ];
     }
 }

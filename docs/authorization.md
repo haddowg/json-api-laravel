@@ -103,6 +103,18 @@ BelongsTo::make('owner', 'users')->security(read: 'inspectOwner');
 The example's `playlists.owner` gates its related/relationship reads on `inspectOwner`
 (admin-only), while the sibling `publicOwner` (same FK, curated type) stays open.
 
+The same ability decides what the relationship shows wherever the parent is rendered: on a
+fetched resource, in a collection, and on a resource in `included`. It is checked once per
+parent, so a caller without it sees the relationship's `links` and no `data` or `meta`, and
+nothing reaches `included` through it. A relation without a string read ability shows its data
+to anyone who can see the parent. `security(read: true)` and `security(read: false)` only
+document the endpoints, so they change nothing here.
+
+An attribute flattened with `on()` writes onto the related row at the end of its chain. That
+write needs the related type's `update` ability (or its renamed ability) on that row, checked
+after the body's relationships are applied, so a body can't link a row and write onto it
+unless the caller may update that row. A refusal is a `403` and nothing is saved.
+
 `->security(mutate: …)` replaces the parent's `update` ability for that relation's
 `/relationships/{rel}` writes. The same ability also applies when the relation is set inside a
 whole-resource create or update (including an Atomic Operations `add`/`update`), checked against

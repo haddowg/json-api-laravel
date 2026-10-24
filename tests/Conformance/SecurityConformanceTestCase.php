@@ -379,6 +379,18 @@ abstract class SecurityConformanceTestCase extends Orchestra
         $this->readJsonApi('/secure-api/albums/1/relationships/staffArtist')->assertOk();
     }
 
+    #[Test]
+    #[Group('spec:authorization')]
+    public function aRelationReadAbilityOnARenderedResourceGoesThroughTheTypesPolicy(): void
+    {
+        // `guardedArtist`'s `inspectArtist` ability lives only on the album's dedicated
+        // policy, so the reader sees its data only if the check reaches that policy.
+        $this->actingAs($this->reader());
+        $relationship = $this->readJsonApi('/secure-api/albums/1')->assertOk()->json('data.relationships.guardedArtist');
+        self::assertIsArray($relationship);
+        self::assertArrayHasKey('data', $relationship);
+    }
+
     /**
      * @return array<string, mixed>
      */
