@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.1](https://github.com/haddowg/json-api-laravel/compare/v1.8.0...v1.8.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **openapi:** find a custom docs route for describedby and warn when none serves the document ([#99](https://github.com/haddowg/json-api-laravel/issues/99)) ([bf6215c](https://github.com/haddowg/json-api-laravel/commit/bf6215c1be799dec8cfea49a24b4a50c719339f9))
+
 ## [1.8.0](https://github.com/haddowg/json-api-laravel/compare/v1.7.2...v1.8.0) (2026-10-24)
 
 
