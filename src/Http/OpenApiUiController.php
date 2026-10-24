@@ -56,7 +56,14 @@ final class OpenApiUiController
             ? $this->redocPage($specUrl)
             : $this->swaggerPage($specUrl);
 
-        return new Response($html, Response::HTTP_OK, ['Content-Type' => 'text/html; charset=UTF-8']);
+        $response = new Response($html, Response::HTTP_OK, ['Content-Type' => 'text/html; charset=UTF-8']);
+
+        $cacheControl = config('jsonapi.openapi.cache_control');
+        if (\is_string($cacheControl) && $cacheControl !== '') {
+            $response->headers->set('Cache-Control', $cacheControl);
+        }
+
+        return $response;
     }
 
     /**

@@ -82,6 +82,13 @@ final class OpenApiServePlainTest extends OpenApiServeTestCase
 
     #[Test]
     #[Group('openapi')]
+    public function the_viewer_page_carries_the_configured_cache_control(): void
+    {
+        $this->assertSame(self::CACHE_CONTROL, $this->cacheControl($this->fetch('/docs')));
+    }
+
+    #[Test]
+    #[Group('openapi')]
     public function no_documentation_route_sets_a_cookie_or_varies(): void
     {
         // The probe proves this app does hand out session cookies on a web route.
