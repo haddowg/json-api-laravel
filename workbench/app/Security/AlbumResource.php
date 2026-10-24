@@ -11,6 +11,8 @@ use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Operation\Operation;
+use Illuminate\Support\Facades\Auth;
+use Workbench\App\Models\User;
 use Workbench\App\Security\Policies\AlbumApiPolicy;
 
 /**
@@ -33,7 +35,9 @@ use Workbench\App\Security\Policies\AlbumApiPolicy;
  *  - `publicArtist` — `security(read: false)`, so the endpoints are ungated (readable even
  *    when the parent's `view` would deny);
  *  - `guardedArtist` — `security(read: 'inspectArtist')`, so the endpoints authorize the
- *    RENAMED `inspectArtist` ability against the parent (via {@see \haddowg\JsonApiLaravel\Authorization\Authorizer::authorizeAbility()}).
+ *    RENAMED `inspectArtist` ability against the parent (via {@see \haddowg\JsonApiLaravel\Authorization\Authorizer::authorizeAbility()});
+ *  - `staffArtist` — `hidden()` from anyone but an admin, so for everyone else it is absent
+ *    from the resource and both endpoints are a `404`.
  *
  * It lives outside the scanned `app/JsonApi` path (registered explicitly by the security
  * wiring) so it never collides with the music-suite `albums` resource.
@@ -63,6 +67,8 @@ final class AlbumResource extends AbstractResource
             BelongsTo::make('artist', 'artists'),
             BelongsTo::make('publicArtist', 'artists')->storedAs('artist')->security(read: false),
             BelongsTo::make('guardedArtist', 'artists')->storedAs('artist')->security(read: 'inspectArtist'),
+            BelongsTo::make('staffArtist', 'artists')->storedAs('artist')
+                ->hidden(static fn(): bool => !(Auth::user() instanceof User && Auth::user()->is_admin)),
         ];
     }
 }
