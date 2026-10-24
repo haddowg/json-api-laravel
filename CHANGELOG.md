@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/haddowg/json-api-laravel/compare/v1.5.1...v1.5.2) (2026-10-24)
+
+
+### Bug Fixes
+
+* persist a write through a flattened attribute to its related model ([#66](https://github.com/haddowg/json-api-laravel/issues/66)) ([60d32ca](https://github.com/haddowg/json-api-laravel/commit/60d32cab19d3824e63d1e1686ba2debad7f5985a))
+
 ## [1.5.1](https://github.com/haddowg/json-api-laravel/compare/v1.5.0...v1.5.1) (2026-10-24)
 
 
