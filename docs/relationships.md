@@ -204,6 +204,14 @@ that scope hides is a `404`, the same as an id with no row, and a full replaceme
 hidden members attached. A related model without global scopes, served by the reference
 providers, resolves ids as it always has.
 
+On a `HasMany`/`HasOne` (the foreign key is on the related row, so a row has one parent),
+adding a row that another parent holds moves it. That needs the `update` ability on the parent
+that holds it now, or on the row itself, or the write is a `403`
+([ADR 0042](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0042-moving-a-related-row-needs-update-on-its-current-parent.md)).
+Removing a row the parent doesn't hold changes nothing. Removing one whose foreign key column
+is `NOT NULL` is a `403` (`REMOVAL_PROHIBITED`, or `FULL_REPLACEMENT_PROHIBITED` for a
+replacement that would drop it), since the row can't be left without a parent.
+
 ## Write-only relations
 
 `writeOnly()` makes a relation accept writes and never show up on a read:

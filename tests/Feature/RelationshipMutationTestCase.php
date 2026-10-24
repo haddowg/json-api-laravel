@@ -33,6 +33,9 @@ abstract class RelationshipMutationTestCase extends Orchestra
 {
     public const string MEDIA_TYPE = 'application/vnd.api+json';
 
+    /** @var array<string, list<string>> */
+    private array $updatableIds = [];
+
     // --- to-one (owner-side BelongsTo) ----------------------------------------
 
     public function test_patch_to_one_replaces_the_reference(): void
@@ -94,6 +97,103 @@ abstract class RelationshipMutationTestCase extends Orchestra
 
         $response->assertOk();
         self::assertSame(['2'], $this->linkageIds($this->readRel('/api/authors/1/relationships/posts')));
+    }
+
+    public function test_delete_has_many_leaves_another_parents_members_alone(): void
+    {
+        // Post 2 belongs to author 2, so removing it from author 1 changes nothing.
+        $this->writeManyRel('DELETE', '/api/authors/1/relationships/posts', [['type' => 'posts', 'id' => '2']])
+            ->assertOk();
+
+        self::assertSame(['1'], $this->linkageIds($this->readRel('/api/authors/1/relationships/posts')));
+        self::assertSame(['2'], $this->linkageIds($this->readRel('/api/authors/2/relationships/posts')));
+        self::assertSame(['type' => 'authors', 'id' => '2'], $this->readRel('/api/posts/2/relationships/author')->json('data'));
+    }
+
+    public function test_adding_another_parents_member_needs_update_on_that_parent(): void
+    {
+        $this->allowUpdateOnlyOn('authors', '1');
+
+        $this->writeManyRel('POST', '/api/authors/1/relationships/posts', [['type' => 'posts', 'id' => '2']])
+            ->assertStatus(403);
+
+        self::assertSame(['1'], $this->linkageIds($this->readRel('/api/authors/1/relationships/posts')));
+        self::assertSame(['2'], $this->linkageIds($this->readRel('/api/authors/2/relationships/posts')));
+    }
+
+    public function test_replacing_with_another_parents_member_needs_update_on_that_parent(): void
+    {
+        $this->allowUpdateOnlyOn('authors', '1');
+
+        $this->writeManyRel('PATCH', '/api/authors/1/relationships/posts', [['type' => 'posts', 'id' => '2']])
+            ->assertStatus(403);
+
+        self::assertSame(['1'], $this->linkageIds($this->readRel('/api/authors/1/relationships/posts')));
+        self::assertSame(['2'], $this->linkageIds($this->readRel('/api/authors/2/relationships/posts')));
+    }
+
+    public function test_an_embedded_update_with_another_parents_member_needs_update_on_that_parent(): void
+    {
+        $this->allowUpdateOnlyOn('authors', '1');
+
+        $this->writeJsonApi('PATCH', '/api/authors/1', [
+            'data' => [
+                'type' => 'authors',
+                'id' => '1',
+                'relationships' => ['posts' => ['data' => [['type' => 'posts', 'id' => '2']]]],
+            ],
+        ])->assertStatus(403);
+
+        self::assertSame(['1'], $this->linkageIds($this->readRel('/api/authors/1/relationships/posts')));
+        self::assertSame(['2'], $this->linkageIds($this->readRel('/api/authors/2/relationships/posts')));
+    }
+
+    public function test_an_embedded_create_with_another_parents_member_needs_update_on_that_parent(): void
+    {
+        $this->allowUpdateOnlyOn('authors', '1');
+
+        $this->writeJsonApi('POST', '/api/authors', [
+            'data' => [
+                'type' => 'authors',
+                'attributes' => ['name' => 'Hedy'],
+                'relationships' => ['posts' => ['data' => [['type' => 'posts', 'id' => '2']]]],
+            ],
+        ])->assertStatus(403);
+
+        $this->readRel('/api/authors')->assertJsonCount(2, 'data');
+        self::assertSame(['2'], $this->linkageIds($this->readRel('/api/authors/2/relationships/posts')));
+    }
+
+    public function test_adding_another_parents_member_with_update_on_that_parent_moves_it(): void
+    {
+        $this->allowUpdateOnlyOn('authors', '1', '2');
+
+        $this->writeManyRel('POST', '/api/authors/1/relationships/posts', [['type' => 'posts', 'id' => '2']])
+            ->assertOk();
+
+        self::assertSame(['1', '2'], $this->linkageIds($this->readRel('/api/authors/1/relationships/posts')));
+    }
+
+    public function test_adding_another_parents_member_with_update_on_the_member_moves_it(): void
+    {
+        $this->allowUpdateOnlyOn('authors', '1');
+        $this->allowUpdateOnlyOn('posts', '2');
+
+        $this->writeManyRel('POST', '/api/authors/1/relationships/posts', [['type' => 'posts', 'id' => '2']])
+            ->assertOk();
+
+        self::assertSame(['1', '2'], $this->linkageIds($this->readRel('/api/authors/1/relationships/posts')));
+    }
+
+    public function test_adding_an_unowned_member_needs_no_other_update(): void
+    {
+        $this->allowUpdateOnlyOn('authors', '1');
+
+        // Post 3 has no author.
+        $this->writeManyRel('POST', '/api/authors/1/relationships/posts', [['type' => 'posts', 'id' => '3']])
+            ->assertOk();
+
+        self::assertSame(['1', '3'], $this->linkageIds($this->readRel('/api/authors/1/relationships/posts')));
     }
 
     // --- polymorphic to-one (MorphTo) -----------------------------------------
@@ -401,6 +501,35 @@ abstract class RelationshipMutationTestCase extends Orchestra
             'HTTP_ACCEPT' => $mediaType,
             'CONTENT_TYPE' => $mediaType,
         ], (string) \json_encode(['atomic:operations' => $operations]));
+    }
+
+    /**
+     * Lets the `update` ability pass only for the listed ids of `$type`. Calls stack, so
+     * several types can each allow their own ids.
+     */
+    protected function allowUpdateOnlyOn(string $type, string ...$ids): void
+    {
+        $this->updatableIds[$type] = \array_values($ids);
+        $classes = ['authors' => 'Author', 'posts' => 'Post'];
+        $allowed = &$this->updatableIds;
+
+        Gate::define('update', static function (?Authenticatable $user, mixed $subject = null) use (&$allowed, $classes): bool {
+            if (!\is_object($subject)) {
+                return false;
+            }
+            $short = (new \ReflectionClass($subject))->getShortName();
+            foreach ($allowed as $allowedType => $allowedIds) {
+                $prefix = $classes[$allowedType] ?? '';
+                if ($prefix !== '' && \str_starts_with($short, $prefix)) {
+                    /** @var mixed $id */
+                    $id = $subject->id ?? null;
+
+                    return \is_scalar($id) && \in_array((string) $id, $allowedIds, true);
+                }
+            }
+
+            return false;
+        });
     }
 
     /**

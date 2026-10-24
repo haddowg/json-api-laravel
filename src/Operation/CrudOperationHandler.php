@@ -73,6 +73,7 @@ use haddowg\JsonApiLaravel\DataPersister\AcceptedForProcessing;
 use haddowg\JsonApiLaravel\DataPersister\AsyncWriteNotAllowedInAtomicOperation;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
+use haddowg\JsonApiLaravel\DataPersister\ReportsCurrentOwners;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
@@ -110,6 +111,7 @@ use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\FilterValueValidator;
 use haddowg\JsonApiLaravel\Validation\ResourceValidator;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Routing\Router;
 use Psr\Log\LoggerInterface;
@@ -1786,6 +1788,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // the members it hides. The echo then lists the members the relationship endpoint
         // would, so a scoped to-many that cannot be read that way is refused before the write.
         $applied = $this->scopeWrittenLinkage($parent, $relation, $linkage, $mode, $server, $request);
+        $this->guardReparenting($type, $parent, $relation, $applied, $mode);
         // A write-only relation echoes nothing (core answers 204), so there is no linkage to
         // read back and no pivot map to fetch.
         $writeOnly = $relation->isWriteOnlyFor($request);
@@ -1920,6 +1923,33 @@ final class CrudOperationHandler implements OperationHandlerInterface
     }
 
     /**
+     * Refuses to move a related row away from another parent unless the client may update
+     * that parent, or the row itself (ADR 0042). Only relations where a row has one parent
+     * (an inverse foreign key) report owners; a Remove never moves a row.
+     */
+    private function guardReparenting(string $type, object $parent, RelationInterface $relation, ToOneRelationship|ToManyRelationship $linkage, Mode $mode): void
+    {
+        $persister = $this->persisters->forType($type);
+        if ($mode === Mode::Remove || !$persister instanceof ReportsCurrentOwners) {
+            return;
+        }
+
+        foreach ($persister->currentOwners($type, $parent, $relation, $linkage) as $held) {
+            if ($held['owner'] !== null && $held['ownerType'] !== null) {
+                try {
+                    $this->authorizer->authorize($held['ownerType'], Operation::Update, $held['owner']);
+
+                    continue;
+                } catch (AuthorizationException) {
+                    // fall through to the row's own update ability
+                }
+            }
+
+            $this->authorizer->authorize($held['memberType'], Operation::Update, $held['member']);
+        }
+    }
+
+    /**
      * Collects the writable relationships named in a whole-resource write body's
      * `data.relationships`, resolved to their declared relation + parsed linkage. A
      * relationship that is unknown, or read-only for this operation, is skipped — the
@@ -1983,6 +2013,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             }
 
             $linkage = $this->scopeWrittenLinkage($entity, $relation, $relationship['linkage'], Mode::Replace, $server, $request, $creating);
+            $this->guardReparenting($type, $entity, $relation, $linkage, Mode::Replace);
             $persister->mutateRelationship($type, $entity, $relation, $linkage, Mode::Replace, flush: $flush);
         }
     }

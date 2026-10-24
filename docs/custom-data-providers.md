@@ -103,6 +103,11 @@ applies a relationship endpoint write. Implement `TransactionalDataPersisterInte
 a write (and its deferred After* work) in a transaction — the Eloquent persister does this
 over `DB::transaction`.
 
+If your store has relations where a related row has one parent (a has-many over a foreign key
+on the related row), implement `ReportsCurrentOwners`. Its `currentOwners()` returns the
+incoming linkage members another parent holds now, and the handler then checks `update` on
+that parent (or the row) before the write moves it. Without it, rows move unchecked.
+
 ## Priority and shadowing
 
 Providers and persisters register with a priority; the first that `supports()` a type wins.

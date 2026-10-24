@@ -90,6 +90,33 @@ final class EloquentRelationshipMutationTest extends RelationshipMutationTestCas
         $this->seedGraph();
     }
 
+    public function test_removing_a_member_with_a_required_foreign_key_is_forbidden(): void
+    {
+        Schema::drop('mut_posts');
+        Schema::create('mut_posts', static function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('title');
+            $table->unsignedInteger('author_id');
+            $table->unsignedInteger('sponsor_id')->nullable();
+            $table->unsignedInteger('moderator_id')->nullable();
+            $table->unsignedInteger('feature_id')->nullable();
+            $table->string('feature_type')->nullable();
+        });
+        Post::query()->create(['id' => 1, 'title' => 'Hello', 'author_id' => 1]);
+        Post::query()->create(['id' => 2, 'title' => 'World', 'author_id' => 2]);
+
+        $response = $this->writeManyRel('DELETE', '/api/authors/1/relationships/posts', [['type' => 'posts', 'id' => '1']]);
+        $response->assertStatus(403);
+        self::assertSame('REMOVAL_PROHIBITED', $response->json('errors.0.code'));
+
+        $replace = $this->writeManyRel('PATCH', '/api/authors/1/relationships/posts', [['type' => 'posts', 'id' => '2']]);
+        $replace->assertStatus(403);
+        self::assertSame('FULL_REPLACEMENT_PROHIBITED', $replace->json('errors.0.code'));
+
+        self::assertSame(['1'], $this->linkageIds($this->readRel('/api/authors/1/relationships/posts')));
+        self::assertSame(['2'], $this->linkageIds($this->readRel('/api/authors/2/relationships/posts')));
+    }
+
     /**
      * Seeds the SAME graph the in-memory witness carries: two authors, three tags, three
      * posts wiring the owner-side to-ones, the polymorphic `feature`, and the join to-many.

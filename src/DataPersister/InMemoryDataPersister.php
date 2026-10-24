@@ -7,6 +7,9 @@ namespace haddowg\JsonApiLaravel\DataPersister;
 use haddowg\JsonApi\Exception\ClientGeneratedIdAlreadyExists;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
+use haddowg\JsonApi\Resource\Field\BelongsToMany;
+use haddowg\JsonApi\Resource\Field\HasMany;
+use haddowg\JsonApi\Resource\Field\HasOne;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\ResourceIdentifier;
@@ -27,7 +30,7 @@ use haddowg\JsonApiLaravel\DataProvider\InMemoryStore;
  * types' stores — and sets the parent's association property to that object (or list of
  * objects). A persister with no resolver supports only whole-resource writes.
  */
-final class InMemoryDataPersister implements DataPersisterInterface, TransactionalDataPersisterInterface
+final class InMemoryDataPersister implements DataPersisterInterface, TransactionalDataPersisterInterface, ReportsCurrentOwners
 {
     /**
      * @param InMemoryStore                            $store           the store shared with the read provider
@@ -137,6 +140,49 @@ final class InMemoryDataPersister implements DataPersisterInterface, Transaction
         }
 
         return $entity;
+    }
+
+    /**
+     * The witness has no foreign keys, so a has-one/has-many member's owner is any other
+     * stored parent whose property holds it.
+     */
+    public function currentOwners(string $type, object $parent, RelationInterface $relation, ToOneRelationship|ToManyRelationship $linkage): array
+    {
+        $exclusive = $relation instanceof HasOne || ($relation instanceof HasMany && !$relation instanceof BelongsToMany);
+        if (!$exclusive) {
+            return [];
+        }
+
+        $fallbackType = $relation->relatedTypes()[0] ?? '';
+        $identifiers = $linkage instanceof ToOneRelationship
+            ? ($linkage->resourceIdentifier !== null ? [$linkage->resourceIdentifier] : [])
+            : $linkage->resourceIdentifiers;
+        $incoming = [];
+        foreach ($identifiers as $identifier) {
+            if ($identifier->id !== null) {
+                $incoming[$identifier->id] = $this->linkageType($identifier, $fallbackType);
+            }
+        }
+
+        $property = $relation->column() ?? $relation->name();
+        $parentId = $this->store->idOf($parent);
+        $owners = [];
+        foreach ($this->store->all() as $candidate) {
+            if ($candidate === $parent || ($parentId !== null && $this->store->idOf($candidate) === $parentId)) {
+                continue;
+            }
+
+            /** @var mixed $held */
+            $held = $candidate->{$property} ?? null;
+            $members = \is_iterable($held) ? [...$held] : [$held];
+            foreach ($members as $member) {
+                if (\is_object($member) && isset($incoming[$this->idOf($member)])) {
+                    $owners[] = ['memberType' => $incoming[$this->idOf($member)], 'member' => $member, 'ownerType' => $this->type, 'owner' => $candidate];
+                }
+            }
+        }
+
+        return $owners;
     }
 
     /**
