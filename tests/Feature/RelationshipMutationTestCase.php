@@ -11,6 +11,7 @@ use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\Attributes\DefineEnvironment;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
+use Workbench\App\Models\User;
 
 /**
  * The dual-provider relationship-MUTATION contract (Phase 3b): `PATCH`/`POST`/`DELETE` on
@@ -506,6 +507,120 @@ abstract class RelationshipMutationTestCase extends Orchestra
             ->assertOk();
 
         self::assertSame(['type' => 'authors', 'id' => '2'], $this->readRel('/api/posts/1/relationships/moderator')->json('data'));
+    }
+
+    // --- the update gate on the stored and the changed resource ---------------
+
+    public function test_an_owner_cannot_hand_a_resource_to_another_user_through_a_whole_update(): void
+    {
+        $this->onlyTheAuthorMayUpdatePosts();
+        $this->actingAs(new User(['id' => 1, 'name' => 'Ada']));
+
+        $this->writeJsonApi('PATCH', '/api/posts/1', $this->postWithAuthor('1', '2', 'Handed over'))
+            ->assertStatus(403);
+
+        self::assertSame(['type' => 'authors', 'id' => '1'], $this->readRel('/api/posts/1/relationships/author')->json('data'));
+        self::assertSame('Hello', $this->readRel('/api/posts/1')->json('data.attributes.title'));
+    }
+
+    public function test_an_owner_cannot_hand_a_resource_to_another_user_through_its_relationship_endpoint(): void
+    {
+        $this->onlyTheAuthorMayUpdatePosts();
+        $this->actingAs(new User(['id' => 1, 'name' => 'Ada']));
+
+        $this->writeRel('PATCH', '/api/posts/1/relationships/author', ['type' => 'authors', 'id' => '2'])
+            ->assertStatus(403);
+        $this->patchNull('/api/posts/1/relationships/author')->assertStatus(403);
+
+        self::assertSame(['type' => 'authors', 'id' => '1'], $this->readRel('/api/posts/1/relationships/author')->json('data'));
+    }
+
+    public function test_an_owner_can_still_edit_their_own_resource(): void
+    {
+        $this->onlyTheAuthorMayUpdatePosts();
+        $this->actingAs(new User(['id' => 1, 'name' => 'Ada']));
+
+        $this->writeJsonApi('PATCH', '/api/posts/1', $this->postWithAuthor('1', '1', 'Edited'))->assertOk();
+        $this->writeRel('PATCH', '/api/posts/1/relationships/author', ['type' => 'authors', 'id' => '1'])->assertOk();
+        $this->writeManyRel('POST', '/api/posts/1/relationships/tags', [['type' => 'tags', 'id' => '3']])->assertOk();
+
+        self::assertSame('Edited', $this->readRel('/api/posts/1')->json('data.attributes.title'));
+        self::assertSame(['1', '2', '3'], $this->linkageIds($this->readRel('/api/posts/1/relationships/tags')));
+    }
+
+    public function test_nobody_can_take_another_users_resource(): void
+    {
+        $this->onlyTheAuthorMayUpdatePosts();
+        $this->actingAs(new User(['id' => 1, 'name' => 'Ada']));
+
+        $this->writeJsonApi('PATCH', '/api/posts/2', $this->postWithAuthor('2', '1', 'Taken'))->assertStatus(403);
+        $this->writeRel('PATCH', '/api/posts/2/relationships/author', ['type' => 'authors', 'id' => '1'])->assertStatus(403);
+
+        self::assertSame(['type' => 'authors', 'id' => '2'], $this->readRel('/api/posts/2/relationships/author')->json('data'));
+        self::assertSame('World', $this->readRel('/api/posts/2')->json('data.attributes.title'));
+    }
+
+    public function test_a_caller_the_stored_resource_refuses_gets_403_before_validation(): void
+    {
+        $this->onlyTheAuthorMayUpdatePosts();
+        $this->actingAs(new User(['id' => 1, 'name' => 'Ada']));
+        $invalid = ['data' => ['type' => 'posts', 'id' => '2', 'attributes' => ['title' => null]]];
+
+        $this->writeJsonApi('PATCH', '/api/posts/2', $invalid)->assertStatus(403);
+
+        $invalid['data']['id'] = '1';
+        $this->writeJsonApi('PATCH', '/api/posts/1', $invalid)->assertStatus(422);
+    }
+
+    #[DefineEnvironment('enableAtomicOperations')]
+    public function test_an_owner_cannot_hand_a_resource_to_another_user_in_an_atomic_batch(): void
+    {
+        $this->onlyTheAuthorMayUpdatePosts();
+        $this->actingAs(new User(['id' => 1, 'name' => 'Ada']));
+
+        $this->atomic([['op' => 'update', 'ref' => ['type' => 'posts', 'id' => '1'], 'data' => $this->postWithAuthor('1', '2', 'Handed over')['data']]])
+            ->assertStatus(403);
+        $this->atomic([['op' => 'update', 'ref' => ['type' => 'posts', 'id' => '1', 'relationship' => 'author'], 'data' => ['type' => 'authors', 'id' => '2']]])
+            ->assertStatus(403);
+
+        self::assertSame(['type' => 'authors', 'id' => '1'], $this->readRel('/api/posts/1/relationships/author')->json('data'));
+        self::assertSame('Hello', $this->readRel('/api/posts/1')->json('data.attributes.title'));
+    }
+
+    /**
+     * Lets `update` pass on a post only for the user its author is, on the post as stored and
+     * as changed; every other subject passes.
+     */
+    protected function onlyTheAuthorMayUpdatePosts(): void
+    {
+        Gate::define('update', static function (?Authenticatable $user, mixed $subject = null): bool {
+            if (!\is_object($subject) || !\str_starts_with((new \ReflectionClass($subject))->getShortName(), 'Post')) {
+                return true;
+            }
+            /** @var mixed $author */
+            $author = $subject->author ?? null;
+            /** @var mixed $authorId */
+            $authorId = \is_object($author) ? ($author->id ?? null) : null;
+            /** @var mixed $userId */
+            $userId = $user?->getAuthIdentifier();
+
+            return \is_scalar($authorId) && \is_scalar($userId) && (string) $authorId === (string) $userId;
+        });
+    }
+
+    /**
+     * A posts update document setting the title and the `author` relationship.
+     *
+     * @return array{data: array<string, mixed>}
+     */
+    protected function postWithAuthor(string $id, string $authorId, string $title): array
+    {
+        return ['data' => [
+            'type' => 'posts',
+            'id' => $id,
+            'attributes' => ['title' => $title],
+            'relationships' => ['author' => ['data' => ['type' => 'authors', 'id' => $authorId]]],
+        ]];
     }
 
     /**
