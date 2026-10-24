@@ -107,6 +107,8 @@ final class OpenApiRouteGatingTest extends TestCase
 
         // The `redoc` renderer branch emits the <redoc> element pointed at the docs.json spec.
         $this->assertStringContainsString('<redoc', $body);
+        $this->assertStringContainsString('disable-telemetry="true"></redoc>', $body);
+        $this->assertStringContainsString('<script type="module"', $body);
         $this->assertStringContainsString('redoc.standalone.js', $body);
         $this->assertStringContainsString('/docs.json', $body);
     }

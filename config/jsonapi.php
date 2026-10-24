@@ -315,7 +315,16 @@ return [
             'enabled' => true,
             'renderer' => 'swagger',
             'path' => '/docs',
+            // The directory the viewer's assets load from: the swagger-ui-dist package
+            // root, or the redoc package's bundles/ directory holding redoc.standalone.js.
+            // Null uses the pinned jsDelivr URL.
             'cdn' => null,
+            // The exact ReDoc release the redoc renderer loads. A 3.x version loads the
+            // ES module build, a 2.x one (e.g. 2.5.4) the classic global script.
+            'redoc_version' => '3.0.1',
+            // Let ReDoc 3.x send its usage telemetry. False renders
+            // disable-telemetry="true" on the <redoc> tag; ReDoc 2.x sends none.
+            'redoc_telemetry' => false,
         ],
 
         // The document `info` block. A null title falls back to `JSON:API`

@@ -44,6 +44,7 @@ use haddowg\JsonApiLaravel\Http\ResponseHeadersRegistry;
 use haddowg\JsonApiLaravel\OpenApi\ArtifactStore;
 use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiConfig;
 use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiConfigResolver;
+use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiUiConfig;
 use haddowg\JsonApiLaravel\OpenApi\DescribedByResolverProvider;
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
 use haddowg\JsonApiLaravel\OpenApi\DocumentUrlProvider;
@@ -314,6 +315,7 @@ final class JsonApiServiceProvider extends ServiceProvider
 
         $this->assertOutputTimezones();
         $this->assertLinkObjects();
+        $this->assertRedocVersion();
 
         $this->registerRouteMacro();
         JsonApiRoute::registerMacro();
@@ -349,6 +351,15 @@ final class JsonApiServiceProvider extends ServiceProvider
         $servers = config('jsonapi.servers', []);
 
         LinkObjectsConfig::assertValid(config('jsonapi.link_objects'), \is_array($servers) ? $servers : []);
+    }
+
+    /**
+     * Fails the boot on a `jsonapi.openapi.ui.redoc_version` that is not an exact 2.x or
+     * 3.x release, rather than on the first request for the viewer.
+     */
+    private function assertRedocVersion(): void
+    {
+        OpenApiUiConfig::redocVersion(config('jsonapi.openapi.ui.redoc_version'));
     }
 
     /**

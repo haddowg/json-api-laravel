@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Http;
 
+use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiUiConfig;
 use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiUiRenderer;
 use Illuminate\Http\Response;
 
@@ -24,6 +25,12 @@ use Illuminate\Http\Response;
  * (`app.debug` or `expose_in_prod`), so this controller never re-checks exposure. The
  * page carries no JSON:API route marker, so the package's exception renderer does not
  * own its errors.
+ *
+ * ReDoc defaults to the pinned 3.x release. Its standalone bundle is an ES module that
+ * initialises itself from the `<redoc spec-url>` tag, so the page loads it with
+ * `<script type="module">` and renders `disable-telemetry="true"` on the tag unless
+ * `ui.redoc_telemetry` opts in. `ui.redoc_version` set to an exact 2.x release switches to
+ * the classic global-script loader, which has no telemetry.
  */
 final class OpenApiUiController
 {
@@ -34,9 +41,16 @@ final class OpenApiUiController
     public const string SWAGGER_UI_VERSION = '5.17.14';
 
     /**
-     * The pinned ReDoc CDN version (the standalone bundle), used the same way.
+     * The default ReDoc version (the standalone ES module bundle), used when
+     * `jsonapi.openapi.ui.redoc_version` is not set.
      */
-    public const string REDOC_VERSION = '2.1.5';
+    public const string REDOC_VERSION = '3.0.1';
+
+    /**
+     * The last 2.x ReDoc release the package was checked against, for an app that sets
+     * `jsonapi.openapi.ui.redoc_version` back to the 2.x line.
+     */
+    public const string REDOC_VERSION_2 = '2.5.4';
 
     /**
      * The route name of the default-server / combined OpenAPI document, generated to
@@ -45,8 +59,6 @@ final class OpenApiUiController
     public const string DOCUMENT_ROUTE = 'jsonapi.openapi.json';
 
     private const SWAGGER_CDN = 'https://cdn.jsdelivr.net/npm/swagger-ui-dist@' . self::SWAGGER_UI_VERSION;
-
-    private const REDOC_CDN = 'https://cdn.jsdelivr.net/npm/redoc@' . self::REDOC_VERSION . '/bundles';
 
     public function __invoke(): Response
     {
@@ -137,10 +149,36 @@ final class OpenApiUiController
 
     private function redocPage(string $specUrl): string
     {
-        $base = $this->assetBase(self::REDOC_CDN);
+        $version = OpenApiUiConfig::redocVersion(config('jsonapi.openapi.ui.redoc_version'));
+        $base = $this->assetBase('https://cdn.jsdelivr.net/npm/redoc@' . $version . '/bundles');
         $js = $this->attr($base . '/redoc.standalone.js');
         $spec = $this->attr($specUrl);
 
+        if (\str_starts_with($version, '2.')) {
+            return $this->redoc2Page($js, $spec);
+        }
+
+        $telemetry = config('jsonapi.openapi.ui.redoc_telemetry') === true ? '' : ' disable-telemetry="true"';
+
+        return <<<HTML
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>API documentation</title>
+              <style>body { margin: 0; padding: 0; }</style>
+            </head>
+            <body>
+              <redoc spec-url="{$spec}"{$telemetry}></redoc>
+              <script type="module" src="{$js}" crossorigin></script>
+            </body>
+            </html>
+            HTML;
+    }
+
+    private function redoc2Page(string $js, string $spec): string
+    {
         return <<<HTML
             <!DOCTYPE html>
             <html lang="en">

@@ -273,6 +273,10 @@ The OpenAPI 3.1 generation + exposure block. Highlights:
 | `describedby` | give each built link object and each document a `describedby` naming its operation in the served document (only when the document routes are reachable, or `document_url` is set); see [links and `describedby`](openapi.md#links-and-describedby) |
 | `document_url` | the URL `describedby` points into, used as given with `{server}` replaced by the server name; null uses the package's own document route |
 | `cache_control` | the `Cache-Control` header for `/docs.json` and `/schemas.json` (null = none of its own, so the response stays private); see [caching at the edge](openapi.md#caching-at-the-edge) |
+| `ui.enabled` / `ui.renderer` / `ui.path` | serve the viewer page, pick `swagger` (default) or `redoc`, and mount it (default `/docs`) |
+| `ui.cdn` | the directory the viewer's assets load from: the `swagger-ui-dist` root, or ReDoc's `bundles/` directory holding `redoc.standalone.js` (null = the pinned jsDelivr URL) |
+| `ui.redoc_version` | the exact ReDoc release the `redoc` renderer loads (default `3.0.1`); a 2.x release such as `2.5.4` switches to the classic global script, and anything else fails the boot; see [the viewer](openapi.md#the-viewer) |
+| `ui.redoc_telemetry` | let ReDoc 3.x send its usage telemetry (default `false`, which renders `disable-telemetry="true"` on the `<redoc>` tag) |
 | `serve_allowed_classes` | classes, beyond core's OpenAPI value objects, that a document's example, default or extension values may hold and still be served from the serialized copy (default `[]`); see [per-request customisation](openapi.md#per-request-customisation) |
 | `info` / `servers` / `tags` / `security` | the document `info`, advertised OAS servers, tag definitions, and security schemes + default requirement |
 
