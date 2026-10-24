@@ -52,8 +52,7 @@ final class RelationshipQueriesProfileTest extends EloquentTestCase
     #[Group('spec:fetching')]
     public function theRelationshipEndpointRendersTheFullLinkageWithoutQueryParameters(): void
     {
-        // No query parameters → the whole association off the loaded parent (the Phase-3a
-        // full-linkage contract is preserved; windowing is on-demand only).
+        // No query parameters → page 1 of the albums paginator, which holds all four.
         $response = $this->fetch('/api/artists/1/relationships/albums');
 
         $response->assertOk();

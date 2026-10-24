@@ -107,14 +107,40 @@ abstract class RelationshipQueriesConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:fetching-pagination')]
-    public function theRelationshipEndpointRendersTheFullLinkageWithoutQueryParameters(): void
+    public function theRelationshipEndpointPagesByDefaultWithTheRelatedResourcesPaginator(): void
     {
-        // No query parameters → the whole association off the loaded parent (the Phase-3a
-        // full-linkage contract is preserved; windowing is on-demand only).
+        // No query parameters and no relation paginator → page 1 of the albums resource's own
+        // counting paginator, which holds all four of Radiohead's albums and so carries a
+        // `last` link but no `next`.
         $response = $this->fetch('/api/artists/1/relationships/albums');
 
         $response->assertOk();
         self::assertCount(4, (array) $response->json('data'));
+        self::assertStringContainsString('page%5Bnumber%5D=1', $this->linkHref($response, 'first'));
+        self::assertStringContainsString('page%5Bnumber%5D=1', $this->linkHref($response, 'last'));
+        self::assertNull($response->json('links.next'));
+        self::assertNull($response->json('meta'));
+    }
+
+    #[Test]
+    #[Group('spec:fetching-pagination')]
+    public function theRelationshipEndpointPagesByDefaultWithTheServerDefaultPaginator(): void
+    {
+        // Neither the relation nor `tracks` declares a paginator → page 1 of the server
+        // default (count-free), holding playlist 1's four tracks.
+        $response = $this->fetch('/api/playlists/1/relationships/tracks');
+
+        $response->assertOk();
+        self::assertCount(4, (array) $response->json('data'));
+        self::assertStringContainsString('page%5Bnumber%5D=1', $this->linkHref($response, 'first'));
+        self::assertNull($response->json('links.next'));
+        self::assertNull($response->json('links.last'));
+
+        // An explicit page size still slices it.
+        $sliced = $this->fetch('/api/playlists/1/relationships/tracks?page[size]=3');
+        $sliced->assertOk();
+        self::assertCount(3, (array) $sliced->json('data'));
+        self::assertStringContainsString('page%5Bnumber%5D=2', $this->linkHref($sliced, 'next'));
     }
 
     // --- windowed related endpoint — tie-break determinism (THE referee) -------
@@ -546,5 +572,16 @@ abstract class RelationshipQueriesConformanceTestCase extends Orchestra
         }
 
         return $ids;
+    }
+
+    /**
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
+     */
+    private function linkHref(TestResponse $response, string $name): string
+    {
+        $href = $response->json('links.' . $name . '.href');
+        self::assertIsString($href);
+
+        return $href;
     }
 }

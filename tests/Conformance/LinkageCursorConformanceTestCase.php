@@ -28,8 +28,8 @@ use PHPUnit\Framework\Attributes\Test;
  * the body stays links-only (no `meta.page` — core ADR 0124), and the published
  * cursor-pagination profile (registered via `jsonapi.profiles`) is advertised through
  * the NEW core `IdentifierResponse::withPage()` seam in `jsonapi.profile` + the
- * `Content-Type` `profile` parameter. A bare (unqueried) linkage GET still renders the
- * whole association (the preserved full-linkage contract).
+ * `Content-Type` `profile` parameter. A bare (unqueried) linkage GET serves page 1 at the
+ * relation's default size.
  */
 abstract class LinkageCursorConformanceTestCase extends Orchestra
 {
@@ -109,18 +109,15 @@ abstract class LinkageCursorConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:fetching-pagination')]
-    public function aBareLinkageRequestStillRendersTheFullAssociation(): void
+    public function aBareLinkageRequestPagesByDefault(): void
     {
-        // No query parameters → the whole association off the loaded parent (the
-        // preserved full-linkage contract; cursor windowing is on-demand only) — and
-        // with no page attached, no profile is advertised.
-        $response = $this->request('/api/cursorGroups/1/relationships/widgets');
-        $response->assertOk();
-        $response->assertHeader('Content-Type', self::MEDIA_TYPE);
-
-        $data = $response->json('data');
-        self::assertIsArray($data);
-        self::assertCount(6, $data);
+        // No query parameters → page 1 of the relation's own cursor paginator (default
+        // size 2), with its profile advertised, exactly as the bundle serves it.
+        [$ids, $links] = $this->page('/api/cursorGroups/1/relationships/widgets');
+        self::assertSame(['1', '2'], $ids);
+        self::assertArrayHasKey('next', $links);
+        self::assertArrayNotHasKey('prev', $links);
+        self::assertStringContainsString('page%5Bafter%5D=', $this->href($links['next']));
     }
 
     // --- forward / backward round-trips over the linkage ------------------------

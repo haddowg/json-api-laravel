@@ -21,6 +21,7 @@ final class ShelfResource extends AbstractResource
             Id::make(),
             Str::make('name'),
             HasMany::make('books', 'books'),
+            HasMany::make('everyBook', 'books')->storedAs('books')->withoutPagination(),
         ];
     }
 }
