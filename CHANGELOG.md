@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.0](https://github.com/haddowg/json-api-laravel/compare/v1.3.3...v1.4.0) (2026-10-24)
+
+
+### Features
+
+* declare OpenAPI vendor extensions on a resource ([38132c6](https://github.com/haddowg/json-api-laravel/commit/38132c6d649901452d76a2b2e2271545b2e925e6))
+
+
+### Bug Fixes
+
+* describe a related collection's page with the paginator serving it ([#74](https://github.com/haddowg/json-api-laravel/issues/74)) ([cdeae48](https://github.com/haddowg/json-api-laravel/commit/cdeae480336b8e84729f81b044db66db2410163c))
+* let a required nullable field accept an explicit null on update ([#70](https://github.com/haddowg/json-api-laravel/issues/70)) ([fd064a7](https://github.com/haddowg/json-api-laravel/commit/fd064a7e59c4927ebc587483d1ba358ad60825a0))
+* never read a write-only relation ([#72](https://github.com/haddowg/json-api-laravel/issues/72)) ([ba946ae](https://github.com/haddowg/json-api-laravel/commit/ba946aedeb9936fe5028ee305b5652b6dbb9aead))
+
 ## [1.3.3](https://github.com/haddowg/json-api-laravel/compare/v1.3.2...v1.3.3) (2026-10-24)
 
 
