@@ -11,3 +11,6 @@ see in the spec. A relation declared `withoutPagination()` still serves its whol
 replaces the "plain read renders the whole association" clause of ADR 0010 for that shape only:
 polymorphic and pivot to-many relationship endpoints still render the whole association and
 still reject query parameters with a `400`.
+
+ADR 0039 extends this to a pivot `belongsToMany`, so only a polymorphic to-many still renders the
+whole association.

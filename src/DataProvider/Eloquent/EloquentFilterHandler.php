@@ -21,8 +21,10 @@ use haddowg\JsonApi\Resource\Filter\WhereNotIn;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
+use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
 
 /**
  * Executes core's filter value objects against an Eloquent query {@see Builder},
@@ -86,11 +88,30 @@ final class EloquentFilterHandler implements FilterHandlerInterface
     private readonly array $arms;
 
     /**
+     * @var EloquentBelongsToMany<Model, Model, *, *>|null
+     */
+    private ?EloquentBelongsToMany $pivot = null;
+
+    /**
      * @param iterable<EloquentFilterArmInterface<Model>> $arms author arms for custom filter types, consulted in order
      */
     public function __construct(iterable $arms = [])
     {
         $this->arms = \is_array($arms) ? \array_values($arms) : \iterator_to_array($arms, false);
+    }
+
+    /**
+     * A copy of this handler that resolves a `pivot.`-prefixed column to `$relation`'s join
+     * table, for a query built off that `belongsToMany`.
+     *
+     * @param EloquentBelongsToMany<Model, Model, *, *> $relation
+     */
+    public function forPivot(EloquentBelongsToMany $relation): self
+    {
+        $handler = clone $this;
+        $handler->pivot = $relation;
+
+        return $handler;
     }
 
     public function apply(FilterInterface $filter, mixed $query, mixed $value): mixed
@@ -442,6 +463,10 @@ final class EloquentFilterHandler implements FilterHandlerInterface
     {
         if (\preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/', $column) !== 1) {
             throw new \LogicException(\sprintf('"%s" is not a valid column path.', $column));
+        }
+
+        if ($this->pivot !== null && \str_starts_with($column, RelationCriteriaFactory::PIVOT_PREFIX)) {
+            return $this->pivot->getTable() . '.' . \substr($column, \strlen(RelationCriteriaFactory::PIVOT_PREFIX));
         }
 
         // An already-qualified column (a dotted table.column) is passed through by

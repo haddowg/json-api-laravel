@@ -108,10 +108,11 @@ same chain, so the related and relationship endpoints' `page` parameter states t
 The relationship (linkage) endpoint of a to-many, `GET /{type}/{id}/relationships/{rel}`, pages
 by default just as its related twin does: a plain request with no query string serves page 1 at
 that default size, with `first`/`next` (and `last` when counted) links on the document. A relation
-declared `withoutPagination()` still serves its whole linkage. Two shapes are not paged: a
-polymorphic to-many, which has no single paginator to resolve, and a pivot-carrying
-`belongsToMany`, whose windowed linkage is not built yet. Both serve the whole association, and
-both reject `?page`/`?sort`/`?filter` with a `400`.
+declared `withoutPagination()` still serves its whole linkage. A pivot-carrying `belongsToMany`
+pages the same way and accepts the same `?sort`/`?filter` as its related endpoint, pivot columns
+included; each identifier on the page keeps its `meta.pivot`, read from the query that fetched
+the page. Only a polymorphic to-many is not paged: it has no single paginator to resolve, so it
+serves the whole association and rejects `?page`/`?sort`/`?filter` with a `400`.
 
 A relation may declare a `CursorPaginator` too — the related endpoint then serves keyset pages
 scoped to the parent, with the cursor links built on the related URL:
@@ -137,8 +138,8 @@ A **queried** relationship GET (`GET /{type}/{id}/relationships/{rel}` with
 a keyset page: the document's pagination links carry the real `page[after]`/`page[before]`
 cursors (never a `last`), while the body stays links-only — identifier `data` members and no
 `meta.page` (core ADR 0124). A bare relationship GET serves the first keyset page at the
-relation's default size. A queried **pivot** relationship GET remains a `400`: query parameters on
-a relationship endpoint are rejected, not silently ignored.
+relation's default size. A pivot relation's cursor page filters on pivot columns but sorts only on
+the related resource's own sorts, because the keyset reads its columns off the related table.
 
 ### Advertising the cursor-pagination profile
 

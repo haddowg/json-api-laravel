@@ -168,6 +168,24 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         self::assertSame(['1', '2'], $ids);
     }
 
+    public function test_playlist_ordered_tracks_relationship_endpoint_pages_by_default(): void
+    {
+        // The pivot relation's own paginator (two per page) applies to its linkage endpoint
+        // on both arms, with or without a page request.
+        $plain = $this->fetch('/api/playlists/' . Fixtures::PLAYLIST_ONE . '/relationships/orderedTracks')->assertOk();
+        self::assertSame(['1', '2'], \array_column((array) $plain->json('data'), 'id'));
+        $first = $plain->json('links.first.href');
+        self::assertIsString($first);
+        self::assertStringEndsWith('?page%5Bnumber%5D=1&page%5Bsize%5D=2', $first);
+        self::assertNull($plain->json('links.next'));
+
+        $sized = $this->fetch('/api/playlists/' . Fixtures::PLAYLIST_ONE . '/relationships/orderedTracks?page[size]=1')->assertOk();
+        self::assertSame(['1'], \array_column((array) $sized->json('data'), 'id'));
+        $next = $sized->json('links.next.href');
+        self::assertIsString($next);
+        self::assertStringEndsWith('?page%5Bnumber%5D=2&page%5Bsize%5D=1', $next);
+    }
+
     public function test_charts_are_served_by_a_standalone_serializer(): void
     {
         // A resource-less type (a standalone serializer + a custom provider, no Resource and

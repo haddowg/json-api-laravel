@@ -18,8 +18,8 @@ use haddowg\JsonApi\Schema\Relationship\AbstractRelationship;
  * binds the {@see PivotMetaSerializer} for the related type, so each linkage identifier
  * carries its `meta.pivot` (riding core's identifier-meta render path with no core change).
  *
- * {@see PivotParentSerializer} rebinds ONE relation over the WHOLE association's map (the
- * relationship-linkage endpoint). The batched primary-document variant (bundle
+ * {@see PivotParentSerializer} rebinds ONE relation (the relationship-linkage endpoint and the
+ * relationship mutation echo). The batched primary-document variant (bundle
  * `PivotLinkageParentSerializer`) is a later scope; this trait carries only the shared
  * substitution.
  */

@@ -77,6 +77,7 @@ use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
@@ -620,12 +621,17 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 }
             }
 
+            // A provider that queries the pivot join also accepts the relation's pivot
+            // filters and sorts, and returns each member with its pivot row.
+            $pivotQuery = !$polymorphic && $this->pivotQueryingProvider($parent, $relation) !== null;
+
             $criteria = $this->relationCriteria->criteriaFor(
                 $operation->queryParameters(),
                 $relatedResource,
                 $relation,
                 $window,
                 wantsCount: $relWantsCount,
+                includePivotFields: $pivotQuery,
             );
 
             // Validate a client-supplied filter value against the merged vocabulary (related
@@ -638,19 +644,19 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 ? $this->polymorphicSerializer($relation, $server)
                 : $server->serializerFor($relatedType);
 
+            $items = $this->materialize($result);
+
             // A belongsToMany with declared pivot fields renders each related member's stored
             // pivot values as `meta.pivot` (ADR 0008): wrap the related serializer with the
-            // per-member pivot map read off the parent (Eloquent renders it; the in-memory
-            // witness returns none, so the wrap is a no-op there — pivot READ is Eloquent-only).
+            // per-member pivot map (Eloquent reads it off the fetched page; the in-memory
+            // witness returns none, so the wrap is a no-op there).
             if (!$polymorphic) {
-                $pivotMap = $this->pivotMap($server, $type, $parent, $relation);
+                $pivotMap = $this->pivotMap($server, $type, $parent, $relation, $items);
                 if ($pivotMap !== []) {
                     \assert($relation instanceof BelongsToMany);
                     $serializer = new PivotMetaSerializer($serializer, $pivotMap, $relation->pivotFields());
                 }
             }
-
-            $items = $this->materialize($result);
 
             // A polymorphic page spans types (no single related type), so its includes are
             // not batch-preloaded, its relations are not windowed, and it carries no single
@@ -776,8 +782,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * `page[after]`/`page[before]` tokens on the links), attached to the response via core's
      * {@see IdentifierResponse::withPage()} so its profile is advertised while the body stays
      * links-only (core ADR 0124, docs/adr/0017). It pages by default, so a plain read with no
-     * query parameters serves page 1 of the relation's paginator (docs/adr/0038). A polymorphic
-     * or *pivot* to-many has no windowed linkage here and renders the whole association.
+     * query parameters serves page 1 of the relation's paginator (docs/adr/0038). A pivot
+     * `belongsToMany` windows the same way, and each member of the page carries its
+     * `meta.pivot` from the fetched pivot rows (docs/adr/0039). A polymorphic to-many has no
+     * windowed linkage here and renders the whole association.
      */
     private function fetchRelationship(FetchRelationshipOperation $operation): IdentifierResponse|ErrorResponse
     {
@@ -818,27 +826,26 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->dispatch(new BeforeFetchRelationshipEvent($type, $request, $parent, $relation, $this->serverName($request)));
 
         $page = null;
+        $pivotMap = null;
         $queried = $this->relationshipEndpointQueried($operation->queryParameters(), $request);
         $relatedTypes = $relation->relatedTypes();
-        $isPivot = $relation instanceof BelongsToMany && $relation->pivotFields() !== [];
 
-        if ($relation->isToMany() && \count($relatedTypes) === 1 && !$isPivot
+        if ($relation->isToMany() && \count($relatedTypes) === 1
             && ($queried || $this->providers->supportsType($relatedTypes[0]))) {
-            // A monomorphic, non-pivot to-many is paginated by default, queried or not, so the
-            // plain read serves the page the OpenAPI document advertises. A miss (unknown
+            // A monomorphic to-many (pivot or not) is paginated by default, queried or not, so
+            // the plain read serves the page the OpenAPI document advertises. A miss (unknown
             // filter/sort key, a `_self_` count on a non-countable relation) surfaces the
             // related endpoint's same error.
             $windowed = $this->windowRelationshipEndpoint($server, $type, $parent, $relation, $operation->queryParameters(), $request);
             if ($windowed instanceof ErrorResponse) {
                 return $windowed;
             }
-            $page = $windowed;
+            ['page' => $page, 'pivotMap' => $pivotMap] = $windowed;
         } elseif ($queried) {
             // The endpoint cannot honour the client's query on THIS relation shape, so it is a
             // 400 rather than a silent full-set render: a to-one has no collection to
-            // sort/page/count; a polymorphic to-many has no single related provider or shared
-            // sort/filter vocabulary; a pivot to-many's windowed linkage (bundle ADR 0096 — the
-            // pivot page + its `meta.pivot`) is a deliberately-deferred tail. See docs/adr/0010.
+            // sort/page/count, and a polymorphic to-many has no single related provider or
+            // shared sort/filter vocabulary. See docs/adr/0010.
             return $this->rejectRelationshipEndpointQuery($operation->queryParameters(), $request);
         } elseif ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation)) {
             // The whole association, but loaded through the related type's own scoping provider
@@ -848,7 +855,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         $response = IdentifierResponse::forRelationship(
             $parent,
-            $this->relationshipLinkageSerializer($server, $type, $parent, $relation, $relationshipName),
+            $this->relationshipLinkageSerializer($server, $type, $parent, $relation, $relationshipName, $pivotMap),
             $relationshipName,
         );
 
@@ -879,10 +886,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * {@see fetchRelated()}'s to-many arm), then supplies that page-1 linkage + its pagination
      * out-of-band via the request-scoped seams. Returns an {@see ErrorResponse} for a
      * `?withCount=_self_` on a non-countable relation (the linkage twin of the related
-     * endpoint's `_self_` gate); the built page (so the caller can attach it to the
-     * response via {@see IdentifierResponse::withPage()}) or `null` on success.
+     * endpoint's `_self_` gate). On success it returns the built page (`null` when the relation
+     * is not paginated), so the caller can attach it to the response via
+     * {@see IdentifierResponse::withPage()}, and, for a pivot relation, the page members'
+     * pivot map the linkage renders as `meta.pivot`.
      *
-     * @return ErrorResponse|PageInterface<mixed>|null
+     * @return ErrorResponse|array{page: PageInterface<mixed>|null, pivotMap: array<string, array<string, mixed>>}
      */
     private function windowRelationshipEndpoint(
         Server $server,
@@ -891,7 +900,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         RelationInterface $relation,
         QueryParameters $queryParameters,
         JsonApiRequestInterface $request,
-    ): ErrorResponse|PageInterface|null {
+    ): ErrorResponse|array {
         $relatedType = $relation->relatedTypes()[0] ?? $type;
         $relatedResource = $this->types->resourceFor($server, $relatedType);
         $paginator = $this->relationCriteria->paginatorFor($relation, $relatedResource, $server);
@@ -910,13 +919,23 @@ final class CrudOperationHandler implements OperationHandlerInterface
             && !($paginator instanceof CursorPaginator)
             && ($paginator->wantsCount() || $request->countsRelationship('_self_'));
 
-        $criteria = $this->relationCriteria->criteriaFor($queryParameters, $relatedResource, $relation, $window, wantsCount: $wantsCount);
+        $criteria = $this->relationCriteria->criteriaFor(
+            $queryParameters,
+            $relatedResource,
+            $relation,
+            $window,
+            wantsCount: $wantsCount,
+            includePivotFields: $this->pivotQueryingProvider($parent, $relation) !== null,
+        );
         $this->filterValidator->validate($queryParameters->filter, $criteria->filters);
 
         $result = $this->providers->forType($relatedType)->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
         $items = $this->materialize($result);
 
-        return $this->supplyWindowedRelationship($parent, $relation->name(), $items, $paginator, $result, $wantsCount, $request, $queryParameters);
+        return [
+            'page' => $this->supplyWindowedRelationship($parent, $relation->name(), $items, $paginator, $result, $wantsCount, $request, $queryParameters),
+            'pivotMap' => $this->pivotMap($server, $type, $parent, $relation, $items),
+        ];
     }
 
     /**
@@ -955,7 +974,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * Rejects a query the relationship (linkage) endpoint cannot honour on the addressed
-     * relation shape — a to-one, a polymorphic to-many, or a pivot to-many (docs/adr/0010) — with
+     * relation shape — a to-one or a polymorphic to-many (docs/adr/0010) — with
      * a `400` rather than silently rendering the full association. `?withCount=_self_` is the
      * related endpoint's same {@see RelationshipCountNotAllowed}; a filter mirrors
      * {@see fetchRelated()}'s polymorphic-to-one {@see FilterParamUnrecognized}; a `?sort`/`?page`
@@ -1196,12 +1215,23 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * identifiers carry their stored pivot values as `meta.pivot` (ADR 0008). A non-pivot
      * relation (or a provider that stores no pivot — the in-memory witness) renders through the
      * bare parent serializer unchanged, so `meta.pivot` is Eloquent-only.
+     *
+     * A windowed render passes the pivot map of its page; otherwise the map covers the whole
+     * association.
+     *
+     * @param array<string, array<string, mixed>>|null $pivotMap
      */
-    private function relationshipLinkageSerializer(Server $server, string $type, object $parent, RelationInterface $relation, string $relationshipName): SerializerInterface
-    {
+    private function relationshipLinkageSerializer(
+        Server $server,
+        string $type,
+        object $parent,
+        RelationInterface $relation,
+        string $relationshipName,
+        ?array $pivotMap = null,
+    ): SerializerInterface {
         $serializer = $server->serializerFor($type);
 
-        $pivotMap = $this->pivotMap($server, $type, $parent, $relation);
+        $pivotMap ??= $this->pivotMap($server, $type, $parent, $relation);
         if ($pivotMap === []) {
             return $serializer;
         }
@@ -1224,20 +1254,29 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * or `[]` when the relation is not a pivot relation / declares no pivot fields / the
      * provider stores none (the in-memory boundary — pivot READ is Eloquent-only).
      *
+     * Given the fetched `$members` of a page, a related provider that queries the pivot join
+     * ({@see QueriesPivotColumnsInterface}) supplies the map off those members with no further
+     * query; otherwise the parent's provider reads the whole association's pivot rows.
+     *
      * A pivot value the provider returns as a `\DateTimeInterface` renders through its
      * `DateTime` field when a zone applies to it: the field's own `outputTimezone()`, else
      * the server's default (never for a `Date` or `Time`). Every other value renders as the
      * provider returned it.
      *
+     * @param list<object>|null $members
+     *
      * @return array<string, array<string, mixed>>
      */
-    private function pivotMap(Server $server, string $type, object $parent, RelationInterface $relation): array
+    private function pivotMap(Server $server, string $type, object $parent, RelationInterface $relation, ?array $members = null): array
     {
         if (!$relation instanceof BelongsToMany || $relation->pivotFields() === []) {
             return [];
         }
 
-        $pivots = $this->providers->forType($type)->fetchRelationshipPivot($type, $parent, $relation);
+        $pivotProvider = $members !== null ? $this->pivotQueryingProvider($parent, $relation) : null;
+        $pivots = $pivotProvider !== null && $members !== null
+            ? $pivotProvider->pivotMapOf($parent, $relation, $members)
+            : $this->providers->forType($type)->fetchRelationshipPivot($type, $parent, $relation);
 
         $zoned = [];
         foreach ($relation->pivotFields() as $field) {
@@ -1263,6 +1302,24 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         return $pivots;
+    }
+
+    /**
+     * The related type's provider when it filters, sorts and reads `meta.pivot` over
+     * `$relation`'s pivot join for this parent, else `null`.
+     */
+    private function pivotQueryingProvider(object $parent, RelationInterface $relation): ?QueriesPivotColumnsInterface
+    {
+        $relatedTypes = $relation->relatedTypes();
+        if (\count($relatedTypes) !== 1 || !$this->providers->supportsType($relatedTypes[0])) {
+            return null;
+        }
+
+        $provider = $this->providers->forType($relatedTypes[0]);
+
+        return $provider instanceof QueriesPivotColumnsInterface && $provider->queriesPivotColumns($parent, $relation)
+            ? $provider
+            : null;
     }
 
     /**

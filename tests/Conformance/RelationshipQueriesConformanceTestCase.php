@@ -391,14 +391,16 @@ abstract class RelationshipQueriesConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:fetching')]
-    #[Group('spec:errors')]
-    public function aQueriedPivotRelationshipEndpointIsRejectedRatherThanSilentlyIgnored(): void
+    public function aQueriedPivotRelationshipEndpointHonoursTheRelatedSort(): void
     {
-        // `orderedTracks` is a pivot belongsToMany; its windowed linkage endpoint (bundle ADR
-        // 0096) is a deferred tail (docs/adr/0010), so a `?sort` on it is a 400 rather than a
-        // silent full-set render (a client believing its sort applied is the worst outcome). A
-        // plain read (no params) still renders the full linkage — asserted elsewhere.
-        $this->fetch('/api/playlists/1/relationships/orderedTracks?sort=releasedAt')->assertStatus(400);
+        // `orderedTracks` is a pivot belongsToMany; its linkage endpoint windows like any
+        // monomorphic to-many (docs/adr/0039), so a related-resource `?sort` orders the
+        // linkage on both providers. Tracks 1/2/3 tie on released_at, so the appended
+        // primary-key tiebreak decides their order.
+        $response = $this->fetch('/api/playlists/1/relationships/orderedTracks?sort=-releasedAt');
+
+        $response->assertOk();
+        self::assertSame(['4', '1', '2', '3'], \array_column((array) $response->json('data'), 'id'));
     }
 
     #[Test]

@@ -1,6 +1,7 @@
 # A relationship-endpoint query it cannot honour is a 400, never silently ignored
 
-- **Status:** accepted (the plain-read clause is narrowed by ADR 0038)
+- **Status:** accepted (the plain-read clause is narrowed by ADR 0038; the deferred windowed pivot
+  relationship endpoint is built by ADR 0039)
 - **Date:** 2026-07-04
 
 **Context.** `GET /{type}/{id}/relationships/{rel}` (the linkage endpoint) may carry

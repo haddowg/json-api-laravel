@@ -150,6 +150,13 @@ BelongsToMany::make('orderedTracks', 'tracks')
 `weight >= position`, and `addedAt` is server-owned (`readOnly`). Pivot fields are merged into
 the payload **before validation**, so cross-field rules see them.
 
+Each pivot field is also a sort key (`?sort=-position`), and the declared pivot filters apply,
+on both the related endpoint and the relationship endpoint. Both page at the relation's
+paginator, and both read each member's pivot row in the same query as the page, so `meta.pivot`
+costs no extra query. The Eloquent provider resolves the `pivot.` prefix against the join table.
+A provider that stores no pivot columns, such as the in-memory one, answers a pivot sort or
+filter key with a `400`.
+
 Declare a value constraint on each pivot filter (`->integer()` above). Core types an
 unconstrained filter's OpenAPI value from the single column it targets, and `pivot.` means
 nothing to it — the prefix is this package's Eloquent convention — so a pivot filter without

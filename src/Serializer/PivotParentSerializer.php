@@ -26,8 +26,8 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  * carry their pivot meta. Every other relationship keeps the inner serializer's callable
  * untouched.
  *
- * The pivot map covers the WHOLE association (the relationship endpoint renders all linkage
- * off the parent, not a windowed page), so the provider supplies a full map for this render.
+ * On the relationship endpoint the linkage is a windowed page and the pivot map covers that
+ * page's members; the mutation echo renders the whole association with the whole map.
  */
 final class PivotParentSerializer extends AbstractPivotParentSerializer
 {
@@ -36,7 +36,7 @@ final class PivotParentSerializer extends AbstractPivotParentSerializer
      * @param string                      $relationshipName the pivot relationship being rendered
      * @param RelationInterface           $relation         that relation
      * @param SerializerResolverInterface $resolver         the base resolver (the Server)
-     * @param PivotMetaSerializer         $pivotSerializer  wraps the related serializer + the full pivot map
+     * @param PivotMetaSerializer         $pivotSerializer  wraps the related serializer + the pivot map
      */
     public function __construct(
         private readonly SerializerInterface $inner,
