@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.8.2](https://github.com/haddowg/json-api-laravel/compare/v1.8.1...v1.8.2) (2026-10-24)
+
+
+### Bug Fixes
+
+* apply a relation's mutate ability to embedded relationship writes ([#103](https://github.com/haddowg/json-api-laravel/issues/103)) ([e1f107a](https://github.com/haddowg/json-api-laravel/commit/e1f107a30273019021c647f350d564ed1135d61f))
+* check the current parent before moving a has-many row ([#105](https://github.com/haddowg/json-api-laravel/issues/105)) ([b38d6ca](https://github.com/haddowg/json-api-laravel/commit/b38d6ca48dfd25a8027b54ed5274fd8b7ff044d5))
+* **openapi:** only warn about a missing docs route for servers that serve API routes ([#101](https://github.com/haddowg/json-api-laravel/issues/101)) ([79614a6](https://github.com/haddowg/json-api-laravel/commit/79614a6a58abac309a81d4332ea23daa8d2872e4))
+* scope Atomic Operations to the batch's own server ([#104](https://github.com/haddowg/json-api-laravel/issues/104)) ([1dcff6c](https://github.com/haddowg/json-api-laravel/commit/1dcff6cd859912ca6695c8d5347d166a19e14e0e))
+
 ## [1.8.1](https://github.com/haddowg/json-api-laravel/compare/v1.8.0...v1.8.1) (2026-10-24)
 
 
