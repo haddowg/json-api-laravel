@@ -31,6 +31,7 @@ use haddowg\JsonApi\Validation\SchemaValueValidator;
 use haddowg\JsonApiLaravel\Validation\Constraint\UniqueEntity;
 use haddowg\JsonApiLaravel\Validation\Rules\NotNull;
 use haddowg\JsonApiLaravel\Validation\Rules\ParsableDate;
+use haddowg\JsonApiLaravel\Validation\Rules\RequiredOrNull;
 use Illuminate\Contracts\Validation\Factory as ValidationFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rule;
@@ -640,8 +641,8 @@ final class ResourceValidator
         $presence = [];
         if ($creating && $isRequired) {
             if ($isNullable) {
-                // Present (may be null) but not omitted.
-                $presence = ['present', 'nullable'];
+                // Present and non-blank, but may be null.
+                $presence = ['present', 'nullable', new RequiredOrNull()];
             } else {
                 $presence = ['required'];
             }
@@ -649,10 +650,13 @@ final class ResourceValidator
             // A partial update never requires a member, and an optional field is only
             // validated when present.
             $presence = ['sometimes'];
-            if ($isRequired) {
+            if ($isRequired && $isNullable) {
+                // Laravel's `required` rejects null even beside `nullable`.
+                $presence[] = 'nullable';
+                $presence[] = new RequiredOrNull();
+            } elseif ($isRequired) {
                 $presence[] = 'required'; // required-on-update: if present, non-empty
-            }
-            if ($isNullable) {
+            } elseif ($isNullable) {
                 $presence[] = 'nullable';
             }
         }

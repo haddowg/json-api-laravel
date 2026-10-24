@@ -437,6 +437,168 @@ abstract class ValidationConformanceTestCase extends Orchestra
         self::assertSame('JSON:API in PHP', $response->json('data.attributes.title'));
     }
 
+    #[Test]
+    #[Group('spec:crud')]
+    public function creatingAcceptsFalseAndZeroForRequiredBooleansAndNumbers(): void
+    {
+        $response = $this->writeJsonApi('POST', '/api/checklists', [
+            'data' => ['type' => 'checklists', 'attributes' => [
+                ...$this->validChecklist(),
+                'done' => false,
+                'count' => 0,
+                'ratio' => 0,
+                'options' => ['enabled' => false, 'retries' => 0],
+            ]],
+        ]);
+
+        $response->assertStatus(201);
+        self::assertFalse($response->json('data.attributes.done'));
+        self::assertSame(0, $response->json('data.attributes.count'));
+        self::assertSame(['enabled' => false, 'retries' => 0], $response->json('data.attributes.options'));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function updatingAcceptsFalseAndZeroForRequiredBooleansAndNumbers(): void
+    {
+        $response = $this->writeJsonApi('PATCH', '/api/checklists/1', [
+            'data' => ['type' => 'checklists', 'id' => '1', 'attributes' => [
+                'done' => false,
+                'count' => 0,
+                'ratio' => 0,
+                'options' => ['enabled' => false, 'retries' => 0],
+            ]],
+        ]);
+
+        $response->assertStatus(200);
+        self::assertFalse($response->json('data.attributes.done'));
+        self::assertSame(0, $response->json('data.attributes.count'));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function updatingAcceptsAnExplicitNullForARequiredNullableField(): void
+    {
+        $response = $this->writeJsonApi('PATCH', '/api/checklists/1', [
+            'data' => ['type' => 'checklists', 'id' => '1', 'attributes' => ['note' => null]],
+        ]);
+
+        $response->assertStatus(200);
+        self::assertNull($response->json('data.attributes.note'));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function updatingRejectsABlankStringForARequiredNullableField(): void
+    {
+        $response = $this->writeJsonApi('PATCH', '/api/checklists/1', [
+            'data' => ['type' => 'checklists', 'id' => '1', 'attributes' => ['note' => '']],
+        ]);
+
+        $response->assertStatus(422);
+        self::assertSame(['/data/attributes/note'], $this->pointers($response));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function updatingRejectsAnExplicitNullForARequiredNonNullableField(): void
+    {
+        $response = $this->writeJsonApi('PATCH', '/api/checklists/1', [
+            'data' => ['type' => 'checklists', 'id' => '1', 'attributes' => ['title' => null, 'done' => null]],
+        ]);
+
+        $response->assertStatus(422);
+        self::assertSame(['/data/attributes/done', '/data/attributes/title'], $this->sortedPointers($response));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function creatingStillRequiresARequiredNullableMemberToBePresent(): void
+    {
+        $attributes = $this->validChecklist();
+        unset($attributes['note']);
+
+        $response = $this->writeJsonApi('POST', '/api/checklists', [
+            'data' => ['type' => 'checklists', 'attributes' => $attributes],
+        ]);
+
+        $response->assertStatus(422);
+        self::assertSame(['/data/attributes/note'], $this->pointers($response));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function creatingAcceptsAnExplicitNullForARequiredNullableField(): void
+    {
+        $response = $this->writeJsonApi('POST', '/api/checklists', [
+            'data' => ['type' => 'checklists', 'attributes' => [...$this->validChecklist(), 'note' => null]],
+        ]);
+
+        $response->assertStatus(201);
+        self::assertNull($response->json('data.attributes.note'));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function creatingRejectsABlankStringForARequiredNullableField(): void
+    {
+        $response = $this->writeJsonApi('POST', '/api/checklists', [
+            'data' => ['type' => 'checklists', 'attributes' => [...$this->validChecklist(), 'note' => '']],
+        ]);
+
+        $response->assertStatus(422);
+        self::assertSame(['/data/attributes/note'], $this->pointers($response));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function creatingRejectsBlankRequiredStringsListsAndMaps(): void
+    {
+        $response = $this->writeJsonApi('POST', '/api/checklists', [
+            'data' => ['type' => 'checklists', 'attributes' => [
+                ...$this->validChecklist(),
+                'title' => '',
+                'tags' => [],
+                'settings' => [],
+            ]],
+        ]);
+
+        $response->assertStatus(422);
+        self::assertSame(
+            ['/data/attributes/settings', '/data/attributes/tags', '/data/attributes/title'],
+            $this->sortedPointers($response),
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function validChecklist(): array
+    {
+        return [
+            'done' => true,
+            'count' => 2,
+            'ratio' => 0.5,
+            'title' => 'Groceries',
+            'tags' => ['home'],
+            'settings' => ['colour' => 'green'],
+            'note' => 'Before Friday',
+        ];
+    }
+
+    /**
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
+     *
+     * @return list<string>
+     */
+    private function sortedPointers(TestResponse $response): array
+    {
+        $pointers = $this->pointers($response);
+        \sort($pointers);
+
+        return $pointers;
+    }
+
     /**
      * The `source.pointer` of every error in the response document, asserting each is a
      * `422`.
