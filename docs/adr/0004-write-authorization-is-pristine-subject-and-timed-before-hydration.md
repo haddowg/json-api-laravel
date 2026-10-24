@@ -1,6 +1,6 @@
 # Write authorization is timed on the pristine subject, before hydration
 
-- **Status:** accepted
+- **Status:** accepted; the update ordering is superseded by ADR 0046
 - **Date:** 2026-07-04
 
 **Context.** The Symfony bundle authorizes a write AFTER hydrate + `validateEntity` — the

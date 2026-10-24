@@ -6,7 +6,9 @@ model in hand, before persistence** — the entity-level check the Symfony firew
 express. Where the Symfony bundle uses ExpressionLanguage `security:` strings, this package
 uses policies, ability names, and a dedicated API-policy class. Timing is on the pristine
 subject, before hydration
-([ADR 0004](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0004-write-authorization-is-pristine-subject-and-timed-before-hydration.md)).
+([ADR 0004](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0004-write-authorization-is-pristine-subject-and-timed-before-hydration.md)),
+and an update is checked again on the changed resource before it is saved
+([ADR 0046](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0046-the-update-gate-checks-the-stored-and-the-changed-resource.md)).
 
 ## The default: the model's policy
 
@@ -33,6 +35,28 @@ code `ACCESS_DENIED` (an unauthenticated request that needs identity is a `401` 
 
 `actingAs()` in tests sets the user natively — see
 [multi-server-and-testing](multi-server-and-testing.md).
+
+## Updates are checked before and after the change
+
+An update has to pass its gate twice. The `update` ability is checked on the resource as
+stored, before validation and before anything is applied, so a caller it refuses gets a `403`
+and no validation errors. It is checked again on the resource as changed, after the body's
+attributes and relationships are applied and the before-update hooks have run, just before the
+save. A refusal there is a `403` and nothing is saved. With a policy like "only the owner may
+update", an owner can edit their post but can't hand it to someone else, and nobody can take
+someone else's.
+
+The same applies to `PATCH`, `POST` and `DELETE` on `/relationships/{rel}`: the relation's
+mutate ability (or else the parent's `update`) is checked on the parent before the change and
+again on the changed parent before it commits. Atomic Operations `update` operations, on a
+resource or a relationship, go through the same checks. A relation's mutate ability set in a
+whole-resource update is also checked again on the changed resource.
+
+The second check runs inside a transaction, so a refusal rolls back what was applied. A custom
+persister that doesn't implement `TransactionalDataPersisterInterface` has already applied a
+relationship change when the second check refuses it, so implement it if you rely on this
+check. A policy that should allow a transfer has to allow the new state too, for example by
+also letting an admin through.
 
 ## Overriding abilities per operation
 

@@ -1538,20 +1538,19 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $serializer = $server->serializerFor($type);
         $resource = $server->hasResourceFor($type) ? $server->resourceFor($type) : null;
 
+        // The `update` policy gate authorizes the stored target first, before validation and
+        // before anything is applied, so ownership is decided on stored state and a caller it
+        // refuses learns nothing from validation errors. It runs again on the changed
+        // resource before the save below (ADR 0046).
+        $this->authorizer->authorize($type, Operation::Update, $entity);
+
         // Document-semantic validation runs here, creating: false, with the loaded target
         // so a PATCH validates the MERGED resource state (stored values overlaid by the
         // incoming partial), not the partial alone (bundle ADR 0049) — and the loaded
-        // model supplies the UniqueEntity `Rule::unique` table + self-ignore id. A `422`
-        // is raised before the `update` policy gate below (422 before 403).
+        // model supplies the UniqueEntity `Rule::unique` table + self-ignore id.
         if ($resource !== null) {
             $this->validator->validate($resource, $request, false, existingObject: $entity, subject: $entity);
         }
-
-        // The `update` policy gate authorizes the PRISTINE loaded target here, before
-        // hydration mutates it — ownership is decided on stored state, not
-        // attacker-influenced attributes (a deliberate, more-secure divergence from the
-        // bundle's post-hydrate timing). See docs/adr/0004.
-        $this->authorizer->authorize($type, Operation::Update, $entity);
 
         // Whole-resource writes embedding `data.relationships` (Phase 3b): stripped from the
         // body before hydration and set through the persister's relationship seam (bundle
@@ -1602,6 +1601,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // commits — inside this savepoint boundary, so writeTransactionally rolls back.
             $this->dispatch(new BeforeSaveEvent($type, $request, $entity, false, $this->serverName($request)));
             $this->dispatch(new BeforeUpdateEvent($type, $request, $entity, $original, $this->serverName($request)));
+
+            // The same gates again on the resource as changed, before it is saved, so a caller
+            // can't turn it into one they couldn't update, such as handing it to another user
+            // (ADR 0046). A denial rolls back everything applied above.
+            $this->authorizer->authorize($type, Operation::Update, $entity);
+            $this->gateEmbeddedMutations($type, $entity, $relationships);
 
             return $persister->update($type, $entity);
         });
@@ -1725,8 +1730,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
      *  6. validate the linkage — a `409` resource-type conflict / `422` malformed linkage;
      *  7. {@see gateMutate()} — the policy gate (PLAN decision 7): the parent's `update`
      *     policy, or the relation's `securityMutate` ability override;
-     *  8. apply through the persister's storage-owning relationship seam (transactional per
-     *     mutation), and render the resulting linkage ({@see IdentifierResponse::forRelationship()},
+     *  8. apply through the persister's storage-owning relationship seam inside a transaction,
+     *     run the policy gate again on the changed parent before it commits (ADR 0046), and
+     *     render the resulting linkage ({@see IdentifierResponse::forRelationship()},
      *     `200` — the spec allows `200`/`204`; the bundle returns `200`, matched here).
      *
      * Lifecycle events + the atomic post-commit hook are a later phase (the handler has no
@@ -1815,7 +1821,15 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // hook which may replace the linkage response (post-commit).
         $this->dispatch(new BeforeRelationshipMutateEvent($type, $request, $parent, $relation, $linkage, $mode, $this->serverName($request)));
 
-        $parent = $this->persisters->forType($type)->mutateRelationship($type, $parent, $relation, $applied, $mode);
+        // The mutation gate runs again on the parent as changed, before the change commits, so a
+        // caller can't leave the parent in a state they couldn't update (ADR 0046).
+        $persister = $this->persisters->forType($type);
+        $parent = $this->writeTransactionally($persister, function () use ($persister, $type, $parent, $relation, $applied, $mode): object {
+            $changed = $persister->mutateRelationship($type, $parent, $relation, $applied, $mode);
+            $this->gateMutate($type, $changed, $relation);
+
+            return $changed;
+        });
         if ($scopeEcho) {
             $this->scopeRelationshipEndpoint($type, $parent, $relation, $operation->queryParameters(), $request);
         }
