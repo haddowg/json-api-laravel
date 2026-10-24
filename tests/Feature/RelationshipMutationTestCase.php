@@ -259,6 +259,16 @@ abstract class RelationshipMutationTestCase extends Orchestra
             ->assertStatus(403);
     }
 
+    public function test_a_per_relation_ability_override_nothing_defines_denies_a_mutation(): void
+    {
+        // No policy and no `Gate::define('curate')`: the declared ability denies rather
+        // than being skipped, while the undeclared default-update relations stay inert.
+        $this->writeRel('PATCH', '/api/posts/1/relationships/moderator', ['type' => 'authors', 'id' => '2'])
+            ->assertStatus(403);
+        $this->writeRel('PATCH', '/api/posts/1/relationships/author', ['type' => 'authors', 'id' => '2'])
+            ->assertOk();
+    }
+
     public function test_a_per_relation_ability_override_allows_a_mutation(): void
     {
         Gate::define('curate', static fn(?Authenticatable $user): bool => true);

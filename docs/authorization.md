@@ -22,8 +22,11 @@ operation:
 | delete (`DELETE /albums/{id}`) | `delete` |
 
 Register a policy the usual Laravel way (`Gate::policy(Album::class, AlbumPolicy::class)` or
-auto-discovery) and it just works. **No policy registered → no check** — the type is inert,
-exactly like the bundle without security-core. A denial is a JSON:API `403` with the
+auto-discovery) and it just works. **No policy registered → no check**: the type is inert,
+so the package adds no authorization you didn't ask for. That only covers these convention
+abilities. An ability you declare (a renamed ability under `abilities:`, a relation's
+`security(read:/mutate:)` or an action's `ability`) is always checked, so if no policy method
+or `Gate::define()` answers for it, the request is denied rather than let through. A denial is a JSON:API `403` with the
 code `ACCESS_DENIED` (an unauthenticated request that needs identity is a `401` with
 `AUTHENTICATION_REQUIRED`), rendered before any persistence. See
 [errors](errors.md#the-mapping-pipeline).

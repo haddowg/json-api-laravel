@@ -104,8 +104,8 @@ POST /api/albums/1/-actions/artwork
 > [!NOTE]
 > `asLink` visibility matches invocation **exactly**: `Authorizer::allowsAction()` (which
 > decides whether to render the link) simply wraps `authorizeAction()` (which enforces it) in
-> a try/catch — so both are inert when the action declares no ability and none is registered,
-> and both are gated the moment one exists. A client never sees a link to an action it could
+> a try/catch, so both pass when the action declares no ability. A declared ability that no
+> policy or `Gate::define()` answers denies both the call and the link. A client never sees a link to an action it could
 > not invoke, and never loses a link to one it could.
 
 > [!NOTE]

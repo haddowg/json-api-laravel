@@ -58,7 +58,8 @@ final class Authorizer
         // The ability for this operation: a per-op rename, `false` to disable, `true` to
         // document as externally-secured, or the policy-convention default. `??` only
         // coalesces the null "no override" case, so an explicit `false`/`true` is preserved.
-        $ability = $config?->ability($operation) ?? $this->defaultAbility($operation);
+        $declared = $config?->ability($operation);
+        $ability = $declared ?? $this->defaultAbility($operation);
         if ($ability === false) {
             return;
         }
@@ -83,6 +84,14 @@ final class Authorizer
             return;
         }
 
+        // A renamed ability is a declaration, so it is enforced even when nothing defines it
+        // (the Gate then denies); only the convention default stays inert without a policy.
+        if (\is_string($declared)) {
+            $this->authorizeDeclared($type, $ability, $subject, $carriesInstance, $config?->subjectClass);
+
+            return;
+        }
+
         $this->authorizeViaGate($ability, $subject, $carriesInstance);
     }
 
@@ -102,7 +111,7 @@ final class Authorizer
             return;
         }
 
-        $this->authorizeViaGate($ability, $subject, true);
+        $this->authorizeDeclared($type, $ability, $subject, true, $config?->subjectClass);
     }
 
     /**
@@ -126,13 +135,7 @@ final class Authorizer
             return;
         }
 
-        // A resource-scope action authorizes the resolved entity; a collection-scope action
-        // carries no instance, so the type's resource-class token stands in as the Gate
-        // subject — otherwise `Gate::has($ability)` / a class-registered policy is never
-        // consulted and the declared ability fails OPEN for any caller (including a guest).
-        // The ability was explicitly declared by the author, so the class token (always
-        // present for a discovered type) closes the hole rather than skipping the check.
-        $this->authorizeViaGate($ability, $subject, $carriesInstance, $config?->subjectClass);
+        $this->authorizeDeclared($type, $ability, $subject, $carriesInstance, $config?->subjectClass);
     }
 
     /**
@@ -155,26 +158,47 @@ final class Authorizer
     }
 
     /**
-     * The model's Gate-registered policy (or a defined ability) path — the inert
-     * default. Only enforces when the model actually has a policy OR the ability is a
-     * defined Gate closure; a type with neither is inert (PLAN decision 7), so the
-     * package adds no authorization an application did not ask for.
-     *
-     * `$classToken` is the resource-class fallback used when a class-level check carries
-     * no instance (a collection-scope custom action): it becomes the Gate subject so a
-     * `Gate::define()` closure / a class-registered policy is still consulted, closing
-     * the fail-open hole. `null` (a CRUD read-only collection with no instance) keeps the
-     * pre-instance inert behaviour.
+     * The model's Gate-registered policy path for a convention ability nobody declared.
+     * It only enforces when the model has a policy or the ability is a defined Gate
+     * closure; a type with neither is inert (PLAN decision 7), so the package adds no
+     * authorization an application did not ask for. A null subject (a read-only
+     * collection with no instance) is inert too: no policy can be resolved without one.
      */
-    private function authorizeViaGate(string $ability, ?object $subject, bool $carriesInstance, ?string $classToken = null): void
+    private function authorizeViaGate(string $ability, ?object $subject, bool $carriesInstance): void
     {
-        $gateSubject = $carriesInstance ? $subject : ($subject !== null ? $subject::class : $classToken);
+        $gateSubject = $carriesInstance ? $subject : ($subject !== null ? $subject::class : null);
         if ($gateSubject === null) {
             return;
         }
 
         if ($this->gate->getPolicyFor($gateSubject) === null && !$this->gate->has($ability)) {
             return;
+        }
+
+        $this->gate->authorize($ability, $gateSubject);
+    }
+
+    /**
+     * Enforces an ability the author declared: a renamed operation ability, a relation's
+     * `security(read:/mutate:)` or a custom action's `ability`. Unlike the convention
+     * default it never goes inert. When no policy or `Gate::define()` answers for it, the
+     * Gate denies, so a declaration whose policy was never registered fails closed rather
+     * than letting every caller through. A class-level check with no instance uses the
+     * resource class as its subject so a class-registered policy or a defined ability is
+     * still consulted.
+     *
+     * @param class-string|null $subjectClass
+     */
+    private function authorizeDeclared(string $type, string $ability, ?object $subject, bool $carriesInstance, ?string $subjectClass): void
+    {
+        $gateSubject = $carriesInstance ? $subject : ($subject !== null ? $subject::class : $subjectClass);
+        if ($gateSubject === null) {
+            throw new \LogicException(\sprintf(
+                'The "%s" ability is declared for the "%s" type, but no subject or subject class could be resolved '
+                . 'to enforce it, so the request is refused rather than allowed unchecked.',
+                $ability,
+                $type,
+            ));
         }
 
         $this->gate->authorize($ability, $gateSubject);
