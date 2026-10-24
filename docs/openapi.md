@@ -447,7 +447,7 @@ switches that document kind to the body hash. The key mixes in each decorator's 
 so adding or removing a decorator changes it; a change inside `decorate()` doesn't, which is
 why the example carries a version.
 
-Set `Cache-Control` for both routes with `cache_control`:
+Set `Cache-Control` for the document, schemas and viewer routes with `cache_control`:
 
 ```php
 // config/jsonapi.php
