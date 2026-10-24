@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.7.1](https://github.com/haddowg/json-api-laravel/compare/v1.7.0...v1.7.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* reject an empty string on a minLength attribute ([3b16ff3](https://github.com/haddowg/json-api-laravel/commit/3b16ff3e18df561429e654319d18da0a1a3fbb23))
+
+
+### Miscellaneous Chores
+
+* **example:** mirror the renamed public-owner relation and artist slug rules ([3b16ff3](https://github.com/haddowg/json-api-laravel/commit/3b16ff3e18df561429e654319d18da0a1a3fbb23))
+
 ## [1.7.0](https://github.com/haddowg/json-api-laravel/compare/v1.6.1...v1.7.0) (2026-10-24)
 
 
