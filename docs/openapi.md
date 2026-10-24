@@ -91,6 +91,29 @@ final class CountrySerializer implements SerializerInterface { /* ... */ }
 
 A type that declares none projects exactly as before.
 
+## The singular noun in generated prose {#singular-noun}
+
+The generated summaries and descriptions name one resource with the singular of its type
+name and the right article, so `agencies` reads "Fetch an agency" and `export-jobs`
+"Fetch an export job". Collections keep the plural ("List agencies"). When the inflection
+reads badly for your type, name the singular yourself, with
+`#[AsJsonApiResource(singular: 'media item')]` or the resource's
+`getSingularName(): ?string` hook. Give the noun without an article; the generator picks
+"a" or "an". The method hook wins when both are present, and a blank `singular:` fails the
+boot. Discovery stores the attribute's value in the [discovery cache](optimize.md), so a
+cached app reads the same noun.
+
+```php
+#[AsJsonApiResource(singular: 'media item')]
+final class MediaResource extends AbstractResource
+{
+    public static string $type = 'media';
+}
+```
+
+`#[AsJsonApiSerializer]` has no `singular:` argument, so a resource-less type always gets
+the inflected singular.
+
 ## The HTTP routes
 
 When `jsonapi.openapi.enabled` is true **and** (`app.debug` OR `openapi.expose_in_prod`), the
@@ -107,6 +130,38 @@ Configure the paths, the renderer, and the prod gate under `jsonapi.openapi` —
 [configuration](configuration.md#openapi). While the document is served, every link the
 package builds points at its operation in it; see
 [links and `describedby`](#links-and-describedby).
+
+### The viewer {#the-viewer}
+
+```php
+'ui' => [
+    'enabled' => true,
+    'renderer' => 'swagger',     // swagger | redoc
+    'path' => '/docs',
+    'cdn' => null,               // override the pinned CDN origin (self-host / air-gap)
+    'redoc_version' => '3.0.1',  // the exact ReDoc release; a 2.x one such as 2.5.4 also works
+    'redoc_telemetry' => false,
+],
+```
+
+ReDoc defaults to 3.0.1. Its standalone bundle is an ES module, so the page loads it
+with `<script type="module">` and it starts itself from the `<redoc spec-url>` tag.
+ReDoc 3 sends usage telemetry unless told not to, so the page renders
+`disable-telemetry="true"` on that tag. Set `redoc_telemetry` to `true` to leave the
+attribute off and let ReDoc send it.
+
+`redoc_version` takes an exact release, never a range. A 2.x release such as `2.5.4`
+(the `OpenApiUiController::REDOC_VERSION_2` constant) switches the page to the 2.x
+loader, a classic `<script>` that defines the `Redoc` global. ReDoc 2 has no telemetry,
+so `redoc_telemetry` does nothing there. Any other value fails the boot.
+
+`ui.cdn` replaces the directory the assets load from. For Swagger UI that's the
+`swagger-ui-dist` package root. For ReDoc it's the package's `bundles/` directory, the
+one holding `redoc.standalone.js`, for either major: the page loads
+`<cdn>/redoc.standalone.js`. Mirror the release `redoc_version` names. A 3.x bundle is a
+module script, so the server must send it with a JavaScript `Content-Type`, and from
+another origin it also needs an `Access-Control-Allow-Origin` header, since browsers
+fetch module scripts with CORS. Swagger UI stays pinned to 5.17.14.
 
 ## Links and `describedby` {#links-and-describedby}
 

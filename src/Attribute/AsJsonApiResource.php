@@ -99,6 +99,12 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * operation's value wins on a shared key). Every key must start with `x-`, and the
  * `x-oai-`/`x-oas-` prefixes are reserved; values must be scalars, `null` or arrays of them
  * so they survive the discovery cache.
+ *
+ * **Singular noun.** `singular` names one resource of the type in the generated OpenAPI prose
+ * ("Fetch a media item") when the inflected singular of the type name reads badly. It is the
+ * declaration-site equivalent of the resource's
+ * {@see \haddowg\JsonApi\Resource\AbstractResource::getSingularName()} method hook, which wins
+ * when both are present. A blank value is a constructor {@see \LogicException}.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final readonly class AsJsonApiResource
@@ -142,6 +148,7 @@ final readonly class AsJsonApiResource
      * @param FetchCollectionResponse|list<FetchCollectionResponse>|null $fetchCollection the fetch-collection (`GET /{type}`) success response(s) (null = the default `200`)
      * @param array<string, mixed>                                       $extensions      OpenAPI vendor extensions (`x-…`) stamped on every operation of this type, custom actions included
      * @param array<string, array<string, mixed>>                        $operationExtensions per-CRUD-operation vendor extensions keyed by {@see Operation} case value, merged over `extensions`
+     * @param string|null                                                $singular        the noun the generated OpenAPI prose uses for one resource, as words without an article (null = inflected from the type name)
      * @param bool|SoftDeletes                                           $softDeletes     opt this type into first-class soft deletes: `true` (or a configured {@see SoftDeletes}) synthesizes the `restore`/`force-delete` actions (`DELETE` stays a recoverable soft delete); `false` (the default) leaves the type unaffected
      */
     public function __construct(
@@ -167,7 +174,15 @@ final readonly class AsJsonApiResource
         bool|SoftDeletes $softDeletes = false,
         public array $extensions = [],
         public array $operationExtensions = [],
+        public ?string $singular = null,
     ) {
+        if ($singular !== null && \trim($singular) === '') {
+            throw new \LogicException(
+                'AsJsonApiResource singular must be a non-blank noun (e.g. "media item"); '
+                . 'omit it to inflect the singular from the type name.',
+            );
+        }
+
         if ($readOnly && $operations !== []) {
             throw new \LogicException(
                 'AsJsonApiResource declares both readOnly: true and a non-empty operations list; '

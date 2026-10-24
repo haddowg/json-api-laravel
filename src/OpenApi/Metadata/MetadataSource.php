@@ -378,7 +378,15 @@ final class MetadataSource
             responses: $descriptor->responses,
             extensions: $descriptor->extensions,
             operationExtensions: $descriptor->operationExtensions,
+            // The resource's getSingularName() hook first, then the
+            // #[AsJsonApiResource(singular:)] attribute; core inflects when both are null.
+            singularName: $this->nonBlank($resource?->getSingularName()) ?? $descriptor->singular,
         );
+    }
+
+    private function nonBlank(?string $value): ?string
+    {
+        return $value !== null && \trim($value) !== '' ? $value : null;
     }
 
     /**

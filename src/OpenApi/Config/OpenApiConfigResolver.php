@@ -117,6 +117,8 @@ final class OpenApiConfigResolver
             renderer: $renderer,
             path: '/' . \ltrim($path, '/'),
             cdn: $this->scalarOrNull($ui, 'cdn'),
+            redocVersion: OpenApiUiConfig::redocVersion($ui['redoc_version'] ?? null),
+            redocTelemetry: ($ui['redoc_telemetry'] ?? false) === true,
         );
     }
 

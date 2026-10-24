@@ -291,7 +291,9 @@ abstract class DescribedLinksConformanceTestCase extends Orchestra
         $links = self::at($this->servedDocument(), 'components', 'schemas', 'AlbumsResourceLinks');
         self::assertIsArray($links);
 
-        self::assertSame('#/components/schemas/RenderedLink', self::at($links, 'properties', 'self', '$ref'));
+        // The link carries an example, so the reference is wrapped in a single-entry allOf.
+        self::assertNull(self::at($links, 'properties', 'self', '$ref'));
+        self::assertSame('#/components/schemas/RenderedLink', self::at($links, 'properties', 'self', 'allOf', 0, '$ref'));
         self::assertSame($this->pointer('/albums/{id}'), self::at($links, 'properties', 'self', 'example', 'describedby'));
         // The asLink action is listed by name, described by its first method.
         self::assertSame(
@@ -317,7 +319,7 @@ abstract class DescribedLinksConformanceTestCase extends Orchestra
         self::assertSame($this->pointer('/albums/{id}'), self::at($document, 'links', 'describedby'));
 
         // And the document describes strings, not link objects.
-        self::assertSame('#/components/schemas/LinkObject', self::at($this->servedDocument(), 'components', 'schemas', 'AlbumsResourceLinks', 'properties', 'self', '$ref'));
+        self::assertSame('#/components/schemas/LinkObject', self::at($this->servedDocument(), 'components', 'schemas', 'AlbumsResourceLinks', 'properties', 'self', 'allOf', 0, '$ref'));
     }
 
     #[Test]
