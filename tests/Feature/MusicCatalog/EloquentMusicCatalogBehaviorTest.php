@@ -209,7 +209,7 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
 
         // `publicOwner` (the curated second view of the same column, targeting the
         // default-server `public-profiles` type) carries no read gate, so even a guest reads it.
-        $this->readJsonApi('/api/playlists/' . Fixtures::PLAYLIST_ONE . '/relationships/publicOwner')
+        $this->readJsonApi('/api/playlists/' . Fixtures::PLAYLIST_ONE . '/relationships/public-owner')
             ->assertOk()
             ->assertJsonPath('data.type', 'public-profiles');
     }
