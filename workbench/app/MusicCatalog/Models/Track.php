@@ -36,7 +36,6 @@ final class Track extends Model
     protected $attributes = [
         'length_seconds' => 0,
         'explicit' => false,
-        'genres' => '[]',
     ];
 
     /**
