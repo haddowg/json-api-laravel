@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Server;
 
+use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Server\Server;
@@ -80,5 +81,20 @@ final class TypeMetadataResolver
         }
 
         return $relations;
+    }
+
+    /**
+     * The relations of {@see relationsFor()} that render on this request: a write-only
+     * relation, unconditional or by its predicate, is never read, so nothing loads, windows
+     * or counts it, and `relatedQuery` cannot address it.
+     *
+     * @return list<RelationInterface>
+     */
+    public function readableRelationsFor(Server $server, string $type, JsonApiRequestInterface $request): array
+    {
+        return \array_values(\array_filter(
+            $this->relationsFor($server, $type),
+            static fn(RelationInterface $relation): bool => !$relation->isWriteOnlyFor($request),
+        ));
     }
 }

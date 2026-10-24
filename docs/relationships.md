@@ -179,6 +179,27 @@ that scope hides is a `404`, the same as an id with no row, and a full replaceme
 hidden members attached. A related model without global scopes, served by the reference
 providers, resolves ids as it always has.
 
+## Write-only relations
+
+`writeOnly()` makes a relation accept writes and never show up on a read:
+
+```php
+BelongsTo::make('approver', 'users')->writeOnly();
+```
+
+A client can still set it in a create or update body and through `PATCH`, `POST` and
+`DELETE` on `…/relationships/approver`, which answer `204` because the response can't echo
+linkage it must not show. It never appears in a response's `relationships`, `?include`,
+`?withCount` and `relatedQuery[approver]` are a `400`, and the related and relationship `GET`s
+are a `404`. Reads also skip it in storage: a write-only `BelongsTo` is not eager-loaded and a
+write-only to-many is never windowed, counted or pivot-queried. The OpenAPI document drops it
+from the read schema and lists no read endpoint for it, while the create and update schemas
+and the mutation endpoints keep it.
+
+`writeOnly(fn ($request) => …)` decides per request. When the predicate holds, that request
+treats the relation as write-only in the same way. The OpenAPI document still describes it
+as readable, since it is on other requests.
+
 ## Polymorphic relations
 
 - **`MorphTo` (to-one)** — the member's type is resolved from the related object

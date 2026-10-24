@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
-use haddowg\JsonApi\OpenApi\Metadata\RelationMetadataInterface;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresWriteOnlyRelation;
 use haddowg\JsonApi\OpenApi\Schema;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApiLaravel\OpenApi\PivotFields;
 
 /**
  * Adapts a core {@see RelationInterface} (a resource's relation field) to the OpenAPI
- * {@see RelationMetadataInterface} the projector consumes.
+ * {@see \haddowg\JsonApi\OpenApi\Metadata\RelationMetadataInterface} the projector consumes.
  *
  * Most accessors delegate straight to the relation's own already-resolved facts
  * (endpoint exposure, mutation flags, includability, filters/sorts). The two derived
@@ -20,7 +20,7 @@ use haddowg\JsonApiLaravel\OpenApi\PivotFields;
  * {@see \haddowg\JsonApi\Server\Server} fallback chain + the relation graph) and
  * passed in.
  */
-final readonly class RelationMetadata implements RelationMetadataInterface
+final readonly class RelationMetadata implements DeclaresWriteOnlyRelation
 {
     /**
      * @param list<string> $relatedIncludablePaths the related type's includable paths (resolved by the source)
@@ -39,6 +39,11 @@ final readonly class RelationMetadata implements RelationMetadataInterface
     public function relatedTypes(): array
     {
         return $this->relation->relatedTypes();
+    }
+
+    public function isWriteOnly(): bool
+    {
+        return $this->relation->isWriteOnly();
     }
 
     public function isToMany(): bool
