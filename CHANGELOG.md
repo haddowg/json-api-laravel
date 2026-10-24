@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.2](https://github.com/haddowg/json-api-laravel/compare/v1.7.1...v1.7.2) (2026-10-24)
+
+
+### Bug Fixes
+
+* reject an empty string wherever a minimum length or pattern is declared ([ca8de78](https://github.com/haddowg/json-api-laravel/commit/ca8de78cef1d841b78466cdccb0b6d04c21d83de))
+
 ## [1.7.1](https://github.com/haddowg/json-api-laravel/compare/v1.7.0...v1.7.1) (2026-10-24)
 
 
