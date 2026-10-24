@@ -97,8 +97,8 @@ final class RestrictedPivotFieldsTest extends Orchestra
     {
         $response = $this->read('/api/mixtapes/1/relationships/rankedTracks')->assertOk();
 
-        self::assertSame(['position' => 1, 'weight' => 1, 'addedAt' => '2024-01-01 00:00:00'], $this->pivotOf($response, '1'));
-        self::assertSame(['weight' => 2, 'addedAt' => '2024-01-02 00:00:00'], $this->pivotOf($response, '2'));
+        self::assertSame(['position' => 1, 'weight' => 1, 'addedAt' => '2024-01-01T00:00:00+00:00'], $this->pivotOf($response, '1'));
+        self::assertSame(['weight' => 2, 'addedAt' => '2024-01-02T00:00:00+00:00'], $this->pivotOf($response, '2'));
     }
 
     public function test_a_write_only_predicate_is_evaluated_per_request(): void
@@ -107,7 +107,7 @@ final class RestrictedPivotFieldsTest extends Orchestra
         self::assertSame(1, $this->pivotOf($shown, '1')['weight'] ?? null);
 
         $concealed = $this->read('/api/mixtapes/1/rankedTracks', ['X-Conceal-Weight' => '1'])->assertOk();
-        self::assertSame(['position' => 1, 'addedAt' => '2024-01-01 00:00:00'], $this->pivotOf($concealed, '1'));
+        self::assertSame(['position' => 1, 'addedAt' => '2024-01-01T00:00:00+00:00'], $this->pivotOf($concealed, '1'));
     }
 
     /**

@@ -49,10 +49,10 @@ must be an identifier PHP's `\DateTimeZone` accepts, such as `UTC` or `Europe/Lo
 anything else fails the app's boot with an `\InvalidArgumentException` that names the key.
 A server's own `output_timezone` overrides this one, see [`servers`](#servers).
 
-A `belongsToMany` pivot value reaches `meta.pivot` as the pivot model returns it. Only a
-value the pivot model casts to a date can be converted; an uncast column is the stored
-string, which has no zone, and renders unchanged. When a zone applies, a cast value renders
-through its `DateTime` pivot field's format.
+A `DateTime` pivot field in `meta.pivot` follows the same rule as an attribute. The Eloquent
+provider reads a date column the pivot model doesn't cast the way a `datetime` cast would, in
+the app's timezone, and every pivot date renders through its field's format (see
+[pivot data](relationships.md#pivot-belongstomany-data)).
 
 A hand-written serializer formats its own values and is not affected.
 

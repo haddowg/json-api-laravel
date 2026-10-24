@@ -1,5 +1,7 @@
 # A server's output timezone reaches pivot meta through the pivot field, and only when a zone applies
 
+- **Status:** superseded in part by [ADR 0036](0036-pivot-dates-render-through-their-field.md): a pivot date renders through its field whether or not a zone applies.
+
 Core converts `DateTime` attributes in `AbstractResource::getAttributes()`, but `meta.pivot`
 never goes through there: the handler renders whatever value the pivot model hands back. So
 the handler applies the zone itself. A pivot value that is a `\DateTimeInterface` renders

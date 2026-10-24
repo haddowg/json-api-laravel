@@ -23,8 +23,8 @@ use Workbench\Database\Seeders\McCatalogSeeder;
  *
  * The seeded playlist holds tracks 1 and 2 at positions 1 and 2; this suite adds track 3 at
  * position 3 (weight 5) so the default page has a next page. The join's `added_at` is stored
- * as ISO-8601 text: the workbench pivot does not cast it, so it renders as stored (ADR 0030),
- * and the document declares `addedAt` a `date-time`.
+ * as ISO-8601 text here; the workbench pivot does not cast it, so the provider casts it and it
+ * renders in the `addedAt` field's format (ADR 0036).
  *
  * @internal
  */
@@ -181,6 +181,16 @@ final class EloquentPivotRelationshipEndpointTest extends Orchestra
             self::assertCount(2, $queries, $uri . "\n" . \implode("\n", $queries));
             self::assertCount(1, \array_filter($queries, static fn(string $sql): bool => \str_contains($sql, 'mc_playlist_track')));
         }
+    }
+
+    public function test_an_uncast_stored_date_renders_in_the_fields_format(): void
+    {
+        DB::table('mc_playlist_track')->where('playlist_id', Fixtures::PLAYLIST_ONE)->update(['added_at' => '2024-01-01 00:00:00']);
+
+        $response = $this->fetch(self::ENDPOINT)->assertOk();
+
+        self::assertSame('2024-01-01T00:00:00+00:00', $response->json('data.0.meta.pivot.addedAt'));
+        $this->assertResponseMatchesGeneratedSchema($response, 'playlists', SchemaDocumentKind::Relationship, 'orderedTracks');
     }
 
     /**

@@ -16,6 +16,8 @@ use haddowg\JsonApi\Pagination\CursorWindow;
 use haddowg\JsonApi\Pagination\OffsetWindow;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\BelongsToMany as PivotRelation;
+use haddowg\JsonApi\Resource\Field\DateTime;
+use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\InMemory\ArrayFilterHandler;
@@ -1065,13 +1067,30 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
             $meta = [];
             foreach ($relation->pivotFields() as $field) {
-                $meta[$field->name()] = $pivot->getAttribute($field->column() ?? $field->name());
+                $meta[$field->name()] = $this->pivotValue($pivot, $field);
             }
 
             $pivots[$this->wireId($member, $encoder)] = $meta;
         }
 
         return $pivots;
+    }
+
+    /**
+     * A pivot field's value off the pivot model. A date field's column the pivot model
+     * doesn't cast comes back as the stored string, so it is cast the way a `datetime`
+     * cast would read it, and renders in the field's format like any other date (ADR 0036).
+     */
+    private function pivotValue(Model $pivot, FieldInterface $field): mixed
+    {
+        $column = $field->column() ?? $field->name();
+        $value = $pivot->getAttribute($column);
+
+        if ($field instanceof DateTime && \is_string($value) && $value !== '' && !$pivot->hasCast($column)) {
+            return (clone $pivot)->mergeCasts([$column => 'immutable_datetime'])->getAttribute($column);
+        }
+
+        return $value;
     }
 
     /**

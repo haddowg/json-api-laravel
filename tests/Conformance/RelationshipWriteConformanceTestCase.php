@@ -223,7 +223,7 @@ abstract class RelationshipWriteConformanceTestCase extends Orchestra
             self::assertNotNull($pivot);
             self::assertSame(1, $pivot['position'] ?? null);
             self::assertSame(1, $pivot['weight'] ?? null);
-            self::assertSame('2024-01-01 00:00:00', $pivot['addedAt'] ?? null);
+            self::assertSame('2024-01-01T00:00:00+00:00', $pivot['addedAt'] ?? null);
         } else {
             self::assertNull($pivot);
         }

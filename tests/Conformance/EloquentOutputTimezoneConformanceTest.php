@@ -88,12 +88,12 @@ final class EloquentOutputTimezoneConformanceTest extends OutputTimezoneConforma
     #[Test]
     #[Group('output-timezone')]
     #[DefineEnvironment('withoutOutputTimezone')]
-    public function pivotMetaIsUnchangedWithoutAnOutputTimezone(): void
+    public function pivotMetaRendersInTheFieldFormatWithoutAnOutputTimezone(): void
     {
-        $expected = \json_decode((string) \json_encode(TimezoneFixtures::instant('2024-05-01 08:00:00')), true);
-
+        // The pivot model hands back the instant in Paris; with no zone to move it into,
+        // it keeps that zone and renders in the field's format, like an attribute.
         $this->jsonApi()->get('/api/gigs/1/relationships/performers')
             ->assertOk()
-            ->assertJsonPath('data.0.meta.pivot.bookedAt', $expected);
+            ->assertJsonPath('data.0.meta.pivot.bookedAt', '2024-05-01T10:00:00+02:00');
     }
 }
