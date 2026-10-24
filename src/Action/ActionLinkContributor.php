@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Action;
 
+use haddowg\JsonApi\OpenApi\Metadata\ActionScope as OpenApiActionScope;
+use haddowg\JsonApi\OpenApi\OperationReference;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
-use haddowg\JsonApi\Schema\Link\Link;
+use haddowg\JsonApi\Schema\Link\OperationLink;
 use haddowg\JsonApi\Serializer\ResourceLinkContributorInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
+use haddowg\JsonApi\Serializer\UriTypeAwareInterface;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
 use haddowg\JsonApiLaravel\Routing\RouteRegistrar;
 use Illuminate\Contracts\Routing\UrlGenerator;
@@ -72,12 +75,15 @@ final class ActionLinkContributor implements ResourceLinkContributorInterface
             return [];
         }
 
-        $id = ($this->serializerResolver)($type)->getId($object);
+        $serializer = ($this->serializerResolver)($type);
+        $id = $serializer->getId($object);
         if ($id === '') {
             // A not-yet-persisted resource (rendered mid-create) has no id to build the
             // action URL from — skip, mirroring core's convention self link.
             return [];
         }
+
+        $uriType = $serializer instanceof UriTypeAwareInterface && $serializer->uriType() !== '' ? $serializer->uriType() : $type;
 
         $links = [];
         foreach ($descriptors as $descriptor) {
@@ -93,7 +99,12 @@ final class ActionLinkContributor implements ResourceLinkContributorInterface
             }
 
             $url = $this->urls->route(RouteRegistrar::actionRouteName($descriptor), ['id' => $id], true);
-            $links[$descriptor->path] = new Link($url);
+            // Names the action's operation, by its first declared method as the OpenAPI
+            // projection does, so the link can carry a `describedby`.
+            $links[$descriptor->path] = new OperationLink(
+                $url,
+                OperationReference::action($uriType, $descriptor->path, OpenApiActionScope::Resource, $descriptor->methods[0] ?? 'POST'),
+            );
         }
 
         return $links;

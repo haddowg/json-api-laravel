@@ -138,7 +138,7 @@ abstract class RelationshipReadConformanceTestCase extends Orchestra
         $response->assertJsonCount(2, 'data');
         self::assertSame(['6', '7'], $this->ids($response));
         self::assertSame(4, $response->json('meta.page.total'));
-        self::assertIsString($response->json('links.next'));
+        self::assertIsString($response->json('links.next.href'));
     }
 
     #[Test]
@@ -224,8 +224,8 @@ abstract class RelationshipReadConformanceTestCase extends Orchestra
         // Membership (linkage renders the raw related set, not the collection sort).
         self::assertSame(['1', '3', '6', '7'], $this->sortedLinkageIds($data));
         // The convention self/related links are present.
-        self::assertIsString($response->json('links.self'));
-        self::assertIsString($response->json('links.related'));
+        self::assertIsString($response->json('links.self.href'));
+        self::assertIsString($response->json('links.related.href'));
     }
 
     #[Test]

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Feature;
 
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+use haddowg\JsonApiLaravel\OpenApi\ArtifactStore;
 use Orchestra\Testbench\Attributes\DefineEnvironment;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\Group;
@@ -34,6 +35,30 @@ final class DescribedbyTest extends Orchestra
             JsonApiServiceProvider::class,
             WorkbenchServiceProvider::class,
         ];
+    }
+
+    private string $cacheDir = '';
+
+    /**
+     * Each test reads its own artifacts, never another test's left in Testbench's storage.
+     *
+     * @param \Illuminate\Foundation\Application $app
+     */
+    protected function defineEnvironment($app): void
+    {
+        $this->cacheDir = \sys_get_temp_dir() . '/jsonapi-describedby-' . \uniqid();
+
+        /** @var \Illuminate\Contracts\Config\Repository $config */
+        $config = $app['config'];
+        $config->set('jsonapi.openapi.cache_path', $this->cacheDir);
+    }
+
+    protected function tearDown(): void
+    {
+        $this->app?->make(ArtifactStore::class)->clear();
+        @\rmdir($this->cacheDir);
+
+        parent::tearDown();
     }
 
     /**
@@ -75,7 +100,7 @@ final class DescribedbyTest extends Orchestra
     {
         $this->getJson('/api/artists', ['Accept' => self::MEDIA_TYPE])
             ->assertOk()
-            ->assertJsonPath('links.describedby', fn(mixed $link): bool => \is_string($link) && \str_contains($link, '/docs.json'));
+            ->assertJsonPath('links.describedby', ['href' => '/docs.json#/paths/~1artists/get']);
     }
 
     #[Test]

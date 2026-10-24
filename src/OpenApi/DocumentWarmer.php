@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\OpenApi;
 
+use haddowg\JsonApi\OpenApi\SpecDescribedByResolver;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Yaml\Yaml;
 
@@ -25,6 +26,9 @@ use Symfony\Component\Yaml\Yaml;
  *
  * In **combined** multi-server mode the warmer additionally builds the single combined
  * document spanning every server and stores it under {@see DocumentFactory::COMBINED_KEY}.
+ *
+ * Beside each document it writes the operations the document carries, which each link's
+ * `describedby` is checked against ({@see DescribedByResolverProvider}).
  */
 final class DocumentWarmer
 {
@@ -87,6 +91,7 @@ final class DocumentWarmer
     {
         $document = $this->documents->forServer($server);
         $this->store->write($server, $document->toJsonString(true));
+        $this->store->writeOperations($server, SpecDescribedByResolver::operationsOf($document));
 
         $schemas = $this->schemas->forServer($server);
         foreach ($schemas as $type => $schema) {
@@ -106,6 +111,7 @@ final class DocumentWarmer
     {
         $document = $this->documents->combined();
         $this->store->write(DocumentFactory::COMBINED_KEY, $document->toJsonString(true));
+        $this->store->writeOperations(DocumentFactory::COMBINED_KEY, SpecDescribedByResolver::operationsOf($document));
 
         $aggregate = $this->encodeSchemas((object) $this->schemas->combined());
         $this->store->writeSchemaAggregate(DocumentFactory::COMBINED_KEY, $aggregate);

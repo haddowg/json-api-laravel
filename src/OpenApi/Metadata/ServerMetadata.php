@@ -10,6 +10,7 @@ use haddowg\JsonApi\OpenApi\ExternalDocumentation;
 use haddowg\JsonApi\OpenApi\License;
 use haddowg\JsonApi\OpenApi\Metadata\AtomicOperationsMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\ContributesErrorCodes;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresLinkObjects;
 use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\TypeMetadataInterface;
 use haddowg\JsonApi\OpenApi\SecurityRequirement;
@@ -31,8 +32,12 @@ use haddowg\JsonApi\OpenApi\Tag;
  * described errors — the ones {@see \haddowg\JsonApiLaravel\Discovery\Discovery} found —
  * join core's in the projected catalogue. A server with none contributes an empty list,
  * which changes no document.
+ *
+ * It also implements core's {@see DeclaresLinkObjects}, so the links components describe
+ * the form the server renders its built links in, and each example `describedby` points
+ * into the same document URL the server's links do (ADR 0037).
  */
-final readonly class ServerMetadata implements ContributesErrorCodes
+final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLinkObjects
 {
     /**
      * @param list<Server>                  $servers
@@ -59,7 +64,19 @@ final readonly class ServerMetadata implements ContributesErrorCodes
         private ?AtomicOperationsMetadataInterface $atomicOperations = null,
         private array $profiles = [],
         private array $errorSources = [],
+        private bool $rendersLinkObjects = true,
+        private ?string $documentUrl = null,
     ) {}
+
+    public function rendersLinkObjects(): bool
+    {
+        return $this->rendersLinkObjects;
+    }
+
+    public function documentUrl(): ?string
+    {
+        return $this->documentUrl;
+    }
 
     /**
      * @return list<ErrorCatalogSourceInterface>

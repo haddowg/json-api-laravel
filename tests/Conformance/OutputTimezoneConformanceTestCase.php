@@ -218,7 +218,7 @@ abstract class OutputTimezoneConformanceTestCase extends Orchestra
             $response = $this->jsonApi()->withInclude('venue')->get($prefix . '/gigs/1');
 
             $response->assertOk();
-            $response->assertJsonPath('data.links.reschedule', $expected[$prefix][2]);
+            $response->assertJsonPath('data.links.reschedule.href', $expected[$prefix][2]);
             $response->assertJsonPath('data.attributes.startsAt', $expected[$prefix][0]);
             $response->assertJsonPath('included.0.attributes.openedAt', $expected[$prefix][1]);
         }

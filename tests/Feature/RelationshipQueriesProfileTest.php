@@ -44,8 +44,8 @@ final class RelationshipQueriesProfileTest extends EloquentTestCase
 
         // A count-free windowed page emits a `next` link (a further page exists: 4 > 2), driven
         // by the hasMore probe, in the spec's plain form against the relationship endpoint.
-        self::assertIsString($response->json('links.next'));
-        self::assertIsString($response->json('links.self'));
+        self::assertIsString($response->json('links.next.href'));
+        self::assertIsString($response->json('links.self.href'));
     }
 
     #[Test]

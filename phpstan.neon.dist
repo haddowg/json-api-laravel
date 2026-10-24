@@ -41,4 +41,4 @@ parameters:
         -
             identifier: catch.neverThrown
             message: '#UrlGenerationException is never thrown#'
-            path: src/Http/DescribedbyStamper.php
+            path: src/OpenApi/DocumentUrlProvider.php

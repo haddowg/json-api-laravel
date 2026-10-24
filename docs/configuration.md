@@ -56,6 +56,28 @@ through its `DateTime` pivot field's format.
 
 A hand-written serializer formats its own values and is not affected.
 
+## `link_objects`
+
+```php
+'link_objects' => true,
+```
+
+Whether the links the server builds (resource, relationship, top-level `self`, pagination
+and action links) render as JSON:API link objects, `{"href": "https://music.example/api/albums/1"}`,
+which can carry a [`describedby`](openapi.md#links-and-describedby) into the OpenAPI
+document. `false` renders bare URL strings with no `describedby`. A server's own
+`link_objects` overrides it, so one server can keep string links for a client that predates
+link objects while the rest render objects:
+
+```php
+'servers' => [
+    'default' => ['prefix' => 'api'],
+    'legacy' => ['prefix' => 'legacy', 'link_objects' => false],
+],
+```
+
+Anything other than `true`, `false` or `null` fails the app's boot with an
+`\InvalidArgumentException` that names the key.
 ## `version`
 
 ```php
@@ -179,12 +201,13 @@ its name to route names and to the OpenAPI path set. The music-catalog example a
 A resource joins a server with `#[AsJsonApiResource(server: 'admin')]` or
 `server: ['default', 'admin']`. See [multi-server-and-testing](multi-server-and-testing.md).
 
-Three optional keys per server:
+Four optional keys per server:
 
 | Key | What it does |
 | --- | --- |
 | `base_uri` | This server's base, overriding the global `base_uri`. Omit it to inherit. Used verbatim, so include the prefix. |
 | `output_timezone` | The zone this server's `DateTime` attributes render in, overriding the global [`output_timezone`](#output_timezone). Omit it or set `null` to inherit; `''` turns conversion off for this server. |
+| `link_objects` | Whether this server renders its built links as link objects, overriding the global [`link_objects`](#link_objects). Omit it or set `null` to inherit. |
 | `route_defaults` | Route defaults set on every route of the server, such as `['tenant' => 'acme']` for a `{tenant}/api` prefix. The OpenAPI `servers` entry uses it as the variable's default. |
 
 ### Prefixes and the base
@@ -247,7 +270,8 @@ The OpenAPI 3.1 generation + exposure block. Highlights:
 | `multi_server` | `separate` (one document per server) or `combined` (one union document) |
 | `enum_value_descriptions` | how backed-enum values render — `both` / `extensions` / `description` |
 | `public_path` | when set, `optimize` also writes static `.json`/`.yaml` for a CDN |
-| `describedby` | add a top-level `links.describedby` to every response (only when the document routes are reachable) |
+| `describedby` | give each built link object and each document a `describedby` naming its operation in the served document (only when the document routes are reachable, or `document_url` is set); see [links and `describedby`](openapi.md#links-and-describedby) |
+| `document_url` | the URL `describedby` points into, used as given with `{server}` replaced by the server name; null uses the package's own document route |
 | `info` / `servers` / `tags` / `security` | the document `info`, advertised OAS servers, tag definitions, and security schemes + default requirement |
 
 The docs routes are gated behind `app.debug || openapi.expose_in_prod`; the CLI exporters

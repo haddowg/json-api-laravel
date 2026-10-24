@@ -10,6 +10,7 @@ use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResource;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResponse;
 use haddowg\JsonApi\OpenApi\Metadata\ActionScope;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionLink;
 use haddowg\JsonApi\OpenApi\Metadata\MetaResult;
 use haddowg\JsonApi\OpenApi\Metadata\NoContent;
 use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
@@ -31,7 +32,7 @@ use haddowg\JsonApiLaravel\Action\ActionDescriptor;
  * tags fall back to the mount type's default tag) so the projected document matches the
  * bundle's for an identical action.
  */
-final readonly class ActionMetadata implements ActionMetadataInterface
+final readonly class ActionMetadata implements DeclaresActionLink
 {
     /**
      * @param list<string> $tags the OpenAPI tag names (already resolved against the mount type's default)
@@ -112,5 +113,14 @@ final readonly class ActionMetadata implements ActionMetadataInterface
     public function description(): ?string
     {
         return null;
+    }
+
+    /**
+     * The action's path, the `links` member an `asLink` action renders as; null for any
+     * other action.
+     */
+    public function linkName(): ?string
+    {
+        return $this->descriptor->asLink ? $this->descriptor->path : null;
     }
 }

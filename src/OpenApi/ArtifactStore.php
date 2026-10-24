@@ -14,7 +14,8 @@ namespace haddowg\JsonApiLaravel\OpenApi;
  * (never a per-request build). A per-server JSON document lives at
  * `<cacheDir>/<server>.json`; the aggregate JSON Schema at
  * `<cacheDir>/json-schema/<server>.json` and the per-type schemas under
- * `<cacheDir>/json-schema/<server>/<type>.json`.
+ * `<cacheDir>/json-schema/<server>/<type>.json`, and the operations map the `describedby`
+ * resolver reads at `<cacheDir>/<server>.operations.json`.
  *
  * This is a pure path/IO helper (no projection): the factories build the documents,
  * this stores and loads their serialized form.
@@ -47,6 +48,49 @@ final class ArtifactStore
     public function write(string $server, string $json): void
     {
         $this->put($this->documentPath($server), $json);
+    }
+
+    /**
+     * The operations the warmed document carries, as path template to lower-case methods:
+     * the input of the `describedby` resolver, so a request never loads the whole document
+     * to point a link at it (ADR 0037). Null when it was never written or can't be read.
+     *
+     * @return array<string, list<string>>|null
+     */
+    public function readOperations(string $server): ?array
+    {
+        $json = $this->get($this->operationsPath($server));
+        if ($json === null) {
+            return null;
+        }
+
+        try {
+            $operations = \json_decode($json, true, 512, \JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+
+        if (!\is_array($operations)) {
+            return null;
+        }
+
+        $map = [];
+        foreach ($operations as $path => $methods) {
+            if (!\is_string($path) || !\is_array($methods)) {
+                return null;
+            }
+            $map[$path] = \array_values(\array_filter($methods, \is_string(...)));
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string, list<string>> $operations
+     */
+    public function writeOperations(string $server, array $operations): void
+    {
+        $this->put($this->operationsPath($server), \json_encode((object) $operations, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES));
     }
 
     /**
@@ -106,6 +150,11 @@ final class ArtifactStore
         }
 
         $this->removeTree($base);
+    }
+
+    private function operationsPath(string $server): string
+    {
+        return $this->baseDir() . '/' . $this->safe($server) . '.operations.json';
     }
 
     private function baseDir(): string

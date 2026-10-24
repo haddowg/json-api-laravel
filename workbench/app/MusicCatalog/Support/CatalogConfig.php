@@ -40,6 +40,9 @@ final class CatalogConfig
         $config->set('jsonapi.atomic_operations.enabled', true);
         $config->set('jsonapi.atomic_operations.path', '/operations');
         $config->set('jsonapi.servers', self::servers());
+        // Serve the document outside debug, as the bundle example does, so its links (and the
+        // document's link examples) carry a describedby into it.
+        $config->set('jsonapi.openapi.expose_in_prod', true);
         $config->set('jsonapi.openapi.info', self::info());
         $config->set('jsonapi.openapi.security', self::security());
         $config->set('jsonapi.openapi.tags', self::tags());

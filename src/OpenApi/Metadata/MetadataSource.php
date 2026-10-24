@@ -17,6 +17,7 @@ use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\ResourceDescriptor;
 use haddowg\JsonApiLaravel\Discovery\SerializerDescriptor;
+use haddowg\JsonApiLaravel\OpenApi\DocumentUrlProvider;
 use haddowg\JsonApiLaravel\Operation\Operation;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
@@ -89,6 +90,7 @@ final class MetadataSource
         private readonly ?ActionMetadataProviderInterface $actions = null,
         private readonly ?PrefixServers $prefixServers = null,
         private readonly RelationCriteriaFactory $relationCriteria = new RelationCriteriaFactory(),
+        private readonly ?DocumentUrlProvider $documentUrls = null,
     ) {}
 
     /**
@@ -138,6 +140,8 @@ final class MetadataSource
             atomicOperations: $this->atomicOperations(),
             profiles: $this->profileUris($server),
             errorSources: $this->errorSources(),
+            rendersLinkObjects: $server->rendersLinkObjects(),
+            documentUrl: $this->documentUrls?->forServer($serverName),
         );
     }
 
@@ -206,6 +210,9 @@ final class MetadataSource
             // and JSON:API version come from the default server).
             profiles: $this->profileUris($defaultServer),
             errorSources: $this->errorSources(),
+            // Link form and document URL follow the default server too, as the info block does.
+            rendersLinkObjects: $defaultServer->rendersLinkObjects(),
+            documentUrl: $this->documentUrls?->forServer(ServerRegistry::DEFAULT_SERVER),
         );
     }
 

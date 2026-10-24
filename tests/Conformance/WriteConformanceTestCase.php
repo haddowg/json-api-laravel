@@ -128,7 +128,7 @@ abstract class WriteConformanceTestCase extends Orchestra
         $response->assertHeader('Location', $location);
         // The created resource carries its convention self link, equal to the Location
         // (the persister has assigned the id by render time — core ADR 0054).
-        $response->assertJsonPath('data.links.self', $location);
+        $response->assertJsonPath('data.links.self.href', $location);
 
         $response->assertJsonPath('data.attributes.title', 'A Brand New Album');
         $response->assertJsonPath('data.attributes.status', 'released');

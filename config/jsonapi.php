@@ -39,6 +39,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Link objects
+    |--------------------------------------------------------------------------
+    |
+    | Whether the links the server builds (resource, relationship, top-level
+    | `self`, pagination and action links) render as JSON:API link objects,
+    | `{"href": ...}`, which can carry a `describedby` into the OpenAPI document.
+    | False renders them as bare URL strings. A server's own `link_objects`
+    | (below) overrides it.
+    |
+    */
+    'link_objects' => true,
+
+    /*
+    |--------------------------------------------------------------------------
     | JSON:API version
     |--------------------------------------------------------------------------
     |
@@ -197,7 +211,8 @@ return [
     |
     | Optional per server: `base_uri` overrides the global `base_uri` (include the
     | prefix in it), `output_timezone` overrides the global `output_timezone` (an
-    | empty string turns conversion off for that server), and `route_defaults`
+    | empty string turns conversion off for that server), `link_objects`
+    | overrides the global `link_objects` (null inherits it), and `route_defaults`
     | sets route defaults on every route of the server, such as a default for a
     | `{tenant}` placeholder in the prefix, which the OpenAPI `servers` entry
     | advertises as the variable's default.
@@ -252,10 +267,17 @@ return [
     | `cache_path`: the directory the warmed artifacts are stored in (null =
     | storage/framework/cache/jsonapi-openapi).
     |
-    | `describedby`: when true (default), every JSON:API response gains a top-level
-    | `links.describedby` pointing at the served OpenAPI document — but only when the
-    | document routes are actually reachable (the expose gate above), so it never
-    | advertises a link to a document that is not served.
+    | `describedby`: when true (default), each built link object and each document
+    | gets a `describedby` naming the operation in the OpenAPI document that
+    | describes it, such as `/docs.json#/paths/~1albums~1%7Bid%7D/get`. It only
+    | takes effect when the document routes are reachable (the expose gate above)
+    | or `document_url` names a document, so it never points at one nobody serves.
+    |
+    | `document_url`: the URL `describedby` points into, used as given, for a
+    | document published somewhere else (a docs site, or a CDN serving the
+    | `public_path` files). `{server}` is replaced by the server name, or by
+    | `combined` in combined mode. Null (the default) uses the package's own
+    | document route, host-relative and including any prefix it is served under.
     |
     */
     'openapi' => [
@@ -266,6 +288,7 @@ return [
         'public_path' => null,
         'cache_path' => null,
         'describedby' => true,
+        'document_url' => null,
 
         'json' => [
             'path' => '/docs.json',

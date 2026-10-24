@@ -189,7 +189,7 @@ final class EloquentSoftDeleteTest extends Orchestra
         $this->actingAs($this->writer());
         $this->readJsonApi('/api/documents?filter[onlyTrashed]=1')
             ->assertOk()
-            ->assertJsonPath('data.0.links.restore', fn(mixed $link): bool => \is_string($link) && \str_contains($link, '/api/documents/1/-actions/restore'));
+            ->assertJsonPath('data.0.links.restore.href', fn(mixed $link): bool => \is_string($link) && \str_contains($link, '/api/documents/1/-actions/restore'));
 
         // ...but never to a requester who could not pass the restore ability.
         $this->actingAs($this->reader());

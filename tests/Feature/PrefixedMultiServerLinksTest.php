@@ -57,13 +57,13 @@ final class PrefixedMultiServerLinksTest extends Orchestra
     {
         $this->jsonApi()->get('/api/gizmos/1')
             ->assertOk()
-            ->assertJsonPath('links.self', 'http://localhost/api/gizmos/1')
-            ->assertJsonPath('data.links.self', 'http://localhost/api/gizmos/1');
+            ->assertJsonPath('links.self.href', 'http://localhost/api/gizmos/1')
+            ->assertJsonPath('data.links.self.href', 'http://localhost/api/gizmos/1');
 
         $this->jsonApi()->get('/admin-api/gizmos/1')
             ->assertOk()
-            ->assertJsonPath('links.self', 'http://localhost/admin-api/gizmos/1')
-            ->assertJsonPath('data.links.self', 'http://localhost/admin-api/gizmos/1');
+            ->assertJsonPath('links.self.href', 'http://localhost/admin-api/gizmos/1')
+            ->assertJsonPath('data.links.self.href', 'http://localhost/admin-api/gizmos/1');
     }
 
     #[Test]
@@ -77,7 +77,7 @@ final class PrefixedMultiServerLinksTest extends Orchestra
 
         $this->jsonApi()->get('/admin-api/gizmos/1')
             ->assertOk()
-            ->assertJsonPath('data.links.self', 'http://localhost/admin-api/gizmos/1');
+            ->assertJsonPath('data.links.self.href', 'http://localhost/admin-api/gizmos/1');
     }
 
     private function resolveRouter(): Router
