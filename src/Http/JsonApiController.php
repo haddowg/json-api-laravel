@@ -77,10 +77,9 @@ final class JsonApiController
         private readonly HttpFoundationFactory $httpFoundationFactory,
         private readonly ?ActionRegistry $actions = null,
         private readonly OperationFactory $operationFactory = new OperationFactory(),
-        // Stamps `links.describedby` onto every response, pointing at the served OpenAPI
-        // document (PLAN decision 11, bundle ADR 0105). Null on a stripped-down programmatic
-        // wiring → no describedby link is added.
-        private readonly ?DescribedbyStamper $describedby = null,
+        // The atomic endpoint's path as the OpenAPI document keys it, so an Atomic
+        // Operations result's `describedby` can name its `POST` operation (ADR 0037).
+        private readonly string $atomicPath = '/operations',
     ) {}
 
     public function __invoke(Request $request): Response
@@ -138,9 +137,6 @@ final class JsonApiController
         }
 
         $response = $server->dispatch($operation);
-        if ($this->describedby !== null) {
-            $response = $this->describedby->stamp($response, $serverName);
-        }
 
         return $this->httpFoundationFactory->createResponse($response->toPsrResponse($server, $jsonApiRequest));
     }
@@ -179,12 +175,10 @@ final class JsonApiController
             $descriptors,
             QueryParameters::fromRequest($jsonApiRequest),
             new OperationContext($server, $jsonApiRequest),
+            $this->atomicPath,
         );
 
         $response = $server->dispatch($operation);
-        if ($this->describedby !== null) {
-            $response = $this->describedby->stamp($response, $serverName);
-        }
 
         return $this->httpFoundationFactory->createResponse($response->toPsrResponse($server, $jsonApiRequest));
     }

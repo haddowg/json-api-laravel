@@ -35,12 +35,14 @@ use haddowg\JsonApiLaravel\Eloquent\ModelMapResolver;
 use haddowg\JsonApiLaravel\EventListener\ResourceHookSubscriber;
 use haddowg\JsonApiLaravel\Exception\ExceptionMapperInterface;
 use haddowg\JsonApiLaravel\Exception\JsonApiExceptionRenderer;
-use haddowg\JsonApiLaravel\Http\DescribedbyStamper;
+use haddowg\JsonApiLaravel\Http\JsonApiController;
 use haddowg\JsonApiLaravel\Http\ResponseHeadersRegistry;
 use haddowg\JsonApiLaravel\OpenApi\ArtifactStore;
 use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiConfig;
 use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiConfigResolver;
+use haddowg\JsonApiLaravel\OpenApi\DescribedByResolverProvider;
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
+use haddowg\JsonApiLaravel\OpenApi\DocumentUrlProvider;
 use haddowg\JsonApiLaravel\OpenApi\DocumentWarmer;
 use haddowg\JsonApiLaravel\OpenApi\JsonSchemaFactory;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\ActionMetadataProviderInterface;
@@ -57,6 +59,7 @@ use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipPagination;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
+use haddowg\JsonApiLaravel\Server\LinkObjectsConfig;
 use haddowg\JsonApiLaravel\Server\OutputTimezoneConfig;
 use haddowg\JsonApiLaravel\Server\PerServerInstances;
 use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
@@ -290,6 +293,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         ], 'jsonapi-config');
 
         $this->assertOutputTimezones();
+        $this->assertLinkObjects();
 
         $this->registerRouteMacro();
         JsonApiRoute::registerMacro();
@@ -315,6 +319,16 @@ final class JsonApiServiceProvider extends ServiceProvider
 
         $this->registerExceptionRenderable();
         $this->registerConsole();
+    }
+
+    /**
+     * Fails the boot on a `link_objects` that is not a boolean or null.
+     */
+    private function assertLinkObjects(): void
+    {
+        $servers = config('jsonapi.servers', []);
+
+        LinkObjectsConfig::assertValid(config('jsonapi.link_objects'), \is_array($servers) ? $servers : []);
     }
 
     /**
@@ -656,6 +670,11 @@ final class JsonApiServiceProvider extends ServiceProvider
      */
     private function registerServers(): void
     {
+        // The atomic endpoint's path, which an Atomic Operations result's describedby names.
+        $this->app->when(JsonApiController::class)
+            ->needs('$atomicPath')
+            ->giveConfig('jsonapi.atomic_operations.path', '/operations');
+
         $this->app->singleton(IdEncoderResolver::class, static function (Container $app): IdEncoderResolver {
             return new IdEncoderResolver(
                 $app->make(Discovery::class),
@@ -788,10 +807,15 @@ final class JsonApiServiceProvider extends ServiceProvider
                         $app->make(\Illuminate\Contracts\Translation\Translator::class),
                     ),
                     OutputTimezoneConfig::forServer($outputTimezone, $serversConfig, $server),
+                    LinkObjectsConfig::forServer(config('jsonapi.link_objects'), $serversConfig, $server),
                 );
             }
 
-            return new ServerRegistry($factories);
+            // Points each request's links at the operations of its server's OpenAPI document.
+            return new ServerRegistry(
+                $factories,
+                static fn(): DescribedByResolverProvider => $app->make(DescribedByResolverProvider::class),
+            );
         });
     }
 
@@ -883,16 +907,35 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $actions,
                 new PrefixServers($app->make(Router::class)),
                 $app->make(RelationCriteriaFactory::class),
+                $app->make(DocumentUrlProvider::class),
             );
         });
 
-        $this->app->singleton(DescribedbyStamper::class, static function (Container $app): DescribedbyStamper {
+        // The URL each server's describedby links point into (ADR 0037): a configured
+        // document_url, else the package's own document route. Null when describedby or
+        // generation is off, or the route isn't registered, so links then carry none.
+        $this->app->singleton(DocumentUrlProvider::class, static function (Container $app): DocumentUrlProvider {
             /** @var OpenApiConfig $config */
             $config = $app->make(OpenApiConfig::class);
             /** @var UrlGenerator $url */
             $url = $app->make(UrlGenerator::class);
 
-            return new DescribedbyStamper($url, $config->describedby, $config->combined);
+            return new DocumentUrlProvider($url, $config->enabled && $config->describedby, $config->combined, $config->documentUrl);
+        });
+
+        $this->app->singleton(DescribedByResolverProvider::class, static function (Container $app): DescribedByResolverProvider {
+            /** @var OpenApiConfig $config */
+            $config = $app->make(OpenApiConfig::class);
+            /** @var bool $debug */
+            $debug = config('app.debug', false);
+
+            return new DescribedByResolverProvider(
+                $app->make(DocumentUrlProvider::class),
+                $app->make(ArtifactStore::class),
+                static fn(): DocumentFactory => $app->make(DocumentFactory::class),
+                $config->combined,
+                $debug,
+            );
         });
 
         $this->app->singleton(ArtifactStore::class, static function (Container $app): ArtifactStore {

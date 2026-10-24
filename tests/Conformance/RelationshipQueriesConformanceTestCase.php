@@ -80,9 +80,9 @@ abstract class RelationshipQueriesConformanceTestCase extends Orchestra
 
         $response->assertOk();
         self::assertSame([['type' => 'albums', 'id' => '6'], ['type' => 'albums', 'id' => '7']], $response->json('data'));
-        self::assertIsString($response->json('links.first'));
-        self::assertIsString($response->json('links.next'));
-        self::assertIsString($response->json('links.last'));
+        self::assertIsString($response->json('links.first.href'));
+        self::assertIsString($response->json('links.next.href'));
+        self::assertIsString($response->json('links.last.href'));
 
         // Page 2 continues the same total order: Kid A(3), OK Computer(1).
         $page2 = $this->fetch('/api/artists/1/relationships/albums?sort=-releasedAt&page[number]=2&page[size]=2');
@@ -101,7 +101,7 @@ abstract class RelationshipQueriesConformanceTestCase extends Orchestra
 
         $response->assertOk();
         self::assertCount(2, (array) $response->json('data'));
-        self::assertIsString($response->json('links.next'));
+        self::assertIsString($response->json('links.next.href'));
         self::assertNull($response->json('links.last'));
     }
 

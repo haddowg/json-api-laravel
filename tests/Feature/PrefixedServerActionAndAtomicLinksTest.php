@@ -60,7 +60,7 @@ final class PrefixedServerActionAndAtomicLinksTest extends Orchestra
             ->withDocument(['data' => ['type' => 'albums', 'attributes' => ['status' => 'released']]])
             ->post('/api/albums/1/-actions/publish')
             ->assertOk()
-            ->assertJsonPath('data.links.self', 'http://localhost/api/albums/1');
+            ->assertJsonPath('data.links.self.href', 'http://localhost/api/albums/1');
     }
 
     #[Test]
@@ -79,6 +79,6 @@ final class PrefixedServerActionAndAtomicLinksTest extends Orchestra
         $response->assertOk();
         $id = $response->json('atomic:results.0.data.id');
         self::assertIsString($id);
-        $response->assertJsonPath('atomic:results.0.data.links.self', 'http://localhost/api/artists/' . $id);
+        $response->assertJsonPath('atomic:results.0.data.links.self.href', 'http://localhost/api/artists/' . $id);
     }
 }

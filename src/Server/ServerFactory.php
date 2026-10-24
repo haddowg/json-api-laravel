@@ -139,6 +139,9 @@ final class ServerFactory
         // The zone every DateTime attribute renders in unless the field sets its own
         // (`output_timezone`, already validated by OutputTimezoneConfig). Null converts nothing.
         private readonly ?string $outputTimezone = null,
+        // Whether built links render as link objects, which carry a `describedby`
+        // (`link_objects`, a server's own or the global one); false renders strings.
+        private readonly bool $linkObjects = true,
     ) {}
 
     /**
@@ -158,6 +161,7 @@ final class ServerFactory
             ->withMaxIncludeDepth($this->maxIncludeDepth > 0 ? $this->maxIncludeDepth : null)
             ->withStrictQueryParameters($this->strictQueryParameters)
             ->withOutputTimezone($this->outputTimezone)
+            ->withLinkObjects($this->linkObjects)
             ->withRelationshipCount($this->relationshipCount)
             ->withRelationshipLoadState($this->relationshipLoadState)
             ->withRelationshipPagination($this->relationshipPagination)

@@ -77,7 +77,7 @@ curl -H 'Accept: application/vnd.api+json' http://localhost/api/albums
   "data": [
     { "type": "albums", "id": "1",
       "attributes": { "title": "OK Computer" },
-      "links": { "self": "http://localhost/api/albums/1" } }
+      "links": { "self": { "href": "http://localhost/api/albums/1" } } }
   ]
 }
 ```

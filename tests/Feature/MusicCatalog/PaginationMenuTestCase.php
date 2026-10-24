@@ -326,7 +326,7 @@ abstract class PaginationMenuTestCase extends Orchestra
      */
     private function link(TestResponse $response, string $rel): string
     {
-        $href = $response->json('links.' . $rel);
+        $href = $response->json('links.' . $rel . '.href');
         self::assertIsString($href, "links.{$rel}");
 
         $path = (string) \parse_url($href, \PHP_URL_PATH);

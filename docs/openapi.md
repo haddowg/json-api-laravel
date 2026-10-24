@@ -86,9 +86,101 @@ package serves — API-wide, not under a server prefix:
 | `GET /docs` | the viewer UI (Swagger UI by default; ReDoc optional) |
 
 Configure the paths, the renderer, and the prod gate under `jsonapi.openapi` — see
-[configuration](configuration.md#openapi). Every JSON:API response can carry a top-level
-`links.describedby` pointing at the served document (`openapi.describedby`), emitted only when
-the document routes are actually reachable.
+[configuration](configuration.md#openapi). While the document is served, every link the
+package builds points at its operation in it; see
+[links and `describedby`](#links-and-describedby).
+
+## Links and `describedby` {#links-and-describedby}
+
+The links the server builds (each resource's `self`, relationship `self` and `related`,
+the top-level `self`, pagination links and `asLink` action links) render as JSON:API link
+objects. When the document is served, each one carries a `describedby` pointing at the
+operation in the document that describes its target, and the document gets a top-level
+`describedby` naming the operation that produced it:
+
+```jsonc
+// GET /api/albums/1
+{
+  "data": {
+    "type": "albums",
+    "id": "1",
+    "links": {
+      "self": {
+        "href": "https://music.example/api/albums/1",
+        "describedby": "/docs.json#/paths/~1albums~1%7Bid%7D/get"
+      },
+      "reissue": {
+        "href": "https://music.example/api/albums/1/-actions/reissue",
+        "describedby": "/docs.json#/paths/~1albums~1%7Bid%7D~1-actions~1reissue/post"
+      }
+    },
+    "relationships": {
+      "artist": {
+        "links": {
+          "self": {
+            "href": "https://music.example/api/albums/1/relationships/artist",
+            "describedby": "/docs.json#/paths/~1albums~1%7Bid%7D~1relationships~1artist/get"
+          },
+          "related": {
+            "href": "https://music.example/api/albums/1/artist",
+            "describedby": "/docs.json#/paths/~1albums~1%7Bid%7D~1artist/get"
+          }
+        }
+      }
+    }
+  },
+  "links": {
+    "self": {
+      "href": "https://music.example/api/albums/1",
+      "describedby": "/docs.json#/paths/~1albums~1%7Bid%7D/get"
+    },
+    "describedby": { "href": "/docs.json#/paths/~1albums~1%7Bid%7D/get" }
+  }
+}
+```
+
+The fragment is a JSON Pointer to the path and method in `paths`. An action link names the
+action's first declared method. A link whose operation the document doesn't carry gets no
+`describedby`, so none points at a fragment that isn't there.
+
+The document URL is the path of the server's document route, host-relative and including
+any prefix or base path it is served under: `/docs.json` for the default server and
+`/{server}/docs.json` for a named one, or `/docs.json` for every server in combined mode.
+When the document lives somewhere else, such as a docs site or a CDN serving the
+[`public_path`](#warming-for-production) files, name it with `document_url`. It's used as
+given, with `{server}` replaced by the server name (or `combined` in combined mode):
+
+```php
+// config/jsonapi.php
+'openapi' => [
+    'document_url' => 'https://docs.music.example/openapi/{server}.json',
+],
+```
+
+Links get no `describedby` when the document isn't served and no `document_url` is set
+(the expose gate is closed, or generation is disabled), or when `describedby` is `false`.
+They stay link objects either way. To render bare URL strings instead, set
+`jsonapi.link_objects` to `false`, or the same key on a
+[server](configuration.md#servers). A string can't carry a `describedby`, but the
+document's own top-level one still renders.
+
+An [Atomic Operations](atomic-operations.md) result's top-level `describedby` names the
+atomic endpoint's `POST` (`/docs.json#/paths/~1operations/post` with the default
+`atomic_operations.path`), and the resource objects inside it carry the same links as
+anywhere else. Error documents get none.
+
+A `describedby` set on a response with `withDescribedby()`, or one inside its `withLinks()`,
+replaces the per-operation one, so set it only when a response should point somewhere else.
+
+The generated document describes these links: each `<Type>ResourceLinks`,
+`<Type>DocumentLinks`, `<Type>CollectionLinks` and `<Type><Rel>RelationshipLinks`
+component lists the members that context renders, with an example carrying the same
+`describedby`, and an `asLink` action is listed by its name.
+
+`artisan optimize` writes a small map of each document's operations beside it, which is all
+a request reads to resolve a `describedby`. Without it, a request reads the operations from
+the stored document, or builds the document once for the process when there is none; with
+`app.debug` on, the map is then written for later requests.
 
 ## The CLI exporters
 

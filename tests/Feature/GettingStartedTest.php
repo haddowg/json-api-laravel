@@ -47,7 +47,7 @@ final class GettingStartedTest extends Orchestra
         $response->assertJsonPath('data.0.attributes.title', 'OK Computer');
         // With the default empty `base_uri` the link is the request origin plus the
         // server's `api` prefix, the form the page shows.
-        $response->assertJsonPath('data.0.links.self', 'http://localhost/api/albums/1');
+        $response->assertJsonPath('data.0.links.self.href', 'http://localhost/api/albums/1');
     }
 
     public function test_get_one_reads_through_the_convention_mapped_model(): void

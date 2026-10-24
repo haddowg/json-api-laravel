@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Server;
 
 use haddowg\JsonApi\Server\Server;
+use haddowg\JsonApiLaravel\OpenApi\DescribedByResolverProvider;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
@@ -23,9 +24,13 @@ final class ServerRegistry
     public const string DEFAULT_SERVER = 'default';
 
     /**
-     * @param array<string, ServerFactory> $factories keyed by server name
+     * @param array<string, ServerFactory>          $factories   keyed by server name
+     * @param ?\Closure(): ?DescribedByResolverProvider $describedBy lazy, because the provider builds documents from this registry's servers
      */
-    public function __construct(private readonly array $factories) {}
+    public function __construct(
+        private readonly array $factories,
+        private readonly ?\Closure $describedBy = null,
+    ) {}
 
     /**
      * The Server for `$name`, or the `default` server when `$name` is null.
@@ -45,13 +50,16 @@ final class ServerRegistry
 
     /**
      * The Server for the matched route's `_jsonapi_server` default, with its links based
-     * where the request found it.
+     * where the request found it and described by the server's OpenAPI document.
      *
      * A configured `base_uri` is returned as it is. An empty one would make core base
      * every link on the request origin alone, dropping the prefix the server's routes are
      * registered under; so when the route has a prefix (or the app is served below the
      * web root) the Server is given the effective base `origin + base path + prefix` for
      * this request instead (ADR 0028).
+     *
+     * The `describedby` resolver is set here rather than on the memoized Server because
+     * the default document URL is generated against this request (ADR 0037).
      *
      * @throws \LogicException when the route names an unknown server
      */
@@ -61,7 +69,13 @@ final class ServerRegistry
         $route = $route instanceof Route ? $route : null;
 
         $name = $route?->defaults[TargetResolver::SERVER_ATTRIBUTE] ?? null;
-        $server = $this->get(\is_string($name) && $name !== '' ? $name : null);
+        $name = \is_string($name) && $name !== '' ? $name : self::DEFAULT_SERVER;
+        $server = $this->get($name);
+
+        $describedBy = $this->describedBy !== null ? ($this->describedBy)()?->forServer($name) : null;
+        if ($describedBy !== null) {
+            $server = $server->withDescribedByResolver($describedBy);
+        }
 
         if ($server->baseUri() !== '') {
             return $server;

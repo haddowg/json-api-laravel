@@ -186,7 +186,7 @@ final class CustomActionTest extends Orchestra
         // A write-capable requester would pass the `publish` gate, so the album's rendered
         // `links` carry the action URL.
         $this->actingAs($this->writer());
-        $this->readJsonApi('/api/albums/1')->assertJsonPath('data.links.publish', fn(mixed $link): bool => \is_string($link) && \str_contains($link, '/api/albums/1/-actions/publish'));
+        $this->readJsonApi('/api/albums/1')->assertJsonPath('data.links.publish.href', fn(mixed $link): bool => \is_string($link) && \str_contains($link, '/api/albums/1/-actions/publish'));
 
         // A read-only requester would be denied, so the link is suppressed — a client never
         // sees a link to an action it cannot invoke.

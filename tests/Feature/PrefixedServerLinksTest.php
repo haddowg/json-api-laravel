@@ -86,10 +86,10 @@ final class PrefixedServerLinksTest extends TestCase
         $response = $this->jsonApi()->withInclude('artist')->get('/acme/api/albums/1');
 
         $response->assertOk();
-        $response->assertJsonPath('links.self', 'http://localhost/acme/api/albums/1?include=artist');
-        $response->assertJsonPath('data.links.self', 'http://localhost/acme/api/albums/1');
-        $response->assertJsonPath('data.relationships.artist.links.related', 'http://localhost/acme/api/albums/1/artist');
-        $response->assertJsonPath('included.0.links.self', 'http://localhost/acme/api/artists/1');
+        $response->assertJsonPath('links.self.href', 'http://localhost/acme/api/albums/1?include=artist');
+        $response->assertJsonPath('data.links.self.href', 'http://localhost/acme/api/albums/1');
+        $response->assertJsonPath('data.relationships.artist.links.related.href', 'http://localhost/acme/api/albums/1/artist');
+        $response->assertJsonPath('included.0.links.self.href', 'http://localhost/acme/api/artists/1');
     }
 
     #[Test]
@@ -100,8 +100,8 @@ final class PrefixedServerLinksTest extends TestCase
         $response = $this->jsonApi()->get('/albums/1');
 
         $response->assertOk();
-        $response->assertJsonPath('links.self', 'http://localhost/albums/1');
-        $response->assertJsonPath('data.links.self', 'http://localhost/albums/1');
+        $response->assertJsonPath('links.self.href', 'http://localhost/albums/1');
+        $response->assertJsonPath('data.links.self.href', 'http://localhost/albums/1');
     }
 
     #[Test]
@@ -114,9 +114,9 @@ final class PrefixedServerLinksTest extends TestCase
         $response->assertOk();
         $id = $response->json('data.0.id');
         self::assertIsString($id);
-        $response->assertJsonPath('data.0.links.self', 'https://api.example/api/albums/' . $id);
-        self::assertIsString($response->json('links.next'));
-        self::assertStringStartsWith('https://api.example/api/albums?', $response->json('links.next'));
+        $response->assertJsonPath('data.0.links.self.href', 'https://api.example/api/albums/' . $id);
+        self::assertIsString($response->json('links.next.href'));
+        self::assertStringStartsWith('https://api.example/api/albums?', $response->json('links.next.href'));
     }
 
     #[Test]
@@ -127,8 +127,8 @@ final class PrefixedServerLinksTest extends TestCase
         $response = $this->jsonApi()->get('/api/albums/1');
 
         $response->assertOk();
-        $response->assertJsonPath('links.self', 'https://global.example/api/albums/1');
-        $response->assertJsonPath('data.links.self', 'https://global.example/api/albums/1');
+        $response->assertJsonPath('links.self.href', 'https://global.example/api/albums/1');
+        $response->assertJsonPath('data.links.self.href', 'https://global.example/api/albums/1');
     }
 
     #[Test]
@@ -139,8 +139,8 @@ final class PrefixedServerLinksTest extends TestCase
         $response = $this->jsonApi()->get('/api/albums/1');
 
         $response->assertOk();
-        $response->assertJsonPath('links.self', 'https://api.example/api/albums/1');
-        $response->assertJsonPath('data.links.self', 'https://api.example/api/albums/1');
+        $response->assertJsonPath('links.self.href', 'https://api.example/api/albums/1');
+        $response->assertJsonPath('data.links.self.href', 'https://api.example/api/albums/1');
     }
 
     #[Test]
@@ -154,8 +154,8 @@ final class PrefixedServerLinksTest extends TestCase
         ]);
 
         $response->assertOk();
-        $response->assertJsonPath('links.self', 'http://localhost/app/index.php/api/albums/1');
-        $response->assertJsonPath('data.links.self', 'http://localhost/app/index.php/api/albums/1');
+        $response->assertJsonPath('links.self.href', 'http://localhost/app/index.php/api/albums/1');
+        $response->assertJsonPath('data.links.self.href', 'http://localhost/app/index.php/api/albums/1');
     }
 
     #[Test]
