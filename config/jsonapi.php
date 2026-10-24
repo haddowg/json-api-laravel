@@ -279,6 +279,16 @@ return [
     | `combined` in combined mode. Null (the default) uses the package's own
     | document route, host-relative and including any prefix it is served under.
     |
+    | `cache_control`: the `Cache-Control` header for the served `docs.json` and
+    | `schemas.json`, e.g. `public, max-age=60, s-maxage=300`. Both always carry
+    | an `ETag` and answer a matching `If-None-Match` with a 304. Null (the
+    | default) sends no header of its own, which leaves the response private.
+    |
+    | `serve_allowed_classes`: classes a document's example, default or extension
+    | values may hold and still be served to per-request decorators from the
+    | serialized copy `optimize` writes. Without them that document is built on
+    | each decorated request instead, and `optimize` logs a warning.
+    |
     */
     'openapi' => [
         'enabled' => true,
@@ -289,6 +299,8 @@ return [
         'cache_path' => null,
         'describedby' => true,
         'document_url' => null,
+        'cache_control' => null,
+        'serve_allowed_classes' => [],
 
         'json' => [
             'path' => '/docs.json',

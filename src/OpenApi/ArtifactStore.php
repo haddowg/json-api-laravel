@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\OpenApi;
 
+use haddowg\JsonApi\OpenApi\Serve\EntityTag;
+use haddowg\JsonApi\OpenApi\Serve\ServeArtifact;
+use haddowg\JsonApi\OpenApi\Serve\ServeArtifactCodec;
+use haddowg\JsonApi\OpenApi\Serve\UnserializableValue;
+
 /**
  * The shared filesystem contract between the {@see DocumentWarmer} (which writes the
  * pre-built OpenAPI documents at `artisan optimize`) and the OpenAPI controllers (which
@@ -15,14 +20,29 @@ namespace haddowg\JsonApiLaravel\OpenApi;
  * `<cacheDir>/<server>.json`; the aggregate JSON Schema at
  * `<cacheDir>/json-schema/<server>.json` and the per-type schemas under
  * `<cacheDir>/json-schema/<server>/<type>.json`, and the operations map the `describedby`
- * resolver reads at `<cacheDir>/<server>.operations.json`.
+ * resolver reads at `<cacheDir>/<server>.operations.json`. Beside each served artifact sits a
+ * `.hash` file (the served ETag), and beside the document a `.serve` file holding it as
+ * serialized value objects for the serve decorators, encoded by core's
+ * {@see ServeArtifactCodec} (ADR 0036).
  *
  * This is a pure path/IO helper (no projection): the factories build the documents,
  * this stores and loads their serialized form.
  */
 final class ArtifactStore
 {
-    public function __construct(private readonly string $cacheDir) {}
+    /**
+     * This package's Composer name, which the serve artifact fingerprint records beside core's.
+     */
+    public const string PACKAGE = 'haddowg/json-api-laravel';
+
+    private readonly ServeArtifactCodec $codec;
+
+    public function __construct(
+        private readonly string $cacheDir,
+        ?ServeArtifactCodec $codec = null,
+    ) {
+        $this->codec = $codec ?? new ServeArtifactCodec([self::PACKAGE]);
+    }
 
     /**
      * The absolute path of the pre-built OpenAPI JSON document for `$server`.
@@ -94,6 +114,78 @@ final class ArtifactStore
     }
 
     /**
+     * The hash of the document artifact, written beside it so a conditional request costs
+     * one small read. Null when it was never written.
+     */
+    public function readHash(string $server): ?string
+    {
+        return $this->get($this->baseDir() . '/' . $this->safe($server) . '.hash');
+    }
+
+    /**
+     * Writes the document artifact and its hash together, returning the hash.
+     */
+    public function writeWithHash(string $server, string $json): string
+    {
+        $hash = EntityTag::hash($json);
+        $this->write($server, $json);
+        $this->put($this->baseDir() . '/' . $this->safe($server) . '.hash', $hash);
+
+        return $hash;
+    }
+
+    /**
+     * The warmed document as value objects (ADR 0036), or null when it was never written,
+     * no longer decodes, or was written by another installed version of core or this package.
+     */
+    public function readServeArtifact(string $server): ?ServeArtifact
+    {
+        $bytes = $this->get($this->serveArtifactPath($server));
+
+        return $bytes === null ? null : $this->codec->decode($bytes);
+    }
+
+    /**
+     * @throws UnserializableValue when the document holds an object the codec can't allow back in
+     */
+    public function writeServeArtifact(string $server, ServeArtifact $artifact): void
+    {
+        $this->put($this->serveArtifactPath($server), $this->codec->encode($artifact));
+    }
+
+    /**
+     * Removes `$server`'s serve artifact, so a document that could not be encoded is never
+     * served from an older one.
+     */
+    public function forgetServeArtifact(string $server): void
+    {
+        $path = $this->serveArtifactPath($server);
+        if (\is_file($path)) {
+            @\unlink($path);
+        }
+    }
+
+    /**
+     * The hash of the aggregate JSON Schema artifact, or null when it was never written.
+     */
+    public function readSchemaAggregateHash(string $server): ?string
+    {
+        return $this->get($this->baseDir() . '/json-schema/' . $this->safe($server) . '.hash');
+    }
+
+    /**
+     * Writes the aggregate JSON Schema artifact and its hash together, returning the hash.
+     */
+    public function writeSchemaAggregateWithHash(string $server, string $json): string
+    {
+        $hash = EntityTag::hash($json);
+        $this->writeSchemaAggregate($server, $json);
+        $this->put($this->baseDir() . '/json-schema/' . $this->safe($server) . '.hash', $hash);
+
+        return $hash;
+    }
+
+    /**
      * The absolute path of a per-type standalone JSON Schema artifact for
      * `(server, type)`.
      */
@@ -155,6 +247,11 @@ final class ArtifactStore
     private function operationsPath(string $server): string
     {
         return $this->baseDir() . '/' . $this->safe($server) . '.operations.json';
+    }
+
+    private function serveArtifactPath(string $server): string
+    {
+        return $this->baseDir() . '/' . $this->safe($server) . '.serve';
     }
 
     private function baseDir(): string

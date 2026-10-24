@@ -76,7 +76,27 @@ final class OpenApiConfigResolver
             jsonSchemaPath: $this->jsonSchemaPath($openapi),
             describedby: ($openapi['describedby'] ?? true) !== false,
             documentUrl: $this->scalarOrNull($openapi, 'document_url'),
+            cacheControl: $this->scalarOrNull($openapi, 'cache_control'),
+            serveAllowedClasses: $this->serveAllowedClasses($openapi),
         );
+    }
+
+    /**
+     * @param array<string, mixed> $openapi
+     *
+     * @return list<class-string>
+     */
+    private function serveAllowedClasses(array $openapi): array
+    {
+        $classes = [];
+        foreach (\is_array($openapi['serve_allowed_classes'] ?? null) ? $openapi['serve_allowed_classes'] : [] as $class) {
+            if (\is_string($class) && $class !== '') {
+                /** @var class-string $class */
+                $classes[] = \ltrim($class, '\\');
+            }
+        }
+
+        return $classes;
     }
 
     /**

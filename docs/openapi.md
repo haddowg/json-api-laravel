@@ -294,6 +294,181 @@ request. Set `jsonapi.openapi.servers` (or a configured `base_uri`) when the API
 through one. In `combined` mode the document lists every server's entries, deduplicated by
 URL.
 
+## Per-request customisation {#per-request-customisation}
+
+The document is built once, at `artisan optimize`, so nothing in it can depend on who is
+asking. When one deployment serves several hosts that each need their own view of the spec
+(absolute `servers` URLs, operations a tenant hasn't paid for, example hosts), implement
+`OpenApiServeDecoratorInterface`. It runs every time `docs.json` is served and gets the
+`Request`:
+
+```php
+use haddowg\JsonApi\OpenApi\OpenApi;
+use haddowg\JsonApi\OpenApi\Server;
+use haddowg\JsonApiLaravel\OpenApi\OpenApiServeCacheKeyInterface;
+use haddowg\JsonApiLaravel\OpenApi\OpenApiServeDecoratorInterface;
+use Illuminate\Http\Request;
+
+final class ServersFromHost implements OpenApiServeDecoratorInterface, OpenApiServeCacheKeyInterface
+{
+    public function decorate(OpenApi $document, Request $request, string $server): OpenApi
+    {
+        return $document->withServers([new Server('https://' . $request->getHost() . '/api/v5')]);
+    }
+
+    public function cacheKey(Request $request, string $server): string
+    {
+        return $request->getHost();
+    }
+}
+```
+
+Bind it and tag it in a service provider's `register()`:
+
+```php
+use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+
+$this->app->singleton(ServersFromHost::class);
+$this->app->singleton(FeatureGate::class);
+$this->app->tag(
+    [ServersFromHost::class, FeatureGate::class],
+    JsonApiServiceProvider::OPENAPI_SERVE_DECORATOR_TAG,
+);
+```
+
+Decorators run in registration order, so the last one tagged gets the last word. `$server`
+is the server name, or `[combined]` in combined mode.
+
+Hiding operations works well with the `x-feature` [vendor extension](#vendor-extensions):
+mark operations on the resource, then drop the ones the requesting tenant lacks.
+
+```php
+use haddowg\JsonApi\OpenApi\OpenApi;
+use haddowg\JsonApi\OpenApi\Operation;
+use haddowg\JsonApi\OpenApi\Paths;
+use haddowg\JsonApiLaravel\OpenApi\OpenApiServeCacheKeyInterface;
+use haddowg\JsonApiLaravel\OpenApi\OpenApiServeDecoratorInterface;
+use Illuminate\Http\Request;
+
+final class FeatureGate implements OpenApiServeDecoratorInterface, OpenApiServeCacheKeyInterface
+{
+    public function __construct(private readonly TenantFeatures $features) {}
+
+    public function decorate(OpenApi $document, Request $request, string $server): OpenApi
+    {
+        $enabled = $this->features->forHost($request->getHost());
+        $items = [];
+        foreach ($document->paths->items ?? [] as $path => $item) {
+            $items[$path] = $item->withOperations(\array_filter(
+                $item->operations,
+                static function (Operation $operation) use ($enabled): bool {
+                    $feature = $operation->extension('x-feature');
+
+                    return !\is_string($feature) || \in_array($feature, $enabled, true);
+                },
+            ));
+        }
+
+        return $document->withPaths(new Paths($items));
+    }
+
+    public function cacheKey(Request $request, string $server): array
+    {
+        // Bump 'v' whenever decorate() changes behaviour.
+        return ['v' => 1, 'features' => $this->features->forHost($request->getHost())];
+    }
+}
+```
+
+You only remove operations. After the last decorator the package cleans up what they
+orphaned:
+
+- a path item left with no operation is dropped;
+- a component (schema, response, parameter, request body, header and so on) that the
+  served document referenced before decoration and nothing references now is dropped,
+  following `$ref`s through other components;
+- a tag definition whose operations all went is dropped.
+
+Components the document never referenced (or that a decorator added) stay, and so does
+everything they reference. Security schemes are never touched. Relationship members aren't
+removed either: if `albums` keeps its `artist` relationship while the `artists` endpoints
+are hidden, the album responses still carry that linkage on the wire, so the `artists`
+schemas it points at stay in the document. Hide a relationship in the document only when
+you also hide it at runtime.
+
+`schemas.json` has its own interface, `JsonSchemaServeDecoratorInterface`, tagged with
+`JsonApiServiceProvider::JSON_SCHEMA_SERVE_DECORATOR_TAG`. It gets the schemas keyed by type
+(unset a key to hide a type). The schemas are standalone, so nothing is pruned. The CLI
+exporters and the static `public_path` files never run serve decorators: the exported spec
+stays the full contract for diffing and codegen.
+
+`artisan optimize` writes what a decorated request needs next to each document: its hash and
+the document as serialized value objects, so a request unserializes it rather than
+rebuilding. With no serve decorator tagged, the controller never reads that file and serves
+the warmed JSON bytes as they are. The serialized copy, the pruning and the ETag all come
+from core's `haddowg\JsonApi\OpenApi\Serve` helpers, so the Symfony bundle prunes and tags
+a decorated document the same way.
+
+The serialized copy records the installed versions of core and of this package, and a
+request ignores it once either changes, building the document instead. That covers a
+`composer update` deployed without running `optimize`, since the artifact directory under
+`storage/` survives a deploy.
+
+Unserializing is limited to core's OpenAPI value objects, `stdClass` and enums. If an
+`example()`, a default or an extension value in your document holds some other object,
+`optimize` logs a warning and writes no serialized copy for that document, and a decorated
+request builds it instead. List the class to keep the fast path:
+
+```php
+// config/jsonapi.php
+'openapi' => [
+    'serve_allowed_classes' => [App\OpenApi\Money::class],
+],
+```
+
+Links point into the document as the warmer built it, so a response can carry a
+[`describedby`](#links-and-describedby) naming an operation a serve decorator hid from
+that client.
+
+### Caching at the edge {#caching-at-the-edge}
+
+Both `docs.json` and `schemas.json` always send an `ETag` and answer a matching
+`If-None-Match` with a `304`. The comparison is weak, so the `W/` prefix a CDN adds when it
+compresses the body still matches. How the ETag is computed depends on the decorators:
+
+| Serve decorators | ETag | Cost of a 304 |
+|---|---|---|
+| none | the warmed artifact's hash, stored beside it | one 32-byte file read |
+| all implement `OpenApiServeCacheKeyInterface` | a hash of the artifact hash and every key, in decorator order | that read plus your `cacheKey()` calls |
+| any without a key | a hash of the final body | a full decorate and serialise |
+
+A partial key would let two different documents share an ETag, so one keyless decorator
+switches that document kind to the body hash. The key mixes in each decorator's class name,
+so adding or removing a decorator changes it; a change inside `decorate()` doesn't, which is
+why the example carries a version.
+
+Set `Cache-Control` for both routes with `cache_control`:
+
+```php
+// config/jsonapi.php
+'openapi' => [
+    'cache_control' => 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
+],
+```
+
+It is off by default, which leaves the response `private`. The docs routes are often behind
+authentication in production, and a `public` default would let a shared cache hand an
+authenticated document to anyone. The responses carry no `Vary` header: the routes don't
+negotiate (always JSON), and a CDN already keys on the host. If a decorator reads anything
+other than the host, such as a cookie or an `Authorization` header, keep `cache_control`
+private.
+
+The package registers the docs, schemas and viewer routes outside any middleware group, so
+they never start a session or queue a cookie, even when your `web` group does. A global
+middleware that sets a cookie would still reach them, and a cookie on a `public` response is
+something an edge cache must not share, so keep such middleware off these paths when a CDN
+should cache them.
+
 ## Multi-server
 
 `openapi.multi_server` chooses `separate` (one document per server, per-server routes — the

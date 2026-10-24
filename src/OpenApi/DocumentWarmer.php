@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\OpenApi;
 
+use haddowg\JsonApi\OpenApi\OpenApi;
+use haddowg\JsonApi\OpenApi\Serve\ServeArtifact;
+use haddowg\JsonApi\OpenApi\Serve\UnserializableValue;
 use haddowg\JsonApi\OpenApi\SpecDescribedByResolver;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Yaml\Yaml;
@@ -29,6 +32,11 @@ use Symfony\Component\Yaml\Yaml;
  *
  * Beside each document it writes the operations the document carries, which each link's
  * `describedby` is checked against ({@see DescribedByResolverProvider}).
+ * Beside each JSON artifact it writes the artifact's hash (the served ETag) and the
+ * document as serialized value objects, which a request with serve decorators loads
+ * instead of rebuilding (ADR 0036). A document whose values hold an object the serve
+ * artifact can't carry gets no serialized copy and a logged warning; a decorated request
+ * then builds it instead.
  */
 final class DocumentWarmer
 {
@@ -90,7 +98,8 @@ final class DocumentWarmer
     private function warmServer(string $server): void
     {
         $document = $this->documents->forServer($server);
-        $this->store->write($server, $document->toJsonString(true));
+        $this->store->writeWithHash($server, $document->toJsonString(true));
+        $this->writeServeArtifact($server, $document);
         $this->store->writeOperations($server, SpecDescribedByResolver::operationsOf($document));
 
         $schemas = $this->schemas->forServer($server);
@@ -99,7 +108,7 @@ final class DocumentWarmer
         }
         // The aggregate the JsonSchemaController serves: one object keyed by type.
         $aggregate = $this->encodeSchemas((object) $schemas);
-        $this->store->writeSchemaAggregate($server, $aggregate);
+        $this->store->writeSchemaAggregateWithHash($server, $aggregate);
 
         if ($this->publicPath !== null) {
             $this->writeStatic($server, $document);
@@ -110,11 +119,12 @@ final class DocumentWarmer
     private function warmCombined(): void
     {
         $document = $this->documents->combined();
-        $this->store->write(DocumentFactory::COMBINED_KEY, $document->toJsonString(true));
+        $this->store->writeWithHash(DocumentFactory::COMBINED_KEY, $document->toJsonString(true));
+        $this->writeServeArtifact(DocumentFactory::COMBINED_KEY, $document);
         $this->store->writeOperations(DocumentFactory::COMBINED_KEY, SpecDescribedByResolver::operationsOf($document));
 
         $aggregate = $this->encodeSchemas((object) $this->schemas->combined());
-        $this->store->writeSchemaAggregate(DocumentFactory::COMBINED_KEY, $aggregate);
+        $this->store->writeSchemaAggregateWithHash(DocumentFactory::COMBINED_KEY, $aggregate);
 
         if ($this->publicPath !== null) {
             // A stable static filename for the combined document (the combined key is a
@@ -163,5 +173,20 @@ final class DocumentWarmer
     private function safe(string $name): string
     {
         return ArtifactStore::sanitizeSegment($name);
+    }
+
+    private function writeServeArtifact(string $key, OpenApi $document): void
+    {
+        try {
+            $this->store->writeServeArtifact($key, ServeArtifact::of($document));
+        } catch (UnserializableValue $e) {
+            // An older artifact would serve a stale document, so drop it as well.
+            $this->store->forgetServeArtifact($key);
+            $this->logger?->warning(\sprintf(
+                'The OpenAPI document "%s" holds an instance of "%s", which a serve artifact can\'t carry, so a request with serve decorators builds the document instead. List the class in jsonapi.openapi.serve_allowed_classes to keep the fast path.',
+                $key,
+                $e->class,
+            ), ['exception' => $e, 'class' => $e->class]);
+        }
     }
 }

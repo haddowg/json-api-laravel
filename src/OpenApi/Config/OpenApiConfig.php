@@ -21,7 +21,8 @@ use haddowg\JsonApiLaravel\OpenApi\Metadata\ServerDocumentConfig;
 final readonly class OpenApiConfig
 {
     /**
-     * @param array<string, ServerDocumentConfig> $serverDocuments the per-server document config, keyed by server name
+     * @param array<string, ServerDocumentConfig> $serverDocuments      the per-server document config, keyed by server name
+     * @param list<class-string>                  $serveAllowedClasses further classes a serve artifact may unserialize (`jsonapi.openapi.serve_allowed_classes`)
      */
     public function __construct(
         public bool $enabled,
@@ -36,5 +37,7 @@ final readonly class OpenApiConfig
         public string $jsonSchemaPath = '/schemas.json',
         public bool $describedby = true,
         public ?string $documentUrl = null,
+        public ?string $cacheControl = null,
+        public array $serveAllowedClasses = [],
     ) {}
 }
