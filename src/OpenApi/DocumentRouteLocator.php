@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\OpenApi;
 
 use haddowg\JsonApiLaravel\Http\OpenApiController;
+use haddowg\JsonApiLaravel\Operation\TargetResolver;
+use haddowg\JsonApiLaravel\Routing\JsonApiRoute;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use Illuminate\Contracts\Routing\UrlGenerator;
 use Illuminate\Routing\Exceptions\UrlGenerationException;
@@ -69,6 +71,30 @@ final class DocumentRouteLocator
     public function rescan(): array
     {
         return $this->routes = $this->scan();
+    }
+
+    /**
+     * The servers at least one JSON:API resource route is registered for, whether the
+     * package registered it or the app did through `Route::jsonApi()`. A server with only
+     * its atomic route has no types, so it isn't counted.
+     *
+     * @return list<string>
+     */
+    public function mountedServers(): array
+    {
+        $servers = [];
+        foreach ($this->router->getRoutes()->getRoutes() as $route) {
+            $defaults = $route->defaults;
+            $type = $defaults[TargetResolver::TYPE_ATTRIBUTE] ?? null;
+            if (($defaults[JsonApiRoute::MARKER] ?? false) !== true || !\is_string($type) || $type === '') {
+                continue;
+            }
+
+            $server = $defaults[TargetResolver::SERVER_ATTRIBUTE] ?? null;
+            $servers[\is_string($server) && $server !== '' ? $server : ServerRegistry::DEFAULT_SERVER] = true;
+        }
+
+        return \array_keys($servers);
     }
 
     /**
