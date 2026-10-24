@@ -13,6 +13,7 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Constraint\MinLength;
 use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Resource\Field\ArrayList;
+use haddowg\JsonApi\Resource\Field\ArrayListBuilder;
 use haddowg\JsonApi\Resource\Field\BelongsTo;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\Boolean;
@@ -59,11 +60,15 @@ final class TrackResource extends AbstractResource
             Integer::make('trackNumber')->storedAs('track_number')->required()->min(1)->sortable(),
             Integer::make('durationSeconds')->storedAs('length_seconds')->guaranteed(),
             Boolean::make('explicit')->guaranteed(),
+            // No sensible default, so a create must send a non-empty list (required()
+            // already rejects an empty one) and an update can't empty it.
             ArrayList::make('genres')
-                ->minItems(1)
+                ->required()
+                ->onUpdate(static function (ArrayListBuilder $genres): void {
+                    $genres->minItems(1);
+                })
                 ->each(new MinLength(1))
-                ->uniqueItems()
-                ->guaranteed(),
+                ->uniqueItems(),
             Time::make('previewOffset')->storedAs('preview_offset')->nullable(),
             Str::make('displayTitle')
                 ->computed()

@@ -250,12 +250,11 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
 
         $track = $this->writeJsonApi('POST', '/api/tracks', ['data' => [
             'type' => 'tracks',
-            'attributes' => ['title' => 'Fresh', 'trackNumber' => 7],
+            'attributes' => ['title' => 'Fresh', 'trackNumber' => 7, 'genres' => ['shoegaze']],
         ]])->assertCreated();
         $track->assertJsonPath('data.attributes.trackNumber', 7);
         $track->assertJsonPath('data.attributes.durationSeconds', 0);
         $track->assertJsonPath('data.attributes.explicit', false);
-        $track->assertJsonPath('data.attributes.genres', []);
     }
 
     public function test_a_track_created_without_a_number_is_rejected(): void
@@ -264,10 +263,22 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
 
         $this->writeJsonApi('POST', '/api/tracks', ['data' => [
             'type' => 'tracks',
-            'attributes' => ['title' => 'Fresh'],
+            'attributes' => ['title' => 'Fresh', 'genres' => ['shoegaze']],
         ]])
             ->assertStatus(422)
             ->assertJsonPath('errors.0.source.pointer', '/data/attributes/trackNumber');
+    }
+
+    public function test_a_track_created_without_genres_is_rejected(): void
+    {
+        $this->actingAs($this->admin());
+
+        $this->writeJsonApi('POST', '/api/tracks', ['data' => [
+            'type' => 'tracks',
+            'attributes' => ['title' => 'Fresh', 'trackNumber' => 7],
+        ]])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.0.source.pointer', '/data/attributes/genres');
     }
 
     public function test_a_created_playlist_renders_its_public_default_and_a_new_pivot_member_its_added_at(): void
