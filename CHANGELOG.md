@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.0](https://github.com/haddowg/json-api-laravel/compare/v1.5.2...v1.6.0) (2026-10-24)
+
+
+### Features
+
+* **openapi:** declare vendor extensions on a standalone serializer ([#86](https://github.com/haddowg/json-api-laravel/issues/86)) ([5781c4f](https://github.com/haddowg/json-api-laravel/commit/5781c4f1773b0144b6740f60ac422087e8151ba4))
+
+
+### Bug Fixes
+
+* page a to-many relationship endpoint by default ([#85](https://github.com/haddowg/json-api-laravel/issues/85)) ([d21b1c6](https://github.com/haddowg/json-api-laravel/commit/d21b1c68b9391139a1eda349a2f3814857b63678))
+
 ## [1.5.2](https://github.com/haddowg/json-api-laravel/compare/v1.5.1...v1.5.2) (2026-10-24)
 
 
