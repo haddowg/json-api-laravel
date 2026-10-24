@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Unit\Validation\Rules;
 
-use haddowg\JsonApiLaravel\Validation\Rules\BlankStringMinLength;
+use haddowg\JsonApi\Resource\Constraint\MinLength;
+use haddowg\JsonApiLaravel\Validation\Rules\BlankString;
 use Illuminate\Support\Facades\Validator;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -12,12 +13,12 @@ use PHPUnit\Framework\Attributes\Test;
 
 /**
  * Laravel skips `string` and `min:N` for an empty or whitespace-only string, so the field
- * rule-set carries {@see BlankStringMinLength} to enforce a `minLength` on those values.
+ * rule-set carries {@see BlankString} to enforce a `minLength` on those values.
  *
  * @internal
  */
-#[CoversClass(BlankStringMinLength::class)]
-final class BlankStringMinLengthTest extends Orchestra
+#[CoversClass(BlankString::class)]
+final class BlankStringTest extends Orchestra
 {
     #[Test]
     public function an_empty_string_fails_a_positive_min_length(): void
@@ -46,7 +47,7 @@ final class BlankStringMinLengthTest extends Orchestra
     private function fails(int $min, array $data): bool
     {
         return Validator::make($data, [
-            'slug' => ['sometimes', 'string', 'min:' . $min, new BlankStringMinLength($min)],
+            'slug' => ['sometimes', 'string', 'min:' . $min, new BlankString(new MinLength($min))],
         ])->fails();
     }
 }

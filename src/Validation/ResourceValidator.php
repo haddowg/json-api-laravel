@@ -12,7 +12,6 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Constraint\CompareField;
 use haddowg\JsonApi\Resource\Constraint\Comparison;
 use haddowg\JsonApi\Resource\Constraint\ConstraintInterface;
-use haddowg\JsonApi\Resource\Constraint\MinLength;
 use haddowg\JsonApi\Resource\Constraint\Nullable;
 use haddowg\JsonApi\Resource\Constraint\Required;
 use haddowg\JsonApi\Resource\Constraint\Shape;
@@ -30,7 +29,6 @@ use haddowg\JsonApi\Schema\Error\Error;
 use haddowg\JsonApi\Schema\Error\ErrorSource;
 use haddowg\JsonApi\Validation\SchemaValueValidator;
 use haddowg\JsonApiLaravel\Validation\Constraint\UniqueEntity;
-use haddowg\JsonApiLaravel\Validation\Rules\BlankStringMinLength;
 use haddowg\JsonApiLaravel\Validation\Rules\NotNull;
 use haddowg\JsonApiLaravel\Validation\Rules\ParsableDate;
 use haddowg\JsonApiLaravel\Validation\Rules\RequiredOrNull;
@@ -722,9 +720,6 @@ final class ResourceValidator
             }
             foreach ($this->translator->translate($constraint, $request) as $rule) {
                 $rules[] = $rule;
-            }
-            if ($constraint instanceof MinLength && $constraint->value > 0) {
-                $rules[] = new BlankStringMinLength($constraint->value);
             }
         }
 

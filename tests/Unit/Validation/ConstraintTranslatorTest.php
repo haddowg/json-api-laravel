@@ -41,6 +41,7 @@ use haddowg\JsonApiLaravel\Validation\Rules\AfterDate;
 use haddowg\JsonApiLaravel\Validation\Rules\AtLeastOneOf as AtLeastOneOfRule;
 use haddowg\JsonApiLaravel\Validation\Rules\BeforeDate;
 use haddowg\JsonApiLaravel\Validation\Rules\BetweenDates;
+use haddowg\JsonApiLaravel\Validation\Rules\BlankString;
 use haddowg\JsonApiLaravel\Validation\Rules\DistinctArray;
 use haddowg\JsonApiLaravel\Validation\Rules\EachElement;
 use haddowg\JsonApiLaravel\Validation\Rules\GreaterThan;
@@ -78,9 +79,9 @@ final class ConstraintTranslatorTest extends Orchestra
     #[Test]
     public function itTranslatesTheNumericBounds(): void
     {
-        self::assertSame(['numeric', 'min:5'], $this->translator->translate(new Min(5)));
+        self::assertEquals(['numeric', 'min:5', new BlankString(new Min(5))], $this->translator->translate(new Min(5)));
         self::assertSame(['numeric', 'max:5'], $this->translator->translate(new Max(5)));
-        self::assertSame(['numeric', 'multiple_of:3'], $this->translator->translate(new MultipleOf(3)));
+        self::assertEquals(['numeric', 'multiple_of:3', new BlankString(new MultipleOf(3))], $this->translator->translate(new MultipleOf(3)));
 
         self::assertTrue($this->fails($this->translator->translate(new Min(5)), 4));
         self::assertFalse($this->fails($this->translator->translate(new Min(5)), 5));
@@ -106,8 +107,8 @@ final class ConstraintTranslatorTest extends Orchestra
     #[Test]
     public function itTranslatesTheStringLengthBoundsWithAStringInterpretation(): void
     {
-        self::assertSame(['string', 'min:3'], $this->translator->translate(new MinLength(3)));
-        self::assertSame(['string', 'max:3'], $this->translator->translate(new MaxLength(3)));
+        self::assertEquals(['string', 'min:3', new BlankString(new MinLength(3))], $this->translator->translate(new MinLength(3)));
+        self::assertEquals(['string', 'max:3', new BlankString(new MaxLength(3))], $this->translator->translate(new MaxLength(3)));
 
         self::assertTrue($this->fails($this->translator->translate(new MinLength(3)), 'ab'));
         self::assertFalse($this->fails($this->translator->translate(new MinLength(3)), 'abc'));
@@ -118,10 +119,10 @@ final class ConstraintTranslatorTest extends Orchestra
     #[Test]
     public function itTranslatesTheCollectionCounts(): void
     {
-        self::assertSame(['array', 'min:2'], $this->translator->translate(new MinItems(2)));
-        self::assertSame(['array', 'max:2'], $this->translator->translate(new MaxItems(2)));
-        self::assertSame(['array', 'min:2'], $this->translator->translate(new MinProperties(2)));
-        self::assertSame(['array', 'max:2'], $this->translator->translate(new MaxProperties(2)));
+        self::assertEquals(['array', 'min:2', new BlankString(new MinItems(2))], $this->translator->translate(new MinItems(2)));
+        self::assertEquals(['array', 'max:2', new BlankString(new MaxItems(2))], $this->translator->translate(new MaxItems(2)));
+        self::assertEquals(['array', 'min:2', new BlankString(new MinProperties(2))], $this->translator->translate(new MinProperties(2)));
+        self::assertEquals(['array', 'max:2', new BlankString(new MaxProperties(2))], $this->translator->translate(new MaxProperties(2)));
 
         self::assertTrue($this->fails($this->translator->translate(new MinItems(2)), ['a']));
         self::assertFalse($this->fails($this->translator->translate(new MinItems(2)), ['a', 'b']));
@@ -140,15 +141,15 @@ final class ConstraintTranslatorTest extends Orchestra
     #[Test]
     public function itTranslatesTheStringFormats(): void
     {
-        self::assertSame(['email'], $this->translator->translate(new EmailFormat()));
-        self::assertSame(['email:strict'], $this->translator->translate(new EmailFormat(true)));
-        self::assertSame(['url'], $this->translator->translate(new UrlFormat()));
-        self::assertSame(['url:https'], $this->translator->translate(new UrlFormat(['https'])));
-        self::assertSame(['uuid'], $this->translator->translate(new UuidFormat()));
-        self::assertSame(['ulid'], $this->translator->translate(new UlidFormat()));
-        self::assertSame(['ipv4'], $this->translator->translate(new IpFormat(4)));
-        self::assertSame(['ipv6'], $this->translator->translate(new IpFormat(6)));
-        self::assertSame(['ip'], $this->translator->translate(new IpFormat()));
+        self::assertEquals(['email', new BlankString(new EmailFormat())], $this->translator->translate(new EmailFormat()));
+        self::assertEquals(['email:strict', new BlankString(new EmailFormat(true))], $this->translator->translate(new EmailFormat(true)));
+        self::assertEquals(['url', new BlankString(new UrlFormat())], $this->translator->translate(new UrlFormat()));
+        self::assertEquals(['url:https', new BlankString(new UrlFormat(['https']))], $this->translator->translate(new UrlFormat(['https'])));
+        self::assertEquals(['uuid', new BlankString(new UuidFormat())], $this->translator->translate(new UuidFormat()));
+        self::assertEquals(['ulid', new BlankString(new UlidFormat())], $this->translator->translate(new UlidFormat()));
+        self::assertEquals(['ipv4', new BlankString(new IpFormat(4))], $this->translator->translate(new IpFormat(4)));
+        self::assertEquals(['ipv6', new BlankString(new IpFormat(6))], $this->translator->translate(new IpFormat(6)));
+        self::assertEquals(['ip', new BlankString(new IpFormat())], $this->translator->translate(new IpFormat()));
 
         self::assertTrue($this->fails($this->translator->translate(new EmailFormat()), 'not-an-email'));
         self::assertFalse($this->fails($this->translator->translate(new EmailFormat()), 'a@b.com'));
@@ -167,9 +168,12 @@ final class ConstraintTranslatorTest extends Orchestra
     #[Test]
     public function itTranslatesPatternAndSlugToADelimitedRegexRule(): void
     {
-        self::assertSame(['regex:~[a-z]+~'], $this->translator->translate(new Pattern('[a-z]+')));
-        self::assertSame(
-            ['regex:~^[a-z0-9]+(?:-[a-z0-9]+)*$~'],
+        self::assertEquals(
+            ['regex:~[a-z]+~', new BlankString(new Pattern('[a-z]+'))],
+            $this->translator->translate(new Pattern('[a-z]+')),
+        );
+        self::assertEquals(
+            ['regex:~^[a-z0-9]+(?:-[a-z0-9]+)*$~', new BlankString(new SlugFormat())],
             $this->translator->translate(new SlugFormat()),
         );
 
@@ -200,13 +204,15 @@ final class ConstraintTranslatorTest extends Orchestra
 
         self::assertTrue($this->fails($rules, ['abc', 'ab']));
         self::assertFalse($this->fails($rules, ['abc', 'defg']));
+        // The violation is keyed by the failing element.
+        self::assertSame(['value.1'], $this->errorKeys($rules, ['abc', 'ab']));
     }
 
     #[Test]
     public function itTranslatesSequentiallyToABailLedRuleSet(): void
     {
-        self::assertSame(
-            ['bail', 'string', 'min:3'],
+        self::assertEquals(
+            ['bail', 'string', 'min:3', new BlankString(new MinLength(3))],
             $this->translator->translate(new Sequentially([new MinLength(3)])),
         );
     }
@@ -356,8 +362,25 @@ final class ConstraintTranslatorTest extends Orchestra
             return false;
         }
 
-        self::assertNotSame('', $validator->errors()->first('value'), 'a failing rule carries a message');
+        self::assertNotSame('', $validator->errors()->first(), 'a failing rule carries a message');
 
         return true;
+    }
+
+    /**
+     * The error keys validating `$value` against the translated `$rules` produces.
+     *
+     * @param list<mixed> $rules
+     *
+     * @return list<string>
+     */
+    private function errorKeys(array $rules, mixed $value): array
+    {
+        $app = $this->app;
+        \assert($app !== null);
+        /** @var ValidationFactory $factory */
+        $factory = $app->make(ValidationFactory::class);
+
+        return \array_values(\array_map('strval', $factory->make(['value' => $value], ['value' => $rules])->errors()->keys()));
     }
 }

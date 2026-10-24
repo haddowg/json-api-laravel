@@ -50,13 +50,18 @@ final class WhenRule implements ValidationRule
         // key as a nested path into the flat data array — never finding the value, silently
         // skipping every inner rule. A fixed key sidesteps the dotted-key ambiguity so the
         // inner pass never depends on the outer attribute name.
-        $validator = Validator::make(
+        $errors = Validator::make(
             ['value' => $value],
             ['value' => $this->rules],
-        );
+        )->errors();
 
-        foreach ($validator->errors()->all() as $message) {
-            $fail($message);
+        // An inner Each reports under `value.<index>`; keep that suffix on the outer key.
+        foreach ($errors->keys() as $key) {
+            $suffix = \substr((string) $key, \strlen('value'));
+            foreach ($errors->get($key) as $message) {
+                $message = \is_string($message) ? $message : '';
+                $suffix === '' ? $fail($message) : $fail($attribute . $suffix, $message);
+            }
         }
     }
 }

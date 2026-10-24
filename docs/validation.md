@@ -60,6 +60,26 @@ map can't be empty, and a boolean or number only has to be non-null, so `false` 
 are valid. A field that is both required and nullable also accepts an explicit `null`, on
 create and on update, and still rejects a blank value.
 
+### Empty and whitespace-only strings
+
+Laravel skips every rule except `required` and its relatives for an empty or
+whitespace-only string. The package adds a check to each constraint that can reject one, so
+those strings get the same outcome as in the Symfony bundle, wherever the constraint is
+declared: on the attribute, on an `Each` item, inside `Sequentially`, `AtLeastOneOf` or
+`when()`, or on a `Map`, `Obj` or `OneOf` child. The string isn't trimmed first.
+
+- `minLength(1)` rejects `""` but accepts `"   "`, which is three characters long.
+  `maxLength` measures the same way.
+- A pattern or format (`email`, `url`, `uuid`, `ulid`, `ip`, `slug`) accepts `""` and
+  checks `"   "` like any other value, so `"   "` fails all of them.
+- `in` and `notIn` check whether `""` or `"   "` is in the list.
+- `min`, `exclusiveMin` and `multipleOf` reject a blank string as not numeric, and the
+  item and property counts reject it as not an array. `max` and `exclusiveMax` accept it,
+  as they do in the bundle.
+
+An `Each` item that fails points at the item itself, for example `/data/attributes/tags/0`.
+Rules you pass through `LaravelRules` or a custom translator keep Laravel's own handling.
+
 The example's `users.passwordConfirm` composes three of these (an `AtLeastOneOf`, a
 conditional `When`, and an equality `CompareField`).
 

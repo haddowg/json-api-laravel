@@ -39,12 +39,14 @@ use haddowg\JsonApiLaravel\Validation\Rules\AfterDate;
 use haddowg\JsonApiLaravel\Validation\Rules\AtLeastOneOf as AtLeastOneOfRule;
 use haddowg\JsonApiLaravel\Validation\Rules\BeforeDate;
 use haddowg\JsonApiLaravel\Validation\Rules\BetweenDates;
+use haddowg\JsonApiLaravel\Validation\Rules\BlankString;
 use haddowg\JsonApiLaravel\Validation\Rules\DistinctArray;
 use haddowg\JsonApiLaravel\Validation\Rules\EachElement;
 use haddowg\JsonApiLaravel\Validation\Rules\GreaterThan;
 use haddowg\JsonApiLaravel\Validation\Rules\LessThan;
 use haddowg\JsonApiLaravel\Validation\Rules\UuidVersion;
 use haddowg\JsonApiLaravel\Validation\Rules\WhenRule;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Validation\Rule;
 
 /**
@@ -69,6 +71,10 @@ use Illuminate\Validation\Rule;
  * {@see AtLeastOneOfRule}, the date bounds → {@see AfterDate}/{@see BeforeDate}/{@see BetweenDates},
  * the exclusive numeric bounds → {@see GreaterThan}/{@see LessThan}, `UniqueItems` →
  * {@see DistinctArray}; `Sequentially` maps to a `bail`-led ruleset.
+ *
+ * Laravel skips non-implicit rules for an empty or whitespace-only string, so a built-in
+ * constraint that can reject one also gets an implicit {@see BlankString} rule that gives
+ * those strings the bundle's outcome, at any nesting depth.
  *
  * A constraint outside this built-in vocabulary is delegated to the registered
  * {@see ConstraintTranslatorInterface}s (first {@see ConstraintTranslatorInterface::supports()}
@@ -106,6 +112,38 @@ final class ConstraintTranslator
      * @throws \LogicException for a constraint the bridge does not translate
      */
     public function translate(ConstraintInterface $constraint, ?JsonApiRequestInterface $request = null): array
+    {
+        $rules = $this->rules($constraint, $request);
+
+        // Laravel skips non-implicit rules for an empty or whitespace-only string, so each
+        // built-in constraint that can reject one gets an implicit BlankString companion.
+        if (BlankString::applies($constraint)) {
+            $rules[] = new BlankString($constraint);
+        } elseif (self::delegatesBlankStrings($constraint) && $rules[0] instanceof ValidationRule) {
+            $rules[] = new BlankString($constraint, $rules[0]);
+        }
+
+        return $rules;
+    }
+
+    /**
+     * Whether a blank string should reach the constraint's own rule: a composite whose
+     * inner rules carry their own companions, or a date bound that reads a whitespace-only
+     * string as a date like the bundle does.
+     */
+    private static function delegatesBlankStrings(ConstraintInterface $constraint): bool
+    {
+        return $constraint instanceof When
+            || $constraint instanceof AtLeastOneOf
+            || $constraint instanceof After
+            || $constraint instanceof Before
+            || $constraint instanceof Between;
+    }
+
+    /**
+     * @return list<string|\Stringable|\Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\Rule>
+     */
+    private function rules(ConstraintInterface $constraint, ?JsonApiRequestInterface $request): array
     {
         return match (true) {
             $constraint instanceof In => [Rule::in($this->scalarList($constraint->values))],
