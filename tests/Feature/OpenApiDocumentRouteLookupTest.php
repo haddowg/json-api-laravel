@@ -47,6 +47,8 @@ final class OpenApiDocumentRouteLookupTest extends Orchestra
 
     private bool $combined = false;
 
+    private bool $mountsDefault = true;
+
     private WarningLogger $logger;
 
     /**
@@ -128,11 +130,32 @@ final class OpenApiDocumentRouteLookupTest extends Orchestra
     }
 
     /**
+     * @param \Illuminate\Foundation\Application $app
+     */
+    protected function onlyAdminMounted($app): void
+    {
+        $this->docsRoutes = 'none';
+        $this->mountsDefault = false;
+    }
+
+    /**
+     * @param \Illuminate\Foundation\Application $app
+     */
+    protected function combinedWithNothingMounted($app): void
+    {
+        $this->combined($app);
+        $this->docsRoutes = 'none';
+        $this->mountsDefault = false;
+    }
+
+    /**
      * @param Router $router
      */
     protected function defineRoutes($router): void
     {
-        $router->prefix('api')->group(static fn(Router $router) => $router->jsonApi());
+        if ($this->mountsDefault) {
+            $router->prefix('api')->group(static fn(Router $router) => $router->jsonApi());
+        }
         if (!$this->combined) {
             $router->prefix('admin-api')->group(static fn(Router $router) => $router->jsonApi('admin'));
         }
@@ -249,5 +272,40 @@ final class OpenApiDocumentRouteLookupTest extends Orchestra
         $this->optimize();
 
         self::assertSame([], $this->logger->routeWarnings());
+    }
+
+    #[Test]
+    #[Group('openapi')]
+    #[DefineEnvironment('onlyAdminMounted')]
+    public function aServerWithNoJsonApiRoutesGetsNoWarning(): void
+    {
+        $this->optimize();
+
+        $warnings = $this->logger->routeWarnings();
+        self::assertCount(1, $warnings);
+        self::assertStringContainsString('No route serves the OpenAPI document for server "admin"', $warnings[0]);
+    }
+
+    #[Test]
+    #[Group('openapi')]
+    #[DefineEnvironment('combinedWithNothingMounted')]
+    public function combinedModeStaysQuietWhenNoServerHasJsonApiRoutes(): void
+    {
+        $this->optimize();
+
+        self::assertSame([], $this->logger->routeWarnings());
+    }
+
+    #[Test]
+    #[Group('openapi')]
+    #[DefineEnvironment('combined')]
+    #[DefineEnvironment('noDocsRoutes')]
+    public function combinedModeWarnsWhenAMountedServerHasNoDocumentRoute(): void
+    {
+        $this->optimize();
+
+        $warnings = $this->logger->routeWarnings();
+        self::assertCount(1, $warnings);
+        self::assertStringContainsString('No route serves the combined OpenAPI document', $warnings[0]);
     }
 }

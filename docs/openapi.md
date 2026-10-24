@@ -262,7 +262,9 @@ When `describedby` is on, no `document_url` is set, the expose gate is open, and
 serves a server's document, `artisan optimize` logs a warning naming the server and
 suggesting `document_url` or a document route. Links for that server carry no
 `describedby`, and nothing fails, since `describedby` is optional. A closed expose gate
-is a deliberate choice, so it gets no warning.
+is a deliberate choice, so it gets no warning. Neither does a server with no JSON:API
+resource routes registered, such as an unused `default` server in an app that mounts only
+named servers; in combined mode the warning needs at least one server with routes.
 
 Links get no `describedby` when the document isn't served and no `document_url` is set
 (the expose gate is closed, or generation is disabled), or when `describedby` is `false`.

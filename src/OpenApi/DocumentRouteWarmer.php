@@ -13,7 +13,9 @@ use Psr\Log\LoggerInterface;
  *
  * A server whose document no route serves gets no `describedby` on its links. That is
  * the intent when the expose gate is closed, so it passes silently; with the gate open
- * it's a misconfiguration, so it logs a warning naming the server. Like the
+ * it's a misconfiguration, so it logs a warning naming the server. A server no JSON:API
+ * route is registered for serves nothing to link from, so it gets no warning, and in
+ * combined mode the warning needs at least one such server. Like the
  * {@see DocumentWarmer} it never fails the optimize step, and it runs before it, so the
  * documents that one builds link through this scan.
  */
@@ -56,9 +58,15 @@ final class DocumentRouteWarmer
             return [];
         }
 
+        $mounted = $this->locator->mountedServers();
         $warnings = [];
         foreach ($routes as $server => $route) {
             if ($route !== null) {
+                continue;
+            }
+
+            $inUse = $server === DocumentFactory::COMBINED_KEY ? $mounted !== [] : \in_array($server, $mounted, true);
+            if (!$inUse) {
                 continue;
             }
 
