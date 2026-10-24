@@ -272,6 +272,8 @@ The OpenAPI 3.1 generation + exposure block. Highlights:
 | `public_path` | when set, `optimize` also writes static `.json`/`.yaml` for a CDN |
 | `describedby` | give each built link object and each document a `describedby` naming its operation in the served document (only when the document routes are reachable, or `document_url` is set); see [links and `describedby`](openapi.md#links-and-describedby) |
 | `document_url` | the URL `describedby` points into, used as given with `{server}` replaced by the server name; null uses the package's own document route |
+| `cache_control` | the `Cache-Control` header for `/docs.json` and `/schemas.json` (null = none of its own, so the response stays private); see [caching at the edge](openapi.md#caching-at-the-edge) |
+| `serve_allowed_classes` | classes, beyond core's OpenAPI value objects, that a document's example, default or extension values may hold and still be served from the serialized copy (default `[]`); see [per-request customisation](openapi.md#per-request-customisation) |
 | `info` / `servers` / `tags` / `security` | the document `info`, advertised OAS servers, tag definitions, and security schemes + default requirement |
 
 The docs routes are gated behind `app.debug || openapi.expose_in_prod`; the CLI exporters

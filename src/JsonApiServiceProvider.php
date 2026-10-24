@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel;
 
+use haddowg\JsonApi\OpenApi\Serve\ServeArtifactCodec;
 use haddowg\JsonApi\Serializer\RelationshipLoadStateInterface;
 use haddowg\JsonApi\Serializer\ResourceLinkContributorInterface;
 use haddowg\JsonApi\Validation\SchemaValueValidator;
@@ -36,6 +37,8 @@ use haddowg\JsonApiLaravel\EventListener\ResourceHookSubscriber;
 use haddowg\JsonApiLaravel\Exception\ExceptionMapperInterface;
 use haddowg\JsonApiLaravel\Exception\JsonApiExceptionRenderer;
 use haddowg\JsonApiLaravel\Http\JsonApiController;
+use haddowg\JsonApiLaravel\Http\JsonSchemaController;
+use haddowg\JsonApiLaravel\Http\OpenApiController;
 use haddowg\JsonApiLaravel\Http\ResponseHeadersRegistry;
 use haddowg\JsonApiLaravel\OpenApi\ArtifactStore;
 use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiConfig;
@@ -108,6 +111,21 @@ final class JsonApiServiceProvider extends ServiceProvider
      * tag a decorator to mutate the projected document wholesale.
      */
     public const string OPENAPI_FACTORY_TAG = 'jsonapi.openapi_factory';
+
+    /**
+     * The container tag an {@see \haddowg\JsonApiLaravel\OpenApi\OpenApiServeDecoratorInterface}
+     * binding carries to run on every served `docs.json`, with the request (ADR 0036).
+     * Decorators run in registration order, like {@see self::OPENAPI_FACTORY_TAG}. The CLI
+     * export and the static `public_path` files never run them.
+     */
+    public const string OPENAPI_SERVE_DECORATOR_TAG = 'jsonapi.openapi_serve_decorator';
+
+    /**
+     * The container tag a {@see \haddowg\JsonApiLaravel\OpenApi\JsonSchemaServeDecoratorInterface}
+     * binding carries (ADR 0036): the `schemas.json` counterpart of
+     * {@see self::OPENAPI_SERVE_DECORATOR_TAG}.
+     */
+    public const string JSON_SCHEMA_SERVE_DECORATOR_TAG = 'jsonapi.json_schema_serve_decorator';
 
     /**
      * The container tag an {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentFilterArmInterface}
@@ -942,8 +960,12 @@ final class JsonApiServiceProvider extends ServiceProvider
             /** @var string|null $path */
             $path = config('jsonapi.openapi.cache_path');
             $dir = \is_string($path) && $path !== '' ? $path : storage_path('framework/cache/jsonapi-openapi');
+            /** @var OpenApiConfig $config */
+            $config = $app->make(OpenApiConfig::class);
 
-            return new ArtifactStore($dir);
+            // The serve artifact is fingerprinted with this package's version as well as
+            // core's, so either upgrade without `optimize` reads as a missing artifact.
+            return new ArtifactStore($dir, new ServeArtifactCodec([ArtifactStore::PACKAGE], $config->serveAllowedClasses));
         });
 
         $this->app->singleton(DocumentFactory::class, function (Container $app): DocumentFactory {
@@ -956,6 +978,36 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(MetadataSource::class),
                 $config->enumDescriptionMode,
                 $decorators,
+            );
+        });
+
+        // Per-request customisation (ADR 0036): the controllers take the tagged serve
+        // decorators, which the CLI exports never see.
+        $this->app->bind(OpenApiController::class, static function (Container $app): OpenApiController {
+            /** @var OpenApiConfig $config */
+            $config = $app->make(OpenApiConfig::class);
+            /** @var iterable<\haddowg\JsonApiLaravel\OpenApi\OpenApiServeDecoratorInterface> $decorators */
+            $decorators = $app->tagged(self::OPENAPI_SERVE_DECORATOR_TAG);
+
+            return new OpenApiController(
+                $app->make(DocumentFactory::class),
+                $app->make(ArtifactStore::class),
+                $decorators,
+                $config->cacheControl,
+            );
+        });
+
+        $this->app->bind(JsonSchemaController::class, static function (Container $app): JsonSchemaController {
+            /** @var OpenApiConfig $config */
+            $config = $app->make(OpenApiConfig::class);
+            /** @var iterable<\haddowg\JsonApiLaravel\OpenApi\JsonSchemaServeDecoratorInterface> $decorators */
+            $decorators = $app->tagged(self::JSON_SCHEMA_SERVE_DECORATOR_TAG);
+
+            return new JsonSchemaController(
+                $app->make(JsonSchemaFactory::class),
+                $app->make(ArtifactStore::class),
+                $decorators,
+                $config->cacheControl,
             );
         });
 

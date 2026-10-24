@@ -51,7 +51,9 @@ php artisan optimize        # config + route + view + jsonapi:optimize
 `optimize` runs `jsonapi:optimize` for you; run it before `route:cache` so the cached routes
 read the warmed discovery snapshot. To serve the OpenAPI document as static files from a CDN,
 set `jsonapi.openapi.public_path` and the warm step writes `.json`/`.yaml` there — see
-[openapi](openapi.md) and [configuration](configuration.md#openapi).
+[openapi](openapi.md) and [configuration](configuration.md#openapi). The warm step also stores
+each document's hash (the served `ETag`) and a serialized copy that
+[per-request decorators](openapi.md#per-request-customisation) start from.
 
 ## Long-lived workers (Octane and queue workers)
 
