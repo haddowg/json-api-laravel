@@ -270,8 +270,8 @@ The OpenAPI 3.1 generation + exposure block. Highlights:
 | `multi_server` | `separate` (one document per server) or `combined` (one union document) |
 | `enum_value_descriptions` | how backed-enum values render — `both` / `extensions` / `description` |
 | `public_path` | when set, `optimize` also writes static `.json`/`.yaml` for a CDN |
-| `describedby` | give each built link object and each document a `describedby` naming its operation in the served document (only when the document routes are reachable, or `document_url` is set); see [links and `describedby`](openapi.md#links-and-describedby) |
-| `document_url` | the URL `describedby` points into, used as given with `{server}` replaced by the server name; null uses the package's own document route |
+| `describedby` | give each built link object and each document a `describedby` naming its operation in the served document (only when a route serves the document, or `document_url` is set); see [links and `describedby`](openapi.md#links-and-describedby) |
+| `document_url` | the URL `describedby` points into, used as given with `{server}` replaced by the server name; null uses the path of the route serving the document |
 | `cache_control` | the `Cache-Control` header for `/docs.json` and `/schemas.json` (null = none of its own, so the response stays private); see [caching at the edge](openapi.md#caching-at-the-edge) |
 | `ui.enabled` / `ui.renderer` / `ui.path` | serve the viewer page, pick `swagger` (default) or `redoc`, and mount it (default `/docs`) |
 | `ui.cdn` | the directory the viewer's assets load from: the `swagger-ui-dist` root, or ReDoc's `bundles/` directory holding `redoc.standalone.js` (null = the pinned jsDelivr URL) |

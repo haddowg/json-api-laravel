@@ -15,10 +15,12 @@ use Symfony\Component\Routing\Exception\RouteNotFoundException;
  *
  * A configured `jsonapi.openapi.document_url` is used as given, with `{server}` replaced by
  * the server name (`combined` in combined mode), so a document published elsewhere can be
- * named absolutely. Otherwise it is the package's own document route for the server,
- * host-relative and including any prefix and base path the route is served under. Null
- * when `describedby` or generation is off, or when the document route isn't registered
- * and no URL is configured, so no link points at a document nobody serves.
+ * named absolutely. Otherwise it is the package's own document route for the server, or
+ * the app's own route to the {@see \haddowg\JsonApiLaravel\Http\OpenApiController} for it
+ * when the package's isn't registered ({@see DocumentRouteLocator}), host-relative and
+ * including any prefix and base path the route is served under. Null when `describedby`
+ * or generation is off, or when no route serves the document and no URL is configured,
+ * so no link points at a document nobody serves.
  */
 final readonly class DocumentUrlProvider
 {
@@ -34,6 +36,7 @@ final readonly class DocumentUrlProvider
         private bool $enabled = true,
         private bool $combined = false,
         private ?string $configuredUrl = null,
+        private ?DocumentRouteLocator $routes = null,
     ) {}
 
     public function forServer(?string $server = null): ?string
@@ -52,13 +55,25 @@ final readonly class DocumentUrlProvider
             ? \sprintf('jsonapi.%s.openapi.json', $server)
             : OpenApiUiController::DOCUMENT_ROUTE;
 
+        $url = $this->generate($route, []);
+        if ($url === null) {
+            $found = $this->routes?->find($server);
+            $url = $found === null ? null : $this->generate($found['route'], $found['parameters']);
+        }
+
+        return $url === null ? null : self::hostRelative($url, $this->urls->to('/'));
+    }
+
+    /**
+     * @param array<string, string> $parameters
+     */
+    private function generate(string $route, array $parameters): ?string
+    {
         try {
-            $url = $this->urls->route($route, [], true);
+            return $this->urls->route($route, $parameters, true);
         } catch (RouteNotFoundException | UrlGenerationException) {
             return null;
         }
-
-        return self::hostRelative($url, $this->urls->to('/'));
     }
 
     /**

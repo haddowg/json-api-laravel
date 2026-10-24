@@ -41,4 +41,6 @@ parameters:
         -
             identifier: catch.neverThrown
             message: '#UrlGenerationException is never thrown#'
-            path: src/OpenApi/DocumentUrlProvider.php
+            paths:
+                - src/OpenApi/DocumentUrlProvider.php
+                - src/OpenApi/DocumentRouteLocator.php

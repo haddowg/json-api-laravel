@@ -230,6 +230,40 @@ given, with `{server}` replaced by the server name (or `combined` in combined mo
 ],
 ```
 
+The package picks the document URL for a server in this order:
+
+1. `document_url`, when it's set.
+2. The package's own document route: `jsonapi.openapi.json`, or
+   `jsonapi.{server}.openapi.json` for a named server.
+3. Any other named `GET` route whose action is `OpenApiController`, for an app that
+   calls `JsonApi::ignoreRoutes()` and routes the document itself. The action can be the
+   invokable class, `OpenApiController::class . '@__invoke'` or the array form. The route
+   serves the server named by its `server` default, the default server when it has none,
+   or every server its `{server}` constraint accepts. A route that names the server wins
+   over a parametric one. In combined mode any such route serves every server.
+
+```php
+// routes/web.php
+use haddowg\JsonApiLaravel\Http\OpenApiController;
+
+Route::get('/api/v5/docs.json', OpenApiController::class)
+    ->defaults('server', 'v5')
+    ->name('api.v5.docs');
+```
+
+The URL is generated from the route's name, so an unnamed route isn't found.
+
+The third step reads every route, so it doesn't run per request. `artisan optimize` scans
+the routes and writes the result beside the documents. Without it, the first request that
+needs it scans once for the process. With `app.debug` on, a stored result is ignored, so
+a route you add is picked up without clearing anything.
+
+When `describedby` is on, no `document_url` is set, the expose gate is open, and no route
+serves a server's document, `artisan optimize` logs a warning naming the server and
+suggesting `document_url` or a document route. Links for that server carry no
+`describedby`, and nothing fails, since `describedby` is optional. A closed expose gate
+is a deliberate choice, so it gets no warning.
+
 Links get no `describedby` when the document isn't served and no `document_url` is set
 (the expose gate is closed, or generation is disabled), or when `describedby` is `false`.
 They stay link objects either way. To render bare URL strings instead, set
