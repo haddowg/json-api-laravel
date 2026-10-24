@@ -13,6 +13,7 @@ use haddowg\JsonApiLaravel\Action\ActionInvoker;
 use haddowg\JsonApiLaravel\Action\ActionLinkContributor;
 use haddowg\JsonApiLaravel\Action\ActionRegistry;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
+use haddowg\JsonApiLaravel\Authorization\RelationAuthorizer;
 use haddowg\JsonApiLaravel\Authorization\ResourceAuthorization;
 use haddowg\JsonApiLaravel\Console\ClearCommand;
 use haddowg\JsonApiLaravel\Console\JsonSchemaExportCommand;
@@ -841,6 +842,11 @@ final class JsonApiServiceProvider extends ServiceProvider
                     ),
                     OutputTimezoneConfig::forServer($outputTimezone, $serversConfig, $server),
                     LinkObjectsConfig::forServer(config('jsonapi.link_objects'), $serversConfig, $server),
+                    // The server is resolved lazily: it is built with this authorizer.
+                    new RelationAuthorizer(
+                        $app->make(Authorizer::class),
+                        static fn(): \haddowg\JsonApi\Server\Server => $app->make(ServerRegistry::class)->get($server),
+                    ),
                 );
             }
 

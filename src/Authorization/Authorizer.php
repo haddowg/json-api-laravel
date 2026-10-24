@@ -96,6 +96,34 @@ final class Authorizer
     }
 
     /**
+     * Whether the current user passes {@see authorize()} for `$operation` on `$type`.
+     */
+    public function allows(string $type, Operation $operation, ?object $subject): bool
+    {
+        try {
+            $this->authorize($type, $operation, $subject);
+
+            return true;
+        } catch (\Illuminate\Auth\Access\AuthorizationException) {
+            return false;
+        }
+    }
+
+    /**
+     * Whether the current user passes {@see authorizeAbility()} for `$ability` on `$subject`.
+     */
+    public function allowsAbility(string $type, string $ability, object $subject): bool
+    {
+        try {
+            $this->authorizeAbility($type, $ability, $subject);
+
+            return true;
+        } catch (\Illuminate\Auth\Access\AuthorizationException) {
+            return false;
+        }
+    }
+
+    /**
      * Authorizes an explicit `$ability` against the loaded `$subject` instance, honouring
      * the type's declared `policy:` class exactly as {@see authorize()} does — the seam a
      * per-relation read-security override (`security(read: 'ability')`) gates a related /

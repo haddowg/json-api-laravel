@@ -12,7 +12,8 @@ use haddowg\JsonApi\Resource\Field\Str;
 /**
  * `authorName` flattens the hidden `author`'s name, `authorCountry` the name of that author's
  * hidden `country` (two hops), and `editorName` the name of the visible `editor`, which a write
- * body can associate in the same document.
+ * body can associate in the same document. `reviewer` is the `editor` again behind the
+ * `seeAuthorData` read ability.
  */
 final class BookResource extends AbstractResource
 {
@@ -28,6 +29,7 @@ final class BookResource extends AbstractResource
             Str::make('editorName')->storedAs('name')->on('editor'),
             BelongsTo::make('author', 'authors')->hidden(),
             BelongsTo::make('editor', 'authors'),
+            BelongsTo::make('reviewer', 'authors')->storedAs('editor')->security(read: 'seeAuthorData'),
         ];
     }
 }

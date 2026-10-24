@@ -7,16 +7,22 @@ namespace haddowg\JsonApiLaravel\Tests\Conformance;
 use haddowg\JsonApi\Atomic\AtomicExtension;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Flatten\FlattenServiceProvider;
+use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
+use Workbench\App\Models\User;
 
 /**
  * Writes through `on()` attributes land on the related model and stay there: every test
  * re-fetches the related resource rather than trusting the write response, which renders the
  * object the write mutated in memory. Run against the in-memory witness
  * ({@see InMemoryFlattenWriteConformanceTest}) and Eloquent ({@see EloquentFlattenWriteConformanceTest}).
+ *
+ * The same graph checks the relation authorizer: a flattened write needs `update` on the row it
+ * lands on, and a relation's read ability decides whether its linkage and included data render.
  *
  * Seed: country 1 "Wonderland"; authors 1 "Ada Lovelace" and 2 "Grace Hopper", both in country 1;
  * book 1 by and edited by author 1, book 2 by and edited by author 2, book 3 with neither.
@@ -166,6 +172,173 @@ abstract class FlattenWriteConformanceTestCase extends Orchestra
 
         $this->read('/api/authors/1')->assertJsonPath('data.attributes.name', 'Ada Lovelace');
         $this->read('/api/countries/1')->assertJsonPath('data.attributes.name', 'Wonderland');
+    }
+
+    #[Test]
+    #[Group('spec:crud-updating')]
+    public function aFlattenedWriteOntoARelinkedRowTheCallerCannotUpdateIs403(): void
+    {
+        $this->denyUpdateOnAuthor('2');
+
+        $this->update('/api/books/1', [
+            'type' => 'books',
+            'id' => '1',
+            'attributes' => ['title' => 'Changed', 'editorName' => 'Taken Over'],
+            'relationships' => ['editor' => ['data' => ['type' => 'authors', 'id' => '2']]],
+        ])->assertStatus(403)->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
+
+        $this->read('/api/authors/2')->assertJsonPath('data.attributes.name', 'Grace Hopper');
+        $this->read('/api/books/1')
+            ->assertJsonPath('data.attributes.title', 'Algorithms')
+            ->assertJsonPath('data.relationships.editor.data.id', '1');
+    }
+
+    #[Test]
+    #[Group('spec:crud-creating')]
+    public function aCreateWritingOntoALinkedRowTheCallerCannotUpdateIs403(): void
+    {
+        $this->denyUpdateOnAuthor('2');
+
+        $this->call('POST', '/api/books', [], [], [], $this->headers(self::MEDIA_TYPE), $this->encode([
+            'data' => [
+                'type' => 'books',
+                'attributes' => ['title' => 'New Title', 'editorName' => 'Taken Over'],
+                'relationships' => ['editor' => ['data' => ['type' => 'authors', 'id' => '2']]],
+            ],
+        ]))->assertStatus(403);
+
+        $this->read('/api/authors/2')->assertJsonPath('data.attributes.name', 'Grace Hopper');
+        $this->read('/api/books')->assertJsonCount(3, 'data');
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function anAtomicFlattenedWriteOntoARelinkedRowTheCallerCannotUpdateIs403(): void
+    {
+        $this->denyUpdateOnAuthor('2');
+
+        $this->atomic([
+            ['op' => 'update', 'ref' => ['type' => 'books', 'id' => '1'], 'data' => [
+                'type' => 'books',
+                'id' => '1',
+                'attributes' => ['editorName' => 'Taken Over'],
+                'relationships' => ['editor' => ['data' => ['type' => 'authors', 'id' => '2']]],
+            ]],
+        ])->assertStatus(403);
+
+        $this->read('/api/authors/2')->assertJsonPath('data.attributes.name', 'Grace Hopper');
+        $this->read('/api/books/1')->assertJsonPath('data.relationships.editor.data.id', '1');
+    }
+
+    #[Test]
+    #[Group('spec:crud-updating')]
+    public function aFlattenedWriteOntoTheCurrentRowTheCallerCannotUpdateIs403(): void
+    {
+        $this->denyUpdateOnAuthor('1');
+
+        $this->update('/api/books/1', ['type' => 'books', 'id' => '1', 'attributes' => ['authorName' => 'Ada King']])
+            ->assertStatus(403);
+
+        $this->read('/api/authors/1')->assertJsonPath('data.attributes.name', 'Ada Lovelace');
+    }
+
+    #[Test]
+    #[Group('spec:crud-updating')]
+    public function aFlattenedWriteOntoARelinkedRowTheCallerMayUpdateSucceeds(): void
+    {
+        // Only author 1 is off limits, and the write lands on author 2.
+        $this->denyUpdateOnAuthor('1');
+
+        $this->update('/api/books/2', [
+            'type' => 'books',
+            'id' => '2',
+            'attributes' => ['editorName' => 'Grace The Editor'],
+            'relationships' => ['editor' => ['data' => ['type' => 'authors', 'id' => '2']]],
+        ])->assertOk();
+
+        $this->read('/api/authors/2')->assertJsonPath('data.attributes.name', 'Grace The Editor');
+    }
+
+    #[Test]
+    #[Group('spec:fetching')]
+    public function aRelationReadAbilityDecidesWhetherAPrimaryResourceRendersItsData(): void
+    {
+        $this->allowAuthorDataToUsers();
+
+        $guest = $this->read('/api/books/1?include=reviewer');
+        $relationship = $guest->json('data.relationships.reviewer');
+        self::assertIsArray($relationship);
+        self::assertArrayHasKey('links', $relationship);
+        self::assertArrayNotHasKey('data', $relationship);
+        self::assertSame([], $this->includedIdentities($guest));
+
+        $this->actingAs(new User(['id' => 1, 'name' => 'Reader']));
+        $user = $this->read('/api/books/1?include=reviewer');
+        $user->assertJsonPath('data.relationships.reviewer.data', ['type' => 'authors', 'id' => '1']);
+        self::assertSame(['authors:1'], $this->includedIdentities($user));
+    }
+
+    #[Test]
+    #[Group('spec:fetching')]
+    public function aRelationReadAbilityDecidesWhetherAnIncludedResourceRendersItsData(): void
+    {
+        $this->allowAuthorDataToUsers();
+
+        $guest = $this->read('/api/books?include=editor.homeCountry');
+        self::assertSame(['authors:1', 'authors:2'], $this->includedIdentities($guest));
+        /** @var list<array{relationships: array<string, mixed>}> $included */
+        $included = $guest->json('included');
+        foreach ($included as $author) {
+            $relationship = $author['relationships']['homeCountry'] ?? null;
+            self::assertIsArray($relationship);
+            self::assertArrayHasKey('links', $relationship);
+            self::assertArrayNotHasKey('data', $relationship);
+        }
+
+        $this->actingAs(new User(['id' => 1, 'name' => 'Reader']));
+        $user = $this->read('/api/books?include=editor.homeCountry');
+        self::assertSame(['authors:1', 'authors:2', 'countries:1'], $this->includedIdentities($user));
+    }
+
+    /**
+     * Lets `update` pass on everything except the author with `$id`.
+     */
+    protected function denyUpdateOnAuthor(string $id): void
+    {
+        Gate::define('update', static function (?Authenticatable $user, mixed $subject = null) use ($id): bool {
+            if (!\is_object($subject) || !\str_starts_with((new \ReflectionClass($subject))->getShortName(), 'Author')) {
+                return true;
+            }
+            /** @var mixed $subjectId */
+            $subjectId = $subject->id ?? null;
+
+            return !\is_scalar($subjectId) || (string) $subjectId !== $id;
+        });
+    }
+
+    /**
+     * Lets the `seeAuthorData` read ability pass for an authenticated caller only.
+     */
+    protected function allowAuthorDataToUsers(): void
+    {
+        Gate::define('seeAuthorData', static fn(?Authenticatable $user): bool => $user !== null);
+    }
+
+    /**
+     * The sorted `type:id` of each included resource.
+     *
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
+     *
+     * @return list<string>
+     */
+    protected function includedIdentities(TestResponse $response): array
+    {
+        /** @var list<array{type: string, id: string}> $included */
+        $included = $response->json('included') ?? [];
+        $identities = \array_map(static fn(array $resource): string => $resource['type'] . ':' . $resource['id'], $included);
+        \sort($identities);
+
+        return $identities;
     }
 
     /**

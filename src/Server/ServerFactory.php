@@ -9,6 +9,7 @@ use haddowg\JsonApi\Pagination\CursorPaginationProfile;
 use haddowg\JsonApi\Pagination\PagePaginator;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\RelationAuthorizerInterface;
 use haddowg\JsonApi\Schema\Error\ErrorMessageResolverInterface;
 use haddowg\JsonApi\Schema\Profile\CountableProfile;
 use haddowg\JsonApi\Schema\Profile\ProfileInterface;
@@ -142,6 +143,9 @@ final class ServerFactory
         // Whether built links render as link objects, which carry a `describedby`
         // (`link_objects`, a server's own or the global one); false renders strings.
         private readonly bool $linkObjects = true,
+        // Decides per parent whether a rendered relationship carries its data, and whether a
+        // flattened `on()` write may land on its related row (ADR 0044). Null asks nothing.
+        private readonly ?RelationAuthorizerInterface $relationAuthorizer = null,
     ) {}
 
     /**
@@ -167,6 +171,7 @@ final class ServerFactory
             ->withRelationshipPagination($this->relationshipPagination)
             ->withRelationshipLinkage($this->relationshipLinkage)
             ->withResourceLinkContributor($this->resourceLinkContributor)
+            ->withRelationAuthorizer($this->relationAuthorizer)
             // Localizes/overrides each error's title/detail per its stable code through
             // the Laravel translator (ADR 0023); null renders core's inline English copy.
             ->withErrorMessageResolver($this->errorMessageResolver)
