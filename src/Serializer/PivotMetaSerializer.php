@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Serializer;
 
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
-use haddowg\JsonApi\Resource\Field\FieldInterface;
+use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Schema\Link\ResourceLinks;
 use haddowg\JsonApi\Serializer\IncludeControlsInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
@@ -27,9 +27,12 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  * pivot entry (the in-memory witness returns none — the documented pivot boundary) renders
  * the inner meta unchanged, so `meta.pivot` is Eloquent-only.
  *
- * A pivot field that is hidden or write-only for the request (its `hidden(when:)` /
- * `writeOnly(when:)` predicate included, the hidden predicate receiving the related member)
- * is left out of `meta.pivot`, exactly as the same field would be left out of `attributes`.
+ * A member's `meta.pivot` carries exactly core's
+ * {@see BelongsToMany::readablePivotFieldsFor()} for the request and that member: a field
+ * hidden or write-only for it (its `hidden(when:)` predicate receives the member) stays out,
+ * and every other field renders, `null` when the join row holds no value, which is what the
+ * response pivot schema's `required` promises. The map itself keeps write-only values,
+ * because the validator reads them when it merges a partial pivot update.
  *
  * The `pivot` key keeps the values namespaced so they never collide with the member
  * resource's own meta, and so a client can tell pivot data from intrinsic meta.
@@ -38,13 +41,13 @@ final class PivotMetaSerializer implements SerializerInterface, IncludeControlsI
 {
     /**
      * @param SerializerInterface                 $inner    the related type's real serializer
-     * @param array<string, array<string, mixed>> $pivotMap    `memberId => [pivotField => typed value]`
-     * @param list<FieldInterface>                $pivotFields the relation's declared pivot fields
+     * @param array<string, array<string, mixed>> $pivotMap `memberId => [pivotField => typed value]`
+     * @param BelongsToMany|null                  $relation the pivot relation whose fields decide what renders; without it the map renders as given
      */
     public function __construct(
         private readonly SerializerInterface $inner,
         private readonly array $pivotMap,
-        private readonly array $pivotFields = [],
+        private readonly ?BelongsToMany $relation = null,
     ) {}
 
     public function getType(mixed $object): string
@@ -62,12 +65,12 @@ final class PivotMetaSerializer implements SerializerInterface, IncludeControlsI
         $meta = $this->inner->getMeta($object, $request);
 
         $pivot = $this->pivotMap[$this->inner->getId($object)] ?? null;
-        if ($pivot !== null) {
-            foreach ($this->pivotFields as $field) {
-                if ($field->isWriteOnlyFor($request) || $field->isHiddenFor($request, $object)) {
-                    unset($pivot[$field->name()]);
-                }
+        if ($pivot !== null && $this->relation !== null) {
+            $readable = [];
+            foreach ($this->relation->readablePivotFieldsFor($request, $object) as $field) {
+                $readable[$field->name()] = $pivot[$field->name()] ?? null;
             }
+            $pivot = $readable;
         }
 
         if ($pivot !== null && $pivot !== []) {

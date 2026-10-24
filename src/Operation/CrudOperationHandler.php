@@ -270,6 +270,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->router,
             $this->exposedOperations(),
             $this->logger,
+            $this->types,
         );
 
         return (new AtomicLoop())->run($operation->descriptors(), $backend);
@@ -654,7 +655,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $pivotMap = $this->pivotMap($server, $type, $parent, $relation, $items);
                 if ($pivotMap !== []) {
                     \assert($relation instanceof BelongsToMany);
-                    $serializer = new PivotMetaSerializer($serializer, $pivotMap, $relation->pivotFields());
+                    $serializer = new PivotMetaSerializer($serializer, $pivotMap, $relation);
                 }
             }
 
@@ -1243,7 +1244,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $relationshipName,
             $relation,
             $server,
-            new PivotMetaSerializer($server->serializerFor($relatedType), $pivotMap, $relation instanceof BelongsToMany ? $relation->pivotFields() : []),
+            new PivotMetaSerializer($server->serializerFor($relatedType), $pivotMap, $relation instanceof BelongsToMany ? $relation : null),
         );
     }
 

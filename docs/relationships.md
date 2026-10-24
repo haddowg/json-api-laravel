@@ -150,6 +150,24 @@ BelongsToMany::make('orderedTracks', 'tracks')
 `weight >= position`, and `addedAt` is server-owned (`readOnly`). Pivot fields are merged into
 the payload **before validation**, so cross-field rules see them.
 
+Each member's `meta.pivot` carries every pivot field a response may show for that member:
+core's `BelongsToMany::readablePivotFieldsFor($request, $member)`, which leaves out a field that
+is hidden or write-only for the request. A field's `hidden(when:)` predicate receives the
+related member (the track here, an Eloquent model or whatever the provider returns), so it
+can hide a value for one member and show it for another:
+
+```php
+Integer::make('position')->hidden(static fn(mixed $track): bool => Accessor::get($track, 'explicit') === true),
+```
+
+A field the join row holds no value for renders as `null`, which is what the response pivot
+schema in the [OpenAPI document](openapi.md) promises when it lists the field as `required`.
+A `Date`, `DateTime` or `Time` pivot field renders in its format (ISO 8601 with an offset for
+a `DateTime` by default), and a `DateTime` follows the server's
+[`output_timezone`](configuration.md#output_timezone). The pivot model doesn't have to cast
+the column: one it leaves uncast is read the way a `datetime` cast would read it, in the
+app's timezone.
+
 Each pivot field is also a sort key (`?sort=-position`), and the declared pivot filters apply,
 on both the related endpoint and the relationship endpoint. Both page at the relation's
 paginator, and both read each member's pivot row in the same query as the page, so `meta.pivot`

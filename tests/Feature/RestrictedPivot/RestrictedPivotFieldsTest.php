@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Feature\RestrictedPivot;
 
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+use haddowg\JsonApiLaravel\Testing\SchemaConformanceTrait;
+use haddowg\JsonApiLaravel\Testing\SchemaDocumentKind;
 use haddowg\JsonApiLaravel\Tests\Fixtures\RestrictedPivot\RestrictedPivotServiceProvider;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
@@ -22,6 +25,8 @@ use Workbench\Database\Seeders\ConformanceSeeder;
 #[CoversNothing]
 final class RestrictedPivotFieldsTest extends Orchestra
 {
+    use SchemaConformanceTrait;
+
     public const string MEDIA_TYPE = 'application/vnd.api+json';
 
     /**
@@ -99,6 +104,33 @@ final class RestrictedPivotFieldsTest extends Orchestra
 
         self::assertSame(['position' => 1, 'weight' => 1, 'addedAt' => '2024-01-01T00:00:00+00:00'], $this->pivotOf($response, '1'));
         self::assertSame(['weight' => 2, 'addedAt' => '2024-01-02T00:00:00+00:00'], $this->pivotOf($response, '2'));
+    }
+
+    public function test_the_related_endpoint_evaluates_a_hidden_predicate_per_member(): void
+    {
+        $response = $this->read('/api/mixtapes/1/rankedTracks')->assertOk();
+
+        self::assertSame(['position' => 1, 'weight' => 1, 'addedAt' => '2024-01-01T00:00:00+00:00'], $this->pivotOf($response, '1'));
+        self::assertSame(['weight' => 2, 'addedAt' => '2024-01-02T00:00:00+00:00'], $this->pivotOf($response, '2'));
+    }
+
+    public function test_a_readable_pivot_field_the_row_holds_no_value_for_renders_null(): void
+    {
+        DB::table('playlist_track')->where('playlist_id', 1)->where('track_id', 1)->update(['weight' => null, 'added_at' => null]);
+
+        foreach (['/api/mixtapes/1/rankedTracks', '/api/mixtapes/1/relationships/rankedTracks'] as $uri) {
+            $response = $this->read($uri)->assertOk();
+
+            self::assertSame(['position' => 1, 'weight' => null, 'addedAt' => null], $this->pivotOf($response, '1'), $uri);
+        }
+    }
+
+    public function test_the_rendered_pivot_matches_the_response_pivot_schema(): void
+    {
+        DB::table('playlist_track')->where('playlist_id', 1)->where('track_id', 1)->update(['weight' => null]);
+
+        $this->assertResponseMatchesGeneratedSchema($this->read('/api/mixtapes/1/relationships/rankedTracks')->assertOk(), 'mixtapes', SchemaDocumentKind::Relationship, 'rankedTracks');
+        $this->assertResponseMatchesGeneratedSchema($this->read('/api/mixtapes/1/relationships/orderedTracks')->assertOk(), 'mixtapes', SchemaDocumentKind::Relationship, 'orderedTracks');
     }
 
     public function test_a_write_only_predicate_is_evaluated_per_request(): void

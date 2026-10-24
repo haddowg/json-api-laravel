@@ -174,6 +174,7 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         // on both arms, with or without a page request.
         $plain = $this->fetch('/api/playlists/' . Fixtures::PLAYLIST_ONE . '/relationships/orderedTracks')->assertOk();
         self::assertSame(['1', '2'], \array_column((array) $plain->json('data'), 'id'));
+        $this->assertResponseMatchesGeneratedSchema($plain, 'playlists', SchemaDocumentKind::Relationship, 'orderedTracks');
         $first = $plain->json('links.first.href');
         self::assertIsString($first);
         self::assertStringEndsWith('?page%5Bnumber%5D=1&page%5Bsize%5D=2', $first);

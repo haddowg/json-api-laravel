@@ -22,6 +22,27 @@ GET    /api/albums/{id}/{relationship}       …  # related + relationship read/
 Only the operations a resource allows are emitted (`readOnly`/`operations` — see
 [resources](resources.md#restricting-operations)); the rest simply don't exist.
 
+## Relation segments
+
+The `{relationship}` segment is the relation's **URI field name**: its name, unless the
+relation sets another with `withUriFieldName()`. A relation declared as
+
+```php
+HasMany::make('remarks', 'comments')->withUriFieldName('article-remarks');
+```
+
+is served at `/api/articles/{id}/article-remarks` and
+`/api/articles/{id}/relationships/article-remarks`, and its links and the
+[OpenAPI document](openapi.md) name only that segment. As soon as the router matches the
+route, the package swaps the `relationship` parameter for the relation's name, so route
+middleware, `$request->jsonApi()` and the handler all see `remarks`.
+
+A request to the relation's name (`/api/articles/{id}/remarks`) is still answered when no
+relation is served under that segment, so a client written before the rename keeps working.
+The OpenAPI document doesn't list that path and no link points at it. A segment that is
+neither a URI field name nor a relation name is a `404`, as it always was. An
+[Atomic Operations](atomic-operations.md) `href` resolves its segment the same way.
+
 ## Route names
 
 Route names are stable and predictable:
@@ -123,7 +144,7 @@ $route = $request->jsonApi();
 $route?->server;                  // 'default', or the named server
 $route?->type;                    // 'albums'; null on the atomic route
 $route?->id;                      // '1' from /albums/1; null on collection routes
-$route?->relationship;            // 'artist' from /albums/1/artist and /albums/1/relationships/artist
+$route?->relationship;            // 'artist' from /albums/1/artist and /albums/1/relationships/artist (the relation's name)
 $route?->isRelationshipEndpoint;  // true only for /relationships/{relationship}
 $route?->action;                  // 'publish' from /albums/1/-actions/publish
 $route?->actionScope;             // ActionScope::Resource or ActionScope::Collection
@@ -131,7 +152,9 @@ $route?->isAtomic;                // true on the atomic operations route
 $route?->target();                // core's Target for the endpoint; null on the atomic route
 ```
 
-`id` and `relationship` are the route parameters as the URL carried them. Nothing is loaded:
+`id` is the route parameter as the URL carried it, and `relationship` is the name of the
+relation the URL addressed, even when the URL used its URI field name (see
+[relation segments](#relation-segments)). Nothing is loaded:
 there is no model on a `JsonApiRoute`, and middleware runs before the package fetches one.
 Code that needs the model belongs in a [lifecycle hook](lifecycle-hooks.md) or a
 [custom action](actions.md), which receive it.
