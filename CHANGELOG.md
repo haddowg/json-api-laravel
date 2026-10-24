@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/haddowg/json-api-laravel/compare/v1.6.0...v1.6.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* leave write-only pivot fields out of responses ([#88](https://github.com/haddowg/json-api-laravel/issues/88)) ([56915de](https://github.com/haddowg/json-api-laravel/commit/56915de66f445b6bc07b3fdc1e8c7cee8905ba3f))
+
 ## [1.6.0](https://github.com/haddowg/json-api-laravel/compare/v1.5.2...v1.6.0) (2026-10-24)
 
 
