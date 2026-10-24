@@ -193,7 +193,10 @@ BelongsToMany::make('playlists', 'playlists')->cannotReplace()->countable()->wit
 ```
 
 `cannotReplace()` makes a `PATCH …/relationships/playlists` (full replacement) a `403`
-(FullReplacementProhibited); `cannotRemove()` makes a `DELETE` a `403`. Embedded
+(FullReplacementProhibited); `cannotRemove()` makes a `DELETE` a `403`. A `readOnly()`
+relation refuses all three the same way, since a relationship mutation is an update of the
+parent, and the OpenAPI document lists no mutation operations for it. `readOnly(fn …)` is
+judged per request, so the document keeps them. Embedded
 belongs-to-many writes in a whole-resource `POST` are applied after the parent is created
 ([ADR 0009](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0009-embedded-relationship-writes-defer-belongs-to-many-to-after-create.md)).
 
