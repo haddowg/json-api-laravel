@@ -16,6 +16,10 @@ declare(strict_types=1);
  *   - `servers[].url` — each advertised server URL derives from the app's base URI /
  *                       routing prefix (`https://music.example` vs a testbench host).
  *                       Replaced with a sentinel; every other server field is left intact.
+ *   - link examples   — a links component's example `href` starts with the first server
+ *                       URL (core builds it from that URL), so that prefix is the same app
+ *                       config and gets the same sentinel. The rest of the `href`, and the
+ *                       `describedby`, are compared verbatim.
  *
  * Everything else (paths, operations, parameters, components/schemas, tags, security,
  * includable enums) is compared verbatim. The script re-encodes with a fixed pretty
@@ -54,6 +58,44 @@ if (!$doc instanceof \stdClass) {
 // info — replace the whole block (app config, never projected structure).
 if (\property_exists($doc, 'info')) {
     $doc->info = '__NORMALIZED_INFO__';
+}
+
+// link examples — the first server URL prefixing an example `href` (or a string example,
+// when links render as strings), before servers[].url loses it below.
+$serverUrl = \is_array($doc->servers ?? null) && ($doc->servers[0] ?? null) instanceof \stdClass && \is_string($doc->servers[0]->url ?? null)
+    ? $doc->servers[0]->url
+    : null;
+if ($serverUrl !== null && $serverUrl !== '') {
+    $prefixed = static function (string $value) use ($serverUrl): ?string {
+        if (!\str_starts_with($value, $serverUrl)) {
+            return null;
+        }
+        $rest = \substr($value, \strlen($serverUrl));
+
+        return $rest === '' || \in_array($rest[0], ['/', '?', '#'], true) ? '__NORMALIZED_URL__' . $rest : null;
+    };
+    $walk = static function (mixed $node) use (&$walk, $prefixed): void {
+        if (\is_array($node)) {
+            foreach ($node as $child) {
+                $walk($child);
+            }
+
+            return;
+        }
+        if (!$node instanceof \stdClass) {
+            return;
+        }
+        foreach (\get_object_vars($node) as $key => $value) {
+            if ($key === 'example' && \is_string($value)) {
+                $node->example = $prefixed($value) ?? $value;
+            } elseif ($key === 'example' && $value instanceof \stdClass && \is_string($value->href ?? null)) {
+                $value->href = $prefixed($value->href) ?? $value->href;
+            } else {
+                $walk($value);
+            }
+        }
+    };
+    $walk($doc);
 }
 
 // servers[].url — replace each URL, leave every other server field verbatim.
