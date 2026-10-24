@@ -27,8 +27,8 @@ use Illuminate\Contracts\Routing\UrlGenerator;
  * It is **ability-aware**: when an action declares an `ability`, the link renders only when
  * the requester would pass that gate, evaluated through the SAME {@see Authorizer} the
  * per-action before-gate uses — so a client never sees a link to an action it cannot invoke.
- * An action with no ability always renders its link; a type with no policy is inert (the
- * gate always passes), so link visibility matches invocation exactly.
+ * An action with no ability always renders its link; a declared ability nothing defines
+ * denies, hiding the link, so link visibility matches invocation exactly.
  *
  * It is also **state-aware** when the action's handler is {@see ConditionallyLinked}: the link
  * additionally renders only when the handler's `shouldLink()` accepts the rendered entity (the

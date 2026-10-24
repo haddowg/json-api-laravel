@@ -170,6 +170,69 @@ final class AuthorizerTest extends Orchestra
         $authorizer->authorize('albums', Operation::FetchCollection, new Album());
     }
 
+    #[Test]
+    public function a_renamed_ability_that_nothing_defines_denies(): void
+    {
+        $this->actingAs($this->writer());
+
+        $this->expectException(AuthorizationException::class);
+        $this->authorizer([
+            'albums' => new ResourceAuthorization(null, [Operation::Update->value => 'curate']),
+        ])->authorize('albums', Operation::Update, new Album());
+    }
+
+    #[Test]
+    public function a_renamed_class_level_ability_is_enforced_on_a_null_subject(): void
+    {
+        $authorizer = $this->authorizer([
+            'labels' => new ResourceAuthorization(null, [Operation::FetchCollection->value => 'browse'], Album::class),
+        ]);
+        $this->actingAs($this->writer());
+
+        try {
+            $authorizer->authorize('labels', Operation::FetchCollection, null);
+            self::fail('An undefined renamed ability must deny a null-subject collection.');
+        } catch (AuthorizationException) {
+        }
+
+        Gate::define('browse', static fn(User $user, string $class): bool => $user->can_write && $class === Album::class);
+        $authorizer->authorize('labels', Operation::FetchCollection, null);
+        $this->addToAssertionCount(1);
+    }
+
+    #[Test]
+    public function a_relation_security_ability_that_nothing_defines_denies(): void
+    {
+        $this->actingAs($this->writer());
+
+        $this->expectException(AuthorizationException::class);
+        $this->authorizer([])->authorizeAbility('albums', 'inspectOwner', new Album());
+    }
+
+    #[Test]
+    public function a_collection_action_ability_that_nothing_defines_denies_and_hides_its_link(): void
+    {
+        $authorizer = $this->authorizer([
+            'albums' => new ResourceAuthorization(null, [], Album::class),
+        ]);
+        $this->actingAs($this->writer());
+
+        self::assertFalse($authorizer->allowsAction('albums', 'purge', null));
+        self::assertFalse($authorizer->allowsAction('albums', 'publish', new Album()));
+
+        $this->expectException(AuthorizationException::class);
+        $authorizer->authorizeAction('albums', 'purge', null);
+    }
+
+    #[Test]
+    public function a_declared_ability_with_no_resolvable_subject_refuses_the_request(): void
+    {
+        $this->actingAs($this->writer());
+
+        $this->expectException(\LogicException::class);
+        $this->authorizer([])->authorizeAction('albums', 'purge', null);
+    }
+
     /**
      * @param array<string, ResourceAuthorization> $config
      */
