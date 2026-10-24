@@ -24,6 +24,7 @@ use haddowg\JsonApiLaravel\DataProvider\AbstractDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\CriteriaApplier;
 use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
+use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelatedBatch;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use Illuminate\Container\Container;
@@ -91,7 +92,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
  *
  * @extends AbstractDataProvider<object>
  */
-final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed
+final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface
 {
     private readonly CriteriaApplier $applier;
 
@@ -304,14 +305,24 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // relation (HasMany/BelongsTo) it is a harmless `table.*`.
         $builder = $relationQuery->getQuery()->select($relationQuery->getRelated()->qualifyColumn('*'));
 
+        // A pivot relation resolves `pivot.` filter/sort columns against its join table and
+        // selects the pivot row with each member, so `meta.pivot` reads off the same page.
+        $filterHandler = $this->filterHandler;
+        $sortHandler = $this->sortHandler;
+        if ($relationQuery instanceof EloquentBelongsToMany && $this->queriesPivotColumns($parent, $relation)) {
+            $filterHandler = $filterHandler->forPivot($relationQuery);
+            $sortHandler = $sortHandler->forPivot($relationQuery);
+            $this->selectPivot($builder, $relationQuery);
+        }
+
         // A cursor (keyset) window is its own pushed-down execution, exactly as on the
         // primary collection: the builder is already parent-scoped, so the keyset WHERE
         // + the forced NULL=largest ORDER BY compose on top of the relation constraint.
         if ($criteria->window instanceof CursorWindow) {
-            return $this->runCursor($builder, $criteria, $criteria->window);
+            return $this->runCursor($builder, $criteria, $criteria->window, $filterHandler, $sortHandler);
         }
 
-        $builder = $this->applier->apply($criteria, $builder, $this->filterHandler, $this->sortHandler);
+        $builder = $this->applier->apply($criteria, $builder, $filterHandler, $sortHandler);
 
         // Count-free by default (G21): count the pre-window total only when the handler
         // resolved a COUNT (the relation paginator's withCount(), or ?withCount=_self_ under
@@ -975,42 +986,85 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      */
     public function fetchRelationshipPivot(string $type, object $parent, RelationInterface $relation): array
     {
-        if (!$parent instanceof Model || !$relation instanceof PivotRelation) {
+        $eloquentRelation = $this->pivotRelation($parent, $relation);
+        if ($eloquentRelation === null) {
             return [];
         }
 
-        $pivotFields = $relation->pivotFields();
-        if ($pivotFields === []) {
+        \assert($relation instanceof PivotRelation);
+
+        return $this->readPivots($eloquentRelation, $relation, \array_values($eloquentRelation->get()->all()));
+    }
+
+    public function queriesPivotColumns(object $parent, RelationInterface $relation): bool
+    {
+        return $this->pivotRelation($parent, $relation) !== null;
+    }
+
+    /**
+     * Reads each member's pivot off the `pivot` relation {@see selectPivot()} hydrated during
+     * the fetch, so no query runs.
+     */
+    public function pivotMapOf(object $parent, RelationInterface $relation, array $members): array
+    {
+        $eloquentRelation = $this->pivotRelation($parent, $relation);
+        if ($eloquentRelation === null) {
             return [];
         }
 
-        $method = $this->relationMethod($relation);
-        if (!\method_exists($parent, $method)) {
-            return [];
+        \assert($relation instanceof PivotRelation);
+
+        return $this->readPivots($eloquentRelation, $relation, $members);
+    }
+
+    /**
+     * The Eloquent `belongsToMany` behind a pivot relation that declares pivot fields, or
+     * `null` for anything else (a non-pivot relation, no pivot fields, no such relation
+     * method, a non-model parent).
+     *
+     * @return EloquentBelongsToMany<Model, Model, *, *>|null
+     */
+    private function pivotRelation(object $parent, RelationInterface $relation): ?EloquentBelongsToMany
+    {
+        if (!$parent instanceof Model || !$relation instanceof PivotRelation || $relation->pivotFields() === []) {
+            return null;
         }
 
-        $eloquentRelation = $parent->{$method}();
-        if (!$eloquentRelation instanceof EloquentBelongsToMany) {
-            return [];
-        }
+        $eloquentRelation = $this->relationQuery($parent, $relation);
 
+        return $eloquentRelation instanceof EloquentBelongsToMany ? $eloquentRelation : null;
+    }
+
+    /**
+     * `relatedId => [pivotField => value]` for the members carrying a loaded pivot, each field
+     * read off the pivot model by its `column ?? name`. Keyed by each member's WIRE id
+     * (encoded when the related type declares an id encoder), because callers match the map
+     * to linkage members by wire id.
+     *
+     * @param EloquentBelongsToMany<Model, Model, *, *> $eloquentRelation
+     * @param list<object>                              $members
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function readPivots(EloquentBelongsToMany $eloquentRelation, PivotRelation $relation, array $members): array
+    {
         $accessor = $eloquentRelation->getPivotAccessor();
-
-        // Keyed by each member's WIRE id (encoded when the related type declares an id
-        // encoder), because the caller folds each map entry under an incoming linkage
-        // member's meta by its wire `id`.
         $relatedTypes = $relation->relatedTypes();
         $encoder = \count($relatedTypes) === 1 ? $this->encoderFor($relatedTypes[0]) : null;
 
         $pivots = [];
-        foreach ($eloquentRelation->get() as $member) {
+        foreach ($members as $member) {
+            if (!$member instanceof Model) {
+                continue;
+            }
+
             $pivot = $member->getRelation($accessor);
             if (!$pivot instanceof Model) {
                 continue;
             }
 
             $meta = [];
-            foreach ($pivotFields as $field) {
+            foreach ($relation->pivotFields() as $field) {
                 $meta[$field->name()] = $pivot->getAttribute($field->column() ?? $field->name());
             }
 
@@ -1018,6 +1072,46 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         }
 
         return $pivots;
+    }
+
+    /**
+     * Adds the join row to a related query built off `$eloquentRelation` and hydrates it onto
+     * each fetched member, the way `BelongsToMany::get()` does: the pivot columns are
+     * selected under a `pivot_` alias, then moved into a pivot model set as the relation's
+     * pivot accessor. An after-query callback does the hydration, so every execution of the
+     * builder (and of its clones) carries it.
+     *
+     * @param Builder<Model>                            $builder
+     * @param EloquentBelongsToMany<Model, Model, *, *> $eloquentRelation
+     */
+    private function selectPivot(Builder $builder, EloquentBelongsToMany $eloquentRelation): void
+    {
+        $columns = \array_values(\array_unique(\array_filter(
+            [
+                $eloquentRelation->getForeignPivotKeyName(),
+                $eloquentRelation->getRelatedPivotKeyName(),
+                ...$eloquentRelation->getPivotColumns(),
+            ],
+            \is_string(...),
+        )));
+
+        foreach ($columns as $column) {
+            $builder->addSelect($eloquentRelation->getTable() . '.' . $column . ' as pivot_' . $column);
+        }
+
+        $accessor = $eloquentRelation->getPivotAccessor();
+        $builder->afterQuery(static function (EloquentCollection $models) use ($eloquentRelation, $accessor, $columns): void {
+            foreach ($models as $model) {
+                $raw = $model->getAttributes();
+                $attributes = [];
+                foreach ($columns as $column) {
+                    $attributes[$column] = $raw['pivot_' . $column] ?? null;
+                    unset($model->{'pivot_' . $column});
+                }
+
+                $model->setRelation($accessor, $eloquentRelation->newExistingPivot($attributes));
+            }
+        });
     }
 
     /**
@@ -1185,8 +1279,13 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      *
      * @return CursorCollectionResult<object>
      */
-    private function runCursor(Builder $builder, CollectionCriteria $criteria, CursorWindow $window): CursorCollectionResult
-    {
+    private function runCursor(
+        Builder $builder,
+        CollectionCriteria $criteria,
+        CursorWindow $window,
+        ?EloquentFilterHandler $filterHandler = null,
+        ?EloquentSortHandler $sortHandler = null,
+    ): CursorCollectionResult {
         $model = $builder->getModel();
         $pkColumn = $model->getKeyName();
 
@@ -1200,7 +1299,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // Apply the FILTERS only (the keyset owns the order). A sort-stripped,
         // window-less criteria reuses the shared applier so the filter semantics are
         // identical to a plain fetch, and the empty sort adds no ORDER BY.
-        $builder = $this->applier->apply($this->filtersOnly($criteria), $builder, $this->filterHandler, $this->sortHandler);
+        $builder = $this->applier->apply($this->filtersOnly($criteria), $builder, $filterHandler ?? $this->filterHandler, $sortHandler ?? $this->sortHandler);
 
         // page[before] wins over page[after]: a backward page flips the directions
         // (incl. the null bucket) and the after-predicate, so "after under the

@@ -8,8 +8,10 @@ use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortHandlerInterface;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
 use haddowg\JsonApi\Resource\Sort\UnsupportedSort;
+use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
 
 /**
  * Executes a requested sort order against an Eloquent query {@see Builder}: the
@@ -36,11 +38,30 @@ final class EloquentSortHandler implements SortHandlerInterface
     private readonly array $arms;
 
     /**
+     * @var EloquentBelongsToMany<Model, Model, *, *>|null
+     */
+    private ?EloquentBelongsToMany $pivot = null;
+
+    /**
      * @param iterable<EloquentSortArmInterface<Model>> $arms author arms for custom sort types, consulted in order
      */
     public function __construct(iterable $arms = [])
     {
         $this->arms = \is_array($arms) ? \array_values($arms) : \iterator_to_array($arms, false);
+    }
+
+    /**
+     * A copy of this handler that resolves a `pivot.`-prefixed column to `$relation`'s join
+     * table, for a query built off that `belongsToMany`.
+     *
+     * @param EloquentBelongsToMany<Model, Model, *, *> $relation
+     */
+    public function forPivot(EloquentBelongsToMany $relation): self
+    {
+        $handler = clone $this;
+        $handler->pivot = $relation;
+
+        return $handler;
     }
 
     public function apply(array $sorts, mixed $query): mixed
@@ -98,6 +119,10 @@ final class EloquentSortHandler implements SortHandlerInterface
     {
         if (\preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/', $column) !== 1) {
             throw new \LogicException(\sprintf('"%s" is not a valid column path.', $column));
+        }
+
+        if ($this->pivot !== null && \str_starts_with($column, RelationCriteriaFactory::PIVOT_PREFIX)) {
+            return $this->pivot->getTable() . '.' . \substr($column, \strlen(RelationCriteriaFactory::PIVOT_PREFIX));
         }
 
         return $query->getModel()->qualifyColumn($column);

@@ -34,6 +34,12 @@ window) and returns a `CollectionResult` (the page of objects + total/`hasMore`)
 relationship seams power `?include` batching, `?withCount`, relationship-existence checks, and
 pivots — the batcher orchestrates them provider-agnostically ([ADR 0005](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0005-include-batching-orchestrates-via-the-spi-not-eloquent-with.md)).
 
+A provider that can filter and sort a `belongsToMany` on its join columns also implements
+`QueriesPivotColumnsInterface`. Its `fetchRelatedCollection()` then receives the relation's
+`pivot.`-columned filters and the pivot field sorts, and `pivotMapOf()` reads each fetched
+member's pivot values for `meta.pivot` without another query. Without it, pivot sort and filter
+keys are a `400` and `meta.pivot` comes from `fetchRelationshipPivot()`.
+
 ## `AbstractDataProvider` — start here
 
 Extend `AbstractDataProvider` and you inherit neutral defaults for every relationship seam, so
