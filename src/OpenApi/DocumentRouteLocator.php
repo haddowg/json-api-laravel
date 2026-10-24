@@ -74,9 +74,9 @@ final class DocumentRouteLocator
     }
 
     /**
-     * The servers at least one JSON:API resource route is registered for, whether the
-     * package registered it or the app did through `Route::jsonApi()`. A server with only
-     * its atomic route has no types, so it isn't counted.
+     * The servers at least one JSON:API route is registered for (a resource, custom action or
+     * Atomic Operations route), whether the package registered it or the app did through
+     * `Route::jsonApi()` (ADR 0048).
      *
      * @return list<string>
      */
@@ -85,8 +85,7 @@ final class DocumentRouteLocator
         $servers = [];
         foreach ($this->router->getRoutes()->getRoutes() as $route) {
             $defaults = $route->defaults;
-            $type = $defaults[TargetResolver::TYPE_ATTRIBUTE] ?? null;
-            if (($defaults[JsonApiRoute::MARKER] ?? false) !== true || !\is_string($type) || $type === '') {
+            if (($defaults[JsonApiRoute::MARKER] ?? false) !== true) {
                 continue;
             }
 

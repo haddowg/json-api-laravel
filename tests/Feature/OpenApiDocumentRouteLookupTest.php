@@ -49,6 +49,8 @@ final class OpenApiDocumentRouteLookupTest extends Orchestra
 
     private bool $mountsDefault = true;
 
+    private bool $mountsAtomicOnlyServer = false;
+
     private WarningLogger $logger;
 
     /**
@@ -84,6 +86,7 @@ final class OpenApiDocumentRouteLookupTest extends Orchestra
             : [
                 'default' => ['prefix' => 'api', 'middleware' => [], 'domain' => null],
                 'admin' => ['prefix' => 'admin-api', 'middleware' => [], 'domain' => null],
+                ...($this->mountsAtomicOnlyServer ? ['ops' => ['prefix' => 'ops-api', 'middleware' => [], 'domain' => null]] : []),
             ]);
 
         $this->logger = new WarningLogger();
@@ -139,6 +142,22 @@ final class OpenApiDocumentRouteLookupTest extends Orchestra
     }
 
     /**
+     * Adds an `ops` server with no types, mounted only through its Atomic Operations route,
+     * and no document route of its own.
+     *
+     * @param \Illuminate\Foundation\Application $app
+     */
+    protected function atomicOnlyServer($app): void
+    {
+        $this->mountsAtomicOnlyServer = true;
+
+        /** @var \Illuminate\Contracts\Config\Repository $config */
+        $config = $app['config'];
+        $config->set('jsonapi.atomic_operations.enabled', true);
+        $config->set('jsonapi.servers.ops', ['prefix' => 'ops-api', 'middleware' => [], 'domain' => null]);
+    }
+
+    /**
      * @param \Illuminate\Foundation\Application $app
      */
     protected function combinedWithNothingMounted($app): void
@@ -158,6 +177,9 @@ final class OpenApiDocumentRouteLookupTest extends Orchestra
         }
         if (!$this->combined) {
             $router->prefix('admin-api')->group(static fn(Router $router) => $router->jsonApi('admin'));
+        }
+        if ($this->mountsAtomicOnlyServer) {
+            $router->prefix('ops-api')->group(static fn(Router $router) => $router->jsonApi('ops'));
         }
 
         if ($this->docsRoutes !== 'custom') {
@@ -284,6 +306,20 @@ final class OpenApiDocumentRouteLookupTest extends Orchestra
         $warnings = $this->logger->routeWarnings();
         self::assertCount(1, $warnings);
         self::assertStringContainsString('No route serves the OpenAPI document for server "admin"', $warnings[0]);
+    }
+
+    #[Test]
+    #[Group('openapi')]
+    #[DefineEnvironment('atomicOnlyServer')]
+    public function aServerMountedOnlyThroughItsAtomicRouteStillWarns(): void
+    {
+        self::assertTrue($this->app?->make('router')->getRoutes()->hasNamedRoute('jsonapi.ops.atomic_operations'));
+
+        $this->optimize();
+
+        $warnings = $this->logger->routeWarnings();
+        self::assertCount(1, $warnings);
+        self::assertStringContainsString('No route serves the OpenAPI document for server "ops"', $warnings[0]);
     }
 
     #[Test]

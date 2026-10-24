@@ -14,8 +14,8 @@ use Psr\Log\LoggerInterface;
  * A server whose document no route serves gets no `describedby` on its links. That is
  * the intent when the expose gate is closed, so it passes silently; with the gate open
  * it's a misconfiguration, so it logs a warning naming the server. A server no JSON:API
- * route is registered for serves nothing to link from, so it gets no warning, and in
- * combined mode the warning needs at least one such server. Like the
+ * route (resource, custom action or Atomic Operations) is registered for gets no warning,
+ * and in combined mode the warning needs at least one server with one. Like the
  * {@see DocumentWarmer} it never fails the optimize step, and it runs before it, so the
  * documents that one builds link through this scan.
  */
