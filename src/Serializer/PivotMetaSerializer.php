@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Serializer;
 
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Schema\Link\ResourceLinks;
 use haddowg\JsonApi\Serializer\IncludeControlsInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
@@ -26,6 +27,10 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  * pivot entry (the in-memory witness returns none — the documented pivot boundary) renders
  * the inner meta unchanged, so `meta.pivot` is Eloquent-only.
  *
+ * A pivot field that is hidden or write-only for the request (its `hidden(when:)` /
+ * `writeOnly(when:)` predicate included, the hidden predicate receiving the related member)
+ * is left out of `meta.pivot`, exactly as the same field would be left out of `attributes`.
+ *
  * The `pivot` key keeps the values namespaced so they never collide with the member
  * resource's own meta, and so a client can tell pivot data from intrinsic meta.
  */
@@ -33,11 +38,13 @@ final class PivotMetaSerializer implements SerializerInterface, IncludeControlsI
 {
     /**
      * @param SerializerInterface                 $inner    the related type's real serializer
-     * @param array<string, array<string, mixed>> $pivotMap `memberId => [pivotField => typed value]`
+     * @param array<string, array<string, mixed>> $pivotMap    `memberId => [pivotField => typed value]`
+     * @param list<FieldInterface>                $pivotFields the relation's declared pivot fields
      */
     public function __construct(
         private readonly SerializerInterface $inner,
         private readonly array $pivotMap,
+        private readonly array $pivotFields = [],
     ) {}
 
     public function getType(mixed $object): string
@@ -55,6 +62,14 @@ final class PivotMetaSerializer implements SerializerInterface, IncludeControlsI
         $meta = $this->inner->getMeta($object, $request);
 
         $pivot = $this->pivotMap[$this->inner->getId($object)] ?? null;
+        if ($pivot !== null) {
+            foreach ($this->pivotFields as $field) {
+                if ($field->isWriteOnlyFor($request) || $field->isHiddenFor($request, $object)) {
+                    unset($pivot[$field->name()]);
+                }
+            }
+        }
+
         if ($pivot !== null && $pivot !== []) {
             $meta['pivot'] = $pivot;
         }

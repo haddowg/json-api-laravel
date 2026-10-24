@@ -645,7 +645,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
             if (!$polymorphic) {
                 $pivotMap = $this->pivotMap($server, $type, $parent, $relation);
                 if ($pivotMap !== []) {
-                    $serializer = new PivotMetaSerializer($serializer, $pivotMap);
+                    \assert($relation instanceof BelongsToMany);
+                    $serializer = new PivotMetaSerializer($serializer, $pivotMap, $relation->pivotFields());
                 }
             }
 
@@ -1212,7 +1213,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $relationshipName,
             $relation,
             $server,
-            new PivotMetaSerializer($server->serializerFor($relatedType), $pivotMap),
+            new PivotMetaSerializer($server->serializerFor($relatedType), $pivotMap, $relation instanceof BelongsToMany ? $relation->pivotFields() : []),
         );
     }
 
