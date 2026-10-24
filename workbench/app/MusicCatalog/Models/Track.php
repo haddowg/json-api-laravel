@@ -34,7 +34,6 @@ final class Track extends Model
      * @var array<string, mixed>
      */
     protected $attributes = [
-        'track_number' => 1,
         'length_seconds' => 0,
         'explicit' => false,
         'genres' => '[]',
