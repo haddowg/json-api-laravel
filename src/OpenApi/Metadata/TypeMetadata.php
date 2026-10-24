@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
 use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationExtensions;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresSingularName;
 use haddowg\JsonApi\OpenApi\Metadata\OperationResponseInterface;
 use haddowg\JsonApi\OpenApi\Metadata\OperationResponses;
 use haddowg\JsonApi\OpenApi\Metadata\OperationType;
@@ -25,8 +26,11 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  * `fields()`/`relations()`/`filters()`/`sorts()` are empty, and the projector emits a
  * permissive resource-object schema. Everything else — uriType, operations, tags,
  * the page schema — is sourced independently of the field inventory.
+ *
+ * It implements core's opt-in {@see DeclaresSingularName}: the noun the generated prose uses
+ * for one resource, or `null` to let core inflect it from the type name.
  */
-final readonly class TypeMetadata implements DeclaresOperationExtensions
+final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresSingularName
 {
     /**
      * @param list<FieldInterface>            $fields
@@ -43,6 +47,7 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions
      * @param array<string, list<array{status: int, jobType: string|null}>> $responses per-operation success-response overrides, keyed by {@see OperationType::value} → an ordered list of `{status, jobType}` scalar pairs; a missing key means "the operation's default" ({@see OperationResponses::defaultFor()})
      * @param array<string, mixed>          $extensions          vendor extensions stamped on every operation of the type
      * @param array<string, array<string, mixed>> $operationExtensions per-CRUD-operation vendor extensions, keyed by {@see OperationType::value}
+     * @param ?string                             $singularName        the declared singular noun for generated prose (null = inflected by core)
      */
     public function __construct(
         private string $type,
@@ -68,7 +73,13 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions
         private array $responses = [],
         private array $extensions = [],
         private array $operationExtensions = [],
+        private ?string $singularName = null,
     ) {}
+
+    public function singularName(): ?string
+    {
+        return $this->singularName;
+    }
 
     public function extensions(): array
     {

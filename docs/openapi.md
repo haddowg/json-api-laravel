@@ -91,6 +91,29 @@ final class CountrySerializer implements SerializerInterface { /* ... */ }
 
 A type that declares none projects exactly as before.
 
+## The singular noun in generated prose {#singular-noun}
+
+The generated summaries and descriptions name one resource with the singular of its type
+name and the right article, so `agencies` reads "Fetch an agency" and `export-jobs`
+"Fetch an export job". Collections keep the plural ("List agencies"). When the inflection
+reads badly for your type, name the singular yourself, with
+`#[AsJsonApiResource(singular: 'media item')]` or the resource's
+`getSingularName(): ?string` hook. Give the noun without an article; the generator picks
+"a" or "an". The method hook wins when both are present, and a blank `singular:` fails the
+boot. Discovery stores the attribute's value in the [discovery cache](optimize.md), so a
+cached app reads the same noun.
+
+```php
+#[AsJsonApiResource(singular: 'media item')]
+final class MediaResource extends AbstractResource
+{
+    public static string $type = 'media';
+}
+```
+
+`#[AsJsonApiSerializer]` has no `singular:` argument, so a resource-less type always gets
+the inflected singular.
+
 ## The HTTP routes
 
 When `jsonapi.openapi.enabled` is true **and** (`app.debug` OR `openapi.expose_in_prod`), the

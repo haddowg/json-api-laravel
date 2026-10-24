@@ -13,6 +13,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Overrides\MemoHydrator;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Overrides\NoteSerializer;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -27,6 +28,30 @@ final class AsJsonApiResourceTest extends TestCase
 
         self::assertTrue($attribute->readOnly);
         self::assertSame([], $attribute->operations);
+    }
+
+    public function test_singular_defaults_to_null_and_is_stored_as_declared(): void
+    {
+        self::assertNull((new AsJsonApiResource())->singular);
+        self::assertSame('media item', (new AsJsonApiResource(singular: 'media item'))->singular);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function blankSingulars(): iterable
+    {
+        yield 'empty' => [''];
+        yield 'whitespace' => ['   '];
+    }
+
+    #[DataProvider('blankSingulars')]
+    public function test_it_rejects_a_blank_singular(string $singular): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('singular must be a non-blank noun');
+
+        new AsJsonApiResource(singular: $singular);
     }
 
     public function test_it_accepts_an_explicit_operation_list(): void

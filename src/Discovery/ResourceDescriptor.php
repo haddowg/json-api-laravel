@@ -42,6 +42,7 @@ final readonly class ResourceDescriptor
      * @param array{restore: bool, forceDelete: bool, restoreAbility: string, forceAbility: string, restorePath: string, forcePath: string}|null $softDeletes the resolved {@see \haddowg\JsonApiLaravel\Attribute\SoftDeletes} config as scalars (null = not soft-deletable); the scanner reads it to synthesize the restore/force-delete actions
      * @param array<string, mixed>                                         $extensions          the OpenAPI vendor extensions (`x-…`) stamped on every operation of the type
      * @param array<string, array<string, mixed>>                          $operationExtensions per-CRUD-operation vendor extensions keyed by {@see Operation} case value, merged over `$extensions`
+     * @param string|null                                                  $singular            the declared singular noun for the generated OpenAPI prose (null = the resource hook, then core's inflection)
      */
     public function __construct(
         public string $class,
@@ -60,6 +61,7 @@ final readonly class ResourceDescriptor
         public ?array $softDeletes = null,
         public array $extensions = [],
         public array $operationExtensions = [],
+        public ?string $singular = null,
     ) {}
 
     /**
@@ -79,7 +81,7 @@ final readonly class ResourceDescriptor
     }
 
     /**
-     * @return array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy: class-string|null, abilities: array<string, string|bool>, headers: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags: list<string>, serializer: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null, hydrator: class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null, model: class-string<\Illuminate\Database\Eloquent\Model>|null, responses: array<string, list<array{status: int, jobType: string|null}>>, softDeletes: array{restore: bool, forceDelete: bool, restoreAbility: string, forceAbility: string, restorePath: string, forcePath: string}|null, extensions: array<string, mixed>, operationExtensions: array<string, array<string, mixed>>}
+     * @return array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy: class-string|null, abilities: array<string, string|bool>, headers: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags: list<string>, serializer: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null, hydrator: class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null, model: class-string<\Illuminate\Database\Eloquent\Model>|null, responses: array<string, list<array{status: int, jobType: string|null}>>, softDeletes: array{restore: bool, forceDelete: bool, restoreAbility: string, forceAbility: string, restorePath: string, forcePath: string}|null, extensions: array<string, mixed>, operationExtensions: array<string, array<string, mixed>>, singular: string|null}
      */
     public function toArray(): array
     {
@@ -100,6 +102,7 @@ final readonly class ResourceDescriptor
             'softDeletes' => $this->softDeletes,
             'extensions' => $this->extensions,
             'operationExtensions' => $this->operationExtensions,
+            'singular' => $this->singular,
         ];
     }
 
@@ -109,7 +112,7 @@ final readonly class ResourceDescriptor
      * no response headers, no explicit tags, no serializer/hydrator override, no declared
      * model — the convention tier still applies at map-resolution time).
      *
-     * @param array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy?: class-string|null, abilities?: array<string, string|bool>, headers?: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags?: list<string>, serializer?: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null, hydrator?: class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null, model?: class-string<\Illuminate\Database\Eloquent\Model>|null, responses?: array<string, list<array{status: int, jobType: string|null}>>, softDeletes?: array{restore: bool, forceDelete: bool, restoreAbility: string, forceAbility: string, restorePath: string, forcePath: string}|null, extensions?: array<string, mixed>, operationExtensions?: array<string, array<string, mixed>>} $data
+     * @param array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy?: class-string|null, abilities?: array<string, string|bool>, headers?: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags?: list<string>, serializer?: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null, hydrator?: class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null, model?: class-string<\Illuminate\Database\Eloquent\Model>|null, responses?: array<string, list<array{status: int, jobType: string|null}>>, softDeletes?: array{restore: bool, forceDelete: bool, restoreAbility: string, forceAbility: string, restorePath: string, forcePath: string}|null, extensions?: array<string, mixed>, operationExtensions?: array<string, array<string, mixed>>, singular?: string|null} $data
      */
     public static function fromArray(array $data): self
     {
@@ -130,6 +133,7 @@ final readonly class ResourceDescriptor
             $data['softDeletes'] ?? null,
             $data['extensions'] ?? [],
             $data['operationExtensions'] ?? [],
+            $data['singular'] ?? null,
         );
     }
 }

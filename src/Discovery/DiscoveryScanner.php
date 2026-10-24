@@ -401,6 +401,7 @@ final class DiscoveryScanner
             $this->softDeletes($attribute),
             $attribute !== null ? $attribute->extensions : [],
             $attribute !== null ? $attribute->operationExtensions : [],
+            $attribute?->singular !== null ? \trim($attribute->singular) : null,
         );
     }
 
