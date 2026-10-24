@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\DataPersister\Eloquent;
 
 use haddowg\JsonApi\Exception\ClientGeneratedIdAlreadyExists;
+use haddowg\JsonApi\Exception\FullReplacementProhibited;
+use haddowg\JsonApi\Exception\RemovalProhibited;
 use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
@@ -15,6 +17,7 @@ use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApiLaravel\DataPersister\AbstractDataPersister;
+use haddowg\JsonApiLaravel\DataPersister\ReportsCurrentOwners;
 use haddowg\JsonApiLaravel\DataPersister\SoftDeleteCapable;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
@@ -27,6 +30,7 @@ use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -62,7 +66,7 @@ use Illuminate\Support\Facades\DB;
  * materialising each store-generated id immediately (`save()` sets it before its savepoint
  * releases), so a later batch operation can reference a just-created resource.
  */
-final class EloquentDataPersister extends AbstractDataPersister implements TransactionalDataPersisterInterface, SoftDeleteCapable
+final class EloquentDataPersister extends AbstractDataPersister implements TransactionalDataPersisterInterface, SoftDeleteCapable, ReportsCurrentOwners
 {
     /**
      * @var array<string, class-string<Model>>
@@ -357,7 +361,9 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
         if ($linkage instanceof ToOneRelationship) {
             $current = $eloquentRelation->getResults();
             if ($current instanceof Model) {
-                $this->orphan($current, $foreignKey, $morphType);
+                $this->orphan($current, $foreignKey, $morphType, $linkage->isEmpty()
+                    ? new RemovalProhibited($relation->name())
+                    : new FullReplacementProhibited($relation->name()));
             }
             foreach ($incoming as $member) {
                 $eloquentRelation->save($member);
@@ -366,9 +372,12 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
             return;
         }
 
+        // Removing a row that is not a member (another parent's, or nobody's) is a no-op.
         if ($mode === Mode::Remove) {
             foreach ($incoming as $member) {
-                $this->orphan($member, $foreignKey, $morphType);
+                if ($this->isMemberOf($eloquentRelation, $member)) {
+                    $this->orphan($member, $foreignKey, $morphType, new RemovalProhibited($relation->name()));
+                }
             }
 
             return;
@@ -384,7 +393,7 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
             foreach ($eloquentRelation->get() as $current) {
                 \assert($current instanceof Model);
                 if (!isset($keep[$this->key($current)])) {
-                    $this->orphan($current, $foreignKey, $morphType);
+                    $this->orphan($current, $foreignKey, $morphType, new FullReplacementProhibited($relation->name()));
                 }
             }
         }
@@ -392,6 +401,79 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
         foreach ($incoming as $member) {
             $eloquentRelation->save($member);
         }
+    }
+
+    public function currentOwners(string $type, object $parent, RelationInterface $relation, ToOneRelationship|ToManyRelationship $linkage): array
+    {
+        \assert($parent instanceof Model);
+
+        $method = $relation->column() ?? $relation->name();
+        $eloquentRelation = $parent->{$method}();
+        if (!$eloquentRelation instanceof HasOneOrMany) {
+            return [];
+        }
+
+        $identifiers = $linkage instanceof ToOneRelationship
+            ? ($linkage->resourceIdentifier !== null ? [$linkage->resourceIdentifier] : [])
+            : $linkage->resourceIdentifiers;
+
+        $owners = [];
+        foreach ($identifiers as $identifier) {
+            $member = $this->findRelated($relation, $identifier);
+            if (!$member instanceof Model || $this->isMemberOf($eloquentRelation, $member)) {
+                continue;
+            }
+
+            $ownerKey = $member->getAttribute($eloquentRelation->getForeignKeyName());
+            if ($ownerKey === null) {
+                continue;
+            }
+
+            $ownerClass = $parent::class;
+            if ($eloquentRelation instanceof MorphOneOrMany) {
+                $alias = $member->getAttribute($eloquentRelation->getMorphType());
+                $ownerClass = \is_string($alias) ? (Relation::getMorphedModel($alias) ?? $alias) : null;
+            }
+
+            $owner = null;
+            $ownerType = null;
+            if (\is_string($ownerClass) && \is_a($ownerClass, Model::class, true)) {
+                // Unscoped, so an owner hidden by a global scope is still found and checked.
+                $owner = $ownerClass::query()->withoutGlobalScopes()->where($eloquentRelation->getLocalKeyName(), $ownerKey)->first();
+                if (!$owner instanceof Model) {
+                    continue; // a dangling key: no parent holds the row
+                }
+                $mapped = $ownerClass === $parent::class ? $type : \array_search($ownerClass, $this->modelByType, true);
+                $ownerType = \is_string($mapped) ? $mapped : null;
+            }
+
+            $owners[] = [
+                'memberType' => $this->relatedType($relation, $identifier),
+                'member' => $member,
+                'ownerType' => $ownerType,
+                'owner' => $ownerType !== null ? $owner : null,
+            ];
+        }
+
+        return $owners;
+    }
+
+    /**
+     * Whether the related row currently belongs to the relation's parent: its FK holds the
+     * parent's key and, for a morph relation, its `*_type` names the parent's class.
+     *
+     * @param HasOneOrMany<Model, Model, mixed> $eloquentRelation
+     */
+    private function isMemberOf(HasOneOrMany $eloquentRelation, Model $member): bool
+    {
+        $parentKey = $eloquentRelation->getParentKey();
+        $foreignKey = $member->getAttribute($eloquentRelation->getForeignKeyName());
+        if ($parentKey === null || $foreignKey === null || !\is_scalar($parentKey) || !\is_scalar($foreignKey) || (string) $parentKey !== (string) $foreignKey) {
+            return false;
+        }
+
+        return !$eloquentRelation instanceof MorphOneOrMany
+            || $member->getAttribute($eloquentRelation->getMorphType()) === $eloquentRelation->getMorphClass();
     }
 
     /**
@@ -676,15 +758,27 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
     /**
      * Orphans an inverse-FK related model by nulling its foreign key — and, for a polymorphic
      * inverse FK ({@see MorphOneOrMany}), its `*_type` morph discriminator too — then persisting
-     * it. Nulling only the FK on a morph relation would leave a dangling `*_type`.
+     * it. Nulling only the FK on a morph relation would leave a dangling `*_type`. A row whose
+     * FK can't be nulled (a NOT NULL column) can't leave the relationship, so the write is
+     * refused with `$refusal` (a `403`) rather than surfacing the constraint error.
      */
-    private function orphan(Model $member, string $foreignKey, ?string $morphType = null): void
+    private function orphan(Model $member, string $foreignKey, ?string $morphType, RemovalProhibited|FullReplacementProhibited $refusal): void
     {
         $member->setAttribute($foreignKey, null);
         if ($morphType !== null) {
             $member->setAttribute($morphType, null);
         }
-        $member->save();
+
+        try {
+            $member->save();
+        } catch (QueryException $exception) {
+            // SQLSTATE class 23 is an integrity constraint violation.
+            if (\str_starts_with((string) $exception->getCode(), '23')) {
+                throw $refusal;
+            }
+
+            throw $exception;
+        }
     }
 
     /**
