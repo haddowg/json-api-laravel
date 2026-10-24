@@ -268,7 +268,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->persisters,
             $this->txContext,
             $this->router,
-            $this->exposedOperations(),
+            $this->exposedOperations($this->serverName($request)),
             $this->logger,
             $this->types,
         );
@@ -279,19 +279,20 @@ final class CrudOperationHandler implements OperationHandlerInterface
     /**
      * The per-type exposed CRUD operation allow-list ({@see Operation} case values keyed by
      * JSON:API type) the atomic backend gates sub-operations against — the same allow-list
-     * the router emits direct routes from. Empty when no discovery is wired (a stripped-down
-     * programmatic handler), so the backend refuses every write, exactly as an unrouted type.
+     * the router emits the batch server's direct routes from, so a type on another server is
+     * absent. Empty when no discovery is wired (a stripped-down programmatic handler), so the
+     * backend refuses every write, exactly as an unrouted type.
      *
      * @return array<string, list<string>>
      */
-    private function exposedOperations(): array
+    private function exposedOperations(string $server): array
     {
         if ($this->discovery === null) {
             return [];
         }
 
         $exposed = [];
-        foreach ($this->discovery->resources() as $descriptor) {
+        foreach ($this->discovery->resourcesFor($server) as $descriptor) {
             if ($descriptor->type !== '') {
                 $exposed[$descriptor->type] = $descriptor->operations;
             }

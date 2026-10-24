@@ -263,6 +263,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
      * for an Update-exposed type). A target type absent from the map declares no resource, so
      * it exposes nothing and every write is refused.
      *
+     * @throws AtomicTargetTypeUnknown
      * @throws AtomicOperationNotExposed
      * @throws AtomicHrefUnresolvable
      */
@@ -270,6 +271,12 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
     {
         foreach ($this->descriptors as $descriptor) {
             [$type, $targetsRelationship] = $this->targetShapeFor($descriptor);
+
+            // The batch runs on one server: a type that server does not serve is unknown to
+            // it, as a direct call to another server's route would be.
+            if (!$this->server->hasResourceFor($type) && !$this->server->hasSerializerFor($type)) {
+                throw new AtomicTargetTypeUnknown($type);
+            }
 
             // A type with no discovered resource has no HTTP CRUD routes at all; its atomic
             // writability is governed solely by persister registration (the pre-flight
