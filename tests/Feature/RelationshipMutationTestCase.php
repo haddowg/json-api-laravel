@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature;
 
+use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Testing\TestResponse;
@@ -255,6 +256,52 @@ abstract class RelationshipMutationTestCase extends Orchestra
     {
         $this->writeManyRel('DELETE', '/api/posts/1/relationships/pinnedTags', [['type' => 'tags', 'id' => '1']])
             ->assertStatus(403);
+    }
+
+    // --- read-only relations ---------------------------------------------------
+
+    public function test_a_read_only_to_one_refuses_replacement_and_removal(): void
+    {
+        $replace = $this->writeRel('PATCH', '/api/posts/1/relationships/editor', ['type' => 'authors', 'id' => '2']);
+        $replace->assertStatus(403);
+        self::assertSame('FULL_REPLACEMENT_PROHIBITED', $replace->json('errors.0.code'));
+
+        $clear = $this->patchNull('/api/posts/1/relationships/editor');
+        $clear->assertStatus(403);
+        self::assertSame('REMOVAL_PROHIBITED', $clear->json('errors.0.code'));
+
+        self::assertSame(['type' => 'authors', 'id' => '1'], $this->readRel('/api/posts/1/relationships/author')->json('data'));
+    }
+
+    public function test_a_read_only_to_many_refuses_every_mutation(): void
+    {
+        $codes = [
+            'PATCH' => 'FULL_REPLACEMENT_PROHIBITED',
+            'POST' => 'ADDITION_PROHIBITED',
+            'DELETE' => 'REMOVAL_PROHIBITED',
+        ];
+        foreach ($codes as $method => $code) {
+            $response = $this->writeManyRel($method, '/api/posts/1/relationships/frozenTags', [['type' => 'tags', 'id' => '3']]);
+            $response->assertStatus(403);
+            self::assertSame($code, $response->json('errors.0.code'), $method);
+        }
+
+        self::assertSame(['1', '2'], $this->linkageIds($this->readRel('/api/posts/1/relationships/tags')));
+    }
+
+    public function test_the_document_lists_no_mutations_for_a_read_only_relation(): void
+    {
+        $factory = $this->app?->make(DocumentFactory::class);
+        self::assertInstanceOf(DocumentFactory::class, $factory);
+        /** @var array{paths: array<string, array<string, mixed>>} $doc */
+        $doc = $factory->forServer()->toArray();
+
+        foreach (['editor', 'frozenTags'] as $name) {
+            $operations = $doc['paths']['/posts/{id}/relationships/' . $name] ?? [];
+            self::assertArrayHasKey('get', $operations);
+            self::assertSame([], \array_intersect(['patch', 'post', 'delete'], \array_keys($operations)), $name);
+        }
+        self::assertArrayHasKey('patch', $doc['paths']['/posts/{id}/relationships/author'] ?? []);
     }
 
     // --- 404 / 409 / 400 ------------------------------------------------------

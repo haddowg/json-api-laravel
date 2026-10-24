@@ -25,7 +25,9 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
  *  - `feature` — a polymorphic to-one (MorphTo → an author OR a tag);
  *  - `tags` — a plain join-table to-many (PATCH replace / POST add / DELETE remove);
  *  - `pinnedTags` — a join to-many whose replace / add / remove are all prohibited (the three
- *    to-many 403s).
+ *    to-many 403s);
+ *  - `editor` / `frozenTags` — read-only views of `author` / `tags`, whose relationship
+ *    endpoints refuse every mutation.
  */
 #[AsJsonApiResource]
 final class PostResource extends AbstractResource
@@ -43,6 +45,8 @@ final class PostResource extends AbstractResource
             MorphTo::make('feature', ['authors', 'tags']),
             BelongsToMany::make('tags', 'tags'),
             BelongsToMany::make('pinnedTags', 'tags')->cannotReplace()->cannotAdd()->cannotRemove(),
+            BelongsTo::make('editor', 'authors')->storedAs('author')->readOnly(),
+            BelongsToMany::make('frozenTags', 'tags')->storedAs('tags')->readOnly(),
         ];
     }
 }
