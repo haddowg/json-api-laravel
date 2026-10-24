@@ -145,6 +145,16 @@ Str::make('password')->writeOnly()->minLength(8)->requiredOnCreate();
 `readOnlyOnUpdate()` accepts a field on create but freezes it on `PATCH` (the example's
 `createdAt`, `favoritedAt`).
 
+The OpenAPI read schema types an attribute as nullable unless a value is guaranteed: every
+create must supply it, or its `extractUsing()`/`serializeUsing()` hook declares a non-null
+return type (`trackCount` above). A read-only field the server always fills is invisible to
+that check, so assert it with `guaranteed()`. The example's playlist `slug`, derived from the
+required `title` on every write, is one:
+
+```php
+Slug::make('slug')->readOnly()->guaranteed(),
+```
+
 ## Sparse-by-default fields
 
 For a field that *is* part of the type but is **too expensive to render every time**, mark it

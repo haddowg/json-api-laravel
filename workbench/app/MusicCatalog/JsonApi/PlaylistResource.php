@@ -76,7 +76,7 @@ final class PlaylistResource extends AbstractResource implements ResourceLifecyc
         return [
             Id::make()->uuid()->generated()->build(),
             Str::make('title')->required(),
-            Slug::make('slug')->readOnly(),
+            Slug::make('slug')->readOnly()->guaranteed(),
             Boolean::make('public')->build(),
             Uuid::make('externalId')->storedAs('external_id')->nullable(),
             // `owner` targets the admin-only `users` type — the full record — and is
