@@ -20,7 +20,9 @@ use haddowg\JsonApi\OpenApi\Serve\UnserializableValue;
  * `<cacheDir>/<server>.json`; the aggregate JSON Schema at
  * `<cacheDir>/json-schema/<server>.json` and the per-type schemas under
  * `<cacheDir>/json-schema/<server>/<type>.json`, and the operations map the `describedby`
- * resolver reads at `<cacheDir>/<server>.operations.json`. Beside each served artifact sits a
+ * resolver reads at `<cacheDir>/<server>.operations.json`, and the route serving each
+ * document, when the app routes the controller itself, at
+ * `<cacheDir>/document-routes.json`. Beside each served artifact sits a
  * `.hash` file (the served ETag), and beside the document a `.serve` file holding it as
  * serialized value objects for the serve decorators, encoded by core's
  * {@see ServeArtifactCodec} (ADR 0036).
@@ -111,6 +113,62 @@ final class ArtifactStore
     public function writeOperations(string $server, array $operations): void
     {
         $this->put($this->operationsPath($server), \json_encode((object) $operations, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES));
+    }
+
+    /**
+     * The route serving each server's document, as the {@see DocumentRouteLocator} found
+     * it, or null when the map was never written or can't be read.
+     *
+     * @return array<string, array{route: string, parameters: array<string, string>}|null>|null
+     */
+    public function readDocumentRoutes(): ?array
+    {
+        $json = $this->get($this->documentRoutesPath());
+        if ($json === null) {
+            return null;
+        }
+
+        try {
+            $routes = \json_decode($json, true, 512, \JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+
+        if (!\is_array($routes)) {
+            return null;
+        }
+
+        $map = [];
+        foreach ($routes as $server => $route) {
+            if (!\is_string($server)) {
+                return null;
+            }
+            if ($route === null) {
+                $map[$server] = null;
+
+                continue;
+            }
+            if (!\is_array($route) || !\is_string($route['route'] ?? null) || !\is_array($route['parameters'] ?? null)) {
+                return null;
+            }
+            $map[$server] = [
+                'route' => $route['route'],
+                'parameters' => \array_filter($route['parameters'], \is_string(...)),
+            ];
+        }
+
+        /** @var array<string, array{route: string, parameters: array<string, string>}|null> $map */
+        return $map;
+    }
+
+    /**
+     * @param array<string, array{route: string, parameters: array<string, string>}|null> $routes
+     */
+    public function writeDocumentRoutes(array $routes): void
+    {
+        $encoded = \array_map(static fn(?array $route): ?array => $route === null ? null : ['route' => $route['route'], 'parameters' => (object) $route['parameters']], $routes);
+
+        $this->put($this->documentRoutesPath(), \json_encode((object) $encoded, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES));
     }
 
     /**
@@ -242,6 +300,11 @@ final class ArtifactStore
         }
 
         $this->removeTree($base);
+    }
+
+    private function documentRoutesPath(): string
+    {
+        return $this->baseDir() . '/document-routes.json';
     }
 
     private function operationsPath(string $server): string

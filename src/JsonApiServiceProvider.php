@@ -47,6 +47,8 @@ use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiConfigResolver;
 use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiUiConfig;
 use haddowg\JsonApiLaravel\OpenApi\DescribedByResolverProvider;
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
+use haddowg\JsonApiLaravel\OpenApi\DocumentRouteLocator;
+use haddowg\JsonApiLaravel\OpenApi\DocumentRouteWarmer;
 use haddowg\JsonApiLaravel\OpenApi\DocumentUrlProvider;
 use haddowg\JsonApiLaravel\OpenApi\DocumentWarmer;
 use haddowg\JsonApiLaravel\OpenApi\JsonSchemaFactory;
@@ -943,15 +945,48 @@ final class JsonApiServiceProvider extends ServiceProvider
         });
 
         // The URL each server's describedby links point into (ADR 0037): a configured
-        // document_url, else the package's own document route. Null when describedby or
-        // generation is off, or the route isn't registered, so links then carry none.
+        // document_url, else the path of the route serving the document. Null when
+        // describedby or generation is off, or no route serves it, so links then carry none.
         $this->app->singleton(DocumentUrlProvider::class, static function (Container $app): DocumentUrlProvider {
             /** @var OpenApiConfig $config */
             $config = $app->make(OpenApiConfig::class);
             /** @var UrlGenerator $url */
             $url = $app->make(UrlGenerator::class);
 
-            return new DocumentUrlProvider($url, $config->enabled && $config->describedby, $config->combined, $config->documentUrl);
+            return new DocumentUrlProvider($url, $config->enabled && $config->describedby, $config->combined, $config->documentUrl, $app->make(DocumentRouteLocator::class));
+        });
+
+        // Finds the app's own route to the OpenAPI controller when the package's named
+        // document routes aren't registered (ADR 0041).
+        $this->app->singleton(DocumentRouteLocator::class, function (Container $app): DocumentRouteLocator {
+            /** @var OpenApiConfig $config */
+            $config = $app->make(OpenApiConfig::class);
+            /** @var Router $router */
+            $router = $app->make('router');
+            /** @var UrlGenerator $url */
+            $url = $app->make(UrlGenerator::class);
+            /** @var bool $debug */
+            $debug = config('app.debug', false);
+
+            return new DocumentRouteLocator($router, $url, $app->make(ArtifactStore::class), $this->serverNames(), $config->combined, $debug);
+        });
+
+        $this->app->singleton(DocumentRouteWarmer::class, static function (Container $app): DocumentRouteWarmer {
+            /** @var OpenApiConfig $config */
+            $config = $app->make(OpenApiConfig::class);
+            /** @var bool $debug */
+            $debug = config('app.debug', false);
+
+            $logger = $app->bound(LoggerInterface::class) ? $app->make(LoggerInterface::class) : null;
+            \assert($logger === null || $logger instanceof LoggerInterface);
+
+            return new DocumentRouteWarmer(
+                $app->make(DocumentRouteLocator::class),
+                $app->make(ArtifactStore::class),
+                $config->enabled && $config->describedby && $config->documentUrl === null,
+                $debug || $config->exposeInProd,
+                $logger,
+            );
         });
 
         $this->app->singleton(DescribedByResolverProvider::class, static function (Container $app): DescribedByResolverProvider {

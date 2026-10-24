@@ -32,8 +32,10 @@ Three phases, mirroring the bundle's two warmers plus a deploy-time safety check
    become a pure function of the cache — this is what makes `route:cache` safe (see
    [routing](routing.md#route-cache-safety)).
 3. **Artifact warming (optional, non-fatal).** Pre-builds the OpenAPI document + JSON Schema
-   artifacts so the `/docs.json` / `/schemas.json` controllers serve a warmed document. A
-   failure here is a warning, never fatal.
+   artifacts so the `/docs.json` / `/schemas.json` controllers serve a warmed document, and
+   stores which route serves each document when the app routes the controller itself (see
+   [links and `describedby`](openapi.md#links-and-describedby)). A failure here, or a
+   server whose document no route serves, is a warning, never fatal.
 
 ## Development
 

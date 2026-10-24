@@ -270,14 +270,15 @@ return [
     | `describedby`: when true (default), each built link object and each document
     | gets a `describedby` naming the operation in the OpenAPI document that
     | describes it, such as `/docs.json#/paths/~1albums~1%7Bid%7D/get`. It only
-    | takes effect when the document routes are reachable (the expose gate above)
-    | or `document_url` names a document, so it never points at one nobody serves.
+    | takes effect when a route serves the document (the package's document route
+    | behind the expose gate above, or an app route to its OpenApiController) or
+    | `document_url` names a document, so it never points at one nobody serves.
     |
     | `document_url`: the URL `describedby` points into, used as given, for a
     | document published somewhere else (a docs site, or a CDN serving the
     | `public_path` files). `{server}` is replaced by the server name, or by
-    | `combined` in combined mode. Null (the default) uses the package's own
-    | document route, host-relative and including any prefix it is served under.
+    | `combined` in combined mode. Null (the default) uses the path of the route
+    | serving the document, host-relative and including any prefix it is served under.
     |
     | `cache_control`: the `Cache-Control` header for the served `docs.json` and
     | `schemas.json`, e.g. `public, max-age=60, s-maxage=300`. Both always carry

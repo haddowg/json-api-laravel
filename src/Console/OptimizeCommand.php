@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Console;
 
 use haddowg\JsonApiLaravel\Discovery\DiscoverySnapshotWriter;
+use haddowg\JsonApiLaravel\OpenApi\DocumentRouteWarmer;
 use haddowg\JsonApiLaravel\OpenApi\DocumentWarmer;
 use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use Illuminate\Console\Command;
@@ -19,8 +20,9 @@ use Illuminate\Console\Command;
  *    problem it reports (a routed type with no provider/persister, a missing/duplicate Id,
  *    a non-discriminating polymorphic candidate, an Eloquent relation with no model method)
  *    fails this command, so a bad config fails the deploy step rather than a runtime 500.
- *  - **Artifact warming ({@see DocumentWarmer}) — optional / non-fatal.** A docs build
- *    failure is logged and reported as a warning but never fails the command; the
+ *  - **Artifact warming ({@see DocumentRouteWarmer}, then {@see DocumentWarmer}) —
+ *    optional / non-fatal.** A docs build failure, or a server whose document no route
+ *    serves, is logged and reported as a warning but never fails the command; the
  *    controllers' dev lazy-build is the safety net.
  *
  * In local development the artifacts are built lazily on first request (the controllers'
@@ -35,7 +37,7 @@ final class OptimizeCommand extends Command
 
     protected $description = 'Validate JSON:API servability and warm the OpenAPI document + JSON Schema artifacts.';
 
-    public function handle(ServableResourceWarmer $servable, DocumentWarmer $documents, DiscoverySnapshotWriter $snapshot): int
+    public function handle(ServableResourceWarmer $servable, DocumentRouteWarmer $documentRoutes, DocumentWarmer $documents, DiscoverySnapshotWriter $snapshot): int
     {
         // Phase 1 — mandatory servability validation. A problem fails the deploy.
         $problems = $servable->warm();
@@ -55,8 +57,9 @@ final class OptimizeCommand extends Command
             $snapshot->write($cachePath);
         }
 
-        // Phase 3 — optional artifact warming. Failures are warnings, never fatal.
-        $failures = $documents->warm();
+        // Phase 3 — optional artifact warming. Failures are warnings, never fatal. The
+        // document routes go first, because the documents' examples link through them.
+        $failures = [...$documentRoutes->warm(), ...$documents->warm()];
         foreach ($failures as $failure) {
             $this->warn($failure);
         }
