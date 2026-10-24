@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.8.0](https://github.com/haddowg/json-api-laravel/compare/v1.7.2...v1.8.0) (2026-10-24)
+
+
+### Features
+
+* **openapi:** default the ReDoc viewer to 3.0.1 with telemetry off ([2fe9459](https://github.com/haddowg/json-api-laravel/commit/2fe94599fedad4287a4e299e6911276fef343642))
+* **openapi:** let a resource declare its singular noun ([2fe9459](https://github.com/haddowg/json-api-laravel/commit/2fe94599fedad4287a4e299e6911276fef343642))
+
+
+### Bug Fixes
+
+* **testing:** follow an allOf-wrapped reference when relaxing a fieldset ([2fe9459](https://github.com/haddowg/json-api-laravel/commit/2fe94599fedad4287a4e299e6911276fef343642))
+
 ## [1.7.2](https://github.com/haddowg/json-api-laravel/compare/v1.7.1...v1.7.2) (2026-10-24)
 
 
