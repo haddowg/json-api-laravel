@@ -71,6 +71,20 @@ Discovery checks the declaration, so a mistake fails at boot rather than in the 
   [discovery cache](optimize.md);
 - an `operationExtensions` key must be an `Operation` case the type exposes.
 
+A resource-less type declared with `#[AsJsonApiSerializer]` takes the same two arguments,
+checked the same way. Its `operationExtensions` keys must be operations in its `operations`
+list:
+
+```php
+#[AsJsonApiSerializer(
+    type: 'countries',
+    operations: [Operation::FetchCollection, Operation::FetchOne],
+    extensions: ['x-feature' => 'reference-data'],
+    operationExtensions: ['FetchOne' => ['x-cache' => ['ttl' => 3600]]],
+)]
+final class CountrySerializer implements SerializerInterface { /* ... */ }
+```
+
 A type that declares none projects exactly as before.
 
 ## The HTTP routes

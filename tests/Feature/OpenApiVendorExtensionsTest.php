@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature;
 
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\ResourceDescriptor;
+use haddowg\JsonApiLaravel\Discovery\SerializerDescriptor;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
 use haddowg\JsonApiLaravel\Tests\Support\InteractsWithOpenApiDocument;
@@ -120,5 +121,44 @@ final class OpenApiVendorExtensionsTest extends Orchestra
         self::assertSame($descriptor->extensions, $restored->extensions);
         self::assertSame($descriptor->operationExtensions, $restored->operationExtensions);
         self::assertSame(['x-feature' => 'gadgets', 'x-stability' => 'beta'], $restored->extensions);
+    }
+
+    #[Test]
+    public function a_standalone_serializer_declares_extensions_too(): void
+    {
+        $doc = $this->document();
+
+        $collection = $this->arrayAt($doc, 'paths', '/parts', 'get');
+        self::assertSame('parts', $collection['x-feature'] ?? null);
+        self::assertSame('beta', $collection['x-stability'] ?? null);
+        self::assertArrayNotHasKey('x-cache', $collection);
+
+        $one = $this->arrayAt($doc, 'paths', '/parts/{id}', 'get');
+        self::assertSame('parts', $one['x-feature'] ?? null);
+        self::assertSame('stable', $one['x-stability'] ?? null);
+        self::assertSame(['ttl' => 60], $one['x-cache'] ?? null);
+    }
+
+    #[Test]
+    public function a_standalone_serializers_extensions_survive_the_discovery_snapshot(): void
+    {
+        $descriptor = null;
+        foreach ($this->resolve(Discovery::class)->serializers() as $candidate) {
+            if ($candidate->type === 'parts') {
+                $descriptor = $candidate;
+            }
+        }
+        self::assertInstanceOf(SerializerDescriptor::class, $descriptor);
+
+        $file = \tempnam(\sys_get_temp_dir(), 'jsonapi-ext');
+        \assert(\is_string($file));
+        \file_put_contents($file, '<?php return ' . \var_export($descriptor->toArray(), true) . ';');
+        /** @var array{class: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>, type: string, uriType: string, servers: list<string>, operations: list<string>, extensions?: array<string, mixed>, operationExtensions?: array<string, array<string, mixed>>} $data */
+        $data = require $file;
+        \unlink($file);
+        $restored = SerializerDescriptor::fromArray($data);
+
+        self::assertSame(['x-feature' => 'parts', 'x-stability' => 'beta'], $restored->extensions);
+        self::assertSame(['FetchOne' => ['x-stability' => 'stable', 'x-cache' => ['ttl' => 60]]], $restored->operationExtensions);
     }
 }

@@ -317,6 +317,8 @@ final class MetadataSource
             description: null,
             operationDescriptions: [],
             includablePaths: [],
+            extensions: $descriptor->extensions,
+            operationExtensions: $descriptor->operationExtensions,
         );
     }
 

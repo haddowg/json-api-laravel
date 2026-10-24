@@ -194,87 +194,17 @@ final readonly class AsJsonApiResource
     }
 
     /**
-     * Fails fast on a vendor extension the OpenAPI document can't carry: a key without the
-     * `x-` prefix, a reserved `x-oai-`/`x-oas-` key, a value the discovery cache can't
-     * export, or a per-operation set for an unknown or unexposed operation.
-     *
      * @param list<Operation> $operations
      */
     private function assertExtensionsValid(array $operations, bool $readOnly): void
     {
-        self::assertExtensionMap($this->extensions, 'extensions');
-
-        $exposed = self::exposedOperations($operations, $readOnly);
-        foreach ($this->operationExtensions as $operation => $extensions) {
-            if (Operation::tryFrom((string) $operation) === null) {
-                throw new \InvalidArgumentException(\sprintf(
-                    'AsJsonApiResource declares operationExtensions for "%s", which is not an operation; use a %s case value.',
-                    $operation,
-                    Operation::class,
-                ));
-            }
-            if (!\in_array($operation, $exposed, true)) {
-                throw new \LogicException(\sprintf(
-                    'AsJsonApiResource declares operationExtensions for the %s operation, but it is not exposed; '
-                    . 'add it to `operations` (or drop `readOnly`).',
-                    $operation,
-                ));
-            }
-            if (!\is_array($extensions)) {
-                throw new \InvalidArgumentException(\sprintf(
-                    'AsJsonApiResource operationExtensions for %s must be a map of "x-" keys to values.',
-                    $operation,
-                ));
-            }
-            self::assertExtensionMap($extensions, \sprintf('operationExtensions[%s]', $operation));
-        }
-    }
-
-    /**
-     * @param array<array-key, mixed> $extensions
-     */
-    private static function assertExtensionMap(array $extensions, string $where): void
-    {
-        foreach ($extensions as $key => $value) {
-            $key = (string) $key;
-            if (!\str_starts_with($key, 'x-') || $key === 'x-') {
-                throw new \InvalidArgumentException(\sprintf(
-                    'AsJsonApiResource %s key "%s" is invalid: an OpenAPI vendor extension key is "x-" followed by a name.',
-                    $where,
-                    $key,
-                ));
-            }
-            $lower = \strtolower($key);
-            if (\str_starts_with($lower, 'x-oai-') || \str_starts_with($lower, 'x-oas-')) {
-                throw new \InvalidArgumentException(\sprintf(
-                    'AsJsonApiResource %s key "%s" is invalid: the "x-oai-" and "x-oas-" prefixes are reserved by the OpenAPI Initiative.',
-                    $where,
-                    $key,
-                ));
-            }
-            if (!self::isExportable($value)) {
-                throw new \InvalidArgumentException(\sprintf(
-                    'AsJsonApiResource %s value for "%s" must be a scalar, null, or an array of them.',
-                    $where,
-                    $key,
-                ));
-            }
-        }
-    }
-
-    private static function isExportable(mixed $value): bool
-    {
-        if (\is_array($value)) {
-            foreach ($value as $item) {
-                if (!self::isExportable($item)) {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        return $value === null || \is_scalar($value);
+        VendorExtensions::assertValid(
+            'AsJsonApiResource',
+            $this->extensions,
+            $this->operationExtensions,
+            self::exposedOperations($operations, $readOnly),
+            'add it to `operations` (or drop `readOnly`)',
+        );
     }
 
     /**
