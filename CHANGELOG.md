@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0](https://github.com/haddowg/json-api-laravel/compare/v1.4.0...v1.5.0) (2026-10-24)
+
+
+### Features
+
+* **openapi:** customise the served document per request ([#79](https://github.com/haddowg/json-api-laravel/issues/79)) ([5def6b8](https://github.com/haddowg/json-api-laravel/commit/5def6b8c6d9d59216ca01a02823206356c8f324b))
+* point built links at their operation in the served OpenAPI document ([944081a](https://github.com/haddowg/json-api-laravel/commit/944081a0f569add983ce227556d3cf6522916485))
+
 ## [1.4.0](https://github.com/haddowg/json-api-laravel/compare/v1.3.3...v1.4.0) (2026-10-24)
 
 
