@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.3](https://github.com/haddowg/json-api-laravel/compare/v1.3.2...v1.3.3) (2026-10-24)
+
+
+### Bug Fixes
+
+* enforce a declared ability even when nothing defines it ([#73](https://github.com/haddowg/json-api-laravel/issues/73)) ([1427577](https://github.com/haddowg/json-api-laravel/commit/14275779699c9facf696b5ccb170e5090ad1c113))
+
+
+### Miscellaneous Chores
+
+* **example:** require a track number on create ([#76](https://github.com/haddowg/json-api-laravel/issues/76)) ([01c6119](https://github.com/haddowg/json-api-laravel/commit/01c611902714c19f9c6b81a83ee00b8e04f37118))
+* **example:** require a track's genres on create ([#77](https://github.com/haddowg/json-api-laravel/issues/77)) ([d736e5c](https://github.com/haddowg/json-api-laravel/commit/d736e5c5cef6f6acea1720d7ea957f850ebe2a64))
+* mark the example's always-set attributes guaranteed ([#69](https://github.com/haddowg/json-api-laravel/issues/69)) ([b94c870](https://github.com/haddowg/json-api-laravel/commit/b94c87015c4f7523ab7f428660146f81bc81f913))
+
 ## [1.3.2](https://github.com/haddowg/json-api-laravel/compare/v1.3.1...v1.3.2) (2026-10-23)
 
 
