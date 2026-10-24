@@ -18,6 +18,10 @@ It is opt-in. Turn it on in `config/jsonapi.php`:
 That registers `POST /operations` (per server, under the server prefix). The example enables
 it at `/operations`.
 
+A batch only reaches the types of the server it is posted to. An operation on a type that server
+does not serve, by `ref`, `href` or `data.type`, refuses the whole batch with a `404`
+(`ATOMIC_TARGET_TYPE_UNKNOWN`), the same as a direct request to a route the server doesn't have.
+
 ## The request
 
 Send the atomic media type and an `atomic:operations` array:
