@@ -16,9 +16,11 @@ declare(strict_types=1);
  *   - `servers[].url` — each advertised server URL derives from the app's base URI /
  *                       routing prefix (`https://music.example` vs a testbench host).
  *                       Replaced with a sentinel; every other server field is left intact.
- *   - link examples   — a links component's example `href` starts with the first server
- *                       URL (core builds it from that URL), so that prefix is the same app
- *                       config and gets the same sentinel. The rest of the `href`, and the
+ *   - link examples   — a link example's `href` (or the string itself, when links render
+ *                       as strings) starts with the first server URL (core builds it from
+ *                       that URL), so that prefix is the same app config and gets the same
+ *                       sentinel, at any depth of the example (a links component's example
+ *                       nests one link per member). The rest of the `href`, and the
  *                       `describedby`, are compared verbatim.
  *
  * Everything else (paths, operations, parameters, components/schemas, tags, security,
@@ -74,7 +76,22 @@ if ($serverUrl !== null && $serverUrl !== '') {
 
         return $rest === '' || \in_array($rest[0], ['/', '?', '#'], true) ? '__NORMALIZED_URL__' . $rest : null;
     };
-    $walk = static function (mixed $node) use (&$walk, $prefixed): void {
+    $example = static function (mixed $value) use (&$example, $prefixed): mixed {
+        if (\is_string($value)) {
+            return $prefixed($value) ?? $value;
+        }
+        if (\is_array($value)) {
+            return \array_map($example, $value);
+        }
+        if ($value instanceof \stdClass) {
+            foreach (\get_object_vars($value) as $key => $child) {
+                $value->{$key} = $example($child);
+            }
+        }
+
+        return $value;
+    };
+    $walk = static function (mixed $node) use (&$walk, $example): void {
         if (\is_array($node)) {
             foreach ($node as $child) {
                 $walk($child);
@@ -86,10 +103,8 @@ if ($serverUrl !== null && $serverUrl !== '') {
             return;
         }
         foreach (\get_object_vars($node) as $key => $value) {
-            if ($key === 'example' && \is_string($value)) {
-                $node->example = $prefixed($value) ?? $value;
-            } elseif ($key === 'example' && $value instanceof \stdClass && \is_string($value->href ?? null)) {
-                $value->href = $prefixed($value->href) ?? $value->href;
+            if ($key === 'example') {
+                $node->example = $example($value);
             } else {
                 $walk($value);
             }
