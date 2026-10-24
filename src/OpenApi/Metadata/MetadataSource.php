@@ -10,10 +10,10 @@ use haddowg\JsonApi\OpenApi\Metadata\OperationType;
 use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\TypeMetadataInterface;
 use haddowg\JsonApi\OpenApi\Tag;
-use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Server\Server;
+use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\ResourceDescriptor;
 use haddowg\JsonApiLaravel\Discovery\SerializerDescriptor;
@@ -88,6 +88,7 @@ final class MetadataSource
         private readonly string $atomicPath = '/operations',
         private readonly ?ActionMetadataProviderInterface $actions = null,
         private readonly ?PrefixServers $prefixServers = null,
+        private readonly RelationCriteriaFactory $relationCriteria = new RelationCriteriaFactory(),
     ) {}
 
     /**
@@ -324,7 +325,7 @@ final class MetadataSource
 
         $relations = [];
         foreach ($this->types->relationsFor($server, $type) as $relation) {
-            $relations[] = $this->buildRelation($server, $relation, $serverDefaultPaginator);
+            $relations[] = $this->buildRelation($server, $relation);
         }
 
         $operations = $this->operations($descriptor->operations);
@@ -396,14 +397,19 @@ final class MetadataSource
         return $descriptions;
     }
 
-    private function buildRelation(Server $server, RelationInterface $relation, ?PaginatorInterface $serverDefault): RelationMetadata
+    private function buildRelation(Server $server, RelationInterface $relation): RelationMetadata
     {
-        // Only a to-many relation has a related-collection to paginate; a to-one has no
-        // page schema. For a to-many the resolved paginator rides core's relation →
-        // related-resource → server-default fallback chain and self-describes its schema.
-        $pageSchema = $relation->isToMany()
-            ? $relation->pagination($serverDefault)?->describePageSchema()
-            : null;
+        // Only a to-many relation has a related collection to paginate. Its page schema comes
+        // from the paginator the related and relationship endpoints serve, so the document
+        // can't drift from the runtime's relation -> related resource -> server default chain.
+        $pageSchema = null;
+        if ($relation->isToMany()) {
+            $relatedTypes = $relation->relatedTypes();
+            $relatedResource = \count($relatedTypes) === 1
+                ? $this->types->resourceFor($server, $relatedTypes[0])
+                : null;
+            $pageSchema = $this->relationCriteria->paginatorFor($relation, $relatedResource, $server)?->describePageSchema();
+        }
 
         return new RelationMetadata(
             $relation,

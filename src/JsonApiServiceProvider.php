@@ -882,6 +882,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $atomicPath,
                 $actions,
                 new PrefixServers($app->make(Router::class)),
+                $app->make(RelationCriteriaFactory::class),
             );
         });
 

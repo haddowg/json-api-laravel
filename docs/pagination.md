@@ -101,7 +101,9 @@ HasMany::make('tracks', 'tracks')->paginate(PagePaginator::make()->withDefaultPe
 ```
 
 The default resolves relation → related resource → server default. The example's `albums.tracks`
-and `playlists.tracks`/`orderedTracks` all page two-per-page.
+and `playlists.tracks`/`orderedTracks` all page two-per-page. The OpenAPI document resolves the
+same chain, so the related and relationship endpoints' `page` parameter states the `default` and
+`maximum` of the paginator that actually serves them.
 
 A relation may declare a `CursorPaginator` too — the related endpoint then serves keyset pages
 scoped to the parent, with the cursor links built on the related URL:
