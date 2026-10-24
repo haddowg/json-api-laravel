@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/haddowg/json-api-laravel/compare/v1.5.0...v1.5.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **openapi:** apply cache_control to the viewer page ([#82](https://github.com/haddowg/json-api-laravel/issues/82)) ([3e32085](https://github.com/haddowg/json-api-laravel/commit/3e3208581e0f781551cd01d1d2abe5c0f0c6a509))
+
 ## [1.5.0](https://github.com/haddowg/json-api-laravel/compare/v1.4.0...v1.5.0) (2026-10-24)
 
 
