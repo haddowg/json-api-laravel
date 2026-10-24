@@ -88,7 +88,11 @@ final class PlaylistResource extends AbstractResource implements ResourceLifecyc
             BelongsTo::make('owner', 'users')
                 ->security(read: 'inspectOwner')
                 ->withoutRelatedEndpoint(),
-            BelongsTo::make('publicOwner', 'public-profiles')->storedAs('owner'),
+            // The renamed-relation witness: served at `/playlists/{id}/public-owner` and
+            // `/playlists/{id}/relationships/public-owner`, and its links and the OpenAPI
+            // paths name that segment. The member name and `?include=publicOwner` keep the
+            // relation name, and the old `publicOwner` segment is still answered.
+            BelongsTo::make('publicOwner', 'public-profiles')->storedAs('owner')->withUriFieldName('public-owner'),
             BelongsToMany::make('tracks', 'tracks')
                 ->paginate(PagePaginator::make()->withDefaultPerPage(2))
                 ->countable(),

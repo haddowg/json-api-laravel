@@ -36,6 +36,8 @@ is served at `/api/articles/{id}/article-remarks` and
 [OpenAPI document](openapi.md) name only that segment. As soon as the router matches the
 route, the package swaps the `relationship` parameter for the relation's name, so route
 middleware, `$request->jsonApi()` and the handler all see `remarks`.
+The workbench's music catalog `PlaylistResource` serves its `publicOwner` relation this way,
+at `/api/playlists/{id}/public-owner`.
 
 A request to the relation's name (`/api/articles/{id}/remarks`) is still answered when no
 relation is served under that segment, so a client written before the rename keeps working.

@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature\MusicCatalog;
 
+use haddowg\JsonApiLaravel\OpenApi\ArtifactStore;
 use haddowg\JsonApiLaravel\Testing\SchemaConformanceTrait;
 use haddowg\JsonApiLaravel\Testing\SchemaDocumentKind;
 use Illuminate\Testing\TestResponse;
+use Orchestra\Testbench\Attributes\DefineEnvironment;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use Workbench\App\MusicCatalog\Support\Fixtures;
@@ -29,6 +31,8 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
 
     public const string MEDIA_TYPE = 'application/vnd.api+json';
 
+    private string $docsCacheDir = '';
+
     /**
      * @param \Illuminate\Foundation\Application $app
      */
@@ -40,6 +44,31 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
             'default' => ['prefix' => 'api', 'middleware' => [], 'domain' => null],
             'admin' => ['prefix' => 'admin', 'middleware' => [], 'domain' => null],
         ]);
+    }
+
+    /**
+     * Serves the OpenAPI document from a cache directory of this test's own, so it never
+     * reads artifacts another test left behind.
+     *
+     * @param \Illuminate\Foundation\Application $app
+     */
+    protected function exposeDocs($app): void
+    {
+        /** @var \Illuminate\Contracts\Config\Repository $config */
+        $config = $app['config'];
+        $this->docsCacheDir = \sys_get_temp_dir() . '/jsonapi-music-catalog-smoke-' . \uniqid();
+        $config->set('app.debug', true);
+        $config->set('jsonapi.openapi.cache_path', $this->docsCacheDir);
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->docsCacheDir !== '') {
+            $this->app?->make(ArtifactStore::class)->clear();
+            @\rmdir($this->docsCacheDir);
+        }
+
+        parent::tearDown();
     }
 
     // --- reads -----------------------------------------------------------------
@@ -155,6 +184,43 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         $show = $this->fetch('/api/playlists/' . Fixtures::PLAYLIST_ONE)->assertOk();
         $show->assertJsonPath('data.type', 'playlists');
         $show->assertJsonPath('data.attributes.slug', 'morning-mix');
+    }
+
+    #[DefineEnvironment('exposeDocs')]
+    public function test_the_renamed_relation_is_served_and_linked_by_its_uri_field_name(): void
+    {
+        // `publicOwner` declares `withUriFieldName('public-owner')`: the member keeps the
+        // relation name, its links name the URI segment.
+        $show = $this->fetch('/api/playlists/' . Fixtures::PLAYLIST_ONE)->assertOk();
+        $show->assertJsonPath('data.relationships.publicOwner.links.self.href', 'http://localhost/api/playlists/' . Fixtures::PLAYLIST_ONE . '/relationships/public-owner');
+        $show->assertJsonPath('data.relationships.publicOwner.links.related.href', 'http://localhost/api/playlists/' . Fixtures::PLAYLIST_ONE . '/public-owner');
+        $show->assertJsonPath('data.relationships.publicOwner.links.related.describedby', '/docs.json#/paths/~1playlists~1%7Bid%7D~1public-owner/get');
+
+        // Both endpoints answer under the new segment.
+        $this->fetch('/api/playlists/' . Fixtures::PLAYLIST_ONE . '/relationships/public-owner')
+            ->assertOk()
+            ->assertJsonPath('data', ['type' => 'public-profiles', 'id' => '1']);
+        $this->fetch('/api/playlists/' . Fixtures::PLAYLIST_ONE . '/public-owner')
+            ->assertOk()
+            ->assertJsonPath('data.type', 'public-profiles')
+            ->assertJsonPath('data.id', '1');
+
+        // A client written against the relation name still reaches both endpoints.
+        $this->fetch('/api/playlists/' . Fixtures::PLAYLIST_ONE . '/relationships/publicOwner')
+            ->assertOk()
+            ->assertJsonPath('data', ['type' => 'public-profiles', 'id' => '1']);
+        $this->fetch('/api/playlists/' . Fixtures::PLAYLIST_ONE . '/publicOwner')
+            ->assertOk()
+            ->assertJsonPath('data.type', 'public-profiles')
+            ->assertJsonPath('data.id', '1');
+
+        // The OpenAPI document keys the paths by the URI segment only.
+        $paths = $this->get('/docs.json')->assertOk()->json('paths');
+        self::assertIsArray($paths);
+        self::assertArrayHasKey('/playlists/{id}/public-owner', $paths);
+        self::assertArrayHasKey('/playlists/{id}/relationships/public-owner', $paths);
+        self::assertArrayNotHasKey('/playlists/{id}/publicOwner', $paths);
+        self::assertArrayNotHasKey('/playlists/{id}/relationships/publicOwner', $paths);
     }
 
     public function test_playlist_ordered_tracks_serve_the_seeded_pivot_members(): void

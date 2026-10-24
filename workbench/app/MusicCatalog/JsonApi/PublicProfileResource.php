@@ -21,7 +21,7 @@ use Workbench\App\MusicCatalog\Models\User as UserModel;
  * It is registered on both servers. The default surface is where it earns its keep — it is
  * the only User view a default-server client can reach. It joins the `admin` server
  * because {@see PlaylistResource} does, and a playlist's `publicOwner` relation exposes
- * `GET /playlists/{id}/publicOwner`, which returns a `public-profiles` resource object
+ * `GET /playlists/{id}/public-owner`, which returns a `public-profiles` resource object
  * wherever playlists are served.
  */
 #[AsJsonApiResource(
