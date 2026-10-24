@@ -425,9 +425,6 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
             }
 
             $ownerKey = $member->getAttribute($eloquentRelation->getForeignKeyName());
-            if ($ownerKey === null) {
-                continue;
-            }
 
             $ownerClass = $parent::class;
             if ($eloquentRelation instanceof MorphOneOrMany) {
@@ -435,16 +432,15 @@ final class EloquentDataPersister extends AbstractDataPersister implements Trans
                 $ownerClass = \is_string($alias) ? (Relation::getMorphedModel($alias) ?? $alias) : null;
             }
 
+            // A row with no key, or a key no row answers to, has no parent: it is reported
+            // with a null owner, so the handler checks the row alone.
             $owner = null;
             $ownerType = null;
-            if (\is_string($ownerClass) && \is_a($ownerClass, Model::class, true)) {
+            if ($ownerKey !== null && \is_string($ownerClass) && \is_a($ownerClass, Model::class, true)) {
                 // Unscoped, so an owner hidden by a global scope is still found and checked.
                 $owner = $ownerClass::query()->withoutGlobalScopes()->where($eloquentRelation->getLocalKeyName(), $ownerKey)->first();
-                if (!$owner instanceof Model) {
-                    continue; // a dangling key: no parent holds the row
-                }
                 $mapped = $ownerClass === $parent::class ? $type : \array_search($ownerClass, $this->modelByType, true);
-                $ownerType = \is_string($mapped) ? $mapped : null;
+                $ownerType = $owner instanceof Model && \is_string($mapped) ? $mapped : null;
             }
 
             $owners[] = [
