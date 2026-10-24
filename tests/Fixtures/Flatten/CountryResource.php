@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Fixtures\Flatten;
 
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\HasMany;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Str;
 
@@ -17,6 +18,7 @@ final class CountryResource extends AbstractResource
         return [
             Id::make(),
             Str::make('name'),
+            HasMany::make('authors', 'authors'),
         ];
     }
 }

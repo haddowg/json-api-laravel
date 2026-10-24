@@ -12,7 +12,9 @@ use haddowg\JsonApiLaravel\Tests\Fixtures\EloquentRelations\EloquentBlogRelation
 use haddowg\JsonApiLaravel\Tests\Fixtures\EloquentRelations\Post;
 use haddowg\JsonApiLaravel\Tests\Fixtures\EloquentRelations\PostResource;
 use haddowg\JsonApiLaravel\Tests\Fixtures\EloquentRelations\Tag;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -174,6 +176,32 @@ final class EloquentPolymorphicRelationshipTest extends Orchestra
         $types = array_column((array) $related->json('included'), 'type');
         sort($types);
         self::assertSame(['authors', 'tags'], $types);
+    }
+
+    public function test_a_polymorphic_member_the_caller_may_not_view_reads_as_absent(): void
+    {
+        // Authors refuse `view`; tags allow it.
+        Gate::define('view', static fn(?Authenticatable $user, mixed $subject = null): bool => !\is_object($subject)
+            || !\str_starts_with((new \ReflectionClass($subject))->getShortName(), 'Author'));
+
+        // The to-one leaves the author out of linkage and included.
+        $feature = $this->fetch('/api/posts/2?include=feature');
+        $feature->assertOk();
+        self::assertNull($feature->json('data.relationships.feature.data'));
+        self::assertSame([], $feature->json('included') ?? []);
+        self::assertNull($this->fetch('/api/posts/2/feature')->json('data'));
+
+        // The related endpoint drops the author from the page.
+        self::assertSame(['tags'], array_column((array) $this->fetch('/api/posts/1/related')->json('data'), 'type'));
+
+        // Core reads a polymorphic to-many off the model, so its data is withheld as a whole.
+        $related = $this->fetch('/api/posts/1?include=related');
+        $related->assertOk();
+        $relationship = $related->json('data.relationships.related');
+        self::assertIsArray($relationship);
+        self::assertArrayHasKey('links', $relationship);
+        self::assertArrayNotHasKey('data', $relationship);
+        self::assertSame([], $related->json('included') ?? []);
     }
 
     // --- belongsToMany + monomorphic to-one -----------------------------------
