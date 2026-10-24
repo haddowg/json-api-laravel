@@ -1726,7 +1726,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // the members it hides. The echo then lists the members the relationship endpoint
         // would, so a scoped to-many that cannot be read that way is refused before the write.
         $applied = $this->scopeWrittenLinkage($parent, $relation, $linkage, $mode, $server, $request);
-        $scopeEcho = $relation->isToMany() && $this->providers->relatesToScopedType($type, $relation);
+        // A write-only relation echoes nothing (core answers 204), so there is no linkage to
+        // read back and no pivot map to fetch.
+        $writeOnly = $relation->isWriteOnlyFor($request);
+        $scopeEcho = !$writeOnly && $relation->isToMany() && $this->providers->relatesToScopedType($type, $relation);
         if ($scopeEcho && \count($relation->relatedTypes()) !== 1) {
             throw new \LogicException(\sprintf(
                 'The polymorphic relation "%s" of type "%s" relates to a type served by its own data provider, so its '
@@ -1750,7 +1753,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // exactly as the relationship-read endpoint does.
         $response = IdentifierResponse::forRelationship(
             $parent,
-            $this->relationshipLinkageSerializer($server, $type, $parent, $relation, $relationshipName),
+            $writeOnly
+                ? $server->serializerFor($type)
+                : $this->relationshipLinkageSerializer($server, $type, $parent, $relation, $relationshipName),
             $relationshipName,
         );
 

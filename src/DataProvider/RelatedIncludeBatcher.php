@@ -170,7 +170,7 @@ final class RelatedIncludeBatcher
 
         $linkages = [];
         $reach = [];
-        foreach ($this->types->relationsFor($server, $type) as $relation) {
+        foreach ($this->types->readableRelationsFor($server, $type, $request) as $relation) {
             $relatedTypes = $relation->relatedTypes();
             if (!$relation->isToMany()
                 || \count($relatedTypes) !== 1
@@ -178,7 +178,7 @@ final class RelatedIncludeBatcher
                 || !$request->isIncludedRelationship('', $relation->name(), $defaults)
                 || ($maxDepth !== null && $maxDepth < 1)
                 || ($allowedPaths !== null && !\in_array($relation->name(), $allowedPaths, true))
-                || !$this->reachesScopedRelation($server, $relatedTypes, $reach)) {
+                || !$this->reachesScopedRelation($server, $relatedTypes, $request, $reach)) {
                 continue;
             }
 
@@ -227,7 +227,7 @@ final class RelatedIncludeBatcher
             return;
         }
 
-        $relations = $this->types->relationsFor($server, $type);
+        $relations = $this->types->readableRelationsFor($server, $type, $request);
         if ($relations === []) {
             return;
         }
@@ -375,7 +375,7 @@ final class RelatedIncludeBatcher
      * @param list<string>        $types
      * @param array<string, bool> $reach
      */
-    private function reachesScopedRelation(Server $server, array $types, array &$reach): bool
+    private function reachesScopedRelation(Server $server, array $types, JsonApiRequestInterface $request, array &$reach): bool
     {
         $edges = [];
         $queue = $types;
@@ -387,7 +387,7 @@ final class RelatedIncludeBatcher
 
             $edges[$type] = [];
             $seed = false;
-            foreach ($this->types->relationsFor($server, $type) as $relation) {
+            foreach ($this->types->readableRelationsFor($server, $type, $request) as $relation) {
                 $seed = $seed || ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation));
                 foreach ($relation->relatedTypes() as $relatedType) {
                     $edges[$type][] = $relatedType;
@@ -497,7 +497,7 @@ final class RelatedIncludeBatcher
             return;
         }
 
-        if (!$this->reachesScopedRelation($server, $relatedTypes, $reach)) {
+        if (!$this->reachesScopedRelation($server, $relatedTypes, $request, $reach)) {
             return;
         }
 
