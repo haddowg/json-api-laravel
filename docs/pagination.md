@@ -105,6 +105,14 @@ and `playlists.tracks`/`orderedTracks` all page two-per-page. The OpenAPI docume
 same chain, so the related and relationship endpoints' `page` parameter states the `default` and
 `maximum` of the paginator that actually serves them.
 
+The relationship (linkage) endpoint of a to-many, `GET /{type}/{id}/relationships/{rel}`, pages
+by default just as its related twin does: a plain request with no query string serves page 1 at
+that default size, with `first`/`next` (and `last` when counted) links on the document. A relation
+declared `withoutPagination()` still serves its whole linkage. Two shapes are not paged: a
+polymorphic to-many, which has no single paginator to resolve, and a pivot-carrying
+`belongsToMany`, whose windowed linkage is not built yet. Both serve the whole association, and
+both reject `?page`/`?sort`/`?filter` with a `400`.
+
 A relation may declare a `CursorPaginator` too — the related endpoint then serves keyset pages
 scoped to the parent, with the cursor links built on the related URL:
 
@@ -128,9 +136,9 @@ A **queried** relationship GET (`GET /{type}/{id}/relationships/{rel}` with
 `?page`/`?sort`/`?filter`) over a cursor-paginated relation windows the identifier linkage to
 a keyset page: the document's pagination links carry the real `page[after]`/`page[before]`
 cursors (never a `last`), while the body stays links-only — identifier `data` members and no
-`meta.page` (core ADR 0124). A bare (unqueried) relationship GET still renders the whole
-association. A queried **pivot** relationship GET remains a `400` — query parameters on a
-relationship endpoint are rejected, not silently ignored.
+`meta.page` (core ADR 0124). A bare relationship GET serves the first keyset page at the
+relation's default size. A queried **pivot** relationship GET remains a `400`: query parameters on
+a relationship endpoint are rejected, not silently ignored.
 
 ### Advertising the cursor-pagination profile
 

@@ -774,11 +774,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * relation). A cursor-paginated relation windows to a real keyset page (the minted
      * `page[after]`/`page[before]` tokens on the links), attached to the response via core's
      * {@see IdentifierResponse::withPage()} so its profile is advertised while the body stays
-     * links-only (core ADR 0124, docs/adr/0017). With no query parameters it renders the whole
-     * association off the loaded parent exactly as before (the plain relationship GET — a
-     * deliberate divergence from the bundle's always-paginate, preserving the Phase-3a
-     * full-linkage contract). A windowed *pivot* relationship endpoint (the pivot page + its
-     * `meta.pivot`) rides the pivot machinery and stays on its full-set path here.
+     * links-only (core ADR 0124, docs/adr/0017). It pages by default, so a plain read with no
+     * query parameters serves page 1 of the relation's paginator (docs/adr/0038). A polymorphic
+     * or *pivot* to-many has no windowed linkage here and renders the whole association.
      */
     private function fetchRelationship(FetchRelationshipOperation $operation): IdentifierResponse|ErrorResponse
     {
@@ -819,27 +817,28 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->dispatch(new BeforeFetchRelationshipEvent($type, $request, $parent, $relation, $this->serverName($request)));
 
         $page = null;
-        if ($this->relationshipEndpointQueried($operation->queryParameters(), $request)) {
-            $monomorphic = \count($relation->relatedTypes()) === 1;
-            $isPivot = $relation instanceof BelongsToMany && $relation->pivotFields() !== [];
+        $queried = $this->relationshipEndpointQueried($operation->queryParameters(), $request);
+        $relatedTypes = $relation->relatedTypes();
+        $isPivot = $relation instanceof BelongsToMany && $relation->pivotFields() !== [];
 
-            if ($relation->isToMany() && $monomorphic && !$isPivot) {
-                // A monomorphic, non-pivot to-many: window it, supplying the page-1 linkage +
-                // pagination out-of-band. A miss (unknown filter/sort key, a `_self_` count on a
-                // non-countable relation) surfaces the related endpoint's same error.
-                $windowed = $this->windowRelationshipEndpoint($server, $type, $parent, $relation, $operation->queryParameters(), $request);
-                if ($windowed instanceof ErrorResponse) {
-                    return $windowed;
-                }
-                $page = $windowed;
-            } else {
-                // The endpoint cannot honour the client's query on THIS relation shape, so it is a
-                // 400 rather than a silent full-set render: a to-one has no collection to
-                // sort/page/count; a polymorphic to-many has no single related provider or shared
-                // sort/filter vocabulary; a pivot to-many's windowed linkage (bundle ADR 0096 — the
-                // pivot page + its `meta.pivot`) is a deliberately-deferred tail. See docs/adr/0010.
-                return $this->rejectRelationshipEndpointQuery($operation->queryParameters(), $request);
+        if ($relation->isToMany() && \count($relatedTypes) === 1 && !$isPivot
+            && ($queried || $this->providers->supportsType($relatedTypes[0]))) {
+            // A monomorphic, non-pivot to-many is paginated by default, queried or not, so the
+            // plain read serves the page the OpenAPI document advertises. A miss (unknown
+            // filter/sort key, a `_self_` count on a non-countable relation) surfaces the
+            // related endpoint's same error.
+            $windowed = $this->windowRelationshipEndpoint($server, $type, $parent, $relation, $operation->queryParameters(), $request);
+            if ($windowed instanceof ErrorResponse) {
+                return $windowed;
             }
+            $page = $windowed;
+        } elseif ($queried) {
+            // The endpoint cannot honour the client's query on THIS relation shape, so it is a
+            // 400 rather than a silent full-set render: a to-one has no collection to
+            // sort/page/count; a polymorphic to-many has no single related provider or shared
+            // sort/filter vocabulary; a pivot to-many's windowed linkage (bundle ADR 0096 — the
+            // pivot page + its `meta.pivot`) is a deliberately-deferred tail. See docs/adr/0010.
+            return $this->rejectRelationshipEndpointQuery($operation->queryParameters(), $request);
         } elseif ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation)) {
             // The whole association, but loaded through the related type's own scoping provider
             // rather than read off the parent, so it lists exactly what the related endpoint does.
@@ -861,10 +860,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
     }
 
     /**
-     * Whether the client addressed a relationship (linkage) endpoint with query parameters that
-     * make it a windowed collection: an explicit `?page`/`?sort`/`?filter`, or a
-     * `?withCount=_self_` naming this relationship's collection total. With none of these the
-     * endpoint renders the whole association off the loaded parent (the plain relationship GET).
+     * Whether the client addressed a relationship (linkage) endpoint with query parameters: an
+     * explicit `?page`/`?sort`/`?filter`, or a `?withCount=_self_` naming this relationship's
+     * collection total. A relation shape that cannot be windowed rejects them.
      */
     private function relationshipEndpointQueried(QueryParameters $queryParameters, JsonApiRequestInterface $request): bool
     {
