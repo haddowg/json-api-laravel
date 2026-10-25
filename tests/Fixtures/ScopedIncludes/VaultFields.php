@@ -15,7 +15,8 @@ use haddowg\JsonApi\Resource\Field\Str;
 /**
  * The `vaults` fields shared by the default-server and named-server registrations. `coins` is
  * a lazy, countable to-many whose related type hides rows; `featuredCoin` and the polymorphic
- * `spotlight` are to-ones onto the scoped types, and `featuredLabel` flattens the featured
+ * `spotlight` are to-ones onto the scoped types, `everyCoin` computes the vault's coins with
+ * `extractUsing()`,, and `featuredLabel` flattens the featured
  * coin's label through `on()`.
  */
 abstract class VaultFields extends AbstractResource
@@ -28,6 +29,14 @@ abstract class VaultFields extends AbstractResource
             Id::make(),
             Str::make('label'),
             HasMany::make('coins', 'coins')->countable(),
+            // The vault's coins, computed by a closure instead of read off the relation.
+            HasMany::make('everyCoin', 'coins')->countable()->extractUsing(static function (mixed $vault): array {
+                if ($vault instanceof Vault) {
+                    return Coin::query()->where('vault_id', $vault->getKey())->orderBy('id')->get()->all();
+                }
+
+                return $vault instanceof VaultRecord ? $vault->coins : [];
+            }),
             BelongsTo::make('featuredCoin', 'coins'),
             Str::make('featuredLabel')->storedAs('label')->on('featuredCoin'),
             MorphTo::make('spotlight', ['coins', 'marks']),

@@ -823,8 +823,16 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // (e.g. a plain helper colliding with a countable relation's name) — reports the empty
         // map rather than letting withCount() throw a 500, keeping countRelated's degradation
         // contract aligned with the other seams.
+        // A computed relation (no Eloquent relation method) has no query to count, so count the
+        // members it computes, filtered as the related endpoint filters them.
         if ($this->eagerRelation($models[0], $relation) === null) {
-            return [];
+            $encoder = $this->encoderFor($type);
+            $counts = [];
+            foreach ($models as $model) {
+                $counts[$this->wireId($model, $encoder)] = \count($this->computedMembers($criteria, $model, $relation, $request));
+            }
+
+            return $counts;
         }
 
         $method = $this->relationMethod($relation);
@@ -1248,6 +1256,27 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     }
 
     /**
+     * The members `$relation` computes for `$parent`, read off it (an `extractUsing()` closure
+     * or a plain property) and filtered and sorted by `$criteria`.
+     *
+     * @return list<object>
+     */
+    private function computedMembers(CollectionCriteria $criteria, object $parent, RelationInterface $relation, JsonApiRequestInterface $request): array
+    {
+        $related = $relation->readValue($parent, $request);
+        $items = match (true) {
+            \is_array($related) => \array_values($related),
+            $related instanceof \Traversable => \iterator_to_array($related, false),
+            default => [],
+        };
+
+        /** @var list<object> $filtered */
+        $filtered = $this->applier->apply($criteria, $items, $this->arrayFilterHandler, $this->arraySortHandler);
+
+        return $filtered;
+    }
+
+    /**
      * The over-parity PHP window for a heterogeneous polymorphic to-many related endpoint:
      * read the mixed member set off the parent via the relation accessor, then filter / sort
      * / window it through core's reference in-memory handlers + the shared executor — the
@@ -1262,15 +1291,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         RelationInterface $relation,
         JsonApiRequestInterface $request,
     ): CollectionResult {
-        $related = $relation->readValue($parent, $request);
-        $items = match (true) {
-            \is_array($related) => \array_values($related),
-            $related instanceof \Traversable => \iterator_to_array($related, false),
-            default => [],
-        };
-
-        /** @var list<object> $filtered */
-        $filtered = $this->applier->apply($criteria, $items, $this->arrayFilterHandler, $this->arraySortHandler);
+        $filtered = $this->computedMembers($criteria, $parent, $relation, $request);
 
         return $this->windowExecutor->run(
             $criteria->window,

@@ -344,6 +344,40 @@ abstract class ScopedIncludesTestCase extends Orchestra
     }
 
     #[Test]
+    public function aComputedRelationShowsOnlyTheRowsTheScopeAdmits(): void
+    {
+        $countable = self::MEDIA_TYPE . ';profile="' . self::COUNTABLE_PROFILE . '"';
+
+        $vault = $this->read('/vaults/1?include=everyCoin&withCount=everyCoin', $countable);
+        $this->assertNoHiddenRows($vault);
+        self::assertSame(['1', '3'], $this->ids($vault, 'data.relationships.everyCoin.data'));
+        self::assertSame(2, $vault->json('data.relationships.everyCoin.meta.total'));
+
+        $vaults = $this->read('/vaults?include=everyCoin&withCount=everyCoin', $countable);
+        $this->assertNoHiddenRows($vaults);
+        self::assertSame(['5'], $this->ids($vaults, 'data.1.relationships.everyCoin.data'));
+        self::assertSame(1, $vaults->json('data.1.relationships.everyCoin.meta.total'));
+
+        $related = $this->read('/vaults/1/everyCoin?withCount=_self_', $countable);
+        self::assertSame(['1', '3'], $this->ids($related, 'data'));
+        self::assertSame(2, $related->json('meta.total'));
+        self::assertSame(['1', '3'], $this->ids($this->read('/vaults/1/relationships/everyCoin'), 'data'));
+
+        // The Eloquent reference provider refuses to window a computed relation in PHP (ADR 0006),
+        // so only a scoping provider serves this window.
+        if ($this->scope() !== 'provider') {
+            return;
+        }
+
+        $window = $this->read(
+            '/vaults/1?include=everyCoin&withCount=everyCoin&relatedQuery[everyCoin][filter][label]=r',
+            self::MEDIA_TYPE . ';profile="' . self::RELATIONSHIP_QUERIES_PROFILE . ' ' . self::COUNTABLE_PROFILE . '"',
+        );
+        self::assertSame(['3'], $this->ids($window, 'data.relationships.everyCoin.data'));
+        self::assertSame(1, $window->json('data.relationships.everyCoin.meta.total'));
+    }
+
+    #[Test]
     public function theRelationshipEndpointShowsOnlyVisibleRows(): void
     {
         self::assertSame(['1', '3'], $this->ids($this->read('/vaults/1/relationships/coins'), 'data'));
