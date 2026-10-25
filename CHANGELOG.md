@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.9.0](https://github.com/haddowg/json-api-laravel/compare/v1.8.2...v1.9.0) (2026-10-25)
+
+
+### Features
+
+* authorize the relation data core renders and flattened writes ([#109](https://github.com/haddowg/json-api-laravel/issues/109)) ([080d479](https://github.com/haddowg/json-api-laravel/commit/080d4793d7cef5ebece75ffca764f8350266eb65))
+* let a relation declare its own read permission ([#115](https://github.com/haddowg/json-api-laravel/issues/115)) ([fc7a34a](https://github.com/haddowg/json-api-laravel/commit/fc7a34a6fbf0a4cfe0dd154c3aed19397254ae36))
+* narrow a polymorphic to-many per member type instead of refusing it ([#119](https://github.com/haddowg/json-api-laravel/issues/119)) ([fd65f4a](https://github.com/haddowg/json-api-laravel/commit/fd65f4ada11baca7e0596f72ae7096e7c1c1e6f2))
+
+
+### Bug Fixes
+
+* answer 404 at the endpoints of a relation hidden from the caller ([#107](https://github.com/haddowg/json-api-laravel/issues/107)) ([56ee98a](https://github.com/haddowg/json-api-laravel/commit/56ee98a1a116dda05f8e3f5a90bb3786681d714c))
+* apply relation queries to a to-one related resource's relations ([#118](https://github.com/haddowg/json-api-laravel/issues/118)) ([5e778fc](https://github.com/haddowg/json-api-laravel/commit/5e778fc2a9b8026285e88163f5d55c0dff020647))
+* check the update gate on the stored and the changed resource ([#111](https://github.com/haddowg/json-api-laravel/issues/111)) ([3b93be2](https://github.com/haddowg/json-api-laravel/commit/3b93be20e9f8f17a1329e6df180777ba82eb516b))
+* count a computed to-many on the Eloquent provider ([#116](https://github.com/haddowg/json-api-laravel/issues/116)) ([ff2475e](https://github.com/haddowg/json-api-laravel/commit/ff2475e6ab211807d65e52c79092fb799e03fd54))
+* gate related lists by their type's list check, not per row ([#114](https://github.com/haddowg/json-api-laravel/issues/114)) ([9f87029](https://github.com/haddowg/json-api-laravel/commit/9f87029a6d369ece728b462bf409adf10e456909))
+* hide a related row its own type's view policy refuses ([#110](https://github.com/haddowg/json-api-laravel/issues/110)) ([60610e7](https://github.com/haddowg/json-api-laravel/commit/60610e78e5156967f8da658e62fac7244abd7bf3))
+* **openapi:** count any JSON:API route when deciding a server is mounted ([#113](https://github.com/haddowg/json-api-laravel/issues/113)) ([3d1cd8e](https://github.com/haddowg/json-api-laravel/commit/3d1cd8e38aa48f2878a5e06fed15e84d17237e74))
+* require core 1.9 so read-only relations refuse relationship writes ([#106](https://github.com/haddowg/json-api-laravel/issues/106)) ([2adf41d](https://github.com/haddowg/json-api-laravel/commit/2adf41d914e2779bffaaf29a1607d66ab73b6efc))
+* require update on a row no parent holds before linking it ([#112](https://github.com/haddowg/json-api-laravel/issues/112)) ([0e4c56f](https://github.com/haddowg/json-api-laravel/commit/0e4c56fa2973d6b77563f1ff33ef314887f6c377))
+* window an included computed to-many in PHP on Eloquent ([#117](https://github.com/haddowg/json-api-laravel/issues/117)) ([8bbfada](https://github.com/haddowg/json-api-laravel/commit/8bbfadacf3892a3ad5e43b5b800b5bc08aec2c64))
+
 ## [1.8.2](https://github.com/haddowg/json-api-laravel/compare/v1.8.1...v1.8.2) (2026-10-24)
 
 
