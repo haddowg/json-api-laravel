@@ -8,6 +8,8 @@ use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Server\ResourceRegistry;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 
 /**
  * The configured name of a server an operation runs on. A request routed through the
@@ -44,5 +46,16 @@ final class ServerNames
         }
 
         return ($server instanceof Server ? $this->names[$server->resources()] ?? null : null) ?? ServerRegistry::DEFAULT_SERVER;
+    }
+
+    /**
+     * The server the matched route belongs to, else `default`.
+     */
+    public function forRoute(Request $request): string
+    {
+        $route = $request->route();
+        $name = $route instanceof Route ? $route->defaults[TargetResolver::SERVER_ATTRIBUTE] ?? null : null;
+
+        return \is_string($name) && $name !== '' ? $name : ServerRegistry::DEFAULT_SERVER;
     }
 }

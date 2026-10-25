@@ -239,14 +239,18 @@ final class JsonApiServiceProvider extends ServiceProvider
 
             // The explicit OpenAPI tags each mount type declares, so an action with no tags of
             // its own inherits the mount type's tags before the humanized default (bundle parity).
+            // Keyed by server, then type, so an action inherits the tags of the class its own
+            // server exposes the type through (ADR 0052).
             $typeTags = [];
             foreach ($discovery->resources() as $descriptor) {
                 if ($descriptor->tags !== []) {
-                    $typeTags[$descriptor->type] = $descriptor->tags;
+                    foreach ($descriptor->servers as $server) {
+                        $typeTags[$server][$descriptor->type] = $descriptor->tags;
+                    }
                 }
             }
 
-            return new ActionRegistry($discovery->actions(), $resolver, $app->make(TagNameResolver::class), $typeTags);
+            return new ActionRegistry($discovery->actions(), $resolver, $app->make(TagNameResolver::class), [], $typeTags);
         });
 
         // The OpenAPI metadata source reads a type's actions through this interface; the
@@ -293,10 +297,13 @@ final class JsonApiServiceProvider extends ServiceProvider
             /** @var Discovery $discovery */
             $discovery = $app->make(Discovery::class);
 
-            $byType = [];
+            // Keyed by server, then type, like the authorization config (ADR 0052).
+            $byServer = [];
             foreach ($discovery->resources() as $descriptor) {
                 if ($descriptor->headers !== []) {
-                    $byType[$descriptor->type] = $descriptor->headers;
+                    foreach ($descriptor->servers as $server) {
+                        $byServer[$server][$descriptor->type] = $descriptor->headers;
+                    }
                 }
             }
 
@@ -309,7 +316,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 'sunset_link' => config('jsonapi.defaults.sunset_link'),
             ];
 
-            return new ResponseHeadersRegistry($byType, $defaultCache, $defaultDeprecation);
+            return new ResponseHeadersRegistry([], $defaultCache, $defaultDeprecation, $byServer);
         });
     }
 

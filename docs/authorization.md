@@ -117,7 +117,7 @@ for delete) — the point of decision 7.
 
 A server only enforces the `policy:` and `abilities` of the resource class it exposes the
 type through, so two servers can secure one type differently. See
-[authorization per server](multi-server-and-testing.md#authorization-per-server).
+[authorization per server](multi-server-and-testing.md#authorization-headers-and-tags-per-server).
 
 ## Relationships
 

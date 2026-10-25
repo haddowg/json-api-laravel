@@ -57,7 +57,7 @@ server by default (`/docs.json`, `/admin/docs.json`) — see [openapi](openapi.m
 expose more fields via a distinct resource) — see
 [capability-composition](capability-composition.md).
 
-### Authorization per server
+### Authorization, headers and tags per server
 
 Two servers can expose the same type through different resource classes, and each server
 enforces only what its own class declares on `#[AsJsonApiResource]`: its `policy:` and its
@@ -76,9 +76,14 @@ final class DocumentResource extends AbstractResource { /* type 'documents' */ }
 final class AdminDocumentResource extends AbstractResource { /* type 'documents' */ }
 ```
 
+The same goes for the response headers and OpenAPI tags a class declares. Each server sends
+the `cacheHeaders`, `deprecation` and `sunset` of its own class, and its document tags the
+type's operations, custom actions included, with its own class's `tags`.
+
 A class on several servers applies its declarations on each of them. A server whose class
 declares nothing for a type gets nothing from another server's class: the type falls back to
-the model's Gate policy there, the same as in a single-server app. That fallback is per model,
+the model's Gate policy there, the same as in a single-server app, its responses carry the
+global `jsonapi.defaults` headers, and its operations get the default tag. That fallback is per model,
 so a `Gate::policy()` mapping applies on every server. A check dispatched in code, with no
 routed request behind it, reads the server the operation was built on, and the `default`
 server when there is none. See [ADR 0052](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0052-authorization-is-keyed-by-server-and-type.md).
