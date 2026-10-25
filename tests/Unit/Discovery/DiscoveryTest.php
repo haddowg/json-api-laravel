@@ -144,4 +144,31 @@ final class DiscoveryTest extends TestCase
 
         return $file;
     }
+
+    public function test_rescan_drops_the_snapshot_and_scans_the_configured_paths(): void
+    {
+        $file = $this->snapshot([
+            'models' => ['namespace' => 'App\\Models', 'map' => ['artists' => 'App\\Models\\Artist']],
+        ]);
+
+        try {
+            $discovery = new Discovery(new DiscoveryScanner(), [\dirname(__DIR__, 2) . '/Fixtures/ModelMap/JsonApi'], [], $file);
+            self::assertSame(['artists'], $this->types($discovery));
+
+            $discovery->rescan();
+
+            self::assertEqualsCanonicalizing(['imports', 'pressings', 'recordings'], $this->types($discovery));
+            self::assertNull($discovery->modelMap('App\\Models'));
+        } finally {
+            @\unlink($file);
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function types(Discovery $discovery): array
+    {
+        return \array_map(static fn(ResourceDescriptor $d): string => $d->type, $discovery->resources());
+    }
 }

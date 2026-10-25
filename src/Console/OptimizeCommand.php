@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Console;
 
+use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\DiscoverySnapshotWriter;
 use haddowg\JsonApiLaravel\OpenApi\DocumentRouteWarmer;
 use haddowg\JsonApiLaravel\OpenApi\DocumentWarmer;
@@ -30,6 +31,7 @@ use Illuminate\Console\Command;
  *
  * When `jsonapi.discovery.cache` names a path it also writes the discovery snapshot
  * (opt-in, the WRITE side of the Phase-0 cache) so a `route:cache`d app skips the scan.
+ * It always scans the configured paths itself and never reads an existing snapshot.
  */
 final class OptimizeCommand extends Command
 {
@@ -37,8 +39,17 @@ final class OptimizeCommand extends Command
 
     protected $description = 'Validate JSON:API servability and warm the OpenAPI document + JSON Schema artifacts.';
 
-    public function handle(ServableResourceWarmer $servable, DocumentRouteWarmer $documentRoutes, DocumentWarmer $documents, DiscoverySnapshotWriter $snapshot): int
+    public function handle(Discovery $discovery): int
     {
+        // Validate and warm what the code declares now, not an earlier snapshot. The rest
+        // is resolved after the rescan so it is built from the fresh descriptors.
+        $discovery->rescan();
+
+        $servable = $this->laravel->make(ServableResourceWarmer::class);
+        $documentRoutes = $this->laravel->make(DocumentRouteWarmer::class);
+        $documents = $this->laravel->make(DocumentWarmer::class);
+        $snapshot = $this->laravel->make(DiscoverySnapshotWriter::class);
+
         // Phase 1 — mandatory servability validation. A problem fails the deploy.
         $problems = $servable->warm();
         foreach ($problems as $problem) {
