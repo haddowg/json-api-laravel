@@ -363,12 +363,6 @@ abstract class ScopedIncludesTestCase extends Orchestra
         self::assertSame(2, $related->json('meta.total'));
         self::assertSame(['1', '3'], $this->ids($this->read('/vaults/1/relationships/everyCoin'), 'data'));
 
-        // The Eloquent reference provider refuses to window a computed relation in PHP (ADR 0006),
-        // so only a scoping provider serves this window.
-        if ($this->scope() !== 'provider') {
-            return;
-        }
-
         $window = $this->read(
             '/vaults/1?include=everyCoin&withCount=everyCoin&relatedQuery[everyCoin][filter][label]=r',
             self::MEDIA_TYPE . ';profile="' . self::RELATIONSHIP_QUERIES_PROFILE . ' ' . self::COUNTABLE_PROFILE . '"',

@@ -363,8 +363,9 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * `groupLimit`/`ROW_NUMBER() OVER (PARTITION BY <parent FK> ORDER BY <relation order>, <pk>)`
      * query bounds each parent's partition to page 1, deterministic on ties through the
      * appended primary-key tiebreak that the in-memory witness's `withPkTiebreak` mirrors. A
-     * case that cannot push down (a computed/`extractUsing` relation with no Eloquent method,
-     * a polymorphic relation the batcher never windows) throws rather than windowing in PHP.
+     * real relation that cannot push down (a polymorphic relation the batcher never windows)
+     * throws rather than windowing in PHP; a computed/`extractUsing` relation with no Eloquent
+     * method is windowed in PHP over the members it computes.
      *
      * A relation this provider cannot batch (a computed/`extractUsing` column with no
      * Eloquent relation method, a polymorphic relation the include orchestrator already
@@ -440,9 +441,10 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * table re-exposes every inner column via its outer `SELECT *`, so both `match()` (reading
      * the FK) and the `belongsToMany` pivot hydration survive the wrap.
      *
-     * There is NO PHP-window fallback (PLAN decision 9): a relation with no Eloquent method (a
-     * computed/`extractUsing` column) or a polymorphic relation (which the batcher never
-     * windows) cannot push down and throws with a signposted message.
+     * There is NO PHP-window fallback for a real relation (PLAN decision 9): a polymorphic
+     * relation (which the batcher never windows) cannot push down and throws. A computed
+     * relation with no Eloquent method has no query at all, so it is windowed in PHP over the
+     * members it computes, like its related endpoint (ADR 0006).
      *
      * @param list<object> $parents
      *
@@ -456,6 +458,21 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         JsonApiRequestInterface $request,
     ): RelatedBatch {
         $window = $criteria->window;
+
+        // A computed relation (no Eloquent relation method, such as an `extractUsing()` view) has
+        // no query to push down. Its members are already in PHP, so each parent's page is
+        // windowed there, exactly as its related endpoint windows it (ADR 0006). A real relation
+        // never falls back to PHP.
+        $models = $this->eloquentModels($parents);
+        if ($models !== [] && \count($relation->relatedTypes()) === 1 && $this->eagerRelation($models[0], $relation) === null) {
+            $encoder = $this->encoderFor($parentType);
+            $results = [];
+            foreach ($models as $model) {
+                $results[$this->wireId($model, $encoder)] = $this->windowInPhp($criteria, $model, $relation, $request);
+            }
+
+            return new RelatedBatch($results);
+        }
 
         // A CURSOR (keyset) windowed include: an include carries no cursor token (the
         // Relationship Queries profile pins the included page to page 1), so the window
@@ -491,14 +508,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         }
 
         $eager = $this->eagerRelation($models[0], $relation);
-        if ($eager === null) {
-            throw new \LogicException(\sprintf(
-                'The Eloquent windowed relation batch cannot push down "%s": it resolves to no Eloquent '
-                . 'relation method, so there is no query to window. PLAN decision 9 (ADR 0006) forbids a '
-                . 'PHP-window fallback — supply a custom DataProvider or an Eloquent relation method.',
-                $relation->name(),
-            ));
-        }
+        \assert($eager !== null);
 
         $method = $this->relationMethod($relation);
 

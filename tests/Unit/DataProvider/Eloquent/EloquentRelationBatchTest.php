@@ -10,6 +10,7 @@ use haddowg\JsonApi\Pagination\OffsetWindow;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\BelongsTo;
 use haddowg\JsonApi\Resource\Field\HasMany;
+use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Filter\GreaterThanOrEqual;
 use haddowg\JsonApi\Resource\Filter\WhereIn;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
@@ -263,22 +264,45 @@ final class EloquentRelationBatchTest extends EloquentTestCase
     // --- the windowed-batch guard (SQL push-down only, no PHP-window fallback) --
 
     #[Test]
-    public function aWindowedBatchThrowsRatherThanWindowingInPhp(): void
+    public function aWindowedBatchOfARealRelationThrowsRatherThanWindowingInPhp(): void
     {
-        // The windowed multi-parent batch is a SQL push-down ONLY (PLAN decision 9 / ADR 0006):
-        // a relation that resolves to no Eloquent method has no query to group-limit, so the
-        // batch THROWS rather than falling back to a PHP window. The pushable case (the real
-        // groupLimit/ROW_NUMBER push-down) is exercised in EloquentWindowedRelationBatchTest.
+        // A real relation's windowed batch is a SQL push-down ONLY (PLAN decision 9 / ADR 0006).
+        // A polymorphic one has no single query to group-limit, so the batch THROWS rather than
+        // windowing in PHP. The pushable case is exercised in EloquentWindowedRelationBatchTest.
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('PHP-window fallback');
+        $this->expectExceptionMessage('cannot push down the polymorphic relationship');
 
         $this->provider()->fetchRelatedCollectionBatch(
             'artists',
             $this->allArtists(),
-            HasMany::make('phantom', 'albums')->build(),
+            MorphToMany::make('mixed', ['albums', 'artists'])->build(),
             new CollectionCriteria($this->queryParameters(), window: new OffsetWindow(0, 2)),
             $this->request(),
         );
+    }
+
+    #[Test]
+    public function aWindowedBatchOfAComputedRelationWindowsItsMembersInPhp(): void
+    {
+        // A computed relation has no Eloquent method, so there is no query to push down; each
+        // parent's computed members are windowed in PHP, as its related endpoint does (ADR 0006).
+        $relation = HasMany::make('latestAlbums', 'albums')
+            ->extractUsing(static fn(mixed $artist): array => $artist instanceof Artist
+                ? Album::query()->where('artist_id', $artist->getKey())->orderBy('id')->get()->all()
+                : [])
+            ->build();
+
+        $batch = $this->provider()->fetchRelatedCollectionBatch(
+            'artists',
+            $this->allArtists(),
+            $relation,
+            new CollectionCriteria($this->queryParameters(), window: new OffsetWindow(0, 2), wantsCount: true),
+            $this->request(),
+        );
+
+        $radiohead = $batch->for('1');
+        self::assertCount(2, \is_array($radiohead->items) ? $radiohead->items : \iterator_to_array($radiohead->items, false));
+        self::assertSame(Album::query()->where('artist_id', 1)->count(), $radiohead->total);
     }
 
     // --- the single-parent related endpoint (scoped + windowed) ---------------

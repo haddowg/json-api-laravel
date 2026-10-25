@@ -14,11 +14,17 @@ grouped `COUNT`. Every first-party Laravel database driver has window functions,
 Doctrine toggle's portability rationale does not transfer. This is the recorded divergence from
 the Doctrine reference.
 
+**Carve-out: computed relations.** A relation with no Eloquent relation method, such as an
+`extractUsing()` view, has no query to push down at all, so its windowed batch runs in PHP over
+the members it computes: filter, sort and page, after any scoping provider has narrowed them,
+exactly as its related endpoint already windows it. The rule below holds for every real
+relation, which never falls back to PHP.
+
 **Consequences.**
 
 - **Reaching the windowed-batch seam in PHP is a programming error, not a fallback.**
   `EloquentDataProvider::fetchRelatedCollectionBatch()` throws a `LogicException` for any
-  non-null window rather than windowing in PHP; the Phase-3a include fast path only ever calls
+  non-null window on a real relation rather than windowing in PHP; the Phase-3a include fast path only ever calls
   it with a null window. The SQL push-down itself is built in Phase 3b (its sole consumer).
 - **The in-memory witness is the determinism referee.** The witness runs core's
   `WindowExecutor` and appends the SAME final `id ASC` tiebreak
