@@ -37,6 +37,10 @@ final class DiscoverySnapshotWriter
      */
     public function write(string $path): void
     {
+        // Never write back the snapshot this app booted from: a resource added or changed
+        // since it was written would never reach the cache.
+        $this->discovery->rescan();
+
         $snapshot = [
             'resources' => \array_map(
                 static fn(ResourceDescriptor $descriptor): array => $descriptor->toArray(),
@@ -61,10 +65,12 @@ final class DiscoverySnapshotWriter
         ];
 
         if ($this->models !== null) {
-            // Resolved live, so the conflict check runs against the declarations being written.
+            // Resolved from the rescanned descriptors, not the resolver's own, which may
+            // predate the rescan; resolving runs the conflict check.
+            $namespace = $this->models->modelNamespace();
             $snapshot['models'] = [
-                'namespace' => $this->models->modelNamespace(),
-                'map' => $this->models->resolve(),
+                'namespace' => $namespace,
+                'map' => (new ModelMapResolver($this->discovery->resources(), $namespace))->resolve(),
             ];
         }
 

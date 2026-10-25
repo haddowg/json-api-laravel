@@ -36,7 +36,11 @@ Three phases, mirroring the bundle's two warmers plus a deploy-time safety check
    singularizes each type name to guess its model, roughly 3.4 ms a request at 500 types.
    Writing the map runs the same check as a live resolution, so a type declared against two
    different models fails the command. A snapshot written by an older release has no map and
-   is resolved live as before, and so is one whose namespace no longer matches the config. See
+   is resolved live as before, and so is one whose namespace no longer matches the config.
+   The command always scans your discovery paths itself and never reads the snapshot already
+   on disk, so running it again over an old file picks up every resource added or changed
+   since. `php artisan optimize` and `jsonapi:optimize` also boot from a live scan, so the
+   routes they register and validate match the code. See
    [ADR 0053](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0053-the-discovery-snapshot-carries-the-resolved-model-map.md).
 3. **Artifact warming (optional, non-fatal).** Pre-builds the OpenAPI document + JSON Schema
    artifacts so the `/docs.json` / `/schemas.json` controllers serve a warmed document, and

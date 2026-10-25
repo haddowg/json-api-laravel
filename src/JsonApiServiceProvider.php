@@ -417,6 +417,11 @@ final class JsonApiServiceProvider extends ServiceProvider
             $configPaths = config('jsonapi.discovery.paths', []);
             /** @var string|null $cachePath */
             $cachePath = config('jsonapi.discovery.cache');
+            // The commands that rewrite the snapshot boot from a live scan, so the routes
+            // they register and validate match the code rather than the old snapshot.
+            if ($app instanceof \Illuminate\Foundation\Application && $app->runningConsoleCommand('optimize', 'jsonapi:optimize')) {
+                $cachePath = null;
+            }
 
             return new Discovery(
                 $app->make(DiscoveryScanner::class),

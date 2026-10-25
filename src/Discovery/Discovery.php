@@ -71,6 +71,10 @@ final class Discovery
      */
     private ?array $modelMap = null;
 
+    private bool $ignoreCache = false;
+
+    private ?bool $loadedFromSnapshot = null;
+
     /**
      * @param list<string>       $paths           the directories to scan
      * @param list<class-string> $explicitClasses classes registered via `JsonApi::register()`
@@ -247,6 +251,24 @@ final class Discovery
     }
 
     /**
+     * Drops anything read from the snapshot and scans the configured paths from now on,
+     * so whatever writes a new snapshot never writes back the one it booted from. A
+     * no-op once this instance has scanned live.
+     */
+    public function rescan(): void
+    {
+        $this->ignoreCache = true;
+        if ($this->loadedFromSnapshot === false) {
+            return;
+        }
+
+        $this->resources = $this->providers = $this->persisters = $this->translators = null;
+        $this->actions = $this->serializers = $this->hydrators = $this->errors = null;
+        $this->modelMap = null;
+        $this->loadedFromSnapshot = null;
+    }
+
+    /**
      * The `type → Eloquent model` map the loaded snapshot carries, or `null` when there is
      * no snapshot, the snapshot predates the map, or it was resolved under a different
      * `$modelNamespace` than the one now configured. A `null` means resolve it live.
@@ -280,11 +302,13 @@ final class Discovery
             $this->hydrators = $snapshot['hydrators'];
             $this->errors = $snapshot['errors'];
             $this->modelMap = $snapshot['models'];
+            $this->loadedFromSnapshot = true;
 
             return $snapshot;
         }
 
         $result = $this->scanner->scan($this->paths, $this->explicitClasses);
+        $this->loadedFromSnapshot = false;
         $this->resources = $result->resources;
         $this->providers = $result->providers;
         $this->persisters = $result->persisters;
@@ -320,7 +344,7 @@ final class Discovery
      */
     private function loadSnapshot(): ?array
     {
-        if ($this->cachePath === null || !\is_file($this->cachePath)) {
+        if ($this->ignoreCache || $this->cachePath === null || !\is_file($this->cachePath)) {
             return null;
         }
 
