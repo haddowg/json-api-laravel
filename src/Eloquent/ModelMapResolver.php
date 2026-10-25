@@ -35,6 +35,10 @@ use Illuminate\Support\Str;
  *
  * The resolved map is memoized: both registry closures (provider + persister) read the
  * SAME map, so the reference pair can never disagree about a type's model.
+ *
+ * Resolving runs the inflector once per type, which is a measurable cost on every request
+ * of a large API. `jsonapi:optimize` therefore writes the resolved map into the discovery
+ * snapshot, and a resolver handed that map returns it as-is (ADR 0053).
  */
 final class ModelMapResolver
 {
@@ -46,11 +50,15 @@ final class ModelMapResolver
     /**
      * @param list<ResourceDescriptor> $descriptors    the discovered resource descriptors
      * @param string|null              $modelNamespace the namespace the convention tier guesses under (`jsonapi.eloquent.model_namespace`); null/empty disables convention
+     * @param array<string, class-string<Model>>|null $resolved a map resolved ahead of time from the same descriptors and namespace, read from the discovery snapshot
      */
     public function __construct(
         private readonly array $descriptors,
         private readonly ?string $modelNamespace,
-    ) {}
+        ?array $resolved = null,
+    ) {
+        $this->map = $resolved;
+    }
 
     /**
      * The resolved `type → Eloquent model FQCN` map.
@@ -63,9 +71,20 @@ final class ModelMapResolver
     }
 
     /**
+     * The namespace the convention tier guesses under, as configured.
+     */
+    public function modelNamespace(): ?string
+    {
+        return $this->modelNamespace;
+    }
+
+    /**
+     * Resolves the map from the descriptors, ignoring any map resolved ahead of time, so
+     * the snapshot writer always runs the conflict check against the current declarations.
+     *
      * @return array<string, class-string<Model>>
      */
-    private function resolve(): array
+    public function resolve(): array
     {
         $map = [];
 

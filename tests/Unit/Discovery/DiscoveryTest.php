@@ -76,4 +76,72 @@ final class DiscoveryTest extends TestCase
             @\unlink($file);
         }
     }
+
+    public function test_a_snapshot_carries_the_model_map_for_the_namespace_it_was_resolved_under(): void
+    {
+        $file = $this->snapshot([
+            'models' => ['namespace' => 'App\\Models', 'map' => ['artists' => 'App\\Models\\Artist']],
+        ]);
+
+        try {
+            $discovery = new Discovery(new DiscoveryScanner(), [], [], $file);
+
+            self::assertSame(['artists' => 'App\\Models\\Artist'], $discovery->modelMap('App\\Models'));
+            // Resolved under another namespace, the map no longer applies.
+            self::assertNull($discovery->modelMap('Domain\\Models'));
+            self::assertNull($discovery->modelMap(null));
+        } finally {
+            @\unlink($file);
+        }
+    }
+
+    public function test_a_snapshot_written_before_the_model_map_existed_has_none(): void
+    {
+        $file = $this->snapshot([]);
+
+        try {
+            $discovery = new Discovery(new DiscoveryScanner(), [], [], $file);
+
+            self::assertCount(1, $discovery->resources());
+            self::assertNull($discovery->modelMap('App\\Models'));
+        } finally {
+            @\unlink($file);
+        }
+    }
+
+    public function test_a_malformed_model_map_is_ignored(): void
+    {
+        $file = $this->snapshot([
+            'models' => ['namespace' => 'App\\Models', 'map' => ['artists' => 42]],
+        ]);
+
+        try {
+            $discovery = new Discovery(new DiscoveryScanner(), [], [], $file);
+
+            self::assertNull($discovery->modelMap('App\\Models'));
+        } finally {
+            @\unlink($file);
+        }
+    }
+
+    public function test_a_live_scan_has_no_model_map(): void
+    {
+        $discovery = new Discovery(new DiscoveryScanner(), []);
+
+        self::assertNull($discovery->modelMap('App\\Models'));
+    }
+
+    /**
+     * @param array<string, mixed> $extra
+     */
+    private function snapshot(array $extra): string
+    {
+        $descriptor = new ResourceDescriptor(ArtistResource::class, 'artists', 'artists', ['default'], [Operation::FetchOne->value]);
+
+        $file = \tempnam(\sys_get_temp_dir(), 'jsonapi-snapshot-');
+        self::assertIsString($file);
+        \file_put_contents($file, '<?php return ' . \var_export(['resources' => [$descriptor->toArray()]] + $extra, true) . ';');
+
+        return $file;
+    }
 }
