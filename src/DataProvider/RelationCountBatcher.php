@@ -44,6 +44,7 @@ final class RelationCountBatcher
         private readonly DataProviderRegistry $providers,
         private readonly TypeMetadataResolver $types,
         private readonly RelationCriteriaFactory $relationCriteria,
+        private readonly ?ScopedPolymorphicMembers $polymorphicMembers = null,
     ) {}
 
     /**
@@ -85,7 +86,7 @@ final class RelationCountBatcher
             $criteria = $this->countCriteria($server, $relation, $request);
 
             $relationCounts = $this->providers->relatesToScopedType($type, $relation)
-                ? $this->countScoped($type, $parents, $relation, $criteria, $request, $serializer)
+                ? $this->countScoped($server, $type, $parents, $relation, $criteria, $request, $serializer)
                 : $provider->countRelated($type, $parents, $relation, $criteria, $request);
             foreach ($relationCounts as $wireId => $count) {
                 foreach ($byWireId[(string) $wireId] ?? [] as $parent) {
@@ -100,14 +101,15 @@ final class RelationCountBatcher
     /**
      * Counts a relation whose related type is served by its own scoping provider by fetching
      * each parent's members through that provider (the related endpoint's read), so a total
-     * never counts a row the related endpoint hides. A polymorphic relation has no single
-     * provider to count through and is refused.
+     * never counts a row the related endpoint hides. A polymorphic relation counts its members
+     * narrowed per member type, as its related endpoint lists them (ADR 0051).
      *
      * @param list<object> $parents
      *
      * @return array<string, int>
      */
     private function countScoped(
+        Server $server,
         string $type,
         array $parents,
         RelationInterface $relation,
@@ -116,12 +118,15 @@ final class RelationCountBatcher
         SerializerInterface $serializer,
     ): array {
         if (\count($relation->relatedTypes()) !== 1) {
-            throw new \LogicException(\sprintf(
-                'The polymorphic relation "%s" of type "%s" relates to a type served by its own data provider, so it '
-                . 'cannot be counted through that provider\'s scope.',
-                $relation->name(),
-                $type,
-            ));
+            $candidates = [];
+            foreach ($parents as $parent) {
+                $value = $relation->readValue($parent, $request);
+                $candidates[$serializer->getId($parent)] = \is_iterable($value) ? $value : [];
+            }
+
+            $polymorphicMembers = $this->polymorphicMembers ?? new ScopedPolymorphicMembers($this->providers);
+
+            return \array_map(\count(...), $polymorphicMembers->narrow($server, $type, $relation, $candidates));
         }
 
         $batch = $this->providers->fetchRelatedBatch(

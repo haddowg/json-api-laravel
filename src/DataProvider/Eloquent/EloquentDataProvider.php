@@ -25,6 +25,7 @@ use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortHandler;
 use haddowg\JsonApiLaravel\DataProvider\AbstractDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\CriteriaApplier;
+use haddowg\JsonApiLaravel\DataProvider\FetchesManyInterface;
 use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
 use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelatedBatch;
@@ -94,7 +95,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
  *
  * @extends AbstractDataProvider<object>
  */
-final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface
+final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface
 {
     private readonly CriteriaApplier $applier;
 
@@ -189,6 +190,28 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         }
 
         return $this->newQuery($type)->whereKey($key)->first();
+    }
+
+    /**
+     * The rows of `$type` among `$ids`, decoded and read in one query (ADR 0051).
+     *
+     * @param list<string> $ids
+     *
+     * @return list<object>
+     */
+    public function fetchMany(string $type, array $ids): array
+    {
+        $encoder = $this->encoderFor($type);
+        $keys = [];
+        foreach ($ids as $id) {
+            /** @var mixed $key */
+            $key = $encoder !== null ? $encoder->decode($id) : $id;
+            if ($key !== null) {
+                $keys[] = $key;
+            }
+        }
+
+        return $keys === [] ? [] : \array_values($this->newQuery($type)->whereKey($keys)->get()->all());
     }
 
     /**

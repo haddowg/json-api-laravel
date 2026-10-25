@@ -1,3 +1,7 @@
+---
+status: accepted; the refusal of a polymorphic relation is superseded by ADR 0051
+---
+
 # A related type with its own provider loads its rendered members through it
 
 `GET /vaults/1/coins` asks the `coins` provider for the members. Every other path that renders

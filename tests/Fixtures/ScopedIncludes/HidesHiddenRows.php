@@ -11,6 +11,7 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApiLaravel\DataProvider\AbstractDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
+use haddowg\JsonApiLaravel\DataProvider\FetchesManyInterface;
 
 /**
  * An application provider that owns ONE type and scopes it: a row whose `hidden` flag is set is
@@ -23,7 +24,7 @@ use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
  *
  * @extends AbstractDataProvider<object>
  */
-final class HidesHiddenRows extends AbstractDataProvider
+final class HidesHiddenRows extends AbstractDataProvider implements FetchesManyInterface
 {
     /**
      * @param DataProviderInterface<object> $inner
@@ -43,6 +44,15 @@ final class HidesHiddenRows extends AbstractDataProvider
         $item = $this->inner->fetchOne($type, $id);
 
         return $item !== null && !self::isHidden($item) ? $item : null;
+    }
+
+    public function fetchMany(string $type, array $ids): array
+    {
+        $rows = $this->inner instanceof FetchesManyInterface
+            ? $this->inner->fetchMany($type, $ids)
+            : \array_values(\array_filter(\array_map(fn(string $id): ?object => $this->inner->fetchOne($type, $id), $ids)));
+
+        return \array_values(\array_filter($rows, static fn(object $row): bool => !self::isHidden($row)));
     }
 
     public function fetchCollection(string $type, CollectionCriteria $criteria): CollectionResult

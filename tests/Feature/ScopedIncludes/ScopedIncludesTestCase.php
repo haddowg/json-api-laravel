@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature\ScopedIncludes;
 
+use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ScopedIncludes\Coin;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ScopedIncludes\CoinRecord;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ScopedIncludes\Mark;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ScopedIncludes\MarkRecord;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ScopedIncludes\ScopedIncludesServiceProvider;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
@@ -36,8 +39,8 @@ use PHPUnit\Framework\Attributes\Test;
  * features coin 1 and spotlights hidden coin 2; vault 2 features hidden coin 4 and spotlights
  * mark 1, so those hidden to-one targets render as empty.
  *
- * A polymorphic relation spanning types with their own providers has no single scoped read,
- * so under a provider scope rendering its members is refused (a 500) rather than shown.
+ * A polymorphic relation spanning types with their own providers is narrowed per member type,
+ * so it shows the same visible members on every path (ADR 0051).
  *
  * @internal
  */
@@ -401,66 +404,110 @@ abstract class ScopedIncludesTestCase extends Orchestra
     }
 
     #[Test]
-    public function aPolymorphicIncludeOverScopedTypesIsRefusedOrScoped(): void
+    public function aPolymorphicIncludeOverScopedTypesIsNarrowedPerMemberType(): void
     {
-        if ($this->scope() === 'provider') {
-            $this->read('/chests/1?include=holdings', expectOk: false)->assertStatus(500);
-            $this->read('/chests?include=holdings', expectOk: false)->assertStatus(500);
-
-            return;
-        }
-
         $response = $this->read('/chests/1?include=holdings');
 
         $this->assertNoHiddenRows($response);
+        self::assertSame(['1', '1'], $this->ids($response, 'data.relationships.holdings.data'));
         self::assertSame(['coins:1'], $this->included($response, 'coins'));
         self::assertSame(['marks:1'], $this->included($response, 'marks'));
+
+        $collection = $this->read('/chests?include=holdings');
+        $this->assertNoHiddenRows($collection);
+        self::assertSame(['1', '1'], $this->ids($collection, 'data.0.relationships.holdings.data'));
     }
 
     #[Test]
-    public function polymorphicLinkageOverScopedTypesIsRefusedOrScoped(): void
+    public function polymorphicLinkageOverScopedTypesIsNarrowedPerMemberType(): void
     {
-        $plain = $this->read('/chests/1', expectOk: false);
-        $relationship = $this->read('/chests/1/relationships/holdings', expectOk: false);
-        $related = $this->read('/chests/1/holdings', expectOk: false);
-
-        if ($this->scope() === 'provider') {
-            $relationship->assertStatus(500);
-            $related->assertStatus(500);
-
-            // The in-memory witness renders a to-many's linkage on every read; Eloquent only
-            // once the relation is loaded, so its plain read renders links alone.
-            if ($this->store() === 'memory') {
-                $plain->assertStatus(500);
-            } else {
-                $this->assertNoHiddenRows($plain);
-                self::assertNull($plain->json('data.relationships.holdings.data'));
-            }
-
-            return;
-        }
+        $plain = $this->read('/chests/1');
+        $relationship = $this->read('/chests/1/relationships/holdings');
+        $related = $this->read('/chests/1/holdings');
 
         $this->assertNoHiddenRows($plain);
         $this->assertNoHiddenRows($relationship);
         $this->assertNoHiddenRows($related);
+        self::assertSame(['1', '1'], $this->ids($relationship, 'data'));
         self::assertSame(['1', '1'], $this->ids($related, 'data'));
     }
 
     #[Test]
-    public function aPolymorphicCountOverScopedTypesIsRefusedOrScoped(): void
+    public function aPolymorphicCountOverScopedTypesCountsTheNarrowedMembers(): void
     {
-        $response = $this->read('/chests?withCount=holdings', self::MEDIA_TYPE . ';profile="' . self::COUNTABLE_PROFILE . '"', expectOk: false);
+        $countable = self::MEDIA_TYPE . ';profile="' . self::COUNTABLE_PROFILE . '"';
 
-        if ($this->scope() === 'provider') {
-            $response->assertStatus(500);
+        $response = $this->read('/chests?include=holdings&withCount=holdings', $countable);
+        $this->assertNoHiddenRows($response);
+        self::assertSame(2, $response->json('data.0.relationships.holdings.meta.total'));
 
-            return;
+        // A page of one holds one member, and its total counts the two the scope admits.
+        $first = $this->read('/chests/1/holdings?page[size]=1&page[number]=1&withCount=_self_', $countable);
+        self::assertCount(1, (array) $first->json('data'));
+        self::assertSame(2, $first->json('meta.total'));
+        $second = $this->read('/chests/1/holdings?page[size]=1&page[number]=2&withCount=_self_', $countable);
+        self::assertCount(1, (array) $second->json('data'));
+        $this->assertNoHiddenRows($first);
+        $this->assertNoHiddenRows($second);
+    }
+
+    #[Test]
+    public function aPolymorphicWriteNamingAHiddenMemberIsRejectedLikeAMissingOne(): void
+    {
+        if ($this->scope() !== 'provider') {
+            self::markTestSkipped('Without a scoping provider the persister resolves each id itself, and the Eloquent chest has no relation to write.');
         }
 
-        // Eloquent has no count for a set composed by `extractUsing`, so the total may be absent;
-        // when present it counts the visible members only.
+        foreach (['PATCH', 'POST', 'DELETE'] as $method) {
+            foreach ([['coins', '2'], ['marks', '3'], ['coins', '99']] as [$type, $id]) {
+                $this->sendRelationship($method, '/chests/1/relationships/holdings', [['type' => $type, 'id' => $id]])
+                    ->assertNotFound();
+            }
+        }
+
+        self::assertSame(['1', '1'], $this->ids($this->read('/chests/1/relationships/holdings'), 'data'));
+    }
+
+    #[Test]
+    public function aPolymorphicReplaceKeepsTheMembersTheClientCannotSee(): void
+    {
+        if ($this->store() !== 'memory') {
+            self::markTestSkipped('The Eloquent chest composes its holdings in a method, so it has no relation to write.');
+        }
+
+        $response = $this->sendRelationship('PATCH', '/chests/1/relationships/holdings', [['type' => 'marks', 'id' => '1']]);
         $response->assertOk();
-        self::assertContains($response->json('data.0.relationships.holdings.meta.total'), [null, 2]);
+        self::assertSame([['type' => 'marks', 'id' => '1']], $response->json('data'));
+
+        // Coin 1 left; the hidden coin 2 and mark 3 stayed.
+        $chest = $this->read('/chests/1/relationships/holdings');
+        self::assertSame([['type' => 'marks', 'id' => '1']], $chest->json('data'));
+        $stored = Accessor::get(app(\haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry::class)->forType('chests')->fetchOne('chests', '1'), 'holdings');
+        self::assertIsArray($stored);
+        $ids = [];
+        foreach ($stored as $member) {
+            self::assertIsObject($member);
+            $id = Accessor::get($member, 'id');
+            self::assertIsString($id);
+            $ids[] = $member::class . ':' . $id;
+        }
+        \sort($ids);
+        self::assertSame([CoinRecord::class . ':2', MarkRecord::class . ':1', MarkRecord::class . ':3'], $ids);
+    }
+
+    /**
+     * @param list<array{type: string, id: string}> $data
+     *
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    private function sendRelationship(string $method, string $path, array $data): TestResponse
+    {
+        $prefix = $this->server() === 'partner' ? '/partner-api' : '/api';
+
+        return $this->call($method, $prefix . $path, [], [], [], [
+            'CONTENT_TYPE' => self::MEDIA_TYPE,
+            'HTTP_ACCEPT' => self::MEDIA_TYPE,
+        ], \json_encode(['data' => $data], \JSON_THROW_ON_ERROR));
     }
 
     #[Test]

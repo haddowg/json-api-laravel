@@ -57,7 +57,7 @@ use haddowg\JsonApi\Resource\Sort\SortDirective;
  *
  * @extends AbstractDataProvider<object>
  */
-final class InMemoryDataProvider extends AbstractDataProvider
+final class InMemoryDataProvider extends AbstractDataProvider implements FetchesManyInterface
 {
     private readonly InMemoryStore $store;
 
@@ -129,6 +129,26 @@ final class InMemoryDataProvider extends AbstractDataProvider
     public function fetchOne(string $type, string $id): ?object
     {
         return $this->store->find($id);
+    }
+
+    /**
+     * The stored rows among `$ids` (ADR 0051).
+     *
+     * @param list<string> $ids
+     *
+     * @return list<object>
+     */
+    public function fetchMany(string $type, array $ids): array
+    {
+        $rows = [];
+        foreach ($ids as $id) {
+            $row = $this->store->find($id);
+            if ($row !== null) {
+                $rows[] = $row;
+            }
+        }
+
+        return $rows;
     }
 
     /**

@@ -4,4 +4,4 @@ A relation computed with `extractUsing()` yields its rows from a closure, so we 
 
 ## Consequences
 
-A polymorphic to-many that reaches a type with its own provider is still refused, computed or not (ADR 0032), rather than narrowed per member type. An included computed to-many under the Relationship Queries profile is windowed in PHP on the Eloquent provider, under the carve-out in ADR 0006.
+A polymorphic to-many that reaches a type with its own provider is narrowed per member type, computed or not (ADR 0051). An included computed to-many under the Relationship Queries profile is windowed in PHP on the Eloquent provider, under the carve-out in ADR 0006.

@@ -153,16 +153,22 @@ A to-one target of such a type is read off the parent and kept only while the pr
 `included`, the relationship and related endpoints, a `MorphTo`, and any attribute flattened
 through it with `on()`. Writing such an attribute through a hidden target is a `422`.
 
-A polymorphic to-many that reaches such a type has no single provider to read through, so
-rendering its members fails with a server error rather than showing unscoped rows. See
-[ADR 0032](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0032-a-related-type-with-its-own-provider-loads-its-members-through-it.md).
+A polymorphic to-many that reaches such a type has no single provider to read through, so its
+members are loaded off the parent as the candidates and narrowed per member type: for each
+member type with its own scoping provider, the candidate ids of every parent are looked up in
+one read through that provider, before any page is cut or count taken. Members of other types
+are kept as loaded. Linkage, `included`, both endpoints and `?withCount` all show the narrowed
+members. A provider that implements `FetchesManyInterface` answers that read with
+`fetchMany($type, $ids)`; one that doesn't is asked `fetchOne()` once per id. See
+[ADR 0051](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0051-a-polymorphic-to-many-is-narrowed-per-member-type.md).
 
 Writes go through the same provider. A persister looks related ids up in its own storage, so
 before it applies a relationship write, each id the client names for such a type must come back
 from the provider's `fetchOne()`. One that doesn't is a `404`, the same response as an id with
 no row behind it, so a client can't tell the two apart. This covers create and update bodies,
 `PATCH`/`POST`/`DELETE` on a relationship endpoint, pivot members with their `meta.pivot`, a
-`MorphTo`, and every operation in an atomic batch, where the `404` rolls the whole batch back.
+`MorphTo` or a polymorphic to-many (each id through its own member type's provider), and every
+operation in an atomic batch, where the `404` rolls the whole batch back.
 A to-many replace changes only the members the client can see: the persister is handed the
 hidden current members as well, so they stay attached with their pivot rows untouched. The
 response to a relationship write lists the members the relationship endpoint would. See
