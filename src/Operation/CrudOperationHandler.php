@@ -109,6 +109,7 @@ use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipPagination;
 use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipPagination;
+use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use haddowg\JsonApiLaravel\Server\ServerNames;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
@@ -208,6 +209,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // Names the server a dispatch that carries no request server runs on, so its
         // authorization reads that server's declarations.
         private readonly ?ServerNames $serverNames = null,
+        // Decodes wire ids through the encoder of the dispatching server's resource class.
+        private readonly ?IdEncoderResolver $idEncoders = null,
     ) {}
 
     public function handle(JsonApiOperationInterface $operation): DataResponse|RelatedResponse|IdentifierResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|AtomicResultsResponse|ErrorResponse
@@ -226,7 +229,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->relationshipCount->set(null);
         $this->relationshipPagination->set(null);
         $server = $operation->context()->server;
-        $this->relationshipLinkage->bind($server instanceof Server ? $server : null, $this->serverNameOf($operation->context()));
+        $serverName = $this->serverNameOf($operation->context());
+        $this->relationshipLinkage->bind($server instanceof Server ? $server : null, $serverName);
+        $this->idEncoders?->bind($serverName);
 
         return match (true) {
             $operation instanceof FetchResourceOperation => $this->fetch($operation),

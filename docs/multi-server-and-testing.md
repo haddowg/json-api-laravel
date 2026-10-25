@@ -78,7 +78,8 @@ final class AdminDocumentResource extends AbstractResource { /* type 'documents'
 
 The same goes for the response headers and OpenAPI tags a class declares. Each server sends
 the `cacheHeaders`, `deprecation` and `sunset` of its own class, and its document tags the
-type's operations, custom actions included, with its own class's `tags`.
+type's operations, custom actions included, with its own class's `tags`. The Eloquent
+provider decodes wire ids with the encoder on that server's class's `Id` field.
 
 A class on several servers applies its declarations on each of them. A server whose class
 declares nothing for a type gets nothing from another server's class: the type falls back to
