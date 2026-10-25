@@ -36,6 +36,8 @@ use Workbench\App\Security\Policies\AlbumApiPolicy;
  *    when the parent's `view` would deny);
  *  - `guardedArtist` — `security(read: 'inspectArtist')`, so the endpoints authorize the
  *    RENAMED `inspectArtist` ability against the parent (via {@see \haddowg\JsonApiLaravel\Authorization\Authorizer::authorizeAbility()});
+ *  - `curatedArtist` — no override, but the policy defines `viewCuratedArtist`, which then
+ *    decides whether the relation is readable at all;
  *  - `staffArtist` — `hidden()` from anyone but an admin, so for everyone else it is absent
  *    from the resource and both endpoints are a `404`.
  *
@@ -67,6 +69,7 @@ final class AlbumResource extends AbstractResource
             BelongsTo::make('artist', 'artists'),
             BelongsTo::make('publicArtist', 'artists')->storedAs('artist')->security(read: false),
             BelongsTo::make('guardedArtist', 'artists')->storedAs('artist')->security(read: 'inspectArtist'),
+            BelongsTo::make('curatedArtist', 'artists')->storedAs('artist'),
             BelongsTo::make('staffArtist', 'artists')->storedAs('artist')
                 ->hidden(static fn(): bool => !(Auth::user() instanceof User && Auth::user()->is_admin)),
         ];

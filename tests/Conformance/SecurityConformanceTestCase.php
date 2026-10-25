@@ -391,6 +391,27 @@ abstract class SecurityConformanceTestCase extends Orchestra
         self::assertArrayHasKey('data', $relationship);
     }
 
+    #[Test]
+    #[Group('spec:authorization')]
+    public function aConventionAbilityOnTheDedicatedPolicyDecidesARelation(): void
+    {
+        // AlbumApiPolicy::viewCuratedArtist() lets only a writer see `curatedArtist`.
+        $this->actingAs($this->reader());
+        $relationship = $this->readJsonApi('/secure-api/albums/1')->assertOk()->json('data.relationships.curatedArtist');
+        self::assertIsArray($relationship);
+        self::assertArrayHasKey('links', $relationship);
+        self::assertArrayNotHasKey('data', $relationship);
+        $this->readJsonApi('/secure-api/albums/1/curatedArtist')->assertStatus(403);
+        $this->readJsonApi('/secure-api/albums/1/relationships/curatedArtist')->assertStatus(403);
+
+        $this->actingAs($this->writer());
+        $relationship = $this->readJsonApi('/secure-api/albums/1')->assertOk()->json('data.relationships.curatedArtist');
+        self::assertIsArray($relationship);
+        self::assertArrayHasKey('data', $relationship);
+        $this->readJsonApi('/secure-api/albums/1/curatedArtist')->assertOk();
+        $this->readJsonApi('/secure-api/albums/1/relationships/curatedArtist')->assertOk();
+    }
+
     /**
      * @return array<string, mixed>
      */

@@ -87,9 +87,14 @@ final class RequestScopedRelationshipLinkage implements ToOneRelationshipLinkage
      */
     public function toOneTargetFor(object $model, RelationInterface $relation, JsonApiRequestInterface $request): mixed
     {
+        $permission = $this->rows->relationPermission($model, $relation);
+        if ($permission === false) {
+            return null;
+        }
+
         $target = $this->toOne->targetFor($model, $relation, $request);
 
-        return \is_object($target) && !$this->rows->allows($target, $relation) ? null : $target;
+        return $permission === null && \is_object($target) && !$this->rows->allows($target, $relation) ? null : $target;
     }
 
     /**
@@ -140,7 +145,17 @@ final class RequestScopedRelationshipLinkage implements ToOneRelationshipLinkage
         RelationInterface $relation,
         JsonApiRequestInterface $request,
     ): ?ToOneRelationshipLinkage {
+        // A permission the relation declares replaces the target type's `view` (ADR 0049).
+        $permission = \is_object($model) ? $this->rows->relationPermission($model, $relation) : null;
+        if ($permission === false) {
+            return ToOneRelationshipLinkage::none();
+        }
+
         $linkage = $this->toOne->linkageFor($model, $relation, $request);
+        if ($permission === true) {
+            return $linkage;
+        }
+
         $target = $linkage !== null ? $linkage->target : $relation->readValue($model, $request);
 
         return \is_object($target) && !$this->rows->allows($target, $relation) ? ToOneRelationshipLinkage::none() : $linkage;

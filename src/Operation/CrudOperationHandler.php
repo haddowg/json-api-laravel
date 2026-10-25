@@ -576,7 +576,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         $this->gateRead($type, $parent, $relation);
-        $this->gateRelatedList($relation);
+        $this->gateRelatedList($type, $parent, $relation);
 
         $relatedTypes = $relation->relatedTypes();
         $polymorphic = \count($relatedTypes) > 1;
@@ -823,7 +823,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         $this->gateRead($type, $parent, $relation);
-        $this->gateRelatedList($relation);
+        $this->gateRelatedList($type, $parent, $relation);
 
         // When the client addressed the relationship (linkage) endpoint with query parameters
         // (`?page`/`?sort`/`?filter`/`?withCount=_self_`), honour or reject them — NEVER silently
@@ -1204,8 +1204,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
             return;
         }
 
-        if (\is_string($read)) {
-            $this->authorizer->authorizeAbility($type, $read, $parent);
+        // An explicit string ability, or else a `view{Relation}` ability the parent's policy or
+        // the Gate defines, replaces the parent's `view` (ADR 0049).
+        $ability = \is_string($read) ? $read : ($read === null ? $this->authorizer->conventionReadAbility($type, $relation, $parent) : null);
+        if ($ability !== null) {
+            $this->authorizer->authorizeAbility($type, $ability, $parent);
 
             return;
         }
@@ -1218,9 +1221,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * list, exactly as `GET /{type}` refuses them (ADR 0045). A polymorphic to-many needs every
      * member type.
      */
-    private function gateRelatedList(RelationInterface $relation): void
+    private function gateRelatedList(string $type, object $parent, RelationInterface $relation): void
     {
-        if ($this->viewableRows === null || !$relation->isToMany()) {
+        // A read permission the relation declares replaces the related type's list gate, and
+        // gateRead() has already enforced it (ADR 0049).
+        if ($this->viewableRows === null || !$relation->isToMany()
+            || $this->viewableRows->relationPermission($parent, $relation, $type) !== null) {
             return;
         }
 

@@ -130,9 +130,9 @@ The example's `playlists.owner` gates its related/relationship reads on `inspect
 The same ability decides what the relationship shows wherever the parent is rendered: on a
 fetched resource, in a collection, and on a resource in `included`. It is checked once per
 parent, so a caller without it sees the relationship's `links` and no `data` or `meta`, and
-nothing reaches `included` through it. A relation without a string read ability shows its data
-to anyone who can see the parent. `security(read: true)` and `security(read: false)` only
-document the endpoints, so they change nothing here.
+nothing reaches `included` through it. A relation's read ability is its read permission, which
+replaces the related type's own gates for that relation; see
+[relation read permissions](#relation-read-permissions).
 
 An attribute flattened with `on()` writes onto the related row at the end of its chain. That
 write needs the related type's `update` ability (or its renamed ability) on that row, checked
@@ -147,7 +147,8 @@ the parent after the create/update ability passes.
 ## Related rows and their own type's policy
 
 Rows of another type that a response renders pass that type's own read gates, so a type's
-policy can't be read around by including it from a type that is open.
+policy can't be read around by including it from a type that is open. A relation that declares
+its own [read permission](#relation-read-permissions) uses that instead.
 
 A single related row passes its type's `view` ability (or its rename), the check
 `GET /{type}/{id}` makes on that row. That covers a to-one relationship's linkage and its
@@ -173,6 +174,210 @@ ability is not checked, exactly as for `GET /{type}`.
 
 This is a change for apps that relied on `?include` to read a single row its `view` policy
 refuses, or a to-many of a type their `viewAny` refuses. Those are now hidden.
+
+## Relation read permissions
+
+Two things decide what a relation shows. **Permission** is whether this caller may see the
+relation's data at all. **Scoping** is which rows exist: Eloquent global scopes and scoping
+providers. Scoping always applies, may leave no rows at all, and every count follows it.
+
+By default the permission is the related type's own: its `viewAny` gate for a to-many and its
+`view` gate for each to-one row, as described above. A relation can declare its own permission
+instead, which then replaces the related type's gates for that relation only. In order of
+precedence:
+
+1. `->security(read: 'ability')`, checked against the parent.
+2. A `view{Relation}` ability on the parent type's policy (its dedicated `policy:` class or the
+   model's Gate policy) or defined on the Gate, checked against the parent. For a `tags`
+   relation on posts that is `PostPolicy::viewTags($user, $post)`. It counts only when the
+   method or ability exists, so a policy without it leaves the related type's gates in charge.
+   A name that would collide with a standard ability, such as a relation named `any`, is
+   skipped.
+3. `->security(read: true)` or `->security(read: false)`, which declare the relation without
+   enforcing anything in the app.
+
+When the permission allows, the relation's data renders under scoping alone, even if the
+related type's `viewAny` or `view` would refuse: its linkage, its `included` resources, both of
+its endpoints, `?withCount`, the Relationship Queries window and `on()` through a to-one. When it
+refuses, the relationship renders only its `links`, its related and relationship endpoints answer
+`403`, and an `on()` attribute through a refused to-one reads `null` and can't be written (a
+`422`). Writes are not affected.
+
+See [permission or scope?](#permission-or-scope) for both cases worked through.
+
+## Scoping access per user
+
+A scope decides which rows of a type exist for the current user. Write it once, on the type,
+and everything that reaches the type honours it. The examples below are the test fixtures in
+`tests/Fixtures/OwnedRows`, where a project has tasks and each task has an owner.
+
+### With an Eloquent global scope
+
+```php
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Scope;
+use Illuminate\Support\Facades\Auth;
+
+final class OwnedByCurrentUser implements Scope
+{
+    public function apply(Builder $builder, Model $model): void
+    {
+        $builder->where($model->qualifyColumn('owner_id'), Auth::id());
+    }
+}
+
+#[ScopedBy(OwnedByCurrentUser::class)]
+final class Task extends Model
+{
+    protected $table = 'or_tasks';
+}
+```
+
+Eloquent applies the scope to every query for the model, including relation reads, so for a
+signed-in user it limits:
+
+- the rows of `GET /tasks` and its `meta.page.total`;
+- every relationship that reaches `tasks`: the pages and totals of the related and
+  relationship endpoints, linkage, `included` resources, `?withCount`, and the Relationship
+  Queries window and its count.
+
+Project 1 holds three tasks, and user 1 owns two of them. The response is trimmed to the parts
+that matter here:
+
+```http
+GET /api/projects/1?include=tasks&withCount=tasks
+Accept: application/vnd.api+json; profile="https://haddowg.github.io/json-api/profiles/countable/"
+```
+
+```json
+{
+  "data": {
+    "type": "projects",
+    "id": "1",
+    "attributes": { "name": "Launch" },
+    "relationships": {
+      "tasks": {
+        "links": {
+          "self": { "href": "http://localhost/api/projects/1/relationships/tasks" },
+          "related": { "href": "http://localhost/api/projects/1/tasks" }
+        },
+        "meta": { "total": 2 },
+        "data": [
+          { "type": "tasks", "id": "1" },
+          { "type": "tasks", "id": "3" }
+        ]
+      }
+    }
+  },
+  "included": [
+    { "type": "tasks", "id": "1", "attributes": { "title": "Draft" } },
+    { "type": "tasks", "id": "3", "attributes": { "title": "Ship" } }
+  ]
+}
+```
+
+`GET /api/projects/1/tasks?withCount=_self_` answers the same two tasks with `meta.total` of 2,
+and a `relatedQuery[tasks][filter]` narrows the user's tasks rather than all of them.
+
+### With a scoping provider
+
+A type that can't use a global scope, because it isn't an Eloquent model, gets the same
+behaviour from a [provider that scopes its rows](custom-data-providers.md#a-provider-that-scopes-its-rows).
+Narrow the rows before running the request's criteria, so filters, sorting, paging and counts
+all work on the user's rows:
+
+```php
+final class OwnTasksOnly extends AbstractDataProvider
+{
+    /** @param array<array-key, TaskRecord> $tasks */
+    public function __construct(private readonly array $tasks) {}
+
+    public function supports(string $type): bool
+    {
+        return $type === 'tasks';
+    }
+
+    public function fetchOne(string $type, string $id): ?object
+    {
+        $task = $this->tasks[$id] ?? null;
+
+        return $task !== null && $this->owns($task) ? $task : null;
+    }
+
+    public function fetchCollection(string $type, CollectionCriteria $criteria): CollectionResult
+    {
+        return $this->query($this->tasks)->fetchCollection($type, $criteria);
+    }
+
+    public function fetchRelatedCollection(
+        string $relatedType,
+        object $parent,
+        RelationInterface $relation,
+        CollectionCriteria $criteria,
+        JsonApiRequestInterface $request,
+    ): CollectionResult {
+        $members = $relation->readValue($parent, $request);
+
+        return $this->query(is_iterable($members) ? $members : [])->fetchCollection($relatedType, $criteria);
+    }
+
+    private function query(iterable $rows): InMemoryDataProvider
+    {
+        $owned = [];
+        foreach ($rows as $row) {
+            if ($row instanceof TaskRecord && $this->owns($row)) {
+                $owned[$row->id] = $row;
+            }
+        }
+
+        return new InMemoryDataProvider('tasks', $owned, identify: static fn(object $task): string => $task instanceof TaskRecord ? $task->id : '');
+    }
+
+    private function owns(TaskRecord $task): bool
+    {
+        return $task->owner_id === (string) Auth::id();
+    }
+}
+```
+
+Register it with `JsonApi::provider(new OwnTasksOnly($tasks))`. The same request answers the
+same document as with the global scope.
+
+### Permission or scope?
+
+`viewAny`, `view` and a relation's read permission decide whether data shows at all. A refusal
+hides the whole collection, the whole row or the whole relation. A scope decides which rows
+exist. It can leave zero rows, and it is the only thing that should hide individual rows from a
+list, because only the query can keep pages full and counts exact.
+
+Exposing a relation of a type the caller can't list. Here only an admin may list tasks through
+`GET /tasks`, but anyone who can read may see a project's tasks:
+
+```php
+final class TaskPolicy
+{
+    public function viewAny(User $user): bool
+    {
+        return $user->is_admin;
+    }
+}
+
+final class ProjectPolicy
+{
+    public function viewTasks(User $user, object $project): bool
+    {
+        return $user->can_read;
+    }
+}
+```
+
+`GET /tasks` is a `403` for a reader, while `GET /projects/1?include=tasks` lists the tasks the
+scope admits, with exact counts.
+
+Blocking one relation of a type the caller can list. With no `TaskPolicy`, `GET /tasks` lists the
+user's tasks for anyone, but the same `ProjectPolicy::viewTasks()` refuses a user who can't read.
+That user sees only the project's `tasks` links, and `GET /projects/1/tasks` answers `403`.
 
 ## Custom actions
 

@@ -96,6 +96,53 @@ final class Authorizer
     }
 
     /**
+     * Abilities a relation's convention name may not take, since they already mean something
+     * for the parent type (a relation named `any` would otherwise read as `viewAny`).
+     */
+    private const array STANDARD_ABILITIES = ['viewAny', 'view', 'create', 'update', 'delete', 'restore', 'forceDelete'];
+
+    /**
+     * The read permission `$relation` declares on `$parent` (ADR 0049): `true` or `false` when it
+     * declares one, `null` when it declares none and the related type's own gates apply. A
+     * string `security(read:)` is checked against the parent; a bool one documents the
+     * relation and allows it; otherwise a `view{Relation}` ability the parent type's policy or
+     * the Gate defines is checked against the parent.
+     */
+    public function relationReadPermission(string $parentType, \haddowg\JsonApi\Resource\Field\RelationInterface $relation, object $parent): ?bool
+    {
+        $read = $relation->securityRead();
+        if (\is_bool($read)) {
+            return true;
+        }
+
+        $ability = \is_string($read) ? $read : $this->conventionReadAbility($parentType, $relation, $parent);
+
+        return $ability === null ? null : $this->allowsAbility($parentType, $ability, $parent);
+    }
+
+    /**
+     * The `view{Relation}` ability for `$relation` on `$parent`, or `null` when nothing defines
+     * it: no method of that name on the type's dedicated policy or the model's Gate policy, and
+     * no Gate ability. Only a defined ability declares a permission, because the Gate denies an
+     * undefined one.
+     */
+    public function conventionReadAbility(string $parentType, \haddowg\JsonApi\Resource\Field\RelationInterface $relation, object $parent): ?string
+    {
+        $ability = 'view' . \Illuminate\Support\Str::studly($relation->name());
+        if (\in_array($ability, self::STANDARD_ABILITIES, true)) {
+            return null;
+        }
+
+        /** @var mixed $policy */
+        $policy = $this->config[$parentType]->policy ?? $this->gate->getPolicyFor($parent);
+        if ((\is_object($policy) || \is_string($policy)) && \method_exists($policy, $ability)) {
+            return $ability;
+        }
+
+        return $this->gate->has($ability) ? $ability : null;
+    }
+
+    /**
      * Whether the current user passes {@see authorize()} for `$operation` on `$type`.
      */
     public function allows(string $type, Operation $operation, ?object $subject): bool
