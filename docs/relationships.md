@@ -270,3 +270,9 @@ MorphToMany::make('items', ['tracks', 'albums', 'artists'])
 
 A polymorphic to-many carries no shared filter/sort vocabulary, so `?filter`/`?sort` on its
 endpoint are a `400` while `?page` slices.
+
+When a member type is served by its own scoping provider, the members are narrowed per member
+type to the rows that provider admits, before the page is cut, so pages stay full and every
+count matches. A write naming a member resolves it through its own member type's provider: a
+hidden one is a `404`, and a replace keeps the hidden current members attached
+([custom data providers](custom-data-providers.md#a-provider-that-scopes-its-rows)).

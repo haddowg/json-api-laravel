@@ -84,6 +84,7 @@ use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\RelationshipWindowBatcher;
+use haddowg\JsonApiLaravel\DataProvider\ScopedPolymorphicMembers;
 use haddowg\JsonApiLaravel\DataProvider\ScopedRelationshipWrites;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Event\AfterCreateEvent;
@@ -162,6 +163,8 @@ use Psr\Log\LoggerInterface;
 final class CrudOperationHandler implements OperationHandlerInterface
 {
     private ?ScopedRelationshipWrites $scopedWrites = null;
+
+    private ?ScopedPolymorphicMembers $polymorphicMembers = null;
 
     public function __construct(
         private readonly DataProviderRegistry $providers,
@@ -616,24 +619,6 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
             $relatedProvider = $this->providers->forType($relatedType);
 
-            // A polymorphic page is read through its first type's provider alone. A member type
-            // with a different scoping provider would never see its rows filtered, so refuse.
-            if ($polymorphic) {
-                foreach ($relatedTypes as $memberType) {
-                    $scoped = $this->providers->scopedRelatedProvider($type, $memberType);
-                    if ($scoped !== null && $scoped !== $relatedProvider) {
-                        throw new \LogicException(\sprintf(
-                            'The polymorphic relation "%s" of type "%s" relates to "%s", which is served by a different data '
-                            . 'provider than "%s", so its members cannot be read through one provider\'s scope.',
-                            $relationshipName,
-                            $type,
-                            $memberType,
-                            $relatedType,
-                        ));
-                    }
-                }
-            }
-
             // A provider that queries the pivot join also accepts the relation's pivot
             // filters and sorts, and returns each member with its pivot row.
             $pivotQuery = !$polymorphic && $this->pivotQueryingProvider($parent, $relation) !== null;
@@ -651,7 +636,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // resource ⊕ relation-scoped), so a mistyped value is the same 400 as elsewhere.
             $this->filterValidator->validate($operation->queryParameters()->filter, $criteria->filters);
 
-            $result = $relatedProvider->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
+            // A polymorphic relation reaching a scoped type is read off the parent and narrowed per
+            // member type before the page is cut, so the page stays full (ADR 0051).
+            $result = $polymorphic && $this->providers->relatesToScopedType($type, $relation)
+                ? $this->polymorphicMembers()->window($criteria, $this->narrowedMembers($server, $type, $parent, $relation, $request))
+                : $relatedProvider->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
 
             $serializer = $polymorphic
                 ? $this->polymorphicSerializer($relation, $server)
@@ -671,13 +660,16 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 }
             }
 
-            // A polymorphic page spans types (no single related type), so its includes are
-            // not batch-preloaded, its relations are not windowed, and it carries no single
-            // related type to count.
+            // A polymorphic page spans types (no single related type), so its relations are not
+            // windowed and it carries no single related type to count. Its includes and linkage
+            // are preloaded per member type, so a member's own relation into a scoped type shows
+            // only the rows that type admits (ADR 0051).
             if (!$polymorphic) {
                 $this->preloadIncludes($server, $items, $relatedType, $request);
                 $this->applyRelationshipWindows($server, $relatedType, $items, $request);
                 $this->applyRelationshipCounts($server, $relatedType, $items, $request);
+            } else {
+                $this->preloadPolymorphicIncludes($server, $relation, $items, $request);
             }
 
             // A cursor (keyset) related page: the provider minted the boundary tokens
@@ -872,7 +864,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         } elseif ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation)) {
             // The whole association, but loaded through the related type's own scoping provider
             // rather than read off the parent, so it lists exactly what the related endpoint does.
-            $this->scopeRelationshipEndpoint($type, $parent, $relation, $operation->queryParameters(), $request);
+            $this->scopeRelationshipEndpoint($server, $type, $parent, $relation, $operation->queryParameters(), $request);
         }
 
         $response = IdentifierResponse::forRelationship(
@@ -962,10 +954,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * Supplies a plain (unqueried) to-many relationship endpoint's linkage out-of-band from the
-     * related type's own scoping provider. A polymorphic relation has no single provider to
-     * read through, so it is refused rather than read off the parent.
+     * related type's own scoping provider. A polymorphic relation is read off the parent and
+     * narrowed per member type instead (ADR 0051).
      */
     private function scopeRelationshipEndpoint(
+        Server $server,
         string $type,
         object $parent,
         RelationInterface $relation,
@@ -974,12 +967,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
     ): void {
         $relatedTypes = $relation->relatedTypes();
         if (\count($relatedTypes) !== 1) {
-            throw new \LogicException(\sprintf(
-                'The polymorphic relation "%s" of type "%s" relates to a type served by its own data provider, so its '
-                . 'linkage cannot be read through that provider\'s scope.',
-                $relation->name(),
-                $type,
+            $this->relationshipLinkage->scope(new WindowedRelationshipLinkage(
+                [\spl_object_id($parent) => [$relation->name() => new RelationshipLinkage($this->narrowedMembers($server, $type, $parent, $relation, $request))]],
             ));
+
+            return;
         }
 
         $provider = $this->providers->scopedRelatedProvider($type, $relatedTypes[0]);
@@ -992,6 +984,24 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->relationshipLinkage->scope(new WindowedRelationshipLinkage(
             [\spl_object_id($parent) => [$relation->name() => new RelationshipLinkage($items)]],
         ));
+    }
+
+    /**
+     * The members a polymorphic `$relation` holds on `$parent`, narrowed per member type to the
+     * rows each scoped type's provider admits (ADR 0051).
+     *
+     * @return list<object>
+     */
+    private function narrowedMembers(Server $server, string $type, object $parent, RelationInterface $relation, JsonApiRequestInterface $request): array
+    {
+        $value = $relation->readValue($parent, $request);
+
+        return $this->polymorphicMembers()->narrow($server, $type, $relation, [\is_iterable($value) ? $value : []])[0];
+    }
+
+    private function polymorphicMembers(): ScopedPolymorphicMembers
+    {
+        return $this->polymorphicMembers ??= new ScopedPolymorphicMembers($this->providers);
     }
 
     /**
@@ -1094,6 +1104,32 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->relationshipLinkage->resetScope();
         if ($request !== null && $entities !== []) {
             $this->relationshipLinkage->scope($this->includeBatcher->preload($server, $entities, $type, $request));
+        }
+    }
+
+    /**
+     * {@see preloadIncludes()} for a page of mixed member types: each type's members are
+     * preloaded as their own page, and every type's scoped linkage is kept.
+     *
+     * @param list<object> $items
+     */
+    private function preloadPolymorphicIncludes(Server $server, RelationInterface $relation, array $items, JsonApiRequestInterface $request): void
+    {
+        $this->relationshipLinkage->resetScope();
+
+        $byType = [];
+        foreach ($items as $item) {
+            $memberType = $relation->resolveSerializer($item, $server)?->getType($item);
+            if ($memberType !== null && $this->providers->supportsType($memberType)) {
+                $byType[$memberType][] = $item;
+            }
+        }
+
+        foreach ($byType as $memberType => $members) {
+            $scoped = $this->includeBatcher->preload($server, $members, $memberType, $request);
+            if ($scoped !== null) {
+                $this->relationshipLinkage->addScope($scoped);
+            }
         }
     }
 
@@ -1839,14 +1875,6 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // read back and no pivot map to fetch.
         $writeOnly = $relation->isWriteOnlyFor($request);
         $scopeEcho = !$writeOnly && $relation->isToMany() && $this->providers->relatesToScopedType($type, $relation);
-        if ($scopeEcho && \count($relation->relatedTypes()) !== 1) {
-            throw new \LogicException(\sprintf(
-                'The polymorphic relation "%s" of type "%s" relates to a type served by its own data provider, so its '
-                . 'linkage cannot be read through that provider\'s scope.',
-                $relation->name(),
-                $type,
-            ));
-        }
 
         // The before-relationship-mutate lifecycle gate (a throw aborts before the
         // persister applies the change), then the storage-correct apply, then the after
@@ -1863,7 +1891,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             return $changed;
         });
         if ($scopeEcho) {
-            $this->scopeRelationshipEndpoint($type, $parent, $relation, $operation->queryParameters(), $request);
+            $this->scopeRelationshipEndpoint($server, $type, $parent, $relation, $operation->queryParameters(), $request);
         }
 
         // The 200 linkage echo carries `meta.pivot` for a pivot relation (Eloquent-only),

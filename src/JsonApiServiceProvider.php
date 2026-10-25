@@ -32,6 +32,7 @@ use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\RelationshipWindowBatcher;
+use haddowg\JsonApiLaravel\DataProvider\ScopedPolymorphicMembers;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\DiscoveryScanner;
 use haddowg\JsonApiLaravel\Eloquent\ModelMapResolver;
@@ -671,6 +672,7 @@ final class JsonApiServiceProvider extends ServiceProvider
             return new RelatedIncludeBatcher(
                 $app->make(DataProviderRegistry::class),
                 $app->make(TypeMetadataResolver::class),
+                $app->make(ScopedPolymorphicMembers::class),
             );
         });
 
@@ -679,6 +681,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(DataProviderRegistry::class),
                 $app->make(TypeMetadataResolver::class),
                 $app->make(RelationCriteriaFactory::class),
+                $app->make(ScopedPolymorphicMembers::class),
             );
         });
 

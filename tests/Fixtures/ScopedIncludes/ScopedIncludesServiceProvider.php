@@ -116,7 +116,9 @@ final class ScopedIncludesServiceProvider extends ServiceProvider
         JsonApi::provider($vaultProvider);
         JsonApi::persister(new InMemoryDataPersister('vaults', $vaultProvider->store(), static fn(): VaultRecord => new VaultRecord('', ''), $resolve));
         JsonApi::persister(new InMemoryDataPersister('coins', $coinStore->store(), static fn(): CoinRecord => new CoinRecord('', ''), $resolve));
-        JsonApi::provider(new InMemoryDataProvider('chests', $chests, identify: $identify, coordinator: $coordinator));
+        $chestProvider = new InMemoryDataProvider('chests', $chests, identify: $identify, coordinator: $coordinator);
+        JsonApi::provider($chestProvider);
+        JsonApi::persister(new InMemoryDataPersister('chests', $chestProvider->store(), static fn(): ChestRecord => new ChestRecord('', ''), $resolve));
         JsonApi::provider(new HidesHiddenRows('coins', $coinStore));
         JsonApi::provider(new HidesHiddenRows('marks', $markStore));
     }

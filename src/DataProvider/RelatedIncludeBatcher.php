@@ -53,8 +53,7 @@ use Illuminate\Database\Eloquent\Model;
  * off it. Its members load through the related provider, per parent, whenever they render
  * (included, or as linkage without an include), batching on or off, and are handed back as
  * out-of-band linkage rather than written onto the parent. A polymorphic relation reaching
- * such a type is refused when its members would render, since no single provider can scope
- * them. See ADR 0032.
+ * such a type has its members narrowed per member type instead (ADR 0051).
  *
  * Beyond the `?include` tree it also preloads the one relation class that renders linkage
  * on EVERY read regardless of `?include` — an **eager monomorphic to-one** (`BelongsTo`/
@@ -92,6 +91,7 @@ final class RelatedIncludeBatcher
     public function __construct(
         private readonly DataProviderRegistry $providers,
         private readonly TypeMetadataResolver $types,
+        private readonly ScopedPolymorphicMembers $polymorphicMembers,
     ) {}
 
     /**
@@ -263,8 +263,10 @@ final class RelatedIncludeBatcher
 
             if ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation)) {
                 $targets = $this->loadScoped($server, $entities, $type, $relation, $request, $included, $linkages);
-                if ($included && $targets !== []) {
-                    $this->preloadLevel($server, $targets, $relation->relatedTypes()[0], $request, $childPath, $maxDepth, $allowedPaths, true, $batch, $linkages, $reach);
+                if ($included) {
+                    foreach ($targets as $targetType => $typed) {
+                        $this->preloadLevel($server, $typed, $targetType, $request, $childPath, $maxDepth, $allowedPaths, true, $batch, $linkages, $reach);
+                    }
                 }
 
                 continue;
@@ -298,13 +300,14 @@ final class RelatedIncludeBatcher
      * go into `$linkages` for out-of-band rendering, never onto the parent, which may be a
      * shared in-memory object. Returns the loaded members of an included relation.
      *
-     * A polymorphic relation reaching a scoped type has no single provider to load through and
-     * core reads its linkage off the parent, so it is refused when its members would render.
+     * A polymorphic relation has no single provider to load through, so its members are loaded
+     * off each parent as the candidates and narrowed per member type through each scoped type's
+     * provider, in one lookup per type for the whole level ({@see ScopedPolymorphicMembers}).
      *
      * @param list<object>                                   $entities
      * @param array<int, array<string, RelationshipLinkage>> $linkages
      *
-     * @return list<object>
+     * @return array<string, list<object>> the loaded members of an included relation, by type
      */
     private function loadScoped(
         Server $server,
@@ -325,13 +328,24 @@ final class RelatedIncludeBatcher
         }
 
         if (\count($relatedTypes) !== 1) {
-            throw new \LogicException(\sprintf(
-                'The polymorphic relation "%s" of type "%s" relates to a type served by its own data provider, so its '
-                . 'members cannot be rendered through that provider\'s scope. Serve the related types through the '
-                . 'reference provider, or keep the relation out of includes and linkage.',
-                $relation->name(),
-                $type,
-            ));
+            $candidates = [];
+            foreach ($rendering as $entity) {
+                $value = $relation->readValue($entity, $request);
+                $candidates[\spl_object_id($entity)] = \is_iterable($value) ? $value : [];
+            }
+
+            $targets = [];
+            foreach ($this->polymorphicMembers->narrow($server, $type, $relation, $candidates) as $objectId => $items) {
+                $linkages[$objectId][$relation->name()] = new RelationshipLinkage($items);
+                foreach ($items as $item) {
+                    $memberType = $relation->resolveSerializer($item, $server)?->getType($item);
+                    if ($memberType !== null) {
+                        $targets[$memberType][] = $item;
+                    }
+                }
+            }
+
+            return $targets;
         }
 
         $provider = $this->providers->scopedRelatedProvider($type, $relatedTypes[0]);
@@ -343,7 +357,7 @@ final class RelatedIncludeBatcher
             $items = $this->itemsOf($provider->fetchRelatedCollection($relatedTypes[0], $entity, $relation, $criteria, $request));
             $linkages[\spl_object_id($entity)][$relation->name()] = new RelationshipLinkage($items);
             foreach ($items as $item) {
-                $targets[] = $item;
+                $targets[$relatedTypes[0]][] = $item;
             }
         }
 
