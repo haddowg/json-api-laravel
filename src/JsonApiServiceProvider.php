@@ -429,14 +429,15 @@ final class JsonApiServiceProvider extends ServiceProvider
         // The `type → model` map behind the auto-registered reference Eloquent pair
         // (ADR 0019). Resolved lazily off the memoized discovery descriptors (a snapshot
         // load or a live scan alike) at first registry use — never at boot — so
-        // `route:cache` / `jsonapi:optimize` timing is untouched.
+        // `route:cache` / `jsonapi:optimize` timing is untouched. A snapshot written by
+        // `jsonapi:optimize` carries the resolved map, so no request inflects (ADR 0053).
         $this->app->singleton(ModelMapResolver::class, static function (Container $app): ModelMapResolver {
             /** @var Discovery $discovery */
             $discovery = $app->make(Discovery::class);
             /** @var string|null $namespace */
             $namespace = config('jsonapi.eloquent.model_namespace', 'App\\Models');
 
-            return new ModelMapResolver($discovery->resources(), $namespace);
+            return new ModelMapResolver($discovery->resources(), $namespace, $discovery->modelMap($namespace));
         });
     }
 

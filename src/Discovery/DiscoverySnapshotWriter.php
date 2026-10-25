@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Discovery;
 
+use haddowg\JsonApiLaravel\Eloquent\ModelMapResolver;
+
 /**
  * Writes (and clears) the discovery snapshot the {@see Discovery} loader consumes —
  * the WRITE side of the Phase-0 snapshot cache, driven by the optimize pipeline (PLAN
@@ -14,7 +16,9 @@ namespace haddowg\JsonApiLaravel\Discovery;
  * It writes only the plain, `var_export`-able snapshot the loader expects — the resource
  * descriptors as array forms plus the discovered provider/persister/translator and
  * described-error class-strings — so a cached configuration is behaviourally identical to
- * a live scan.
+ * a live scan. It also writes the resolved Eloquent `type → model` map with the namespace
+ * it was resolved under, so a request served from the snapshot runs no inflection
+ * (ADR 0053).
  *
  * The snapshot is **opt-in**: it is written only when `jsonapi.discovery.cache` names a
  * path (null keeps the always-scan default). `php artisan optimize` writes it,
@@ -22,11 +26,14 @@ namespace haddowg\JsonApiLaravel\Discovery;
  */
 final class DiscoverySnapshotWriter
 {
-    public function __construct(private readonly Discovery $discovery) {}
+    public function __construct(
+        private readonly Discovery $discovery,
+        private readonly ?ModelMapResolver $models = null,
+    ) {}
 
     /**
      * Writes the discovery snapshot to `$path` as a `require`-able PHP file returning the
-     * loader's `{resources, providers, persisters, translators}` array.
+     * loader's `{resources, providers, persisters, translators, …, models}` array.
      */
     public function write(string $path): void
     {
@@ -52,6 +59,14 @@ final class DiscoverySnapshotWriter
             ),
             'errors' => $this->discovery->errors(),
         ];
+
+        if ($this->models !== null) {
+            // Resolved live, so the conflict check runs against the declarations being written.
+            $snapshot['models'] = [
+                'namespace' => $this->models->modelNamespace(),
+                'map' => $this->models->resolve(),
+            ];
+        }
 
         $php = '<?php' . "\n\n" . 'return ' . \var_export($snapshot, true) . ';' . "\n";
 

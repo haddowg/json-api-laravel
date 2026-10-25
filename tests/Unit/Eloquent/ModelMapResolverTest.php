@@ -12,6 +12,7 @@ use haddowg\JsonApiLaravel\Tests\Fixtures\ModelMap\JsonApi\RecordingResource;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ModelMap\Models\Pressing;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ModelMap\Models\VinylRecord;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ModelMap\Unservable\GhostResource;
+use haddowg\JsonApiLaravel\Tests\Support\InflectionSpy;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
@@ -138,6 +139,73 @@ final class ModelMapResolverTest extends TestCase
         $this->expectExceptionMessage('JSON:API type "recordings" is mapped to two different Eloquent models');
 
         $resolver->map();
+    }
+
+    public function test_the_live_resolution_inflects_each_convention_type(): void
+    {
+        InflectionSpy::install();
+
+        try {
+            $resolver = new ModelMapResolver(
+                [$this->descriptor(PressingResource::class, 'pressings')],
+                self::MODEL_NAMESPACE,
+            );
+
+            self::assertSame(['pressings' => Pressing::class], $resolver->map());
+            self::assertSame(1, InflectionSpy::$singularized);
+        } finally {
+            InflectionSpy::uninstall();
+        }
+    }
+
+    public function test_a_map_resolved_ahead_of_time_is_returned_without_inflecting(): void
+    {
+        InflectionSpy::install();
+
+        try {
+            $resolver = new ModelMapResolver(
+                [$this->descriptor(PressingResource::class, 'pressings')],
+                self::MODEL_NAMESPACE,
+                ['pressings' => Pressing::class],
+            );
+
+            self::assertSame(['pressings' => Pressing::class], $resolver->map());
+            self::assertSame(0, InflectionSpy::$singularized);
+        } finally {
+            InflectionSpy::uninstall();
+        }
+    }
+
+    public function test_an_empty_map_resolved_ahead_of_time_is_kept_as_empty(): void
+    {
+        $resolver = new ModelMapResolver(
+            [$this->descriptor(PressingResource::class, 'pressings')],
+            self::MODEL_NAMESPACE,
+            [],
+        );
+
+        self::assertSame([], $resolver->map());
+    }
+
+    public function test_resolve_ignores_a_map_resolved_ahead_of_time_and_still_rejects_a_conflict(): void
+    {
+        // The snapshot writer calls resolve(), so the conflict check runs at optimize time
+        // even when the app it runs in loaded an earlier snapshot's map.
+        $resolver = new ModelMapResolver(
+            [
+                $this->descriptor(RecordingResource::class, 'recordings', model: VinylRecord::class),
+                $this->descriptor(GhostResource::class, 'recordings', model: Pressing::class),
+            ],
+            null,
+            ['recordings' => VinylRecord::class],
+        );
+
+        self::assertSame(['recordings' => VinylRecord::class], $resolver->map());
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('JSON:API type "recordings" is mapped to two different Eloquent models');
+
+        $resolver->resolve();
     }
 
     /**

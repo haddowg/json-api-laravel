@@ -65,6 +65,13 @@ final class Discovery
     private ?array $errors = null;
 
     /**
+     * The Eloquent model map the snapshot carries, with the namespace it was resolved under.
+     *
+     * @var array{namespace: ?string, map: array<string, class-string<\Illuminate\Database\Eloquent\Model>>}|null
+     */
+    private ?array $modelMap = null;
+
+    /**
      * @param list<string>       $paths           the directories to scan
      * @param list<class-string> $explicitClasses classes registered via `JsonApi::register()`
      * @param string|null        $cachePath       an optional pre-built snapshot file (resources + provider/persister class-strings); loaded instead of scanning when present
@@ -240,6 +247,24 @@ final class Discovery
     }
 
     /**
+     * The `type → Eloquent model` map the loaded snapshot carries, or `null` when there is
+     * no snapshot, the snapshot predates the map, or it was resolved under a different
+     * `$modelNamespace` than the one now configured. A `null` means resolve it live.
+     *
+     * @return array<string, class-string<\Illuminate\Database\Eloquent\Model>>|null
+     */
+    public function modelMap(?string $modelNamespace): ?array
+    {
+        $this->resources();
+
+        if ($this->modelMap === null || $this->modelMap['namespace'] !== $modelNamespace) {
+            return null;
+        }
+
+        return $this->modelMap['map'];
+    }
+
+    /**
      * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>, serializers: list<SerializerDescriptor>, hydrators: list<HydratorDescriptor>, errors: list<class-string<\haddowg\JsonApi\Exception\DescribedErrorInterface>>}
      */
     private function resolve(): array
@@ -254,6 +279,7 @@ final class Discovery
             $this->serializers = $snapshot['serializers'];
             $this->hydrators = $snapshot['hydrators'];
             $this->errors = $snapshot['errors'];
+            $this->modelMap = $snapshot['models'];
 
             return $snapshot;
         }
@@ -290,7 +316,7 @@ final class Discovery
      * configuration is behaviourally identical to a scanned one. Missing keys degrade
      * gracefully to empty lists (a resources-only file still loads its resources).
      *
-     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>, serializers: list<SerializerDescriptor>, hydrators: list<HydratorDescriptor>, errors: list<class-string<\haddowg\JsonApi\Exception\DescribedErrorInterface>>}|null
+     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>, serializers: list<SerializerDescriptor>, hydrators: list<HydratorDescriptor>, errors: list<class-string<\haddowg\JsonApi\Exception\DescribedErrorInterface>>, models: array{namespace: ?string, map: array<string, class-string<\Illuminate\Database\Eloquent\Model>>}|null}|null
      */
     private function loadSnapshot(): ?array
     {
@@ -313,7 +339,39 @@ final class Discovery
             'serializers' => $this->readSerializers($data['serializers'] ?? []),
             'hydrators' => $this->readHydrators($data['hydrators'] ?? []),
             'errors' => $this->readErrors($data['errors'] ?? []),
+            'models' => $this->readModelMap($data['models'] ?? null),
         ];
+    }
+
+    /**
+     * Reads the snapshot's Eloquent model map, or `null` when it is absent or malformed
+     * (a snapshot written before the map existed), so the resolver falls back to resolving
+     * it live.
+     *
+     * @return array{namespace: ?string, map: array<string, class-string<\Illuminate\Database\Eloquent\Model>>}|null
+     */
+    private function readModelMap(mixed $entry): ?array
+    {
+        if (!\is_array($entry) || !\array_key_exists('namespace', $entry) || !\is_array($entry['map'] ?? null)) {
+            return null;
+        }
+
+        $namespace = $entry['namespace'];
+        if ($namespace !== null && !\is_string($namespace)) {
+            return null;
+        }
+
+        $map = [];
+        foreach ($entry['map'] as $type => $model) {
+            if (!\is_string($type) || !\is_string($model) || $model === '') {
+                return null;
+            }
+
+            /** @var class-string<\Illuminate\Database\Eloquent\Model> $model */
+            $map[$type] = $model;
+        }
+
+        return ['namespace' => $namespace, 'map' => $map];
     }
 
     /**

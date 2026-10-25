@@ -30,7 +30,14 @@ Three phases, mirroring the bundle's two warmers plus a deploy-time safety check
 2. **Discovery snapshot (opt-in).** When `jsonapi.discovery.cache` names a path, it writes the
    `var_export`-able discovery snapshot there, so route registration and OpenAPI projection
    become a pure function of the cache — this is what makes `route:cache` safe (see
-   [routing](routing.md#route-cache-safety)).
+   [routing](routing.md#route-cache-safety)). The snapshot also stores the resolved
+   [Eloquent `type → model` map](eloquent.md#the-model-map-three-tiers) with the
+   `jsonapi.eloquent.model_namespace` it was resolved under. Without it, every request
+   singularizes each type name to guess its model, roughly 3.4 ms a request at 500 types.
+   Writing the map runs the same check as a live resolution, so a type declared against two
+   different models fails the command. A snapshot written by an older release has no map and
+   is resolved live as before, and so is one whose namespace no longer matches the config. See
+   [ADR 0053](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0053-the-discovery-snapshot-carries-the-resolved-model-map.md).
 3. **Artifact warming (optional, non-fatal).** Pre-builds the OpenAPI document + JSON Schema
    artifacts so the `/docs.json` / `/schemas.json` controllers serve a warmed document, and
    stores which route serves each document when the app routes the controller itself (see
