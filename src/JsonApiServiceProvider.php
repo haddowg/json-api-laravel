@@ -74,6 +74,7 @@ use haddowg\JsonApiLaravel\Server\OutputTimezoneConfig;
 use haddowg\JsonApiLaravel\Server\PerServerInstances;
 use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use haddowg\JsonApiLaravel\Server\ServerFactory;
+use haddowg\JsonApiLaravel\Server\ServerNames;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\ConstraintTranslator;
@@ -612,7 +613,7 @@ final class JsonApiServiceProvider extends ServiceProvider
     }
 
     /**
-     * Binds the policy-first {@see Authorizer} (PLAN decision 7): the per-type
+     * Binds the policy-first {@see Authorizer} (PLAN decision 7): the per-server, per-type
      * authorization overrides (dedicated `policy:` class + ability renames/disables) are
      * projected off the discovered {@see \haddowg\JsonApiLaravel\Discovery\ResourceDescriptor}s
      * once, at first resolution (after discovery + application service providers have
@@ -626,22 +627,27 @@ final class JsonApiServiceProvider extends ServiceProvider
             /** @var Discovery $discovery */
             $discovery = $app->make(Discovery::class);
 
-            $config = [];
+            // Keyed by server, then type: two servers may expose one type through different
+            // resource classes, and each must enforce only its own resource's declaration.
+            $servers = [];
             foreach ($discovery->resources() as $descriptor) {
                 // The resource class is carried as the class-level subject token so a
                 // declared policy can enforce viewAny/create even for a read-only type that
                 // mints no list instance (see Authorizer::authorizeViaPolicy).
-                $config[$descriptor->type] = new ResourceAuthorization(
+                $authorization = new ResourceAuthorization(
                     $descriptor->policy,
                     $descriptor->abilities,
                     $descriptor->class,
                 );
+                foreach ($descriptor->servers as $server) {
+                    $servers[$server][$descriptor->type] = $authorization;
+                }
             }
 
             /** @var \Illuminate\Contracts\Auth\Access\Gate $gate */
             $gate = $app->make(\Illuminate\Contracts\Auth\Access\Gate::class);
 
-            return new Authorizer($gate, $config);
+            return new Authorizer($gate, [], $servers);
         });
     }
 
@@ -726,6 +732,7 @@ final class JsonApiServiceProvider extends ServiceProvider
             );
         });
 
+        $this->app->singleton(ServerNames::class);
         $this->app->singleton(ServerRegistry::class, function (Container $app): ServerRegistry {
             /** @var Discovery $discovery */
             $discovery = $app->make(Discovery::class);
@@ -852,7 +859,9 @@ final class JsonApiServiceProvider extends ServiceProvider
                         $app->make(Authorizer::class),
                         static fn(): \haddowg\JsonApi\Server\Server => $app->make(ServerRegistry::class)->get($server),
                         $app->make(ViewableRows::class),
+                        $server,
                     ),
+                    $app->make(ServerNames::class),
                 );
             }
 

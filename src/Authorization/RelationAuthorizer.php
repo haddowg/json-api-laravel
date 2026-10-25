@@ -10,6 +10,7 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\RelationAuthorizerInterface;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Operation\Operation;
+use haddowg\JsonApiLaravel\Server\ServerRegistry;
 
 /**
  * Answers core's questions about the relation data it reaches outside the relation's own
@@ -36,11 +37,13 @@ final class RelationAuthorizer implements RelationAuthorizerInterface
 
     /**
      * @param \Closure(): Server $server
+     * @param string             $serverName the name of the server, whose resources' declarations the checks read
      */
     public function __construct(
         private readonly Authorizer $authorizer,
         private readonly \Closure $server,
         private readonly ?ViewableRows $rows = null,
+        private readonly string $serverName = ServerRegistry::DEFAULT_SERVER,
     ) {}
 
     public function canReadRelationship(mixed $model, RelationInterface $relation, JsonApiRequestInterface $request): bool
@@ -51,7 +54,7 @@ final class RelationAuthorizer implements RelationAuthorizerInterface
         }
 
         $ability = $relation->securityRead();
-        if (\is_string($ability) && (!\is_object($model) || !$this->authorizer->allowsAbility($this->declaringType($relation) ?? '', $ability, $model))) {
+        if (\is_string($ability) && (!\is_object($model) || !$this->authorizer->allowsAbility($this->declaringType($relation) ?? '', $ability, $model, $this->serverName))) {
             return false;
         }
 
@@ -66,7 +69,7 @@ final class RelationAuthorizer implements RelationAuthorizerInterface
 
         $type = $this->ownerType($owner, $relation);
 
-        return $type !== null && $this->authorizer->allows($type, Operation::Update, $owner);
+        return $type !== null && $this->authorizer->allows($type, Operation::Update, $owner, $this->serverName);
     }
 
     /**

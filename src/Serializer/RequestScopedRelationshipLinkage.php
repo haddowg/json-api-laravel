@@ -61,14 +61,15 @@ final class RequestScopedRelationshipLinkage implements ToOneRelationshipLinkage
     ) {}
 
     /**
-     * Starts an operation on `$server`: drops both backings and every to-one answer.
+     * Starts an operation on `$server`, named `$serverName`: drops both backings and every
+     * to-one answer.
      */
-    public function bind(?Server $server): void
+    public function bind(?Server $server, ?string $serverName = null): void
     {
         $this->delegate = null;
         $this->scoped = [];
         $this->toOne->bind($server);
-        $this->rows->bind($server);
+        $this->rows->bind($server, $serverName);
     }
 
     /**
