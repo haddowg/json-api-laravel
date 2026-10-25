@@ -69,6 +69,7 @@ use haddowg\JsonApiLaravel\Action\ActionInvoker;
 use haddowg\JsonApiLaravel\Atomic\AtomicLoopBackend;
 use haddowg\JsonApiLaravel\Atomic\AtomicOperationsUnavailable;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
+use haddowg\JsonApiLaravel\Authorization\ViewableRows;
 use haddowg\JsonApiLaravel\DataPersister\AcceptedForProcessing;
 use haddowg\JsonApiLaravel\DataPersister\AsyncWriteNotAllowedInAtomicOperation;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
@@ -197,6 +198,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // stripped-down programmatic wiring → every dispatch is a no-op (events are
         // an opt-in seam, exactly like the bundle's optional dispatcher).
         private readonly ?Dispatcher $dispatcher = null,
+        // The related type's own read gates (ADR 0045). Null on a stripped-down wiring leaves
+        // a related to-many read gated by the parent alone.
+        private readonly ?ViewableRows $viewableRows = null,
     ) {}
 
     public function handle(JsonApiOperationInterface $operation): DataResponse|RelatedResponse|IdentifierResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|AtomicResultsResponse|ErrorResponse
@@ -572,6 +576,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         $this->gateRead($type, $parent, $relation);
+        $this->gateRelatedList($relation);
 
         $relatedTypes = $relation->relatedTypes();
         $polymorphic = \count($relatedTypes) > 1;
@@ -652,8 +657,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 ? $this->polymorphicSerializer($relation, $server)
                 : $server->serializerFor($relatedType);
 
-            // A member the caller may not `view` reads as absent here too (ADR 0045).
-            $items = $this->relationshipLinkage->viewableMembers($this->materialize($result), $relation);
+            $items = $this->materialize($result);
 
             // A belongsToMany with declared pivot fields renders each related member's stored
             // pivot values as `meta.pivot` (ADR 0008): wrap the related serializer with the
@@ -819,6 +823,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         $this->gateRead($type, $parent, $relation);
+        $this->gateRelatedList($relation);
 
         // When the client addressed the relationship (linkage) endpoint with query parameters
         // (`?page`/`?sort`/`?filter`/`?withCount=_self_`), honour or reject them — NEVER silently
@@ -1206,6 +1211,22 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         $this->authorizer->authorize($type, Operation::FetchOne, $parent);
+    }
+
+    /**
+     * Refuses a related or relationship read of a to-many whose related type the caller may not
+     * list, exactly as `GET /{type}` refuses them (ADR 0045). A polymorphic to-many needs every
+     * member type.
+     */
+    private function gateRelatedList(RelationInterface $relation): void
+    {
+        if ($this->viewableRows === null || !$relation->isToMany()) {
+            return;
+        }
+
+        foreach ($relation->relatedTypes() as $relatedType) {
+            $this->viewableRows->authorizeList($relatedType);
+        }
     }
 
     /**

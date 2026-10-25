@@ -33,6 +33,8 @@ abstract class FlattenWriteConformanceTestCase extends Orchestra
 {
     public const string MEDIA_TYPE = 'application/vnd.api+json';
 
+    public const string COUNTABLE = 'application/vnd.api+json; profile="https://haddowg.github.io/json-api/profiles/countable/"';
+
     public const string ATOMIC_MEDIA_TYPE = 'application/vnd.api+json; ext="' . AtomicExtension::URI . '"';
 
     /**
@@ -304,7 +306,7 @@ abstract class FlattenWriteConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:fetching')]
-    public function anIncludedRowTheCallerMayNotViewIsLeftOutOfIncludedAndLinkage(): void
+    public function anIncludedToOneTheCallerMayNotViewIsLeftOut(): void
     {
         $this->denyViewOnAuthor('2');
 
@@ -312,10 +314,6 @@ abstract class FlattenWriteConformanceTestCase extends Orchestra
         self::assertSame(['authors:1'], $this->includedIdentities($books));
         self::assertSame(['type' => 'authors', 'id' => '1'], $this->relationshipData($books, '1', 'editor'));
         self::assertNull($this->relationshipData($books, '2', 'editor'));
-
-        $country = $this->read('/api/countries/1?include=authors');
-        self::assertSame(['authors:1'], $this->includedIdentities($country));
-        $country->assertJsonPath('data.relationships.authors.data', [['type' => 'authors', 'id' => '1']]);
 
         // A flattened attribute read through the row is absent too, and the type's own
         // endpoint refuses the row.
@@ -325,16 +323,74 @@ abstract class FlattenWriteConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:fetching')]
-    public function aRowTheCallerMayNotViewIsAbsentAtTheRelationEndpoints(): void
+    public function aToOneTheCallerMayNotViewIsAbsentAtItsEndpoints(): void
     {
         $this->denyViewOnAuthor('2');
 
         $this->read('/api/books/2/relationships/editor')->assertJsonPath('data', null);
         $this->read('/api/books/2/editor')->assertJsonPath('data', null);
-        $this->read('/api/countries/1/relationships/authors')->assertJsonPath('data', [['type' => 'authors', 'id' => '1']]);
-        /** @var list<array{id: string}> $related */
-        $related = $this->read('/api/countries/1/authors')->json('data');
-        self::assertSame(['1'], \array_column($related, 'id'));
+    }
+
+    #[Test]
+    #[Group('spec:fetching')]
+    public function aListShowsWhatItsQueryReturnsWhateverViewSays(): void
+    {
+        $this->denyViewOnAuthor('2');
+        $both = [['type' => 'authors', 'id' => '1'], ['type' => 'authors', 'id' => '2']];
+
+        $country = $this->read('/api/countries/1?include=authors');
+        self::assertSame(['authors:1', 'authors:2'], $this->includedIdentities($country));
+        $country->assertJsonPath('data.relationships.authors.data', $both);
+        $this->read('/api/countries/1/relationships/authors')->assertJsonPath('data', $both);
+
+        // A full page comes back full.
+        $page = $this->read('/api/countries/1/authors?page[size]=2&page[number]=1');
+        self::assertSame(['1', '2'], \array_column((array) $page->json('data'), 'id'));
+    }
+
+    #[Test]
+    #[Group('spec:fetching')]
+    public function everyCountMatchesTheRowsAClientCanPageThrough(): void
+    {
+        $this->denyViewOnAuthor('2');
+
+        $first = $this->read('/api/countries/1/authors?page[size]=1&page[number]=1&withCount=_self_', self::COUNTABLE);
+        $total = $first->json('meta.total');
+        self::assertSame(2, $total);
+        self::assertSame($total, $this->pagedRowCount($first));
+
+        $count = $this->read('/api/countries/1?withCount=authors', self::COUNTABLE)->json('data.relationships.authors.meta.total');
+        self::assertSame($total, $count);
+
+        // The Relationship Queries window holds the same rows its count reports.
+        $window = $this->read(
+            '/api/countries/1?include=authors&withCount=authors',
+            'application/vnd.api+json; profile="https://haddowg.github.io/json-api/profiles/relationship-queries/ https://haddowg.github.io/json-api/profiles/countable/"',
+        );
+        self::assertCount($total, (array) $window->json('data.relationships.authors.data'));
+        self::assertSame($total, $window->json('data.relationships.authors.meta.total'));
+    }
+
+    #[Test]
+    #[Group('spec:fetching')]
+    public function aToManyOfATypeTheCallerMayNotListIsWithheld(): void
+    {
+        $this->denyListingAuthors();
+
+        $country = $this->read('/api/countries/1?include=authors&withCount=authors', self::COUNTABLE);
+        $relationship = $country->json('data.relationships.authors');
+        self::assertIsArray($relationship);
+        self::assertArrayHasKey('links', $relationship);
+        self::assertArrayNotHasKey('data', $relationship);
+        self::assertArrayNotHasKey('meta', $relationship);
+        self::assertSame([], $this->includedIdentities($country));
+
+        $this->get('/api/authors', ['Accept' => self::MEDIA_TYPE])->assertStatus(403);
+        $this->get('/api/countries/1/authors', ['Accept' => self::MEDIA_TYPE])->assertStatus(403)->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
+        $this->get('/api/countries/1/relationships/authors', ['Accept' => self::MEDIA_TYPE])->assertStatus(403);
+
+        // A single row of the type is still governed by its own `view`.
+        $this->read('/api/books/1?include=editor')->assertJsonPath('data.relationships.editor.data.id', '1');
     }
 
     #[Test]
@@ -345,6 +401,39 @@ abstract class FlattenWriteConformanceTestCase extends Orchestra
 
         self::assertSame(['authors:1', 'authors:2'], $this->includedIdentities($this->read('/api/countries/1?include=authors')));
         self::assertSame(['authors:1', 'authors:2'], $this->includedIdentities($this->read('/api/books?include=editor')));
+    }
+
+    /**
+     * Refuses `viewAny` on authors and allows it everywhere else.
+     */
+    protected function denyListingAuthors(): void
+    {
+        Gate::define('viewAny', static function (?Authenticatable $user, mixed $subject = null): bool {
+            $class = \is_object($subject) ? $subject::class : (\is_string($subject) ? $subject : '');
+
+            return !\str_starts_with(\class_basename($class), 'Author');
+        });
+    }
+
+    /**
+     * Follows `links.next` from `$page` to the end and counts every row on the way.
+     *
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $page
+     */
+    protected function pagedRowCount(TestResponse $page): int
+    {
+        $rows = 0;
+        for ($pages = 0; $pages < 20; ++$pages) {
+            $rows += \count((array) $page->json('data'));
+            /** @var mixed $next */
+            $next = $page->json('links.next.href') ?? $page->json('links.next');
+            if (!\is_string($next)) {
+                return $rows;
+            }
+            $page = $this->read((string) \preg_replace('#^https?://[^/]+#', '', $next), self::COUNTABLE);
+        }
+
+        self::fail('The pages never ended.');
     }
 
     /**
@@ -437,9 +526,9 @@ abstract class FlattenWriteConformanceTestCase extends Orchestra
     /**
      * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
      */
-    protected function read(string $uri): TestResponse
+    protected function read(string $uri, string $accept = self::MEDIA_TYPE): TestResponse
     {
-        return $this->get($uri, ['Accept' => self::MEDIA_TYPE])->assertOk();
+        return $this->get($uri, ['Accept' => $accept])->assertOk();
     }
 
     /**
