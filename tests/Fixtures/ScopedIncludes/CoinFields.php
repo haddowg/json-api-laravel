@@ -10,6 +10,7 @@ use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Integer;
 use haddowg\JsonApi\Resource\Field\Str;
+use haddowg\JsonApi\Resource\Filter\Contains;
 
 /**
  * The `coins` fields. `marks` is a pivot to-many that renders its linkage on every read
@@ -30,6 +31,11 @@ abstract class CoinFields extends AbstractResource
                 ->withData()
                 ->fields(Integer::make('position')->build()),
         ];
+    }
+
+    public function filters(): array
+    {
+        return [Contains::make('label')];
     }
 
     public function pagination(?PaginatorInterface $serverDefault): ?PaginatorInterface

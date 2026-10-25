@@ -18,7 +18,7 @@ final class CountryResource extends AbstractResource
         return [
             Id::make(),
             Str::make('name'),
-            HasMany::make('authors', 'authors'),
+            HasMany::make('authors', 'authors')->countable(),
         ];
     }
 }

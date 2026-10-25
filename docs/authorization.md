@@ -146,28 +146,33 @@ the parent after the create/update ability passes.
 
 ## Related rows and their own type's policy
 
-A row of another type that a response renders, as an `included` resource, as an identifier in
-a relationship's `data`, or as the data of a related endpoint, has to pass its own type's read
-gate: the same `view` ability (or its rename) that `GET /{type}/{id}` checks on that row. A row
-the gate refuses reads as absent. It is left out of `included`, out of the relationship's
-`data` (a to-one renders `null`), and out of the related and relationship endpoints, the same
-way a row hidden by a [scoping provider](custom-data-providers.md#a-provider-that-scopes-its-rows)
-is. An attribute flattened with `on()` through that row reads as `null`, and a write through it
-is a `422` like any write through a missing row.
+Rows of another type that a response renders pass that type's own read gates, so a type's
+policy can't be read around by including it from a type that is open.
 
-The check runs per row on the rows already loaded for the response, with no extra queries. A
-type with no policy and no defined `view` ability is not checked. Collections work as before:
-`GET /{type}` checks `viewAny` and leaves row filtering to the query scope, and a page with
-hidden rows comes back shorter than its size, with any total still counting them. Use a query
-scope for rows that should never be listed.
+A single related row passes its type's `view` ability (or its rename), the check
+`GET /{type}/{id}` makes on that row. That covers a to-one relationship's linkage and its
+`included` resource, the to-one related and relationship endpoints, and attributes flattened
+with `on()`. A row `view` refuses reads as absent: the to-one renders `null`, nothing reaches
+`included`, a flattened attribute read through it is `null`, and a write through it is a `422`.
 
-A polymorphic to-many is read off the model in one piece, so when it holds a row the caller
-may not view, the relationship shows only its `links`, with no `data` and nothing in
-`included`.
+A to-many is a list, and a list shows exactly what its query returns, the same as
+`GET /{type}`. Its linkage, its members in `included`, its related and relationship endpoint
+pages, its `?withCount` total and its Relationship Queries window all come from the related
+type's query, with its Eloquent global scopes or its
+[scoping provider](custom-data-providers.md#a-provider-that-scopes-its-rows). `view` is not
+asked row by row, so a page is never cut short and every count matches the rows a client can
+page through. Rows that must never be listed belong in a query scope; `view` governs single
+rows.
 
-This is a change for apps that let a client read rows through `?include` that the row's own
-`view` policy refuses. Those rows are now hidden. Allow them in the policy if they should stay
-visible.
+What a to-many does check is the related type's collection gate, the `viewAny` ability (or its
+rename, or the dedicated policy) that `GET /{type}` runs. When it refuses the caller, the
+relationship renders only its `links`, with no `data`, no `meta` and nothing in `included`, and
+its related and relationship endpoints answer `403` the way `GET /{type}` does. A polymorphic
+to-many is withheld when any of its member types refuses. A type with no policy and no defined
+ability is not checked, exactly as for `GET /{type}`.
+
+This is a change for apps that relied on `?include` to read a single row its `view` policy
+refuses, or a to-many of a type their `viewAny` refuses. Those are now hidden.
 
 ## Custom actions
 

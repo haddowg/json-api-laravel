@@ -300,6 +300,26 @@ abstract class ScopedIncludesTestCase extends Orchestra
     }
 
     #[Test]
+    public function aFilteredWindowAndItsCountAgreeWithTheRelatedEndpoint(): void
+    {
+        // `label` contains "r" matches bravo and charlie in vault 1, but bravo is hidden.
+        $response = $this->read(
+            '/vaults?include=coins&withCount=coins&relatedQuery[coins][filter][label]=r',
+            self::MEDIA_TYPE . ';profile="' . self::RELATIONSHIP_QUERIES_PROFILE . ' ' . self::COUNTABLE_PROFILE . '"',
+        );
+
+        $this->assertNoHiddenRows($response);
+        self::assertSame(['3'], $this->ids($response, 'data.0.relationships.coins.data'));
+        self::assertSame(1, $response->json('data.0.relationships.coins.meta.total'));
+        self::assertSame([], $this->ids($response, 'data.1.relationships.coins.data'));
+        self::assertSame(0, $response->json('data.1.relationships.coins.meta.total'));
+
+        $related = $this->read('/vaults/1/coins?filter[label]=r&withCount=_self_', self::MEDIA_TYPE . ';profile="' . self::COUNTABLE_PROFILE . '"');
+        self::assertSame(['3'], $this->ids($related, 'data'));
+        self::assertSame(1, $related->json('meta.total'));
+    }
+
+    #[Test]
     public function theRelationshipEndpointShowsOnlyVisibleRows(): void
     {
         self::assertSame(['1', '3'], $this->ids($this->read('/vaults/1/relationships/coins'), 'data'));

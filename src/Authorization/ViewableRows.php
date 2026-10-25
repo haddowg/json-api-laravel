@@ -6,15 +6,16 @@ namespace haddowg\JsonApiLaravel\Authorization;
 
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Server\Server;
+use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\Operation\Operation;
 
 /**
- * Decides whether a related row may be shown for another type, by the related type's own
- * `view` gate: the check `GET /{type}/{id}` applies to the same row (ADR 0045). A row the gate
- * refuses reads as absent, so it is left out of linkage, `included` and the related endpoint.
+ * The related type's own read gates for rows another type renders (ADR 0045). A single related
+ * row passes its type's `view` gate, the check `GET /{type}/{id}` applies to it, or reads as
+ * absent. A to-many passes its related type's collection gate, the check `GET /{type}` applies,
+ * or is withheld whole; which rows it lists is left to the query.
  *
- * Answers are memoized per row and type for the operation being handled; the policy runs in
- * memory, so a page of rows costs no queries beyond what the policy itself does.
+ * Answers are memoized for the operation being handled.
  */
 final class ViewableRows
 {
@@ -25,8 +26,15 @@ final class ViewableRows
      */
     private \WeakMap $memo;
 
-    public function __construct(private readonly Authorizer $authorizer)
-    {
+    /**
+     * @var array<string, bool>
+     */
+    private array $listable = [];
+
+    public function __construct(
+        private readonly Authorizer $authorizer,
+        private readonly DataPersisterRegistry $persisters,
+    ) {
         $this->memo = new \WeakMap();
     }
 
@@ -46,6 +54,7 @@ final class ViewableRows
     public function forget(): void
     {
         $this->memo = new \WeakMap();
+        $this->listable = [];
     }
 
     /**
@@ -68,27 +77,28 @@ final class ViewableRows
     }
 
     /**
-     * The rows of `$rows` the caller may see, or `null` when that is all of them, so a caller
-     * can keep the original value untouched.
-     *
-     * @param iterable<mixed> $rows
-     *
-     * @return list<mixed>|null
+     * Whether the caller passes `$type`'s collection gate, the `viewAny` check (or its rename
+     * or dedicated policy) `GET /{type}` runs. Asked once per type per operation.
      */
-    public function filter(iterable $rows, RelationInterface $relation): ?array
+    public function mayList(string $type): bool
     {
-        $kept = [];
-        $removed = false;
-        foreach ($rows as $row) {
-            if (\is_object($row) && !$this->allows($row, $relation)) {
-                $removed = true;
-
-                continue;
-            }
-            $kept[] = $row;
+        if (!\array_key_exists($type, $this->listable)) {
+            $subject = $this->persisters->supportsType($type) ? $this->persisters->forType($type)->instantiate($type) : null;
+            $this->listable[$type] = $this->authorizer->allows($type, Operation::FetchCollection, $subject);
         }
 
-        return $removed ? $kept : null;
+        return $this->listable[$type];
+    }
+
+    /**
+     * Refuses a list of `$type` exactly as `GET /{type}` does for this caller.
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException
+     */
+    public function authorizeList(string $type): void
+    {
+        $subject = $this->persisters->supportsType($type) ? $this->persisters->forType($type)->instantiate($type) : null;
+        $this->authorizer->authorize($type, Operation::FetchCollection, $subject);
     }
 
     /**
