@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.2](https://github.com/haddowg/json-api-laravel/compare/v1.9.1...v1.9.2) (2026-10-25)
+
+
+### Bug Fixes
+
+* rescan discovery when optimize rewrites the snapshot ([#126](https://github.com/haddowg/json-api-laravel/issues/126)) ([8e19e26](https://github.com/haddowg/json-api-laravel/commit/8e19e26ad3fe72d9944e7c0d800834f1021566ec))
+* store the resolved model map in the discovery snapshot ([#124](https://github.com/haddowg/json-api-laravel/issues/124)) ([aa4ccb3](https://github.com/haddowg/json-api-laravel/commit/aa4ccb3d0c11aa739b42fa1b2b5ba54721bb4bfe))
+
 ## [1.9.1](https://github.com/haddowg/json-api-laravel/compare/v1.9.0...v1.9.1) (2026-10-25)
 
 
