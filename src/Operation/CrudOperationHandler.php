@@ -109,6 +109,7 @@ use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipPagination;
 use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipPagination;
+use haddowg\JsonApiLaravel\Server\ServerNames;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\FilterValueValidator;
@@ -204,6 +205,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // The related type's own read gates (ADR 0045). Null on a stripped-down wiring leaves
         // a related to-many read gated by the parent alone.
         private readonly ?ViewableRows $viewableRows = null,
+        // Names the server a dispatch that carries no request server runs on, so its
+        // authorization reads that server's declarations.
+        private readonly ?ServerNames $serverNames = null,
     ) {}
 
     public function handle(JsonApiOperationInterface $operation): DataResponse|RelatedResponse|IdentifierResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|AtomicResultsResponse|ErrorResponse
@@ -222,7 +226,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->relationshipCount->set(null);
         $this->relationshipPagination->set(null);
         $server = $operation->context()->server;
-        $this->relationshipLinkage->bind($server instanceof Server ? $server : null);
+        $this->relationshipLinkage->bind($server instanceof Server ? $server : null, $this->serverNameOf($operation->context()));
 
         return match (true) {
             $operation instanceof FetchResourceOperation => $this->fetch($operation),
@@ -332,7 +336,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // The `view` policy gate authorizes the loaded model (404 already resolved),
             // before it is rendered — a denial is a `403` (thrown, rendered by the
             // exception renderer).
-            $this->authorizer->authorize($type, Operation::FetchOne, $model);
+            $this->authorizer->authorize($type, Operation::FetchOne, $model, $this->serverNameOf($operation->context()));
 
             // Async-completion redirect (JSON:API 1.1 §"Asynchronous Processing"): when the
             // type's serializer resolves a completion location for this resource, a GET on the
@@ -405,7 +409,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // no-policy Gate path stays inert on a null subject (the model's policy cannot be
         // resolved without an instance).
         $listSubject = $this->persisters->supportsType($type) ? $this->persisters->forType($type)->instantiate($type) : null;
-        $this->authorizer->authorize($type, Operation::FetchCollection, $listSubject);
+        $this->authorizer->authorize($type, Operation::FetchCollection, $listSubject, $this->serverNameOf($operation->context()));
 
         // A singular filter the client applied collapses the collection to a
         // zero-to-one response — a single resource (the first match) or null, never
@@ -578,7 +582,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             return ErrorResponse::fromException(new RelationshipNotExists($relationshipName));
         }
 
-        $this->gateRead($type, $parent, $relation);
+        $this->gateRead($type, $parent, $relation, $this->serverNameOf($operation->context()));
         $this->gateRelatedList($type, $parent, $relation);
 
         $relatedTypes = $relation->relatedTypes();
@@ -819,7 +823,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             return ErrorResponse::fromException(new RelationshipNotExists($relationshipName));
         }
 
-        $this->gateRead($type, $parent, $relation);
+        $this->gateRead($type, $parent, $relation, $this->serverNameOf($operation->context()));
         $this->gateRelatedList($type, $parent, $relation);
 
         // When the client addressed the relationship (linkage) endpoint with query parameters
@@ -1238,7 +1242,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * own read security — a `false` opts the relation out of any read gate, a string
      * overrides the ability the parent is authorized against.
      */
-    private function gateRead(string $type, object $parent, RelationInterface $relation): void
+    private function gateRead(string $type, object $parent, RelationInterface $relation, string $serverName): void
     {
         $read = $relation->securityRead();
         if ($read === false) {
@@ -1247,14 +1251,14 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         // An explicit string ability, or else a `view{Relation}` ability the parent's policy or
         // the Gate defines, replaces the parent's `view` (ADR 0049).
-        $ability = \is_string($read) ? $read : ($read === null ? $this->authorizer->conventionReadAbility($type, $relation, $parent) : null);
+        $ability = \is_string($read) ? $read : ($read === null ? $this->authorizer->conventionReadAbility($type, $relation, $parent, $serverName) : null);
         if ($ability !== null) {
-            $this->authorizer->authorizeAbility($type, $ability, $parent);
+            $this->authorizer->authorizeAbility($type, $ability, $parent, $serverName);
 
             return;
         }
 
-        $this->authorizer->authorize($type, Operation::FetchOne, $parent);
+        $this->authorizer->authorize($type, Operation::FetchOne, $parent, $serverName);
     }
 
     /**
@@ -1454,7 +1458,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // (a policy's `create($user)`). The pristine-subject / authorize-before-hydrate
         // timing (and its entity-seam-422-after-403 + uniqueness-oracle consequences) is a
         // recorded divergence from the bundle — see docs/adr/0004.
-        $this->authorizer->authorize($type, Operation::Create, $entity);
+        $serverName = $this->serverNameOf($operation->context());
+        $this->authorizer->authorize($type, Operation::Create, $entity, $serverName);
 
         // Whole-resource writes embedding `data.relationships` (Phase 3b): core's hydrator
         // would assign a scalar linkage id to a typed association property (a TypeError /
@@ -1481,7 +1486,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 resolveResource: $resolveResource,
             );
         }
-        $this->gateEmbeddedMutations($type, $entity, $relationships);
+        $this->gateEmbeddedMutations($type, $entity, $relationships, $serverName);
         [$beforeCreate, $deferred] = $this->partitionForCreateOrder($relationships);
         $this->applyRelationships($persister, $type, $entity, $beforeCreate, $body, true, $server, $request, flush: false);
 
@@ -1610,7 +1615,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // before anything is applied, so ownership is decided on stored state and a caller it
         // refuses learns nothing from validation errors. It runs again on the changed
         // resource before the save below (ADR 0046).
-        $this->authorizer->authorize($type, Operation::Update, $entity);
+        $serverName = $this->serverNameOf($operation->context());
+        $this->authorizer->authorize($type, Operation::Update, $entity, $serverName);
 
         // Document-semantic validation runs here, creating: false, with the loaded target
         // so a PATCH validates the MERGED resource state (stored values overlaid by the
@@ -1642,7 +1648,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 resolveResource: $resolveResource,
             );
         }
-        $this->gateEmbeddedMutations($type, $entity, $relationships);
+        $this->gateEmbeddedMutations($type, $entity, $relationships, $serverName);
 
         // Hydration mutates the loaded target in place (the in-memory witness returns the
         // stored instance by reference), so a mid-hydration throw or a post-hydration
@@ -1651,7 +1657,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // back to its pre-hydration state — the in-memory analogue of Eloquent's
         // rollback-on-throw, keeping the two providers' failed-write semantics identical.
         $hydrator = $server->hydratorFor($type);
-        $entity = $this->writeTransactionally($persister, function () use ($hydrator, $body, $resource, $type, $persister, $entity, $original, $request, $relationships, $server): object {
+        $entity = $this->writeTransactionally($persister, function () use ($hydrator, $body, $resource, $type, $persister, $entity, $original, $request, $relationships, $server, $serverName): object {
             // The embedded associations apply on the loaded (keyed) parent BEFORE hydration,
             // each gated by the relation's request-aware `cannot*` flags in Mode::Replace —
             // the same `403` a PATCH …/relationships/{rel} would raise.
@@ -1673,8 +1679,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // The same gates again on the resource as changed, before it is saved, so a caller
             // can't turn it into one they couldn't update, such as handing it to another user
             // (ADR 0046). A denial rolls back everything applied above.
-            $this->authorizer->authorize($type, Operation::Update, $entity);
-            $this->gateEmbeddedMutations($type, $entity, $relationships);
+            $this->authorizer->authorize($type, Operation::Update, $entity, $serverName);
+            $this->gateEmbeddedMutations($type, $entity, $relationships, $serverName);
 
             return $persister->update($type, $entity);
         });
@@ -1760,7 +1766,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         // The `delete` policy gate authorizes the loaded target here, before it is
         // removed.
-        $this->authorizer->authorize($type, Operation::Delete, $entity);
+        $this->authorizer->authorize($type, Operation::Delete, $entity, $this->serverNameOf($operation->context()));
 
         // The before-delete lifecycle gate (a throw aborts before the persister deletes
         // — a delete guard's natural seam, e.g. a 409 when the resource is referenced).
@@ -1862,7 +1868,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // The policy gate (PLAN decision 7, NEW vs the bundle's event gate): a relationship
         // mutation authorizes the parent — `update` by default, or the relation's own
         // `securityMutate` ability override — after validation (422/409 before the policy 403).
-        $this->gateMutate($type, $parent, $relation);
+        $serverName = $this->serverNameOf($operation->context());
+        $this->gateMutate($type, $parent, $relation, $serverName);
 
         $request = $this->jsonApiRequest($operation->context());
 
@@ -1870,7 +1877,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // the members it hides. The echo then lists the members the relationship endpoint
         // would, so a scoped to-many that cannot be read that way is refused before the write.
         $applied = $this->scopeWrittenLinkage($parent, $relation, $linkage, $mode, $server, $request);
-        $this->guardReparenting($type, $parent, $relation, $applied, $mode);
+        $this->guardReparenting($type, $parent, $relation, $applied, $mode, $serverName);
         // A write-only relation echoes nothing (core answers 204), so there is no linkage to
         // read back and no pivot map to fetch.
         $writeOnly = $relation->isWriteOnlyFor($request);
@@ -1884,9 +1891,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // The mutation gate runs again on the parent as changed, before the change commits, so a
         // caller can't leave the parent in a state they couldn't update (ADR 0046).
         $persister = $this->persisters->forType($type);
-        $parent = $this->writeTransactionally($persister, function () use ($persister, $type, $parent, $relation, $applied, $mode): object {
+        $parent = $this->writeTransactionally($persister, function () use ($persister, $type, $parent, $relation, $applied, $mode, $serverName): object {
             $changed = $persister->mutateRelationship($type, $parent, $relation, $applied, $mode);
-            $this->gateMutate($type, $changed, $relation);
+            $this->gateMutate($type, $changed, $relation, $serverName);
 
             return $changed;
         });
@@ -1971,7 +1978,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * `securityRead`). A denial throws {@see \Illuminate\Auth\Access\AuthorizationException}
      * (rendered `403`).
      */
-    private function gateMutate(string $type, object $parent, RelationInterface $relation): void
+    private function gateMutate(string $type, object $parent, RelationInterface $relation, string $serverName): void
     {
         $mutate = $relation->securityMutate();
         if ($mutate === false) {
@@ -1979,12 +1986,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         if (\is_string($mutate)) {
-            $this->authorizer->authorizeAbility($type, $mutate, $parent);
+            $this->authorizer->authorizeAbility($type, $mutate, $parent, $serverName);
 
             return;
         }
 
-        $this->authorizer->authorize($type, Operation::Update, $parent);
+        $this->authorizer->authorize($type, Operation::Update, $parent, $serverName);
     }
 
     /**
@@ -1994,12 +2001,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
      *
      * @param list<array{relation: RelationInterface, linkage: ToOneRelationship|ToManyRelationship}> $relationships
      */
-    private function gateEmbeddedMutations(string $type, object $parent, array $relationships): void
+    private function gateEmbeddedMutations(string $type, object $parent, array $relationships, string $serverName): void
     {
         foreach ($relationships as $relationship) {
             $mutate = $relationship['relation']->securityMutate();
             if (\is_string($mutate)) {
-                $this->authorizer->authorizeAbility($type, $mutate, $parent);
+                $this->authorizer->authorizeAbility($type, $mutate, $parent, $serverName);
             }
         }
     }
@@ -2010,7 +2017,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * unless the client may update the row (ADR 0047). Only relations where a row has one
      * parent (an inverse foreign key) report owners; a Remove never moves a row.
      */
-    private function guardReparenting(string $type, object $parent, RelationInterface $relation, ToOneRelationship|ToManyRelationship $linkage, Mode $mode): void
+    private function guardReparenting(string $type, object $parent, RelationInterface $relation, ToOneRelationship|ToManyRelationship $linkage, Mode $mode, string $serverName): void
     {
         $persister = $this->persisters->forType($type);
         if ($mode === Mode::Remove || !$persister instanceof ReportsCurrentOwners) {
@@ -2020,7 +2027,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         foreach ($persister->currentOwners($type, $parent, $relation, $linkage) as $held) {
             if ($held['owner'] !== null && $held['ownerType'] !== null) {
                 try {
-                    $this->authorizer->authorize($held['ownerType'], Operation::Update, $held['owner']);
+                    $this->authorizer->authorize($held['ownerType'], Operation::Update, $held['owner'], $serverName);
 
                     continue;
                 } catch (AuthorizationException) {
@@ -2028,7 +2035,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 }
             }
 
-            $this->authorizer->authorize($held['memberType'], Operation::Update, $held['member']);
+            $this->authorizer->authorize($held['memberType'], Operation::Update, $held['member'], $serverName);
         }
     }
 
@@ -2096,7 +2103,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             }
 
             $linkage = $this->scopeWrittenLinkage($entity, $relation, $relationship['linkage'], Mode::Replace, $server, $request, $creating);
-            $this->guardReparenting($type, $entity, $relation, $linkage, Mode::Replace);
+            $this->guardReparenting($type, $entity, $relation, $linkage, Mode::Replace, $this->serverNameFor($request, $server));
             $persister->mutateRelationship($type, $entity, $relation, $linkage, Mode::Replace, flush: $flush);
         }
     }
@@ -2401,6 +2408,22 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         return $fire();
+    }
+
+    /**
+     * The name of the server whose declarations authorize the operation: the request's
+     * `_jsonapi_server` attribute, else the server the operation carries, else `default`.
+     */
+    private function serverNameOf(OperationContext $context): string
+    {
+        $request = $context->httpRequest();
+
+        return $this->serverNameFor($request instanceof JsonApiRequestInterface ? $request : null, $context->server);
+    }
+
+    private function serverNameFor(?JsonApiRequestInterface $request, mixed $server): string
+    {
+        return ($this->serverNames ?? new ServerNames())->resolve($request, $server);
     }
 
     /**

@@ -87,7 +87,7 @@ final class ActionLinkContributor implements ResourceLinkContributorInterface
 
         $links = [];
         foreach ($descriptors as $descriptor) {
-            if ($descriptor->ability !== null && !$this->authorizer->allowsAction($type, $descriptor->ability, \is_object($object) ? $object : null)) {
+            if ($descriptor->ability !== null && !$this->authorizer->allowsAction($type, $descriptor->ability, \is_object($object) ? $object : null, $descriptor->server)) {
                 continue;
             }
 

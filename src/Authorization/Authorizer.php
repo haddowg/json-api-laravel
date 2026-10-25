@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Authorization;
 
 use haddowg\JsonApiLaravel\Operation\Operation;
+use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use Illuminate\Contracts\Auth\Access\Gate;
 
 /**
@@ -13,8 +14,10 @@ use Illuminate\Contracts\Auth\Access\Gate;
  * lifecycle point with the loaded model in hand, before persistence:
  * list→`viewAny`, read→`view`, create→`create`, update→`update`, delete→`delete`.
  *
- * Resolution order per type (from its
- * {@see \haddowg\JsonApiLaravel\Attribute\AsJsonApiResource} attribute):
+ * Resolution order per type on the server the check runs on (from the
+ * {@see \haddowg\JsonApiLaravel\Attribute\AsJsonApiResource} attribute of the resource
+ * that server exposes the type through; each check takes the server name, null meaning
+ * `default`):
  *  1. the per-operation ability override — a renamed ability `string` (Gate-resolved,
  *     so `Gate::define()` and a policy method of that name both work), or `false` to
  *     disable the check for that operation entirely;
@@ -33,12 +36,25 @@ use Illuminate\Contracts\Auth\Access\Gate;
 final class Authorizer
 {
     /**
-     * @param array<string, ResourceAuthorization> $config the per-type authorization overrides, keyed by JSON:API type
+     * @var array<string, array<string, ResourceAuthorization>>
+     */
+    private readonly array $servers;
+
+    /**
+     * Two servers may expose the same type through different resource classes, so each
+     * server keeps its own overrides and a check only ever reads the entry of the server it
+     * runs on. A type a server declares nothing for falls through to the Gate.
+     *
+     * @param array<string, ResourceAuthorization>                $config  the `default` server's per-type overrides, keyed by JSON:API type
+     * @param array<string, array<string, ResourceAuthorization>> $servers the per-type overrides keyed by server name, then type; an entry for `default` here replaces `$config`
      */
     public function __construct(
         private readonly Gate $gate,
-        private readonly array $config,
-    ) {}
+        array $config,
+        array $servers = [],
+    ) {
+        $this->servers = $servers + [ServerRegistry::DEFAULT_SERVER => $config];
+    }
 
     /**
      * Authorizes `$operation` on `$type` for the current user, throwing an
@@ -51,9 +67,9 @@ final class Authorizer
      * DECLARED `policy:` is still enforced against the resource-class token — a declared
      * policy is never fail-open, even for a persister-less read-only type.
      */
-    public function authorize(string $type, Operation $operation, ?object $subject): void
+    public function authorize(string $type, Operation $operation, ?object $subject, ?string $server = null): void
     {
-        $config = $this->config[$type] ?? null;
+        $config = $this->configFor($server, $type);
 
         // The ability for this operation: a per-op rename, `false` to disable, `true` to
         // document as externally-secured, or the policy-convention default. `??` only
@@ -108,16 +124,16 @@ final class Authorizer
      * relation and allows it; otherwise a `view{Relation}` ability the parent type's policy or
      * the Gate defines is checked against the parent.
      */
-    public function relationReadPermission(string $parentType, \haddowg\JsonApi\Resource\Field\RelationInterface $relation, object $parent): ?bool
+    public function relationReadPermission(string $parentType, \haddowg\JsonApi\Resource\Field\RelationInterface $relation, object $parent, ?string $server = null): ?bool
     {
         $read = $relation->securityRead();
         if (\is_bool($read)) {
             return true;
         }
 
-        $ability = \is_string($read) ? $read : $this->conventionReadAbility($parentType, $relation, $parent);
+        $ability = \is_string($read) ? $read : $this->conventionReadAbility($parentType, $relation, $parent, $server);
 
-        return $ability === null ? null : $this->allowsAbility($parentType, $ability, $parent);
+        return $ability === null ? null : $this->allowsAbility($parentType, $ability, $parent, $server);
     }
 
     /**
@@ -126,7 +142,7 @@ final class Authorizer
      * no Gate ability. Only a defined ability declares a permission, because the Gate denies an
      * undefined one.
      */
-    public function conventionReadAbility(string $parentType, \haddowg\JsonApi\Resource\Field\RelationInterface $relation, object $parent): ?string
+    public function conventionReadAbility(string $parentType, \haddowg\JsonApi\Resource\Field\RelationInterface $relation, object $parent, ?string $server = null): ?string
     {
         $ability = 'view' . \Illuminate\Support\Str::studly($relation->name());
         if (\in_array($ability, self::STANDARD_ABILITIES, true)) {
@@ -134,7 +150,7 @@ final class Authorizer
         }
 
         /** @var mixed $policy */
-        $policy = $this->config[$parentType]->policy ?? $this->gate->getPolicyFor($parent);
+        $policy = $this->configFor($server, $parentType)->policy ?? $this->gate->getPolicyFor($parent);
         if ((\is_object($policy) || \is_string($policy)) && \method_exists($policy, $ability)) {
             return $ability;
         }
@@ -145,10 +161,10 @@ final class Authorizer
     /**
      * Whether the current user passes {@see authorize()} for `$operation` on `$type`.
      */
-    public function allows(string $type, Operation $operation, ?object $subject): bool
+    public function allows(string $type, Operation $operation, ?object $subject, ?string $server = null): bool
     {
         try {
-            $this->authorize($type, $operation, $subject);
+            $this->authorize($type, $operation, $subject, $server);
 
             return true;
         } catch (\Illuminate\Auth\Access\AuthorizationException) {
@@ -159,10 +175,10 @@ final class Authorizer
     /**
      * Whether the current user passes {@see authorizeAbility()} for `$ability` on `$subject`.
      */
-    public function allowsAbility(string $type, string $ability, object $subject): bool
+    public function allowsAbility(string $type, string $ability, object $subject, ?string $server = null): bool
     {
         try {
-            $this->authorizeAbility($type, $ability, $subject);
+            $this->authorizeAbility($type, $ability, $subject, $server);
 
             return true;
         } catch (\Illuminate\Auth\Access\AuthorizationException) {
@@ -176,9 +192,9 @@ final class Authorizer
      * per-relation read-security override (`security(read: 'ability')`) gates a related /
      * relationship read through, since that ability is not one of the five CRUD operations.
      */
-    public function authorizeAbility(string $type, string $ability, object $subject): void
+    public function authorizeAbility(string $type, string $ability, object $subject, ?string $server = null): void
     {
-        $config = $this->config[$type] ?? null;
+        $config = $this->configFor($server, $type);
 
         if ($config?->policy !== null) {
             $this->authorizeViaPolicy($config->policy, $ability, $subject, true, $config->subjectClass);
@@ -199,9 +215,9 @@ final class Authorizer
      * gate is enforced here directly (the handler has no event dispatcher yet — the
      * parallel of how the CRUD arms call {@see authorize()} inline).
      */
-    public function authorizeAction(string $type, string $ability, ?object $subject): void
+    public function authorizeAction(string $type, string $ability, ?object $subject, ?string $server = null): void
     {
-        $config = $this->config[$type] ?? null;
+        $config = $this->configFor($server, $type);
         $carriesInstance = $subject !== null;
 
         if ($config?->policy !== null) {
@@ -221,15 +237,24 @@ final class Authorizer
      * could not invoke). An action with no policy / no defined ability is inert, so the
      * link renders — matching invocation, which is likewise inert.
      */
-    public function allowsAction(string $type, string $ability, ?object $subject): bool
+    public function allowsAction(string $type, string $ability, ?object $subject, ?string $server = null): bool
     {
         try {
-            $this->authorizeAction($type, $ability, $subject);
+            $this->authorizeAction($type, $ability, $subject, $server);
 
             return true;
         } catch (\Illuminate\Auth\Access\AuthorizationException) {
             return false;
         }
+    }
+
+    /**
+     * The overrides `$type` declares on `$server`, or null when its resource there declares
+     * none. A null server is the `default` server.
+     */
+    private function configFor(?string $server, string $type): ?ResourceAuthorization
+    {
+        return $this->servers[$server ?? ServerRegistry::DEFAULT_SERVER][$type] ?? null;
     }
 
     /**

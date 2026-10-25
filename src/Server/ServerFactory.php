@@ -146,6 +146,9 @@ final class ServerFactory
         // Decides per parent whether a rendered relationship carries its data, and whether a
         // flattened `on()` write may land on its related row (ADR 0044). Null asks nothing.
         private readonly ?RelationAuthorizerInterface $relationAuthorizer = null,
+        // Records the built server under its name, so a dispatch that carries no request
+        // server still authorizes against this server's resources.
+        private readonly ?ServerNames $serverNames = null,
     ) {}
 
     /**
@@ -231,7 +234,10 @@ final class ServerFactory
             );
         }
 
-        return $this->server = $server->withHandler($this->handler);
+        $this->server = $server->withHandler($this->handler);
+        $this->serverNames?->register($this->server, $this->serverName);
+
+        return $this->server;
     }
 
     /**

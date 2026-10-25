@@ -57,6 +57,32 @@ server by default (`/docs.json`, `/admin/docs.json`) — see [openapi](openapi.m
 expose more fields via a distinct resource) — see
 [capability-composition](capability-composition.md).
 
+### Authorization per server
+
+Two servers can expose the same type through different resource classes, and each server
+enforces only what its own class declares on `#[AsJsonApiResource]`: its `policy:` and its
+`abilities` renames, `false` and `true` included. A request to `/admin/documents` checks the
+admin class's policy, and one to `/api/documents` checks the default class's. That holds
+everywhere a check runs: the endpoints, the related type's gates on an `?include`, the
+`view{Relation}` convention, custom actions and each server's OpenAPI document.
+
+```php
+#[AsJsonApiResource(policy: DocumentPolicy::class)]
+final class DocumentResource extends AbstractResource { /* type 'documents' */ }
+
+#[AsJsonApiResource(server: 'admin', policy: AdminDocumentPolicy::class, abilities: [
+    Operation::Update->value => 'edit',
+])]
+final class AdminDocumentResource extends AbstractResource { /* type 'documents' */ }
+```
+
+A class on several servers applies its declarations on each of them. A server whose class
+declares nothing for a type gets nothing from another server's class: the type falls back to
+the model's Gate policy there, the same as in a single-server app. That fallback is per model,
+so a `Gate::policy()` mapping applies on every server. A check dispatched in code, with no
+routed request behind it, reads the server the operation was built on, and the `default`
+server when there is none. See [ADR 0052](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0052-authorization-is-keyed-by-server-and-type.md).
+
 ### Output timezone per server
 
 Each server can render `DateTime` attributes in its own zone. A server without an

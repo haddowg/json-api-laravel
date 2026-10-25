@@ -20,7 +20,7 @@ use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
 use haddowg\JsonApiLaravel\Event\AfterActionEvent;
 use haddowg\JsonApiLaravel\Event\BeforeActionEvent;
-use haddowg\JsonApiLaravel\Server\ServerRegistry;
+use haddowg\JsonApiLaravel\Server\ServerNames;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\ResourceValidator;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -58,6 +58,7 @@ final readonly class ActionInvoker
         // Before/AfterActionEvent around its handler. Null on a stripped-down
         // programmatic wiring → the dispatches are no-ops.
         private ?Dispatcher $dispatcher = null,
+        private ?ServerNames $serverNames = null,
     ) {}
 
     public function invoke(CustomActionOperation $operation): DataResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|ErrorResponse
@@ -69,7 +70,8 @@ final readonly class ActionInvoker
         $type = $target->type;
         $scope = $target->hasId() ? ActionScope::Resource : ActionScope::Collection;
 
-        $descriptor = $this->registry->descriptorFor($this->serverName($operation), $type, $scope, $operation->action());
+        $serverName = $this->serverName($operation);
+        $descriptor = $this->registry->descriptorFor($serverName, $type, $scope, $operation->action());
         if ($descriptor === null) {
             return ErrorResponse::fromException(new ResourceNotFound());
         }
@@ -110,7 +112,7 @@ final readonly class ActionInvoker
         // (resource scope) or null (collection scope → the resource-class token). A null
         // ability is an unsecured action.
         if ($descriptor->ability !== null) {
-            $this->authorizer->authorizeAction($type, $descriptor->ability, $entity);
+            $this->authorizer->authorizeAction($type, $descriptor->ability, $entity, $serverName);
         }
 
         $context = new ActionContext(
@@ -216,13 +218,14 @@ final readonly class ActionInvoker
     /**
      * The name of the server the action dispatched on, read from the `_jsonapi_server`
      * request attribute the controller stamps (the same name the route registrar keyed the
-     * descriptor with), defaulting to the implicit `default` server.
+     * descriptor with). A dispatch without it uses the server the operation carries, and
+     * failing that the implicit `default` server.
      */
     private function serverName(CustomActionOperation $operation): string
     {
         $request = $operation->body() ?? $operation->context()->httpRequest();
-        $name = $request?->getAttribute('_jsonapi_server');
+        $request = $request instanceof JsonApiRequestInterface ? $request : null;
 
-        return \is_string($name) && $name !== '' ? $name : ServerRegistry::DEFAULT_SERVER;
+        return ($this->serverNames ?? new ServerNames())->resolve($request, $operation->context()->server);
     }
 }

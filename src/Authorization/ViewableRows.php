@@ -8,6 +8,7 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\Operation\Operation;
+use haddowg\JsonApiLaravel\Server\ServerRegistry;
 
 /**
  * The related type's own read gates for rows another type renders (ADR 0045). A single related
@@ -15,11 +16,14 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * absent. A to-many passes its related type's collection gate, the check `GET /{type}` applies,
  * or is withheld whole; which rows it lists is left to the query.
  *
- * Answers are memoized for the operation being handled.
+ * Each gate is the one the bound server's resource declares for the type. Answers are memoized
+ * for the operation being handled.
  */
 final class ViewableRows
 {
     private ?Server $server = null;
+
+    private string $serverName = ServerRegistry::DEFAULT_SERVER;
 
     /**
      * @var \WeakMap<object, array<string, bool>>
@@ -52,12 +56,14 @@ final class ViewableRows
     }
 
     /**
-     * Sets the server whose serializers type a polymorphic relation's rows, and drops every
-     * memoized answer.
+     * Sets the server whose serializers type a polymorphic relation's rows and whose resources'
+     * declarations the gates read, and drops every memoized answer. A null name is the
+     * `default` server.
      */
-    public function bind(?Server $server): void
+    public function bind(?Server $server, ?string $serverName = null): void
     {
         $this->server = $server;
+        $this->serverName = $serverName ?? ServerRegistry::DEFAULT_SERVER;
         $this->forget();
     }
 
@@ -81,7 +87,7 @@ final class ViewableRows
         $answers = $this->permissions[$parent] ?? [];
         $name = $relation->name();
         if (!\array_key_exists($name, $answers)) {
-            $answers[$name] = $this->authorizer->relationReadPermission($parentType ?? $this->declaringType($relation) ?? '', $relation, $parent);
+            $answers[$name] = $this->authorizer->relationReadPermission($parentType ?? $this->declaringType($relation) ?? '', $relation, $parent, $this->serverName);
             $this->permissions[$parent] = $answers;
         }
 
@@ -100,7 +106,7 @@ final class ViewableRows
 
         $answers = $this->memo[$row] ?? [];
         if (!\array_key_exists($type, $answers)) {
-            $answers[$type] = $this->authorizer->allows($type, Operation::FetchOne, $row);
+            $answers[$type] = $this->authorizer->allows($type, Operation::FetchOne, $row, $this->serverName);
             $this->memo[$row] = $answers;
         }
 
@@ -115,7 +121,7 @@ final class ViewableRows
     {
         if (!\array_key_exists($type, $this->listable)) {
             $subject = $this->persisters->supportsType($type) ? $this->persisters->forType($type)->instantiate($type) : null;
-            $this->listable[$type] = $this->authorizer->allows($type, Operation::FetchCollection, $subject);
+            $this->listable[$type] = $this->authorizer->allows($type, Operation::FetchCollection, $subject, $this->serverName);
         }
 
         return $this->listable[$type];
@@ -129,7 +135,7 @@ final class ViewableRows
     public function authorizeList(string $type): void
     {
         $subject = $this->persisters->supportsType($type) ? $this->persisters->forType($type)->instantiate($type) : null;
-        $this->authorizer->authorize($type, Operation::FetchCollection, $subject);
+        $this->authorizer->authorize($type, Operation::FetchCollection, $subject, $this->serverName);
     }
 
     /**

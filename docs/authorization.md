@@ -115,6 +115,10 @@ same policy authorizes both the Eloquent model and an in-memory POPO. The exampl
 `PlaylistApiPolicy` carries an **API-distinct method** (`curate` for update, `deletePlaylist`
 for delete) — the point of decision 7.
 
+A server only enforces the `policy:` and `abilities` of the resource class it exposes the
+type through, so two servers can secure one type differently. See
+[authorization per server](multi-server-and-testing.md#authorization-per-server).
+
 ## Relationships
 
 A relationship mutation defaults to the parent's `update` ability. Override the ability for a
