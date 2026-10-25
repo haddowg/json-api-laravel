@@ -31,11 +31,24 @@ final class ViewableRows
      */
     private array $listable = [];
 
+    /**
+     * @var \WeakMap<object, array<string, bool|null>>
+     */
+    private \WeakMap $permissions;
+
+    /**
+     * @var \WeakMap<RelationInterface, string>|null
+     */
+    private ?\WeakMap $declaringTypes = null;
+
+    private ?object $mappedRegistry = null;
+
     public function __construct(
         private readonly Authorizer $authorizer,
         private readonly DataPersisterRegistry $persisters,
     ) {
         $this->memo = new \WeakMap();
+        $this->permissions = new \WeakMap();
     }
 
     /**
@@ -54,7 +67,25 @@ final class ViewableRows
     public function forget(): void
     {
         $this->memo = new \WeakMap();
+        $this->permissions = new \WeakMap();
         $this->listable = [];
+    }
+
+    /**
+     * The read permission `$relation` declares on `$parent` (ADR 0049): `true` or `false`, or
+     * `null` when it declares none and the related type's own gates apply. Memoized per parent
+     * and relation for the operation.
+     */
+    public function relationPermission(object $parent, RelationInterface $relation, ?string $parentType = null): ?bool
+    {
+        $answers = $this->permissions[$parent] ?? [];
+        $name = $relation->name();
+        if (!\array_key_exists($name, $answers)) {
+            $answers[$name] = $this->authorizer->relationReadPermission($parentType ?? $this->declaringType($relation) ?? '', $relation, $parent);
+            $this->permissions[$parent] = $answers;
+        }
+
+        return $answers[$name];
     }
 
     /**
@@ -99,6 +130,36 @@ final class ViewableRows
     {
         $subject = $this->persisters->supportsType($type) ? $this->persisters->forType($type)->instantiate($type) : null;
         $this->authorizer->authorize($type, Operation::FetchCollection, $subject);
+    }
+
+    /**
+     * The type whose resource declares `$relation` on the bound server, or `null` when none does.
+     */
+    private function declaringType(RelationInterface $relation): ?string
+    {
+        if ($this->server === null) {
+            return null;
+        }
+
+        $registry = $this->server->resources();
+        if ($this->declaringTypes === null || $this->mappedRegistry !== $registry) {
+            /** @var \WeakMap<RelationInterface, string> $map */
+            $map = new \WeakMap();
+            foreach ($registry->types() as $type) {
+                if (!$registry->hasResourceFor($type)) {
+                    continue;
+                }
+                foreach ($registry->resourceFor($type)->allFields() as $field) {
+                    if ($field instanceof RelationInterface) {
+                        $map[$field] = $type;
+                    }
+                }
+            }
+            $this->declaringTypes = $map;
+            $this->mappedRegistry = $registry;
+        }
+
+        return $this->declaringTypes[$relation] ?? null;
     }
 
     /**

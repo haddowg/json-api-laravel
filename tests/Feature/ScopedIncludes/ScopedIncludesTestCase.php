@@ -9,10 +9,12 @@ use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ScopedIncludes\Coin;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ScopedIncludes\Mark;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ScopedIncludes\ScopedIncludesServiceProvider;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -317,6 +319,28 @@ abstract class ScopedIncludesTestCase extends Orchestra
         $related = $this->read('/vaults/1/coins?filter[label]=r&withCount=_self_', self::MEDIA_TYPE . ';profile="' . self::COUNTABLE_PROFILE . '"');
         self::assertSame(['3'], $this->ids($related, 'data'));
         self::assertSame(1, $related->json('meta.total'));
+    }
+
+    #[Test]
+    public function aRelationPermissionNeverBypassesTheScope(): void
+    {
+        // Coins may not be listed, but `vaults.coins` declares its own permission.
+        Gate::define('viewAny', static function (?Authenticatable $user, mixed $subject = null): bool {
+            $class = \is_object($subject) ? $subject::class : (\is_string($subject) ? $subject : '');
+
+            return !\str_starts_with(\class_basename($class), 'Coin');
+        });
+        Gate::define('viewCoins', static fn(?Authenticatable $user): bool => true);
+
+        $response = $this->read('/vaults?include=coins&withCount=coins', self::MEDIA_TYPE . ';profile="' . self::COUNTABLE_PROFILE . '"');
+        $this->assertNoHiddenRows($response);
+        self::assertSame(['1', '3'], $this->ids($response, 'data.0.relationships.coins.data'));
+        self::assertSame(2, $response->json('data.0.relationships.coins.meta.total'));
+
+        $related = $this->read('/vaults/1/coins?withCount=_self_', self::MEDIA_TYPE . ';profile="' . self::COUNTABLE_PROFILE . '"');
+        self::assertSame(['1', '3'], $this->ids($related, 'data'));
+        self::assertSame(2, $related->json('meta.total'));
+        self::assertSame(['1', '3'], $this->ids($this->read('/vaults/1/relationships/coins'), 'data'));
     }
 
     #[Test]

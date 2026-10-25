@@ -84,4 +84,13 @@ final class AlbumApiPolicy
     {
         return $user->can_read;
     }
+
+    /**
+     * The convention read permission of the `curatedArtist` relation: only a write-capable user
+     * may see it, whatever the related type's own gates say.
+     */
+    public function viewCuratedArtist(User $user, object $album): bool
+    {
+        return $user->can_write;
+    }
 }

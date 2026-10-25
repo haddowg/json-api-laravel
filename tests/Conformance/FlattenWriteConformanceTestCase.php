@@ -403,6 +403,148 @@ abstract class FlattenWriteConformanceTestCase extends Orchestra
         self::assertSame(['authors:1', 'authors:2'], $this->includedIdentities($this->read('/api/books?include=editor')));
     }
 
+    #[Test]
+    #[Group('spec:fetching')]
+    public function aConventionPermissionExposesAToManyOfATypeTheCallerMayNotList(): void
+    {
+        $this->denyListingAuthors();
+        Gate::define('viewAuthors', static fn(?Authenticatable $user): bool => true);
+
+        $this->assertListsBothAuthors('authors');
+    }
+
+    #[Test]
+    #[Group('spec:fetching')]
+    public function anExplicitPermissionExposesAToManyOfATypeTheCallerMayNotList(): void
+    {
+        $this->denyListingAuthors();
+        Gate::define('seeMembers', static fn(?Authenticatable $user): bool => true);
+
+        $this->assertListsBothAuthors('members');
+    }
+
+    #[Test]
+    #[Group('spec:fetching')]
+    public function aBoolPermissionSkipsTheTypesListGate(): void
+    {
+        $this->denyListingAuthors();
+
+        $this->assertListsBothAuthors('openMembers');
+    }
+
+    #[Test]
+    #[Group('spec:fetching')]
+    public function aConventionPermissionExposesAToOneTheCallerMayNotView(): void
+    {
+        $this->denyViewOnAuthor('2');
+        Gate::define('viewEditor', static fn(?Authenticatable $user): bool => true);
+
+        $book = $this->read('/api/books/2?include=editor');
+        $book->assertJsonPath('data.relationships.editor.data.id', '2')
+            ->assertJsonPath('data.attributes.editorName', 'Grace Hopper');
+        self::assertSame(['authors:2'], $this->includedIdentities($book));
+        $this->read('/api/books/2/editor')->assertJsonPath('data.id', '2');
+        $this->read('/api/books/2/relationships/editor')->assertJsonPath('data.id', '2');
+    }
+
+    #[Test]
+    #[Group('spec:fetching')]
+    public function anExplicitPermissionExposesAToOneTheCallerMayNotView(): void
+    {
+        $this->denyViewOnAuthor('2');
+        $this->allowAuthorDataToUsers();
+        $this->actingAs(new User(['id' => 1, 'name' => 'Reader']));
+
+        $book = $this->read('/api/books/2?include=reviewer');
+        $book->assertJsonPath('data.relationships.reviewer.data.id', '2');
+        self::assertSame(['authors:2'], $this->includedIdentities($book));
+        $this->read('/api/books/2/reviewer')->assertJsonPath('data.id', '2');
+    }
+
+    #[Test]
+    #[Group('spec:fetching')]
+    public function aDeclaredPermissionBlocksAToManyOfATypeTheCallerMayList(): void
+    {
+        Gate::define('viewAuthors', static fn(?Authenticatable $user): bool => false);
+
+        $country = $this->read('/api/countries/1?include=authors&withCount=authors', self::COUNTABLE);
+        $this->assertWithheld($country, 'authors');
+        self::assertSame([], $this->includedIdentities($country));
+        $this->get('/api/countries/1/authors', ['Accept' => self::MEDIA_TYPE])->assertStatus(403);
+        $this->get('/api/countries/1/relationships/authors', ['Accept' => self::MEDIA_TYPE])->assertStatus(403);
+        $this->read('/api/authors')->assertJsonCount(2, 'data');
+    }
+
+    #[Test]
+    #[Group('spec:fetching')]
+    public function aDeclaredPermissionBlocksAToOneTheCallerMayView(): void
+    {
+        Gate::define('viewEditor', static fn(?Authenticatable $user): bool => false);
+
+        $book = $this->read('/api/books/1?include=editor');
+        $this->assertWithheld($book, 'editor');
+        self::assertSame([], $this->includedIdentities($book));
+        $book->assertJsonPath('data.attributes.editorName', null);
+        $this->get('/api/books/1/editor', ['Accept' => self::MEDIA_TYPE])->assertStatus(403);
+        $this->get('/api/books/1/relationships/editor', ['Accept' => self::MEDIA_TYPE])->assertStatus(403);
+
+        $this->update('/api/books/1', ['type' => 'books', 'id' => '1', 'attributes' => ['editorName' => 'Blocked']])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.0.code', 'RELATED_ATTRIBUTE_OWNER_MISSING');
+        $this->read('/api/authors/1')->assertJsonPath('data.attributes.name', 'Ada Lovelace');
+    }
+
+    #[Test]
+    #[Group('spec:fetching')]
+    public function aMissingConventionAbilityFallsBackToTheTypesGates(): void
+    {
+        // Nothing defines `viewAuthors` or `viewEditor`, so the authors type's own gates decide.
+        $this->denyListingAuthors();
+        $this->denyViewOnAuthor('2');
+
+        $this->assertWithheld($this->read('/api/countries/1?include=authors'), 'authors');
+        $this->read('/api/books/2?include=editor')->assertJsonPath('data.relationships.editor.data', null);
+    }
+
+    /**
+     * Asserts `$relation` on country 1 lists both authors everywhere it renders, with exact counts.
+     */
+    protected function assertListsBothAuthors(string $relation): void
+    {
+        $both = [['type' => 'authors', 'id' => '1'], ['type' => 'authors', 'id' => '2']];
+
+        $country = $this->read('/api/countries/1?include=' . $relation . '&withCount=' . $relation, self::COUNTABLE);
+        $country->assertJsonPath('data.relationships.' . $relation . '.data', $both)
+            ->assertJsonPath('data.relationships.' . $relation . '.meta.total', 2);
+        self::assertSame(['authors:1', 'authors:2'], $this->includedIdentities($country));
+
+        $this->read('/api/countries/1/relationships/' . $relation)->assertJsonPath('data', $both);
+        $related = $this->read('/api/countries/1/' . $relation . '?withCount=_self_', self::COUNTABLE);
+        self::assertSame(['1', '2'], \array_column((array) $related->json('data'), 'id'));
+        $related->assertJsonPath('meta.total', 2);
+
+        $window = $this->read(
+            '/api/countries/1?include=' . $relation . '&withCount=' . $relation,
+            'application/vnd.api+json; profile="https://haddowg.github.io/json-api/profiles/relationship-queries/ https://haddowg.github.io/json-api/profiles/countable/"',
+        );
+        $window->assertJsonPath('data.relationships.' . $relation . '.data', $both)
+            ->assertJsonPath('data.relationships.' . $relation . '.meta.total', 2);
+    }
+
+    /**
+     * Asserts `$relation` on the primary resource renders only its links.
+     *
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
+     */
+    protected function assertWithheld(TestResponse $response, string $relation): void
+    {
+        $relationship = $response->json('data.relationships.' . $relation);
+        self::assertIsArray($relationship);
+        self::assertArrayHasKey('links', $relationship);
+        self::assertArrayNotHasKey('data', $relationship);
+        self::assertArrayNotHasKey('meta', $relationship);
+    }
+
     /**
      * Refuses `viewAny` on authors and allows it everywhere else.
      */

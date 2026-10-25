@@ -45,6 +45,11 @@ final class RelationAuthorizer implements RelationAuthorizerInterface
 
     public function canReadRelationship(mixed $model, RelationInterface $relation, JsonApiRequestInterface $request): bool
     {
+        // A permission the relation declares replaces the related type's own gates (ADR 0049).
+        if ($this->rows !== null && \is_object($model)) {
+            return $this->rows->relationPermission($model, $relation) ?? !$this->refusesList($relation);
+        }
+
         $ability = $relation->securityRead();
         if (\is_string($ability) && (!\is_object($model) || !$this->authorizer->allowsAbility($this->declaringType($relation) ?? '', $ability, $model))) {
             return false;

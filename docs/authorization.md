@@ -130,9 +130,9 @@ The example's `playlists.owner` gates its related/relationship reads on `inspect
 The same ability decides what the relationship shows wherever the parent is rendered: on a
 fetched resource, in a collection, and on a resource in `included`. It is checked once per
 parent, so a caller without it sees the relationship's `links` and no `data` or `meta`, and
-nothing reaches `included` through it. A relation without a string read ability shows its data
-to anyone who can see the parent. `security(read: true)` and `security(read: false)` only
-document the endpoints, so they change nothing here.
+nothing reaches `included` through it. A relation's read ability is its read permission, which
+replaces the related type's own gates for that relation; see
+[relation read permissions](#relation-read-permissions).
 
 An attribute flattened with `on()` writes onto the related row at the end of its chain. That
 write needs the related type's `update` ability (or its renamed ability) on that row, checked
@@ -147,7 +147,8 @@ the parent after the create/update ability passes.
 ## Related rows and their own type's policy
 
 Rows of another type that a response renders pass that type's own read gates, so a type's
-policy can't be read around by including it from a type that is open.
+policy can't be read around by including it from a type that is open. A relation that declares
+its own [read permission](#relation-read-permissions) uses that instead.
 
 A single related row passes its type's `view` ability (or its rename), the check
 `GET /{type}/{id}` makes on that row. That covers a to-one relationship's linkage and its
@@ -173,6 +174,66 @@ ability is not checked, exactly as for `GET /{type}`.
 
 This is a change for apps that relied on `?include` to read a single row its `view` policy
 refuses, or a to-many of a type their `viewAny` refuses. Those are now hidden.
+
+## Relation read permissions
+
+Two things decide what a relation shows. **Permission** is whether this caller may see the
+relation's data at all. **Scoping** is which rows exist: Eloquent global scopes and scoping
+providers. Scoping always applies, may leave no rows at all, and every count follows it.
+
+By default the permission is the related type's own: its `viewAny` gate for a to-many and its
+`view` gate for each to-one row, as described above. A relation can declare its own permission
+instead, which then replaces the related type's gates for that relation only. In order of
+precedence:
+
+1. `->security(read: 'ability')`, checked against the parent.
+2. A `view{Relation}` ability on the parent type's policy (its dedicated `policy:` class or the
+   model's Gate policy) or defined on the Gate, checked against the parent. For a `tags`
+   relation on posts that is `PostPolicy::viewTags($user, $post)`. It counts only when the
+   method or ability exists, so a policy without it leaves the related type's gates in charge.
+   A name that would collide with a standard ability, such as a relation named `any`, is
+   skipped.
+3. `->security(read: true)` or `->security(read: false)`, which declare the relation without
+   enforcing anything in the app.
+
+When the permission allows, the relation's data renders under scoping alone, even if the
+related type's `viewAny` or `view` would refuse: its linkage, its `included` resources, both of
+its endpoints, `?withCount`, the Relationship Queries window and `on()` through a to-one. When it
+refuses, the relationship renders only its `links`, its related and relationship endpoints answer
+`403`, and an `on()` attribute through a refused to-one reads `null` and can't be written (a
+`422`). Writes are not affected.
+
+Exposing a relation of a type the caller can't list. Here `users` refuses `viewAny` to
+non-admins, but anyone who can view a team may see its members:
+
+```php
+final class TeamPolicy
+{
+    public function viewMembers(User $user, Team $team): bool
+    {
+        return $team->members->contains($user);
+    }
+}
+```
+
+`GET /teams/1?include=members` then lists the members the `users` scope admits, with exact
+counts, while `GET /users` stays refused.
+
+Blocking one relation of a type the caller can list. Here `invoices` allows `viewAny`, but a
+customer's invoices are for its account managers only:
+
+```php
+final class CustomerPolicy
+{
+    public function viewInvoices(User $user, Customer $customer): bool
+    {
+        return $customer->manager_id === $user->id;
+    }
+}
+```
+
+Everyone else sees only the `invoices` relationship's links, and `GET /customers/1/invoices`
+answers `403`.
 
 ## Custom actions
 
