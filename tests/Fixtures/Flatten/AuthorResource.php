@@ -6,8 +6,10 @@ namespace haddowg\JsonApiLaravel\Tests\Fixtures\Flatten;
 
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\BelongsTo;
+use haddowg\JsonApi\Resource\Field\HasMany;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Str;
+use haddowg\JsonApi\Resource\Filter\Contains;
 
 final class AuthorResource extends AbstractResource
 {
@@ -20,6 +22,12 @@ final class AuthorResource extends AbstractResource
             Str::make('name'),
             BelongsTo::make('country', 'countries')->hidden(),
             BelongsTo::make('homeCountry', 'countries')->storedAs('country')->security(read: 'seeAuthorData'),
+            HasMany::make('books', 'books')->countable(),
         ];
+    }
+
+    public function filters(): array
+    {
+        return [Contains::make('name')];
     }
 }

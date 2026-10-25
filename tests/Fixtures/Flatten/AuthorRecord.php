@@ -13,5 +13,7 @@ final class AuthorRecord
         public string $id = '',
         public string $name = '',
         public ?CountryRecord $country = null,
+        /** @var list<BookRecord> */
+        public array $books = [],
     ) {}
 }
