@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.9.1](https://github.com/haddowg/json-api-laravel/compare/v1.9.0...v1.9.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* decode wire ids with the dispatching server's id encoder ([#123](https://github.com/haddowg/json-api-laravel/issues/123)) ([2253a5e](https://github.com/haddowg/json-api-laravel/commit/2253a5e0026b18fc2c15bfa2fa0c07ef7ea1f4dc))
+* key authorization by server and type ([#120](https://github.com/haddowg/json-api-laravel/issues/120)) ([530375c](https://github.com/haddowg/json-api-laravel/commit/530375c106aa6f87cfd55f0cbf1186faf42c8323))
+* key response headers and action tags by server and type ([#122](https://github.com/haddowg/json-api-laravel/issues/122)) ([8d9982d](https://github.com/haddowg/json-api-laravel/commit/8d9982da17d0edf838b3a15a047cdc2f019c64c6))
+
 ## [1.9.0](https://github.com/haddowg/json-api-laravel/compare/v1.8.2...v1.9.0) (2026-10-25)
 
 
