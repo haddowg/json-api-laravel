@@ -545,6 +545,33 @@ abstract class FlattenWriteConformanceTestCase extends Orchestra
         self::assertArrayNotHasKey('meta', $relationship);
     }
 
+    #[Test]
+    #[Group('spec:fetching')]
+    public function aRelatedPagesItemsShowTheirFilteredRelationsEverywhere(): void
+    {
+        $accept = 'application/vnd.api+json; profile="https://haddowg.github.io/json-api/profiles/relationship-queries/ https://haddowg.github.io/json-api/profiles/countable/"';
+
+        // Only Ada's "Algorithms" matches.
+        $related = $this->read('/api/countries/1/authors?include=books&withCount=books&relatedQuery[books][filter][title]=Alg', $accept);
+        self::assertSame([['type' => 'books', 'id' => '1']], $this->relationshipData($related, '1', 'books'));
+        self::assertSame([], $this->relationshipData($related, '2', 'books'));
+        self::assertSame(['books:1'], $this->includedIdentities($related));
+        $related->assertJsonPath('data.0.relationships.books.meta.total', 1)
+            ->assertJsonPath('data.1.relationships.books.meta.total', 0);
+
+        // A to-one related endpoint: Ada edits book 1, and "Compilers" isn't hers.
+        $editor = $this->read('/api/books/1/editor?include=books&withCount=books&relatedQuery[books][filter][title]=Comp', $accept);
+        $editor->assertJsonPath('data.relationships.books.data', [])
+            ->assertJsonPath('data.relationships.books.meta.total', 0);
+        self::assertSame([], $this->includedIdentities($editor));
+
+        // The relationship endpoint renders identifiers only, so its members carry no
+        // relationships or included resources that could disagree.
+        $linkage = $this->read('/api/countries/1/relationships/authors?include=books', $accept);
+        self::assertSame([['type' => 'authors', 'id' => '1'], ['type' => 'authors', 'id' => '2']], $linkage->json('data'));
+        self::assertNull($linkage->json('included'));
+    }
+
     /**
      * Refuses `viewAny` on authors and allows it everywhere else.
      */

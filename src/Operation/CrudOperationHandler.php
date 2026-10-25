@@ -773,10 +773,15 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // through the parent), so guard the resolution.
         if (\is_object($related) && !$polymorphic && $this->providers->supportsType($relatedType)) {
             $this->preloadIncludes($server, [$related], $relatedType, $request);
+            // Its relationships honour the Relationship Queries profile like any rendered resource,
+            // so their linkage, included members and counts come from the same filtered set.
+            $activatedProfiles = $this->applyRelationshipWindows($server, $relatedType, [$related], $request);
             $this->applyRelationshipCounts($server, $relatedType, [$related], $request);
         }
 
-        return RelatedResponse::fromResource($related, $serializer);
+        $response = RelatedResponse::fromResource($related, $serializer);
+
+        return ($activatedProfiles ?? []) === [] ? $response : $response->withActivatedProfiles(...$activatedProfiles);
     }
 
     /**

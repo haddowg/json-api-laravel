@@ -54,6 +54,8 @@ final class FlattenServiceProvider extends ServiceProvider
             '2' => new BookRecord('2', 'Compilers', $grace, $grace),
             '3' => new BookRecord('3', 'Orphan'),
         ];
+        $ada->books = [$books['1']];
+        $grace->books = [$books['2']];
 
         $identify = static function (object $item): string {
             $id = Accessor::get($item, 'id');

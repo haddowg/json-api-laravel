@@ -8,6 +8,7 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\BelongsTo;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Str;
+use haddowg\JsonApi\Resource\Filter\Contains;
 
 /**
  * `authorName` flattens the hidden `author`'s name, `authorCountry` the name of that author's
@@ -31,5 +32,10 @@ final class BookResource extends AbstractResource
             BelongsTo::make('editor', 'authors'),
             BelongsTo::make('reviewer', 'authors')->storedAs('editor')->security(read: 'seeAuthorData'),
         ];
+    }
+
+    public function filters(): array
+    {
+        return [Contains::make('title')];
     }
 }
