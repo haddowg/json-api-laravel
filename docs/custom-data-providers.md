@@ -140,6 +140,14 @@ window and the relationship endpoint, so each shows exactly what the related end
 These loads run once per parent rather than batched. An Eloquent global scope needs none of
 this: Eloquent applies it to every relation read already.
 
+A relation computed with `extractUsing()` follows the same rule. The closure's value is only the
+candidate set: when the related type has its own provider, the members load through that
+provider's `fetchRelatedCollection()`, which narrows them before any filter, sort or page, so
+linkage, `included`, both endpoints, `?withCount` and the window all show the same rows. On an
+Eloquent type the closure's own queries already run through the model's global scopes, so a
+closure that calls `withoutGlobalScopes()` gets exactly the rows it asked for
+([ADR 0050](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0050-a-computed-relation-is-scoped-by-the-related-types-provider.md)).
+
 A to-one target of such a type is read off the parent and kept only while the provider's
 `fetchOne()` still returns it. Otherwise the relation renders as empty everywhere: linkage,
 `included`, the relationship and related endpoints, a `MorphTo`, and any attribute flattened
