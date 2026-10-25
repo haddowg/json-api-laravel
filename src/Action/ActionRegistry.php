@@ -8,6 +8,7 @@ use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\ActionMetadata;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\ActionMetadataProviderInterface;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\TagNameResolver;
+use haddowg\JsonApiLaravel\Server\ServerRegistry;
 
 /**
  * Resolves an {@see ActionDescriptor} and its {@see ActionHandlerInterface} by the
@@ -33,16 +34,24 @@ final class ActionRegistry implements ActionMetadataProviderInterface
     private array $byKey = [];
 
     /**
+     * @var array<string, array<string, list<string>>>
+     */
+    private readonly array $typeTags;
+
+    /**
      * @param list<ActionDescriptor>                    $descriptors    the resolved action descriptors, in discovery order
      * @param \Closure(class-string<ActionHandlerInterface>): ActionHandlerInterface $handlerResolver constructs a handler by its class-string
-     * @param array<string, list<string>>              $typeTags       the explicit OpenAPI tags each mount type declares, keyed by JSON:API type (an action with no tags inherits these before the humanized default)
+     * @param array<string, list<string>>              $typeTags       the explicit OpenAPI tags each mount type declares on the `default` server, keyed by JSON:API type (an action with no tags inherits these before the humanized default)
+     * @param array<string, array<string, list<string>>> $serverTypeTags the same, keyed by server name then type, so an action inherits the tags of the class its own server exposes the type through; an entry for `default` here replaces `$typeTags`
      */
     public function __construct(
         array $descriptors,
         private readonly \Closure $handlerResolver,
         private readonly TagNameResolver $tagNames,
-        private readonly array $typeTags = [],
+        array $typeTags = [],
+        array $serverTypeTags = [],
     ) {
+        $this->typeTags = $serverTypeTags + [ServerRegistry::DEFAULT_SERVER => $typeTags];
         $this->descriptors = \array_values($descriptors);
         foreach ($this->descriptors as $descriptor) {
             $this->byKey[self::key($descriptor->server, $descriptor->type, $descriptor->scope, $descriptor->path)] = $descriptor;
@@ -116,7 +125,7 @@ final class ActionRegistry implements ActionMetadataProviderInterface
             return $descriptor->tags;
         }
 
-        $typeTags = $this->typeTags[$descriptor->type] ?? [];
+        $typeTags = $this->typeTags[$descriptor->server][$descriptor->type] ?? [];
 
         return $typeTags !== [] ? $typeTags : [$this->tagNames->defaultFor($descriptor->type)];
     }

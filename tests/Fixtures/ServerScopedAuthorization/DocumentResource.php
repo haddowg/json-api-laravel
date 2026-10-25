@@ -11,9 +11,14 @@ use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
 /**
- * `documents` on the `default` server, under its own dedicated policy.
+ * `documents` on the `default` server, under its own dedicated policy, publicly cacheable
+ * and tagged for the public reader.
  */
-#[AsJsonApiResource(policy: PublicDocumentPolicy::class)]
+#[AsJsonApiResource(
+    policy: PublicDocumentPolicy::class,
+    tags: ['Public documents'],
+    cacheHeaders: ['max_age' => 60, 'public' => true],
+)]
 final class DocumentResource extends AbstractResource
 {
     public static string $type = 'documents';

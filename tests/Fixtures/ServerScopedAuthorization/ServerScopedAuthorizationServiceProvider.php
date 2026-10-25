@@ -27,7 +27,10 @@ final class ServerScopedAuthorizationServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([DocumentResource::class, NoteResource::class, LabelResource::class, AdminDocumentResource::class, AdminNoteResource::class]);
+        JsonApi::register([
+            DocumentResource::class, NoteResource::class, LabelResource::class, CountDocumentsAction::class,
+            AdminDocumentResource::class, AdminNoteResource::class, AdminCountDocumentsAction::class,
+        ]);
 
         if (config('ssa.store') === 'memory') {
             $notes = ['1' => new NoteRecord('1', 'First'), '2' => new NoteRecord('2', 'Second')];

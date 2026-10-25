@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Http;
 
 use haddowg\JsonApi\Operation\Target;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
+use haddowg\JsonApiLaravel\Server\ServerNames;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -26,7 +27,8 @@ use Symfony\Component\HttpFoundation\Response;
  *    per-operation override, over the global default) on a **safe (`GET`) successful**
  *    read only; a write or an error document never gets a `Cache-Control`.
  *
- * It reads the type + read shape off the matched route via the {@see TargetResolver}
+ * It reads the type, read shape and server off the matched route, and applies what that
+ * server's resource class declares for the type. It reads them via the {@see TargetResolver}
  * (the atomic route carries no `_jsonapi_type`, so it is skipped) and **never
  * clobbers a header an app set explicitly** (each value object checks before writing;
  * an app-configured `Cache-Control` is detected and left untouched).
@@ -36,6 +38,7 @@ final class ResponseHeadersMiddleware
     public function __construct(
         private readonly ResponseHeadersRegistry $registry,
         private readonly TargetResolver $targetResolver,
+        private readonly ServerNames $serverNames = new ServerNames(),
     ) {}
 
     /**
@@ -51,10 +54,11 @@ final class ResponseHeadersMiddleware
         }
 
         $type = $target->type;
+        $server = $this->serverNames->forRoute($request);
 
         // Deprecation/Sunset are emitted on every response for the type, reads and
         // writes alike (each header is only written when the app has not set it).
-        $this->registry->deprecationFor($type)?->applyTo($response);
+        $this->registry->deprecationFor($type, $server)?->applyTo($response);
 
         // Cache headers apply only to a safe (GET) successful read — never a write
         // verb and never an error document (2xx only).
@@ -70,7 +74,7 @@ final class ResponseHeadersMiddleware
             return $response;
         }
 
-        $this->registry->cacheFor($type, ResponseHeaderOperation::fromTarget($target))?->applyTo($response);
+        $this->registry->cacheFor($type, ResponseHeaderOperation::fromTarget($target), $server)?->applyTo($response);
 
         return $response;
     }

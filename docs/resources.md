@@ -209,6 +209,9 @@ response:
 final class DeviceResource extends AbstractResource { /* … */ }
 ```
 
+Each server sends the headers of the class it exposes the type through, see
+[multi-server](multi-server-and-testing.md#authorization-headers-and-tags-per-server).
+
 ## Object-aware `getType()` and the self-link opt-out
 
 A resource that serves as a **polymorphic member** (of a `MorphTo`/`MorphToMany`) overrides

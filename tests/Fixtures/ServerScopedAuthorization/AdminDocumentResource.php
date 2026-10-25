@@ -13,12 +13,16 @@ use haddowg\JsonApiLaravel\Operation\Operation;
 
 /**
  * The same `documents` type on the `admin` server, through a different resource class with
- * a different policy, `update` renamed to `edit` and the `delete` check disabled.
+ * a different policy, `update` renamed to `edit`, the `delete` check disabled, private
+ * caching, a deprecation signal and its own tag.
  */
 #[AsJsonApiResource(
     server: 'admin',
     policy: AdminDocumentPolicy::class,
     abilities: [Operation::Update->value => 'edit', Operation::Delete->value => false],
+    tags: ['Admin documents'],
+    cacheHeaders: ['max_age' => 30, 'public' => false],
+    deprecation: true,
 )]
 final class AdminDocumentResource extends AbstractResource
 {
