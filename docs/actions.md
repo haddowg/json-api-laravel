@@ -112,8 +112,27 @@ The request's `Content-Type` picks the entry. A document entry is validated and 
 `$context->input()` as usual; a raw entry leaves the body on `$context->request()`.
 `$context->requestMediaType()` returns the media type the body was sent as, lowercased and
 without parameters, such as `text/csv`. Wildcards such as `image/*` match, but never one of
-the three form types above. A type the action doesn't list is a `415`. The OpenAPI document
-lists each entry under the operation's `requestBody.content`.
+the three form types above. A type the action doesn't list is a `415`.
+
+To describe a body in the OpenAPI document, list core's `AcceptedBody` instead of a bare media
+type. It is read as a JSON:API document when it is one, and as a raw body otherwise:
+
+```php
+use haddowg\JsonApi\OpenApi\Metadata\AcceptedBody;
+
+accepts: [
+    new AcceptedBody('application/json', schema: ['type' => 'object', 'properties' => ['score' => ['type' => 'integer']]]),
+    new AcceptedBody('image/*', binary: true),
+    'text/plain',
+],
+```
+
+Core projects each entry under the operation's `requestBody.content`, in declared order, and
+adds the `415` response. A JSON:API document entry carries the input type's request schema; an
+entry with a `schema` carries it inline, or as a component when it names a `DescribesRawBody`
+class; any other entry is a binary string, or an open object for `multipart/form-data`. A
+document that uses `accepts` is stamped contract 11
+([core ADR 0175](https://github.com/haddowg/json-api/blob/main/docs/adr/0175-an-action-may-declare-the-request-bodies-it-accepts.md)).
 
 ### Which requests must name their media type
 

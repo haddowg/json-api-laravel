@@ -14,6 +14,6 @@ final class ContentTypeServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([ImportAlbumsAction::class, UploadArtworkAction::class, PingAlbumsAction::class, ReindexAlbumsAction::class]);
+        JsonApi::register([ImportAlbumsAction::class, UploadArtworkAction::class, PingAlbumsAction::class, ReindexAlbumsAction::class, ImportScoresAction::class]);
     }
 }

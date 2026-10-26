@@ -121,6 +121,17 @@ abstract class ContentTypeConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    public function anAcceptedBodyEntryIsReadAsARawBody(): void
+    {
+        $this->send('POST', '/api/albums/-actions/import-scores', 'application/json', '{"score":3}')
+            ->assertOk()
+            ->assertJsonPath('meta.mediaType', 'application/json')
+            ->assertJsonPath('meta.body', '{"score":3}');
+        $this->send('POST', '/api/albums/-actions/import-scores', 'text/plain', '3')->assertOk();
+        $this->send('POST', '/api/albums/-actions/import-scores', 'text/csv', '3')->assertStatus(415);
+    }
+
+    #[Test]
     public function aRawActionWithoutAcceptsTakesAnyOtherType(): void
     {
         $this->send('POST', '/api/albums/-actions/upload-artwork', 'image/png', 'PNGDATA')
@@ -161,6 +172,12 @@ abstract class ContentTypeConformanceTestCase extends Orchestra
         self::assertSame(['type' => 'string', 'format' => 'binary'], $this->at($content, 'text/csv', 'schema'));
         self::assertSame(['$ref' => '#/components/schemas/AlbumsCreateRequest'], $this->at($content, self::MEDIA_TYPE, 'schema'));
         self::assertArrayHasKey('415', $this->at($import, 'responses'));
+
+        $scores = $this->at($document, 'paths', '/albums/-actions/import-scores', 'post', 'requestBody', 'content');
+        self::assertSame(['application/json', 'multipart/form-data', 'text/plain'], \array_keys($scores));
+        self::assertSame(['type' => 'object', 'properties' => ['score' => ['type' => 'integer']]], $this->at($scores, 'application/json', 'schema'));
+        self::assertSame(['type' => 'object'], $this->at($scores, 'multipart/form-data', 'schema'));
+        self::assertSame(['type' => 'string', 'format' => 'binary'], $this->at($scores, 'text/plain', 'schema'));
 
         $upload = $this->at($document, 'paths', '/albums/-actions/upload-artwork', 'post');
         self::assertSame(['application/octet-stream'], \array_keys($this->at($upload, 'requestBody', 'content')));

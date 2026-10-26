@@ -638,23 +638,13 @@ final class DiscoveryScanner
     }
 
     /**
-     * An action's `accepts` declaration as `media type => ActionInput case name`, each media
-     * type lowercased without parameters, the form core's content-type matcher reports.
+     * An action's `accepts` declaration as `media type => ActionInput case name`.
      *
      * @return array<string, string>
      */
     private static function acceptedMediaTypes(AsJsonApiAction $attribute): array
     {
-        $accepts = [];
-        foreach ($attribute->accepts as $key => $value) {
-            $mediaType = \is_string($key) ? $key : $value;
-            $mode = $value instanceof ActionInput ? $value : $attribute->input;
-            if (\is_string($mediaType)) {
-                $accepts[\strtolower(\trim(\explode(';', $mediaType)[0]))] = $mode->name;
-            }
-        }
-
-        return $accepts;
+        return \array_map(static fn(ActionInput $input): string => $input->name, $attribute->acceptedInputs());
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Attribute;
 
+use haddowg\JsonApi\OpenApi\Metadata\AcceptedBody;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResource;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResponse;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResponses;
@@ -80,9 +81,11 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
  * `summary` and `description` set the action operation's OpenAPI `summary` and
  * `description`; left `null`, the document keeps its generated defaults.
  *
- * `accepts` lists the request media types the action takes. A list entry is read in the
+ * `accepts` lists the request media types the action takes. A plain list entry is read in the
  * action's `input` mode; a `mediaType => ActionInput` entry carries its own mode, so one
- * action can take a JSON:API document and a CSV upload. Wildcards such as `image/*` match,
+ * action can take a JSON:API document and a CSV upload; an {@see AcceptedBody} list entry
+ * also describes the body's schema for the OpenAPI document, and is read as a JSON:API
+ * document when it is one and as a raw body otherwise. Wildcards such as `image/*` match,
  * but `text/plain`, `multipart/form-data` and `application/x-www-form-urlencoded` are
  * taken only when named. Left empty, the action takes what its `input` mode implies.
  */
@@ -105,7 +108,7 @@ final readonly class AsJsonApiAction
      * @param bool                                     $asLink   expose the action as an ability-aware `links` member on the mount type's resources (resource scope only)
      * @param string|null                              $summary     the operation's OpenAPI summary (null keeps the generated one)
      * @param string|null                              $description the operation's OpenAPI description (null keeps the generated one)
-     * @param array<int|string, string|ActionInput>    $accepts     the accepted request media types: a list read in `input` mode, or `mediaType => ActionInput`
+     * @param array<int|string, string|ActionInput|AcceptedBody> $accepts the accepted request media types: media types or {@see AcceptedBody} entries in a list, or `mediaType => ActionInput`
      */
     public function __construct(
         public string $type,
@@ -184,16 +187,71 @@ final readonly class AsJsonApiAction
         }
 
         foreach ($accepts as $key => $value) {
-            $mediaType = \is_string($key) ? $key : $value;
-            if (!\is_string($mediaType) || \preg_match('#^[a-z0-9!\#$&^_.+*-]+/[a-z0-9!\#$&^_.+*-]+$#i', \trim($mediaType)) !== 1
-                || (\is_string($key) && !$value instanceof ActionInput)) {
+            $valid = \is_string($key)
+                ? $value instanceof ActionInput && self::isMediaType($key)
+                : $value instanceof AcceptedBody || (\is_string($value) && self::isMediaType($value));
+            if (!$valid) {
                 throw new \LogicException(\sprintf(
                     'The JSON:API action "%s" on type "%s" declares an invalid accepts entry; use a list of media '
-                    . 'types or a map of media type to ActionInput.',
+                    . 'types or AcceptedBody entries, or a map of media type to ActionInput.',
                     $path,
                     $type,
                 ));
             }
         }
+    }
+
+    /**
+     * The `accepts` declaration as core's {@see AcceptedBody} list, in declared order: a
+     * plain media type has no schema, and a `Document` map entry is a JSON:API document.
+     *
+     * @return list<AcceptedBody>
+     */
+    public function acceptedBodies(): array
+    {
+        $bodies = [];
+        foreach ($this->accepts as $key => $value) {
+            $body = match (true) {
+                $value instanceof AcceptedBody => $value,
+                \is_string($key) && $value === ActionInput::Document => new AcceptedBody($key, document: true),
+                \is_string($key) => new AcceptedBody($key),
+                \is_string($value) => new AcceptedBody($value),
+                default => null,
+            };
+            if ($body !== null) {
+                $bodies[] = $body;
+            }
+        }
+
+        return $bodies;
+    }
+
+    /**
+     * The input mode each accepted media type is read in, keyed by the media type lowercased
+     * without parameters, the form core's content-type matcher reports.
+     *
+     * @return array<string, ActionInput>
+     */
+    public function acceptedInputs(): array
+    {
+        $inputs = [];
+        foreach ($this->accepts as $key => $value) {
+            $body = $value instanceof AcceptedBody ? $value : null;
+            $declared = \is_string($key) ? $key : (\is_string($value) ? $value : '');
+            $mediaType = $body?->essence() ?? \strtolower(\trim(\explode(';', $declared)[0]));
+            $inputs[$mediaType] = match (true) {
+                $value instanceof ActionInput => $value,
+                $body === null => $this->input,
+                $body->document => ActionInput::Document,
+                default => $this->input === ActionInput::None ? ActionInput::None : ActionInput::Raw,
+            };
+        }
+
+        return $inputs;
+    }
+
+    private static function isMediaType(string $mediaType): bool
+    {
+        return \preg_match('#^[a-z0-9!\#$&^_.+*-]+/[a-z0-9!\#$&^_.+*-]+$#i', \trim(\explode(';', $mediaType)[0])) === 1;
     }
 }
