@@ -70,6 +70,41 @@ skips the hops in between unless they changed too, and a write that sends the st
 issues no `UPDATE`. The persister finds these models by walking the parent's loaded to-one
 relations, so a loaded to-one model that a before-save hook changed is saved as well. It doesn't use `push()`, which would also save loaded to-many collections.
 
+### Overriding one write
+
+To change how one type's entities are built or deleted, extend `EloquentDataPersister` and
+override `instantiate()` or `delete()`. The subclass keeps the inherited creates, updates,
+relationship writes, transactions and soft-delete actions. Register it for its types at the
+default priority, above the reference persister:
+
+```php
+use haddowg\JsonApiLaravel\DataPersister\Eloquent\EloquentDataPersister;
+
+final class ArchivingNotePersister extends EloquentDataPersister
+{
+    public function __construct(private readonly Archiver $archiver)
+    {
+        parent::__construct(['notes' => Note::class]);
+    }
+
+    public function instantiate(string $type): object
+    {
+        return new Note(['status' => $this->archiver->initialStatus()]);
+    }
+
+    public function delete(string $type, object $entity): void
+    {
+        $this->archiver->archive($entity);
+    }
+}
+
+JsonApi::persister(ArchivingNotePersister::class); // resolved from the container
+```
+
+A change that should apply to every write of the model, not only the API's, belongs on the
+model instead: attribute defaults in `$attributes`, or a `deleting` observer that returns
+`false` to stop the delete.
+
 ## Filters → query builder
 
 Core's filter vocabulary is pushed down to the Eloquent builder. The example's resources

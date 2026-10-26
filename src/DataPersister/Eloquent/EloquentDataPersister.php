@@ -65,8 +65,11 @@ use Illuminate\Support\Facades\DB;
  * per-op writes above buffer as savepoints — non-durable until {@see commit()} yet
  * materialising each store-generated id immediately (`save()` sets it before its savepoint
  * releases), so a later batch operation can reference a just-created resource.
+ *
+ * An application may extend it to override {@see instantiate()} or {@see delete()} for the
+ * types it registers the subclass for, keeping every other write and capability (ADR 0056).
  */
-final class EloquentDataPersister extends AbstractDataPersister implements TransactionalDataPersisterInterface, SoftDeleteCapable, ReportsCurrentOwners
+class EloquentDataPersister extends AbstractDataPersister implements TransactionalDataPersisterInterface, SoftDeleteCapable, ReportsCurrentOwners
 {
     /**
      * @var array<string, class-string<Model>>
