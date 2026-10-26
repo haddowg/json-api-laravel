@@ -29,6 +29,20 @@ use haddowg\JsonApi\Server\ResolvingServerInterface;
  */
 final readonly class ActionContext
 {
+    /**
+     * The request attribute carrying the {@see ActionInput} case name the body was read in.
+     *
+     * @internal
+     */
+    public const string INPUT_ATTRIBUTE = '_jsonapi_action_input';
+
+    /**
+     * The request attribute carrying the request body's media type, or null without one.
+     *
+     * @internal
+     */
+    public const string MEDIA_TYPE_ATTRIBUTE = '_jsonapi_request_media_type';
+
     public function __construct(
         private ResolvingServerInterface $server,
         private ActionDescriptor $descriptor,
@@ -64,6 +78,18 @@ final readonly class ActionContext
     public function request(): JsonApiRequestInterface
     {
         return $this->request;
+    }
+
+    /**
+     * The media type of the request body, lowercased and without parameters, such as
+     * `text/csv`; null when the request declared none. For an action that lists several
+     * `accepts` entries, this is the one the body matched.
+     */
+    public function requestMediaType(): ?string
+    {
+        $mediaType = $this->request->getAttribute(self::MEDIA_TYPE_ATTRIBUTE);
+
+        return \is_string($mediaType) ? $mediaType : null;
     }
 
     public function queryParameters(): QueryParameters

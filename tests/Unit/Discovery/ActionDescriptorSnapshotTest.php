@@ -35,12 +35,14 @@ final class ActionDescriptorSnapshotTest extends TestCase
             'default',
             summary: 'Publish an album',
             description: 'Marks the album as released.',
+            accepts: ['text/csv' => 'Raw'],
         );
 
         $restored = ActionDescriptor::fromArray($descriptor->toArray());
 
         self::assertSame('Publish an album', $restored->summary);
         self::assertSame('Marks the album as released.', $restored->description);
+        self::assertSame(['text/csv' => 'Raw'], $restored->accepts);
     }
 
     #[Test]

@@ -92,7 +92,7 @@ final class GettingStartedTest extends Orchestra
     {
         $this->seedAlbum('OK Computer');
 
-        $response = $this->json('DELETE', '/api/albums/1', [], ['Accept' => self::MEDIA_TYPE]);
+        $response = $this->delete('/api/albums/1', [], ['Accept' => self::MEDIA_TYPE]);
 
         $response->assertNoContent();
         self::assertSame(0, Album::query()->count());

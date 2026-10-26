@@ -19,6 +19,7 @@ use haddowg\JsonApi\Operation\Target;
 use haddowg\JsonApi\Request\JsonApiRequest;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Server\Server;
+use haddowg\JsonApiLaravel\Action\ActionContext;
 use haddowg\JsonApiLaravel\Action\ActionInput;
 use haddowg\JsonApiLaravel\Action\ActionRegistry;
 use haddowg\JsonApiLaravel\Action\ActionScope;
@@ -118,7 +119,7 @@ final class JsonApiController
             $operation = $this->actionOperation($jsonApiRequest, $target, $server, $serverName, $actionName, $defaults);
         } else {
             $validator = new RequestValidator();
-            $validator->negotiate($jsonApiRequest);
+            $validator->negotiate($jsonApiRequest, strictContentType: StrictContentType::appliesTo($jsonApiRequest));
             $validator->validateQueryParams($jsonApiRequest);
 
             $method = \strtoupper($jsonApiRequest->getMethod());
@@ -163,7 +164,7 @@ final class JsonApiController
         \assert($jsonApiRequest instanceof JsonApiRequestInterface);
 
         $validator = new RequestValidator(AtomicExtension::URI);
-        $validator->negotiate($jsonApiRequest);
+        $validator->negotiate($jsonApiRequest, strictContentType: StrictContentType::appliesTo($jsonApiRequest));
         $this->requireAtomicExtension($jsonApiRequest);
 
         $validator->validateQueryParams($jsonApiRequest);
@@ -223,11 +224,30 @@ final class JsonApiController
         $scope = ($defaults[self::ACTION_SCOPE_ATTRIBUTE] ?? null) === ActionScope::Collection->name
             ? ActionScope::Collection
             : ActionScope::Resource;
-        $input = $this->actionInput($serverName, $target->type, $scope, $actionName);
+        $descriptor = $this->actions?->descriptorFor($serverName, $target->type, $scope, $actionName);
+        $input = $descriptor === null ? ActionInput::None : $descriptor->input;
+        $mediaType = null;
 
         $validator = new RequestValidator();
-        $validator->negotiate($jsonApiRequest, requireJsonApiContentType: $input !== ActionInput::Raw);
+        $strict = StrictContentType::appliesTo($jsonApiRequest);
+        if ($descriptor !== null && $strict && ($descriptor->accepts !== [] || $input === ActionInput::Raw)) {
+            // A Raw action that lists no media types takes any, short of the form types a
+            // browser sends without a preflight, which only an explicit entry admits.
+            $match = $validator->negotiateContentType($jsonApiRequest, $descriptor->accepts !== [] ? \array_keys($descriptor->accepts) : ['*/*']);
+            $input = $descriptor->inputFor($match->accepted);
+            $mediaType = $match->mediaType;
+            $validator->negotiate($jsonApiRequest, requireJsonApiContentType: false);
+        } else {
+            $validator->negotiate($jsonApiRequest, requireJsonApiContentType: $input !== ActionInput::Raw, strictContentType: $strict);
+            $contentType = \strtolower(\trim(\explode(';', $jsonApiRequest->getHeaderLine('content-type'))[0]));
+            $mediaType = $contentType === '' ? null : $contentType;
+        }
         $validator->validateQueryParams($jsonApiRequest);
+
+        $jsonApiRequest = $jsonApiRequest
+            ->withAttribute(ActionContext::INPUT_ATTRIBUTE, $input->name)
+            ->withAttribute(ActionContext::MEDIA_TYPE_ATTRIBUTE, $mediaType);
+        \assert($jsonApiRequest instanceof JsonApiRequestInterface);
 
         // Only a Document-input action reads + validates a JSON:API body; None/Raw carry no
         // document, so the operation body stays null.
@@ -246,22 +266,6 @@ final class JsonApiController
             \strtoupper($jsonApiRequest->getMethod()),
             $body,
         );
-    }
-
-    /**
-     * The declared input mode for the addressed action, read from its {@see ActionRegistry}
-     * descriptor; {@see ActionInput::None} when the registry is absent or no action matches
-     * (the invoker renders the `404`, so the body is not read).
-     */
-    private function actionInput(string $serverName, string $type, ActionScope $scope, string $action): ActionInput
-    {
-        if ($this->actions === null) {
-            return ActionInput::None;
-        }
-
-        $descriptor = $this->actions->descriptorFor($serverName, $type, $scope, $action);
-
-        return $descriptor === null ? ActionInput::None : $descriptor->input;
     }
 
     /**
