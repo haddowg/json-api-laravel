@@ -42,6 +42,7 @@ final readonly class ActionDescriptor
      * @param bool                                            $resolvesTrashed resolve the `{id}` target through the trashed-inclusive fetch ({@see \haddowg\JsonApiLaravel\DataProvider\FetchesTrashed}) rather than the strict, trashed-excluding one — the synthesized soft-delete restore/force-delete actions set this
      * @param string|null                                     $summary      the operation's OpenAPI summary (null keeps the generated one)
      * @param string|null                                     $description  the operation's OpenAPI description (null keeps the generated one)
+     * @param array<string, string>                           $accepts      the accepted request media types, lowercased, each mapped to the {@see ActionInput} case name it is read in (empty = what the input mode implies)
      * @param bool                                            $conditionallyLinked the handler is {@see ConditionallyLinked}, so its `asLink` link is further gated per rendered entity by `shouldLink()` (recorded here so the link contributor resolves the handler only when it matters)
      */
     public function __construct(
@@ -63,10 +64,21 @@ final readonly class ActionDescriptor
         public bool $conditionallyLinked = false,
         public ?string $summary = null,
         public ?string $description = null,
+        public array $accepts = [],
     ) {}
 
     /**
-     * @return array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null}>, ability: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name: ?string, tags: list<string>, asLink: bool, resolvesTrashed: bool, conditionallyLinked: bool, summary: ?string, description: ?string}
+     * The input mode a request whose `Content-Type` matched the `$accepted` entry is read in.
+     */
+    public function inputFor(string $accepted): ActionInput
+    {
+        $mode = $this->accepts[$accepted] ?? null;
+
+        return $mode === null ? $this->input : ActionInput::{$mode};
+    }
+
+    /**
+     * @return array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null}>, ability: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name: ?string, tags: list<string>, asLink: bool, resolvesTrashed: bool, conditionallyLinked: bool, summary: ?string, description: ?string, accepts: array<string, string>}
      */
     public function toArray(): array
     {
@@ -89,11 +101,12 @@ final readonly class ActionDescriptor
             'conditionallyLinked' => $this->conditionallyLinked,
             'summary' => $this->summary,
             'description' => $this->description,
+            'accepts' => $this->accepts,
         ];
     }
 
     /**
-     * @param array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null}>, ability?: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name?: ?string, tags?: list<string>, asLink?: bool, resolvesTrashed?: bool, conditionallyLinked?: bool, summary?: ?string, description?: ?string} $data
+     * @param array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null}>, ability?: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name?: ?string, tags?: list<string>, asLink?: bool, resolvesTrashed?: bool, conditionallyLinked?: bool, summary?: ?string, description?: ?string, accepts?: array<string, string>} $data
      */
     public static function fromArray(array $data): self
     {
@@ -116,6 +129,7 @@ final readonly class ActionDescriptor
             $data['conditionallyLinked'] ?? false,
             $data['summary'] ?? null,
             $data['description'] ?? null,
+            $data['accepts'] ?? [],
         );
     }
 }

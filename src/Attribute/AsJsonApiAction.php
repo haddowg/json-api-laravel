@@ -79,6 +79,12 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
  *
  * `summary` and `description` set the action operation's OpenAPI `summary` and
  * `description`; left `null`, the document keeps its generated defaults.
+ *
+ * `accepts` lists the request media types the action takes. A list entry is read in the
+ * action's `input` mode; a `mediaType => ActionInput` entry carries its own mode, so one
+ * action can take a JSON:API document and a CSV upload. Wildcards such as `image/*` match,
+ * but `text/plain`, `multipart/form-data` and `application/x-www-form-urlencoded` are
+ * taken only when named. Left empty, the action takes what its `input` mode implies.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final readonly class AsJsonApiAction
@@ -99,6 +105,7 @@ final readonly class AsJsonApiAction
      * @param bool                                     $asLink   expose the action as an ability-aware `links` member on the mount type's resources (resource scope only)
      * @param string|null                              $summary     the operation's OpenAPI summary (null keeps the generated one)
      * @param string|null                              $description the operation's OpenAPI description (null keeps the generated one)
+     * @param array<int|string, string|ActionInput>    $accepts     the accepted request media types: a list read in `input` mode, or `mediaType => ActionInput`
      */
     public function __construct(
         public string $type,
@@ -115,6 +122,7 @@ final readonly class AsJsonApiAction
         public bool $asLink = false,
         public ?string $summary = null,
         public ?string $description = null,
+        public array $accepts = [],
     ) {
         // Normalise the declaration: a single response object → a one-element list; an
         // omitted declaration → a `200` document of the mount type (the historical default).
@@ -171,6 +179,19 @@ final readonly class AsJsonApiAction
                     $type,
                     $method,
                     \implode(', ', $knownVerbs),
+                ));
+            }
+        }
+
+        foreach ($accepts as $key => $value) {
+            $mediaType = \is_string($key) ? $key : $value;
+            if (!\is_string($mediaType) || \preg_match('#^[a-z0-9!\#$&^_.+*-]+/[a-z0-9!\#$&^_.+*-]+$#i', \trim($mediaType)) !== 1
+                || (\is_string($key) && !$value instanceof ActionInput)) {
+                throw new \LogicException(\sprintf(
+                    'The JSON:API action "%s" on type "%s" declares an invalid accepts entry; use a list of media '
+                    . 'types or a map of media type to ActionInput.',
+                    $path,
+                    $type,
                 ));
             }
         }

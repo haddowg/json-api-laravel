@@ -18,7 +18,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
  *
  * @internal
  */
-#[AsJsonApiAction(type: 'albums', path: 'echo-raw', scope: ActionScope::Collection, input: ActionInput::Raw, responds: [new MetaResult()])]
+#[AsJsonApiAction(type: 'albums', path: 'echo-raw', scope: ActionScope::Collection, input: ActionInput::Raw, responds: [new MetaResult()], accepts: ['*/*', 'text/plain'])]
 final class EchoRawBodyAction implements ActionHandlerInterface
 {
     public function handle(ActionContext $context): MetaResponse

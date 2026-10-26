@@ -171,7 +171,8 @@ still a valid error object
 ## Content negotiation and query errors
 
 The request layer rejects a bad request before your code runs, all as JSON:API errors: a
-wrong `Accept` is a `406`, a wrong `Content-Type` a `415`, an unknown query-parameter family a
+wrong `Accept` is a `406`, a wrong or missing `Content-Type` on a `POST` or on a write with a
+body a `415` ([which requests](actions.md#which-requests-must-name-their-media-type)), an unknown query-parameter family a
 `400` (strict query parameters — see [configuration](configuration.md)), a malformed document
 a `400`/`422`, and an over-deep `?include` a `400`.
 

@@ -344,6 +344,6 @@ final class LifecycleEventsTest extends Orchestra
      */
     private function deleteJsonApi(string $uri): TestResponse
     {
-        return $this->json('DELETE', $uri, [], ['Accept' => self::MEDIA_TYPE]);
+        return $this->delete($uri, [], ['Accept' => self::MEDIA_TYPE]);
     }
 }

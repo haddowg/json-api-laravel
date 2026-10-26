@@ -92,7 +92,7 @@ final readonly class ActionInvoker
         // Document input: validate then hydrate the request document into a fresh inputType
         // instance (None/Raw carry no document, so input stays null).
         $input = null;
-        if ($descriptor->input === ActionInput::Document) {
+        if ($this->inputMode($operation, $descriptor) === ActionInput::Document) {
             $body = $operation->body();
             if ($body === null) {
                 return ErrorResponse::fromException(new ResourceNotFound());
@@ -196,6 +196,17 @@ final readonly class ActionInvoker
         }
 
         $this->validator->validate($resource, $body, true, subject: $instance);
+    }
+
+    /**
+     * The mode the controller read the body in: the one its `accepts` entry names when the
+     * action lists several, else the action's declared input.
+     */
+    private function inputMode(CustomActionOperation $operation, ActionDescriptor $descriptor): ActionInput
+    {
+        $mode = $this->request($operation)->getAttribute(ActionContext::INPUT_ATTRIBUTE);
+
+        return \is_string($mode) && \defined(ActionInput::class . '::' . $mode) ? ActionInput::{$mode} : $descriptor->input;
     }
 
     /**

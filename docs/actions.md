@@ -86,6 +86,43 @@ final class UploadAlbumArtwork implements ActionHandlerInterface
 POST /api/albums/1/-actions/artwork
 ```
 
+A raw action that lists no media types takes a body of any type except
+`multipart/form-data`, `application/x-www-form-urlencoded` and `text/plain`. Browsers send
+those three cross-origin without a preflight, so an action takes them only when it names
+them in `accepts`. A file upload therefore declares
+`accepts: ['multipart/form-data']`.
+
+## Choosing the media types an action takes
+
+`accepts` lists the request media types an action takes. Each entry in a plain list is read
+in the action's `input` mode. A `mediaType => ActionInput` entry carries its own mode, so one
+action can take a JSON:API document or a CSV file:
+
+```php
+#[AsJsonApiAction(
+    type: 'albums',
+    path: 'import',
+    scope: ActionScope::Collection,
+    responds: [new MetaResult()],
+    accepts: ['application/vnd.api+json' => ActionInput::Document, 'text/csv' => ActionInput::Raw],
+)]
+```
+
+The request's `Content-Type` picks the entry. A document entry is validated and hydrated into
+`$context->input()` as usual; a raw entry leaves the body on `$context->request()`.
+`$context->requestMediaType()` returns the media type the body was sent as, lowercased and
+without parameters, such as `text/csv`. Wildcards such as `image/*` match, but never one of
+the three form types above. A type the action doesn't list is a `415`. The OpenAPI document
+lists each entry under the operation's `requestBody.content`.
+
+### Which requests must name their media type
+
+Every `POST` must send a `Content-Type`, even with no body, and so must a `PATCH`, `PUT` or
+`DELETE` that has a body. CRUD writes, relationship writes, atomic batches and actions with
+`Document` or `None` input take only `application/vnd.api+json` (atomic batches with the
+atomic `ext`). Any other type, or none, is a `415`. A `GET`, or a `DELETE` with no body, needs
+no `Content-Type`.
+
 ## The attribute
 
 | Parameter | Purpose |
@@ -100,6 +137,7 @@ POST /api/albums/1/-actions/artwork
 | `ability` | the Gate ability checked before the handler ([authorization](authorization.md)) |
 | `server` / `name` / `tags` | server exposure, route-name override, OpenAPI tags |
 | `asLink` | expose the action as an ability-aware `links` member on the mount type's resources (resource scope only) |
+| `accepts` | the request media types the action takes: a list read in `input` mode, or `mediaType => ActionInput` ([below](#choosing-the-media-types-an-action-takes)) |
 | `summary` / `description` | the operation's OpenAPI `summary` and `description`; omitted, the generated ones stay |
 
 > [!NOTE]

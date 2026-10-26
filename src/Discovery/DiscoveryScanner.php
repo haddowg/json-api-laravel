@@ -629,7 +629,28 @@ final class DiscoveryScanner
             conditionallyLinked: \is_a($handlerClass, ConditionallyLinked::class, true),
             summary: $attribute->summary,
             description: $attribute->description,
+            accepts: self::acceptedMediaTypes($attribute),
         );
+    }
+
+    /**
+     * An action's `accepts` declaration as `media type => ActionInput case name`, each media
+     * type lowercased without parameters, the form core's content-type matcher reports.
+     *
+     * @return array<string, string>
+     */
+    private static function acceptedMediaTypes(AsJsonApiAction $attribute): array
+    {
+        $accepts = [];
+        foreach ($attribute->accepts as $key => $value) {
+            $mediaType = \is_string($key) ? $key : $value;
+            $mode = $value instanceof ActionInput ? $value : $attribute->input;
+            if (\is_string($mediaType)) {
+                $accepts[\strtolower(\trim(\explode(';', $mediaType)[0]))] = $mode->name;
+            }
+        }
+
+        return $accepts;
     }
 
     /**

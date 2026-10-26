@@ -77,6 +77,16 @@ final class ActionRegistry implements ActionMetadataProviderInterface
     }
 
     /**
+     * Every declared action, on every server, in discovery order.
+     *
+     * @return list<ActionDescriptor>
+     */
+    public function all(): array
+    {
+        return $this->descriptors;
+    }
+
+    /**
      * Every action declared on `$server`, in discovery order — the enumeration the route
      * registrar and the {@see \haddowg\JsonApiLaravel\Action\ActionLinkContributor} walk.
      *
