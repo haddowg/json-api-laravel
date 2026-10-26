@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/haddowg/json-api-laravel/compare/v1.13.0...v1.14.0) (2026-10-26)
+
+
+### Features
+
+* declare action safety and per-action extensions ([#148](https://github.com/haddowg/json-api-laravel/issues/148)) ([7336f9c](https://github.com/haddowg/json-api-laravel/commit/7336f9c86862ea62bc557269cbd8bb35ee71625f))
+
 ## [1.13.0](https://github.com/haddowg/json-api-laravel/compare/v1.12.0...v1.13.0) (2026-10-26)
 
 
