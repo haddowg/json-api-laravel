@@ -55,22 +55,22 @@ final class TrackResource extends AbstractResource
     public function fields(): array
     {
         return [
-            Id::make(),
-            Str::make('title')->required()->sortable(),
-            Integer::make('trackNumber')->storedAs('track_number')->required()->min(1)->sortable(),
-            Integer::make('durationSeconds')->storedAs('length_seconds')->guaranteed(),
-            Boolean::make('explicit')->guaranteed(),
+            Id::make()->example('1'),
+            Str::make('title')->example('Come Together')->required()->sortable(),
+            Integer::make('trackNumber')->example(1)->storedAs('track_number')->required()->min(1)->sortable(),
+            Integer::make('durationSeconds')->example(259)->storedAs('length_seconds')->guaranteed(),
+            Boolean::make('explicit')->example(false)->guaranteed(),
             // No sensible default, so a create must send a non-empty list (required()
             // already rejects an empty one) and an update can't empty it.
-            ArrayList::make('genres')
+            ArrayList::make('genres')->example(['rock'])
                 ->required()
                 ->onUpdate(static function (ArrayListBuilder $genres): void {
                     $genres->minItems(1);
                 })
                 ->each(new MinLength(1))
                 ->uniqueItems(),
-            Time::make('previewOffset')->storedAs('preview_offset')->nullable(),
-            Str::make('displayTitle')
+            Time::make('previewOffset')->example('00:00:30')->storedAs('preview_offset')->nullable(),
+            Str::make('displayTitle')->example('1. Come Together')
                 ->computed()
                 ->readOnly()
                 ->extractUsing(static function (mixed $track): string {

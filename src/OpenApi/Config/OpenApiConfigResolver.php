@@ -22,8 +22,9 @@ use haddowg\JsonApiLaravel\OpenApi\Metadata\ServerDocumentConfig;
  * value-object model.
  *
  * The info / advertised-servers / security-scheme / tag-definition / external-docs
- * data is document-wide (config carries no per-server openapi override), so the same
- * {@see ServerDocumentConfig} is produced for every declared server — except its
+ * data is document-wide, so every declared server gets the same values. The one per-server
+ * override is `servers.<name>.openapi_examples`, read by {@see ExamplesConfig}. Each
+ * {@see ServerDocumentConfig} leaves its
  * default title, which is left null so the {@see \haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource}
  * supplies the per-server fallback (`JSON:API` / `JSON:API (<server>)`), and its
  * advertised `servers`, which stay empty when config declares none so the source
@@ -32,10 +33,11 @@ use haddowg\JsonApiLaravel\OpenApi\Metadata\ServerDocumentConfig;
 final class OpenApiConfigResolver
 {
     /**
-     * @param array<string, mixed> $openapi the `jsonapi.openapi` config array
-     * @param list<string>         $servers the declared server names
+     * @param array<string, mixed>    $openapi       the `jsonapi.openapi` config array
+     * @param list<string>            $servers       the declared server names
+     * @param array<array-key, mixed> $serversConfig the `jsonapi.servers` config array, for each server's own `openapi_examples`
      */
-    public function resolve(array $openapi, array $servers): OpenApiConfig
+    public function resolve(array $openapi, array $servers, array $serversConfig = []): OpenApiConfig
     {
         $info = \is_array($openapi['info'] ?? null) ? $openapi['info'] : [];
 
@@ -60,7 +62,7 @@ final class OpenApiConfigResolver
 
         $serverDocuments = [];
         foreach ($servers as $server) {
-            $serverDocuments[$server] = $document;
+            $serverDocuments[$server] = $document->withGeneratesExamples(ExamplesConfig::forServer($openapi['examples'] ?? null, $serversConfig, $server));
         }
 
         return new OpenApiConfig(

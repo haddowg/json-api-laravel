@@ -36,8 +36,8 @@ final class PublicProfileResource extends AbstractResource
     public function fields(): array
     {
         return [
-            Id::make(),
-            Str::make('displayName')->storedAs('display_name')->sortable()->guaranteed(),
+            Id::make()->example('1'),
+            Str::make('displayName')->example('Ada')->storedAs('display_name')->sortable()->guaranteed(),
         ];
     }
 

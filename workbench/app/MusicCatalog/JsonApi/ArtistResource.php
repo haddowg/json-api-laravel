@@ -47,14 +47,14 @@ final class ArtistResource extends AbstractResource
     public function fields(): array
     {
         return [
-            Id::make(),
-            Str::make('name')->required()->maxLength(120)->sortable(),
+            Id::make()->example('1'),
+            Str::make('name')->example('The Beatles')->required()->maxLength(120)->sortable(),
             // Optional on create (the model derives it from `name`), but never empty: an
             // empty slug would break the singular `filter[slug]` lookup.
-            Str::make('slug')->minLength(1)->sortable()->guaranteed(),
-            Url::make('website')->nullable(),
-            Str::make('bio')->nullable()->maxLength(1000),
-            Integer::make('trackCount')
+            Str::make('slug')->example('the-beatles')->minLength(1)->sortable()->guaranteed(),
+            Url::make('website')->example('https://www.thebeatles.com')->nullable(),
+            Str::make('bio')->example('Rock band formed in Liverpool in 1960.')->nullable()->maxLength(1000),
+            Integer::make('trackCount')->example(17)
                 ->computed()
                 ->readOnly()
                 ->extractUsing(static function (mixed $model): int {
@@ -62,7 +62,7 @@ final class ArtistResource extends AbstractResource
 
                     return \is_numeric($value) ? (int) $value : 0;
                 }),
-            DateTime::make('createdAt')->storedAs('created_at')->readOnlyOnUpdate()->sortable(),
+            DateTime::make('createdAt')->example('2024-03-01T12:00:00+00:00')->storedAs('created_at')->readOnlyOnUpdate()->sortable(),
             HasMany::make('albums', 'albums'),
         ];
     }

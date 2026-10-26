@@ -45,6 +45,7 @@ use haddowg\JsonApiLaravel\Http\JsonSchemaController;
 use haddowg\JsonApiLaravel\Http\OpenApiController;
 use haddowg\JsonApiLaravel\Http\ResponseHeadersRegistry;
 use haddowg\JsonApiLaravel\OpenApi\ArtifactStore;
+use haddowg\JsonApiLaravel\OpenApi\Config\ExamplesConfig;
 use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiConfig;
 use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiConfigResolver;
 use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiUiConfig;
@@ -358,7 +359,8 @@ final class JsonApiServiceProvider extends ServiceProvider
     }
 
     /**
-     * Fails the boot on a `link_objects` that is not a boolean or null.
+     * Fails the boot on a `link_objects`, `reject_read_only_attributes` or `openapi.examples`
+     * that is not a boolean or null.
      */
     private function assertLinkObjects(): void
     {
@@ -366,6 +368,7 @@ final class JsonApiServiceProvider extends ServiceProvider
 
         LinkObjectsConfig::assertValid(config('jsonapi.link_objects'), \is_array($servers) ? $servers : []);
         ReadOnlyAttributesConfig::assertValid(config('jsonapi.reject_read_only_attributes'), \is_array($servers) ? $servers : []);
+        ExamplesConfig::assertValid(config('jsonapi.openapi.examples'), \is_array($servers) ? $servers : []);
     }
 
     /**
@@ -946,7 +949,9 @@ final class JsonApiServiceProvider extends ServiceProvider
             /** @var array<string, mixed> $openapi */
             $openapi = config('jsonapi.openapi', []);
 
-            return (new OpenApiConfigResolver())->resolve($openapi, $this->serverNames());
+            $servers = config('jsonapi.servers', []);
+
+            return (new OpenApiConfigResolver())->resolve($openapi, $this->serverNames(), \is_array($servers) ? $servers : []);
         });
 
         $this->app->singleton(TagNameResolver::class);

@@ -18,6 +18,10 @@ use Symfony\Component\Yaml\Yaml;
  * `--format=yaml` requires `symfony/yaml`; without it the command fails with a clear
  * message rather than emitting broken output. `--combined` exports the single document
  * spanning every server (`multi_server: combined`).
+ *
+ * Each operation example the projector could not build, because a value it needed declares
+ * no example, is printed as a warning on stderr, so a piped document stays clean. `--strict`
+ * turns any such warning into a failure and writes no document.
  */
 final class OpenApiExportCommand extends Command
 {
@@ -25,7 +29,8 @@ final class OpenApiExportCommand extends Command
         {--server= : The JSON:API server name to export (default: the "default" server)}
         {--format=json : Output format: json or yaml}
         {--output= : Write to this file instead of stdout}
-        {--combined : Export the single combined document spanning every server}';
+        {--combined : Export the single combined document spanning every server}
+        {--strict : Fail, writing no document, when any operation example is missing}';
 
     protected $description = 'Export a server\'s OpenAPI 3.1 document (JSON or YAML) to a file or stdout.';
 
@@ -53,13 +58,28 @@ final class OpenApiExportCommand extends Command
         }
 
         try {
-            $document = $combined ? $documents->combined() : $documents->forServer($server);
+            $projection = $combined ? $documents->combinedProjection() : $documents->projectionForServer($server);
         } catch (\Throwable $e) {
             $this->error(\sprintf('Could not build the OpenAPI document for server "%s": %s', $server, $e->getMessage()));
 
             return self::FAILURE;
         }
 
+        $errors = $this->output->getErrorStyle();
+        foreach ($projection->missingExamples as $missing) {
+            $errors->writeln(\sprintf('<comment>Warning: %s</comment>', $missing->message()));
+        }
+
+        if ($projection->missingExamples !== [] && (bool) $this->option('strict')) {
+            $errors->writeln(\sprintf(
+                '<error>%d operation example(s) missing, and --strict fails the export on any.</error>',
+                \count($projection->missingExamples),
+            ));
+
+            return self::FAILURE;
+        }
+
+        $document = $projection->document;
         $rendered = $isYaml
             ? Yaml::dump($document->toArray(), 16, 2, Yaml::DUMP_OBJECT_AS_MAP)
             : $document->toJsonString(true) . "\n";

@@ -8,6 +8,7 @@ use haddowg\JsonApi\OpenApi\Metadata\AcceptedBody;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResource;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResponse;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResponses;
+use haddowg\JsonApi\OpenApi\Metadata\OperationExample;
 use haddowg\JsonApiLaravel\Action\ActionInput;
 use haddowg\JsonApiLaravel\Action\ActionScope;
 
@@ -88,6 +89,10 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
  * document when it is one and as a raw body otherwise. Wildcards such as `image/*` match,
  * but `text/plain`, `multipart/form-data` and `application/x-www-form-urlencoded` are
  * taken only when named. Left empty, the action takes what its `input` mode implies.
+ *
+ * `example` replaces or removes the example the OpenAPI document generates for the action's
+ * operation: an {@see OperationExample} replaces the parts it names, `false` emits none, and
+ * `null` keeps the generated one.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final readonly class AsJsonApiAction
@@ -109,6 +114,7 @@ final readonly class AsJsonApiAction
      * @param string|null                              $summary     the operation's OpenAPI summary (null keeps the generated one)
      * @param string|null                              $description the operation's OpenAPI description (null keeps the generated one)
      * @param array<int|string, string|ActionInput|AcceptedBody> $accepts the accepted request media types: media types or {@see AcceptedBody} entries in a list, or `mediaType => ActionInput`
+     * @param OperationExample|false|null                        $example the operation's OpenAPI example override: replaces the parts it names, `false` emits none, `null` keeps the generated one
      */
     public function __construct(
         public string $type,
@@ -126,6 +132,7 @@ final readonly class AsJsonApiAction
         public ?string $summary = null,
         public ?string $description = null,
         public array $accepts = [],
+        public OperationExample|false|null $example = null,
     ) {
         // Normalise the declaration: a single response object → a one-element list; an
         // omitted declaration → a `200` document of the mount type (the historical default).

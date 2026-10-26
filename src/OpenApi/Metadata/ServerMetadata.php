@@ -10,6 +10,7 @@ use haddowg\JsonApi\OpenApi\ExternalDocumentation;
 use haddowg\JsonApi\OpenApi\License;
 use haddowg\JsonApi\OpenApi\Metadata\AtomicOperationsMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\ContributesErrorCodes;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresExampleGeneration;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresLinkObjects;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresReadOnlyAttributeRejection;
 use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
@@ -38,9 +39,10 @@ use haddowg\JsonApi\OpenApi\Tag;
  * the form the server renders its built links in, and each example `describedby` points
  * into the same document URL the server's links do (ADR 0037), and
  * {@see DeclaresReadOnlyAttributeRejection}, so the error catalogue lists the `403` a server
- * that refuses read-only attributes can answer.
+ * that refuses read-only attributes can answer. Through {@see DeclaresExampleGeneration} it
+ * carries the `openapi.examples` switch, so a server can turn generated examples off.
  */
-final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLinkObjects, DeclaresReadOnlyAttributeRejection
+final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLinkObjects, DeclaresReadOnlyAttributeRejection, DeclaresExampleGeneration
 {
     /**
      * @param list<Server>                  $servers
@@ -70,7 +72,13 @@ final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLi
         private bool $rendersLinkObjects = true,
         private ?string $documentUrl = null,
         private bool $rejectsReadOnlyAttributes = false,
+        private bool $generatesExamples = true,
     ) {}
+
+    public function generatesExamples(): bool
+    {
+        return $this->generatesExamples;
+    }
 
     public function rejectsReadOnlyAttributes(): bool
     {

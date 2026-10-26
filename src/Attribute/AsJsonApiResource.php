@@ -8,6 +8,7 @@ use haddowg\JsonApi\OpenApi\Metadata\CreateResponse;
 use haddowg\JsonApi\OpenApi\Metadata\DeleteResponse;
 use haddowg\JsonApi\OpenApi\Metadata\FetchCollectionResponse;
 use haddowg\JsonApi\OpenApi\Metadata\FetchOneResponse;
+use haddowg\JsonApi\OpenApi\Metadata\OperationExample;
 use haddowg\JsonApi\OpenApi\Metadata\OperationResponseInterface;
 use haddowg\JsonApi\OpenApi\Metadata\OperationResponses;
 use haddowg\JsonApi\OpenApi\Metadata\OperationType;
@@ -105,6 +106,16 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * declaration-site equivalent of the resource's
  * {@see \haddowg\JsonApi\Resource\AbstractResource::getSingularName()} method hook, which wins
  * when both are present. A blank value is a constructor {@see \LogicException}.
+ *
+ * **Operation examples.** The OpenAPI document carries a generated example on each operation,
+ * built from the fields' declared examples. `operationExamples` replaces or removes one, keyed
+ * by operation name: `fetchCollection`, `fetchOne`, `create`, `update`, `delete`, and for a
+ * relation `fetchRelated.<relation>`, `fetchRelationship.<relation>`,
+ * `updateRelationship.<relation>`, `addRelationship.<relation>` or
+ * `removeRelationship.<relation>`. An {@see OperationExample} replaces the parts it names;
+ * `false` or `null` removes the operation's example. An unknown name, or a CRUD operation the
+ * type does not expose, is a constructor {@see \LogicException}; core fails the projection for
+ * a relation the type does not have.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final readonly class AsJsonApiResource
@@ -149,6 +160,7 @@ final readonly class AsJsonApiResource
      * @param array<string, mixed>                                       $extensions      OpenAPI vendor extensions (`x-…`) stamped on every operation of this type, custom actions included
      * @param array<string, array<string, mixed>>                        $operationExtensions per-CRUD-operation vendor extensions keyed by {@see Operation} case value, merged over `extensions`
      * @param string|null                                                $singular        the noun the generated OpenAPI prose uses for one resource, as words without an article (null = inflected from the type name)
+     * @param array<string, OperationExample|false|null>                $operationExamples the OpenAPI example overrides keyed by operation name: an {@see OperationExample} replaces the parts it names, `false` or `null` removes the example
      * @param bool|SoftDeletes                                           $softDeletes     opt this type into first-class soft deletes: `true` (or a configured {@see SoftDeletes}) synthesizes the `restore`/`force-delete` actions (`DELETE` stays a recoverable soft delete); `false` (the default) leaves the type unaffected
      */
     public function __construct(
@@ -175,6 +187,7 @@ final readonly class AsJsonApiResource
         public array $extensions = [],
         public array $operationExtensions = [],
         public ?string $singular = null,
+        public array $operationExamples = [],
     ) {
         if ($singular !== null && \trim($singular) === '') {
             throw new \LogicException(
@@ -206,6 +219,12 @@ final readonly class AsJsonApiResource
 
         $this->assertResponsesExposed($operations, $readOnly);
         $this->assertExtensionsValid($operations, $readOnly);
+        OperationExamples::assertValid(
+            'AsJsonApiResource',
+            $this->operationExamples,
+            self::exposedOperations($operations, $readOnly),
+            'add it to `operations` (or drop `readOnly`)',
+        );
     }
 
     /**

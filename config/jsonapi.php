@@ -227,7 +227,8 @@ return [
     | prefix in it), `output_timezone` overrides the global `output_timezone` (an
     | empty string turns conversion off for that server), `link_objects`
     | overrides the global `link_objects` (null inherits it),
-    | `reject_read_only_attributes` overrides the global one (null inherits it), and `route_defaults`
+    | `reject_read_only_attributes` overrides the global one (null inherits it),
+    | `openapi_examples` overrides `openapi.examples` (null inherits it), and `route_defaults`
     | sets route defaults on every route of the server, such as a default for a
     | `{tenant}` placeholder in the prefix, which the OpenAPI `servers` entry
     | advertises as the variable's default.
@@ -305,6 +306,13 @@ return [
     | serialized copy `optimize` writes. Without them that document is built on
     | each decorated request instead, and `optimize` logs a warning.
     |
+    | `examples`: when true (default), each operation's request body and success
+    | responses, and each shared error response, carry a worked example built from
+    | the `example()` your fields declare and the examples your error codes declare.
+    | An operation missing one of those values gets no example, and
+    | `jsonapi:openapi:export` prints a warning naming the field (`--strict` fails
+    | on any). A server's own `openapi_examples` (above) overrides it.
+    |
     */
     'openapi' => [
         'enabled' => true,
@@ -317,6 +325,7 @@ return [
         'document_url' => null,
         'cache_control' => null,
         'serve_allowed_classes' => [],
+        'examples' => true,
 
         'json' => [
             'path' => '/docs.json',

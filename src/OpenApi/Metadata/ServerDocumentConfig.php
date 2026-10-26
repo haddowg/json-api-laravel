@@ -37,6 +37,7 @@ final readonly class ServerDocumentConfig
      * @param list<Tag>                      $tagDefinitions   the config-declared tag definitions, in emit order (referenced-but-undefined tags are synthesized by the source)
      * @param array<string, SecurityScheme> $securitySchemes  named security schemes for `components.securitySchemes`
      * @param list<SecurityRequirement>      $defaultSecurity  the document-level default security requirement (empty = none)
+     * @param bool                           $generatesExamples whether the document carries generated operation examples (`jsonapi.openapi.examples`, or the server's own)
      */
     public function __construct(
         public ?string $title = null,
@@ -49,5 +50,27 @@ final readonly class ServerDocumentConfig
         public array $securitySchemes = [],
         public array $defaultSecurity = [],
         public ?ExternalDocumentation $externalDocs = null,
+        public bool $generatesExamples = true,
     ) {}
+
+    public function withGeneratesExamples(bool $generatesExamples): self
+    {
+        if ($generatesExamples === $this->generatesExamples) {
+            return $this;
+        }
+
+        return new self(
+            $this->title,
+            $this->version,
+            $this->description,
+            $this->contact,
+            $this->license,
+            $this->servers,
+            $this->tagDefinitions,
+            $this->securitySchemes,
+            $this->defaultSecurity,
+            $this->externalDocs,
+            $generatesExamples,
+        );
+    }
 }

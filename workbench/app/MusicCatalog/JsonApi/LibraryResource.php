@@ -34,7 +34,7 @@ final class LibraryResource extends AbstractResource
     public function fields(): array
     {
         return [
-            Id::make(),
+            Id::make()->example('1'),
             // Targets `public-profiles` rather than the admin-only `users`: the related
             // endpoint `GET /libraries/{id}/owner` is served on the default surface, which
             // registers the curated view of the User row and not the full record.

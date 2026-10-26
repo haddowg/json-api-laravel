@@ -11,9 +11,11 @@ use haddowg\JsonApi\OpenApi\Metadata\ActionResource;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResponse;
 use haddowg\JsonApi\OpenApi\Metadata\ActionScope;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresAcceptedBodies;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionExample;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionLink;
 use haddowg\JsonApi\OpenApi\Metadata\MetaResult;
 use haddowg\JsonApi\OpenApi\Metadata\NoContent;
+use haddowg\JsonApi\OpenApi\Metadata\OperationExample;
 use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
 use haddowg\JsonApiLaravel\Action\ActionDescriptor;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
@@ -34,7 +36,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
  * tags fall back to the mount type's default tag) so the projected document matches the
  * bundle's for an identical action.
  */
-final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAcceptedBodies
+final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAcceptedBodies, DeclaresActionExample
 {
     /**
      * @param list<string> $tags the OpenAPI tag names (already resolved against the mount type's default)
@@ -128,10 +130,6 @@ final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAccep
     }
 
     /**
-     * The action's path, the `links` member an `asLink` action renders as; null for any
-     * other action.
-     */
-    /**
      * The action's accepted request bodies, read off the handler's attribute, since a body's
      * schema is not kept in the discovery snapshot. Empty for an action without `accepts`.
      */
@@ -148,6 +146,27 @@ final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAccep
         return [];
     }
 
+    /**
+     * The `example` the handler's attribute declares, read off the attribute because the
+     * discovery snapshot keeps scalars only. Null for a synthesized action with none.
+     */
+    public function example(): OperationExample|false|null
+    {
+        if (!\class_exists($this->descriptor->handlerClass)) {
+            return null;
+        }
+
+        foreach ((new \ReflectionClass($this->descriptor->handlerClass))->getAttributes(AsJsonApiAction::class) as $attribute) {
+            return $attribute->newInstance()->example;
+        }
+
+        return null;
+    }
+
+    /**
+     * The action's path, the `links` member an `asLink` action renders as; null for any
+     * other action.
+     */
     public function linkName(): ?string
     {
         return $this->descriptor->asLink ? $this->descriptor->path : null;

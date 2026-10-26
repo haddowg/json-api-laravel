@@ -13,6 +13,8 @@ use haddowg\JsonApi\OpenApi\Tag;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Server\Server;
+use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
+use haddowg\JsonApiLaravel\Attribute\AsJsonApiSerializer;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\ResourceDescriptor;
@@ -143,6 +145,7 @@ final class MetadataSource
             rendersLinkObjects: $server->rendersLinkObjects(),
             documentUrl: $this->documentUrls?->forServer($serverName),
             rejectsReadOnlyAttributes: $server->rejectsReadOnlyAttributes(),
+            generatesExamples: $config->generatesExamples,
         );
     }
 
@@ -216,6 +219,8 @@ final class MetadataSource
             documentUrl: $this->documentUrls?->forServer(ServerRegistry::DEFAULT_SERVER),
             // The catalogue lists the refusal when any server can answer it.
             rejectsReadOnlyAttributes: \array_filter($this->serverNames, fn(string $name): bool => $this->servers->get($name)->rejectsReadOnlyAttributes()) !== [],
+            // The examples switch follows the default server, as the info block does.
+            generatesExamples: $defaultConfig->generatesExamples,
         );
     }
 
@@ -322,6 +327,7 @@ final class MetadataSource
             includablePaths: [],
             extensions: $descriptor->extensions,
             operationExtensions: $descriptor->operationExtensions,
+            operationExamples: $this->operationExamples($descriptor->class, AsJsonApiSerializer::class),
         );
     }
 
@@ -384,7 +390,30 @@ final class MetadataSource
             // The resource's getSingularName() hook first, then the
             // #[AsJsonApiResource(singular:)] attribute; core inflects when both are null.
             singularName: $this->nonBlank($resource?->getSingularName()) ?? $descriptor->singular,
+            operationExamples: $this->operationExamples($descriptor->class, AsJsonApiResource::class),
         );
+    }
+
+    /**
+     * The `operationExamples` a type's `#[AsJsonApiResource]` or `#[AsJsonApiSerializer]`
+     * declares. They are read off the class rather than the discovery snapshot, which keeps
+     * scalars only.
+     *
+     * @param class-string<AsJsonApiResource|AsJsonApiSerializer> $attribute
+     *
+     * @return array<string, \haddowg\JsonApi\OpenApi\Metadata\OperationExample|false|null>
+     */
+    private function operationExamples(string $class, string $attribute): array
+    {
+        if (!\class_exists($class)) {
+            return [];
+        }
+
+        foreach ((new \ReflectionClass($class))->getAttributes($attribute) as $declared) {
+            return $declared->newInstance()->operationExamples;
+        }
+
+        return [];
     }
 
     private function nonBlank(?string $value): ?string

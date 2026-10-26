@@ -163,6 +163,7 @@ that has a body must still match `accepts`.
 | `asLink` | expose the action as an ability-aware `links` member on the mount type's resources (resource scope only) |
 | `accepts` | the request media types the action takes: a list read in `input` mode, or `mediaType => ActionInput` ([below](#choosing-the-media-types-an-action-takes)) |
 | `summary` / `description` | the operation's OpenAPI `summary` and `description`; omitted, the generated ones stay |
+| `example` | the operation's OpenAPI example: an `OperationExample` replaces the parts it names, `false` emits none, `null` (default) keeps the generated one ([below](#actions-in-the-openapi-document)) |
 
 > [!NOTE]
 > `asLink` visibility matches invocation **exactly**: `Authorizer::allowsAction()` (which
@@ -238,4 +239,17 @@ are generated from the path and mount type unless the attribute sets them:
 )]
 ```
 
-See [openapi](openapi.md).
+The operation also gets an example request and response, built from the declared examples of
+the input and response types' fields. `example` replaces or removes it:
+
+```php
+#[AsJsonApiAction(
+    type: 'albums',
+    path: 'summary',
+    scope: ActionScope::Collection,
+    responds: [new MetaResult()],
+    example: new OperationExample(responses: [200 => ['meta' => ['albums' => 12]]]),
+)]
+```
+
+See [operation examples](openapi.md#operation-examples).

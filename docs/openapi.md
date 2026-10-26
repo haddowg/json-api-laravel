@@ -114,6 +114,87 @@ final class MediaResource extends AbstractResource
 `#[AsJsonApiSerializer]` has no `singular:` argument, so a resource-less type always gets
 the inflected singular.
 
+## Operation examples {#operation-examples}
+
+Every operation's request body and success responses carry a whole worked `example` on
+their `application/vnd.api+json` media type, and so does each shared error response. Core
+builds them from the examples you already declare: the `example()` on each field, and the
+example detail and source on each error code. Nothing is invented, so an operation that
+needs a value with no declared example gets none. Give every field an example and every
+operation gets one:
+
+```php
+Id::make()->example('1'),
+Str::make('title')->example('Abbey Road')->required(),
+DateTime::make('releasedAt')->example('1969-09-26T00:00:00+00:00'),
+```
+
+Core's [operation examples](https://github.com/haddowg/json-api/blob/main/docs/openapi.md#operation-examples)
+guide covers what each example holds.
+
+### Replacing or removing one
+
+`operationExamples` on `#[AsJsonApiResource]` replaces or removes an operation's example,
+keyed by operation name: `fetchCollection`, `fetchOne`, `create`, `update`, `delete`, and for
+a relation `fetchRelated.<relation>`, `fetchRelationship.<relation>`,
+`updateRelationship.<relation>`, `addRelationship.<relation>` or
+`removeRelationship.<relation>`:
+
+```php
+use haddowg\JsonApi\OpenApi\Metadata\OperationExample;
+
+#[AsJsonApiResource(operationExamples: [
+    'delete' => new OperationExample(responses: [200 => ['meta' => ['deleted' => true]]]),
+    'fetchRelationship.owner' => new OperationExample(responses: [200 => ['data' => ['type' => 'users', 'id' => '1']]]),
+    'update' => false,
+])]
+final class PlaylistResource extends AbstractResource { /* ... */ }
+```
+
+An `OperationExample` replaces the parts it names and keeps the rest generated. `request`
+takes the request document, or `false` for none. `responses` maps a success status to its
+document, or to `false`. A `false` or `null` value removes the operation's example
+altogether. The documents land in the OpenAPI document as written, so nothing checks them
+against the schema.
+
+An unknown operation name, or a CRUD operation the type doesn't expose, fails the boot. A
+relation the type doesn't have fails when the document is built. `#[AsJsonApiSerializer]`
+takes the same `operationExamples`, which is how a resource-less type, having no fields to
+build from, gets an example:
+
+```php
+#[AsJsonApiSerializer(
+    type: 'countries',
+    operations: [Operation::FetchOne],
+    operationExamples: [
+        'fetchOne' => new OperationExample(responses: [200 => ['data' => ['type' => 'countries', 'id' => 'gb']]]),
+    ],
+)]
+```
+
+A [custom action](actions.md) takes one `example` on `#[AsJsonApiAction]`: an
+`OperationExample`, `false` for none, or `null` (the default) to keep the generated one.
+
+The overrides are read off the attributes when the document is built, not stored in the
+[discovery cache](optimize.md), so they may hold any value an attribute argument can.
+
+### Switching them off
+
+`jsonapi.openapi.examples` (default `true`) turns generation off for every server. A server's
+own `openapi_examples` overrides it, and `null` inherits:
+
+```php
+'openapi' => ['examples' => false],
+
+'servers' => [
+    'default' => ['prefix' => 'api'],
+    'partner' => ['prefix' => 'partner', 'openapi_examples' => true],
+],
+```
+
+With generation off, the document carries no generated example, ignores the overrides and
+reports nothing missing. A combined document follows the `default` server's setting.
+
 ## The HTTP routes
 
 When `jsonapi.openapi.enabled` is true **and** (`app.debug` OR `openapi.expose_in_prod`), the
@@ -306,6 +387,22 @@ php artisan jsonapi:jsonschema:export --server=default --output=build/schemas
 `--server` selects the server (default `default`); `--format` is `json` (default) or `yaml`;
 `--output` writes to a file/directory (omit for stdout). The document renders byte-clean
 (`toJsonString(true)."\n"`).
+
+`jsonapi:openapi:export` prints a warning on stderr for each value an
+[operation example](#operation-examples) needed and found no example for, naming the
+operation, the type and the field:
+
+```text
+Warning: fetchOne.albums has no example: "albums" declares no example for "releaseInfo".
+```
+
+stdout carries only the document, so piping it still works. `--strict` makes any such
+warning fail the export with exit code `1` and no document written, for a CI step that keeps
+every operation exampled:
+
+```bash
+php artisan jsonapi:openapi:export --strict --output=build/openapi.json
+```
 
 ## Profile-gated parameters (`x-profile`)
 
