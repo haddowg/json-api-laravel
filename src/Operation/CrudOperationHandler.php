@@ -1493,7 +1493,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
         $this->gateEmbeddedMutations($type, $entity, $relationships, $serverName);
         [$beforeCreate, $deferred] = $this->partitionForCreateOrder($relationships);
-        $this->applyRelationships($persister, $type, $entity, $beforeCreate, $body, true, $server, $request, flush: false);
+        $entity = $this->applyRelationships($persister, $type, $entity, $beforeCreate, $body, true, $server, $request, flush: false);
 
         // Core's hydrator applies the id policy (client vs server-generated; a wrong
         // `type` 409s, a forbidden client id 403s) then allow-list-hydrates the
@@ -1666,7 +1666,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // The embedded associations apply on the loaded (keyed) parent BEFORE hydration,
             // each gated by the relation's request-aware `cannot*` flags in Mode::Replace —
             // the same `403` a PATCH …/relationships/{rel} would raise.
-            $this->applyRelationships($persister, $type, $entity, $relationships, $body, false, $server, $request, flush: false);
+            $entity = $this->applyRelationships($persister, $type, $entity, $relationships, $body, false, $server, $request, flush: false);
 
             $entity = $hydrator->hydrate($this->withoutRelationships($body), $entity);
             \assert(\is_object($entity));
@@ -1897,7 +1897,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // caller can't leave the parent in a state they couldn't update (ADR 0046).
         $persister = $this->persisters->forType($type);
         $parent = $this->writeTransactionally($persister, function () use ($persister, $type, $parent, $relation, $applied, $mode, $serverName): object {
-            $changed = $persister->mutateRelationship($type, $parent, $relation, $applied, $mode);
+            $changed = RelationFillHook::declaredBy($relation)
+                ? $persister->update($type, RelationFillHook::apply($relation, $parent, $applied, $mode))
+                : $persister->mutateRelationship($type, $parent, $relation, $applied, $mode);
             $this->gateMutate($type, $changed, $relation, $serverName);
 
             return $changed;
@@ -2025,7 +2027,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
     private function guardReparenting(string $type, object $parent, RelationInterface $relation, ToOneRelationship|ToManyRelationship $linkage, Mode $mode, string $serverName): void
     {
         $persister = $this->persisters->forType($type);
-        if ($mode === Mode::Remove || !$persister instanceof ReportsCurrentOwners) {
+        // A fill hook decides where the linkage lands, so there is no stored owner to read.
+        if ($mode === Mode::Remove || !$persister instanceof ReportsCurrentOwners || RelationFillHook::declaredBy($relation)) {
             return;
         }
 
@@ -2081,7 +2084,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * Applies each collected relationship to the entity through the persister's
-     * relationship seam in {@see Mode::Replace}. An embedded relationship is a FULL
+     * relationship seam in {@see Mode::Replace}, or through the relation's own fill hook when
+     * it declares one, and returns the entity. An embedded relationship is a FULL
      * replacement of the named association, so on an UPDATE each one is gated by
      * {@see guardMutability()} in Mode::Replace (the same gate the `/relationships/{rel}`
      * endpoint applies, so a `cannotReplace(fn)` relation embedded in a PATCH raises the
@@ -2100,7 +2104,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         Server $server,
         JsonApiRequestInterface $request,
         bool $flush,
-    ): void {
+    ): object {
         foreach ($relationships as $relationship) {
             $relation = $relationship['relation'];
             if ($creating === false) {
@@ -2109,8 +2113,17 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
             $linkage = $this->scopeWrittenLinkage($entity, $relation, $relationship['linkage'], Mode::Replace, $server, $request, $creating);
             $this->guardReparenting($type, $entity, $relation, $linkage, Mode::Replace, $this->serverNameFor($request, $server));
+            if (RelationFillHook::declaredBy($relation)) {
+                // The create or update that follows persists what the hook wrote.
+                $entity = RelationFillHook::apply($relation, $entity, $linkage, Mode::Replace);
+
+                continue;
+            }
+
             $persister->mutateRelationship($type, $entity, $relation, $linkage, Mode::Replace, flush: $flush);
         }
+
+        return $entity;
     }
 
     /**
@@ -2182,7 +2195,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
      */
     private function appliesBeforeCreate(RelationInterface $relation): bool
     {
-        return ($relation instanceof BelongsTo && !$relation instanceof HasOne)
+        // A fill hook writes onto the entity like an attribute, so the create's insert saves it.
+        return RelationFillHook::declaredBy($relation)
+            || ($relation instanceof BelongsTo && !$relation instanceof HasOne)
             || $relation instanceof MorphTo;
     }
 

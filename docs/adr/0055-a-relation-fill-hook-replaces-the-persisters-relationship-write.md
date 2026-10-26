@@ -1,0 +1,3 @@
+# A relation fill hook replaces the persister's relationship write
+
+Relationship writes are stripped from the body before core hydrates it and applied through the persister's `mutateRelationship()`, so core's `hydrateRelationship()`, the only code that calls a relation's `fillUsing()` hook, never ran and the hook was silently ignored. A relation that declares the hook now goes through core's hydrate path on every write path, the persister's relationship write is skipped and the following save persists the result. Core exposes no accessor for the hook, so the package reads it off the field's state by reflection.
