@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\Models\User as AuthUser;
+use Workbench\App\MusicCatalog\Action\ExportAlbums;
+use Workbench\App\MusicCatalog\Action\ImportAlbums;
 use Workbench\App\MusicCatalog\Action\ReissueAlbum;
 use Workbench\App\MusicCatalog\Action\SummarizeAlbums;
 use Workbench\App\MusicCatalog\Action\UploadAlbumArtwork;
@@ -99,6 +101,9 @@ final class MusicCatalogEloquentServiceProvider extends ServiceProvider
             ReleaseResource::class,
             TrackResource::class,
             UserResource::class,
+            // In the bundle example's discovery order, which the document's paths follow.
+            ExportAlbums::class,
+            ImportAlbums::class,
             ReissueAlbum::class,
             SummarizeAlbums::class,
             UploadAlbumArtwork::class,

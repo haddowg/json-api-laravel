@@ -128,6 +128,51 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
         $this->readJsonApi('/api/albums/1')->assertJsonPath('data.attributes.artwork', 'RAW-PNG-BYTES');
     }
 
+    public function test_the_artwork_action_refuses_a_type_it_does_not_accept(): void
+    {
+        $this->call('POST', '/api/albums/1/-actions/artwork', [], [], [], [
+            'HTTP_ACCEPT' => self::MEDIA_TYPE,
+            'CONTENT_TYPE' => 'text/plain',
+        ], 'not an image')->assertStatus(415);
+    }
+
+    // --- the `import` album action (collection scope, several accepted bodies) --------------
+
+    public function test_the_import_action_reports_each_accepted_media_type(): void
+    {
+        foreach (['text/csv' => "title\nBlue\n", 'image/png' => 'PNG', 'application/json' => '[{"title":"Blue"}]'] as $type => $body) {
+            $this->call('POST', '/api/albums/-actions/import', [], [], [], ['HTTP_ACCEPT' => self::MEDIA_TYPE, 'CONTENT_TYPE' => $type], $body)
+                ->assertOk()
+                ->assertJsonPath('meta.import.mediaType', $type)
+                ->assertJsonPath('meta.import.bytes', \strlen($body));
+        }
+
+        $this->call('POST', '/api/albums/-actions/import', [], [], [], ['HTTP_ACCEPT' => self::MEDIA_TYPE, 'CONTENT_TYPE' => 'text/plain'], 'x')
+            ->assertStatus(415);
+    }
+
+    // --- the `export` album action (collection scope, raw responses) -----------------------
+
+    public function test_the_export_action_answers_in_the_negotiated_media_type(): void
+    {
+        $csv = $this->get('/api/albums/-actions/export', ['Accept' => 'text/csv'])->assertOk();
+        self::assertStringStartsWith('text/csv', (string) $csv->headers->get('Content-Type'));
+        self::assertSame('attachment; filename="albums.csv"', $csv->headers->get('Content-Disposition'));
+        self::assertStringStartsWith("id,title\n1,", (string) $csv->getContent());
+
+        $json = $this->get('/api/albums/-actions/export', ['Accept' => 'application/json'])->assertOk();
+        self::assertSame('{"published":2,"unpublished":0}', $json->getContent());
+
+        $pdf = $this->get('/api/albums/-actions/export', ['Accept' => 'application/pdf'])->assertOk();
+        self::assertSame('application/pdf', $pdf->headers->get('Content-Type'));
+        self::assertSame("%PDF-1.7\n% 2 albums\n%%EOF\n", $pdf->streamedContent());
+
+        $this->get('/api/albums/-actions/export', ['Accept' => self::MEDIA_TYPE])
+            ->assertOk()
+            ->assertJsonPath('meta.albums.published', 2)
+            ->assertJsonPath('meta.albums.unpublished', 0);
+    }
+
     // --- the PlaylistApiPolicy abilities (decision 7) --------------------------------------
 
     public function test_the_owner_may_curate_the_playlist_and_the_retitle_refreshes_the_slug(): void
