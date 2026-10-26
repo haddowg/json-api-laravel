@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
 use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresAlwaysCounted;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationExamples;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationExtensions;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresSingularName;
@@ -32,9 +33,10 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  * It implements core's opt-in {@see DeclaresSingularName}: the noun the generated prose uses
  * for one resource, or `null` to let core inflect it from the type name. Through
  * {@see DeclaresOperationExamples} it carries the `operationExamples` the resource attribute
- * declares.
+ * declares. Through {@see DeclaresAlwaysCounted} it says whether the collection's paginator
+ * counts on every request, so the collection example shows the total.
  */
-final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresSingularName, DeclaresOperationExamples
+final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresSingularName, DeclaresOperationExamples, DeclaresAlwaysCounted
 {
     /**
      * @param list<FieldInterface>            $fields
@@ -53,6 +55,7 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
      * @param array<string, array<string, mixed>> $operationExtensions per-CRUD-operation vendor extensions, keyed by {@see OperationType::value}
      * @param ?string                             $singularName        the declared singular noun for generated prose (null = inflected by core)
      * @param array<string, OperationExample|false|null> $operationExamples the example overrides keyed by operation name
+     * @param bool                                $alwaysCounts        whether the resolved paginator counts on every request
      */
     public function __construct(
         private string $type,
@@ -80,7 +83,13 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
         private array $operationExtensions = [],
         private ?string $singularName = null,
         private array $operationExamples = [],
+        private bool $alwaysCounts = false,
     ) {}
+
+    public function alwaysCounts(): bool
+    {
+        return $this->alwaysCounts;
+    }
 
     public function operationExamples(): array
     {

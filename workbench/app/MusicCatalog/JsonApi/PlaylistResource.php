@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Workbench\App\MusicCatalog\JsonApi;
 
-use haddowg\JsonApi\OpenApi\Metadata\OperationExample;
 use haddowg\JsonApi\Pagination\PagePaginator;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Constraint\Comparison;
@@ -65,15 +64,6 @@ use Workbench\App\MusicCatalog\Security\PlaylistApiPolicy;
         Operation::Delete->value => 'deletePlaylist',
     ],
     tags: ['Library'],
-    // `owner` links to `users`, which the default server does not register, so the
-    // projector has no users id to build its linkage from there. Spell it out.
-    operationExamples: [
-        'fetchRelationship.owner' => new OperationExample(responses: [200 => ['data' => ['type' => 'users', 'id' => '1']]]),
-        'updateRelationship.owner' => new OperationExample(
-            request: ['data' => ['type' => 'users', 'id' => '1']],
-            responses: [200 => ['data' => ['type' => 'users', 'id' => '1']]],
-        ),
-    ],
 )]
 final class PlaylistResource extends AbstractResource implements ResourceLifecycleHooksInterface
 {
@@ -95,9 +85,11 @@ final class PlaylistResource extends AbstractResource implements ResourceLifecyc
             // registered on the default server and an endpoint returning a `users`
             // resource object cannot be served there. A linkage `{type: users, id}`
             // asserts no shape; an admin client dereferences it at `/admin/users/{id}`.
+            // exampleId() gives its linkage examples an id where `users` is not registered.
             BelongsTo::make('owner', 'users')
                 ->security(read: 'inspectOwner')
-                ->withoutRelatedEndpoint(),
+                ->withoutRelatedEndpoint()
+                ->exampleId('1'),
             // The renamed-relation witness: served at `/playlists/{id}/public-owner` and
             // `/playlists/{id}/relationships/public-owner`, and its links and the OpenAPI
             // paths name that segment. The member name and `?include=publicOwner` keep the

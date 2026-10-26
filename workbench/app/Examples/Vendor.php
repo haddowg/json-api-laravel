@@ -9,5 +9,7 @@ final class Vendor
     public function __construct(
         public string $id = '',
         public string $name = '',
+        /** @var list<Widget> */
+        public array $widgets = [],
     ) {}
 }

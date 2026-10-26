@@ -132,6 +132,25 @@ DateTime::make('releasedAt')->example('1969-09-26T00:00:00+00:00'),
 Core's [operation examples](https://github.com/haddowg/json-api/blob/main/docs/openapi.md#operation-examples)
 guide covers what each example holds.
 
+A collection whose paginator counts on every request, one built with `withCount()` on the
+resource or on the relation, shows its total and `last` link in the example, as the handler
+renders them. A count-free paginator's example shows neither, and a cursor page never counts.
+
+### Linkage to a type the server does not register
+
+Linkage examples take the related type's `Id` example. A linkage-only relation to a type
+this server does not register has no such example, so its relationship endpoints get none
+and `--strict` reports them. Declare the id on the relation with `exampleId()`:
+
+```php
+BelongsTo::make('owner', 'users')
+    ->withoutRelatedEndpoint()
+    ->exampleId('1'),
+```
+
+The related type's own `Id` example still wins where the server registers it and it has one.
+`exampleId()` changes only the examples.
+
 ### Replacing or removing one
 
 `operationExamples` on `#[AsJsonApiResource]` replaces or removes an operation's example,
@@ -145,7 +164,7 @@ use haddowg\JsonApi\OpenApi\Metadata\OperationExample;
 
 #[AsJsonApiResource(operationExamples: [
     'delete' => new OperationExample(responses: [200 => ['meta' => ['deleted' => true]]]),
-    'fetchRelationship.owner' => new OperationExample(responses: [200 => ['data' => ['type' => 'users', 'id' => '1']]]),
+    'fetchRelated.tracks' => false,
     'update' => false,
 ])]
 final class PlaylistResource extends AbstractResource { /* ... */ }

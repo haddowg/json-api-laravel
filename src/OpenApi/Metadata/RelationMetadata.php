@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresAlwaysCounted;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresRelationExampleId;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresRelationUriFieldName;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresWriteOnlyRelation;
 use haddowg\JsonApi\OpenApi\Schema;
 use haddowg\JsonApi\Resource\Field\AbstractRelationValue;
+use haddowg\JsonApi\Resource\Field\ExemplifiedRelationInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApiLaravel\OpenApi\PivotFields;
 
@@ -16,13 +19,13 @@ use haddowg\JsonApiLaravel\OpenApi\PivotFields;
  * {@see \haddowg\JsonApi\OpenApi\Metadata\RelationMetadataInterface} the projector consumes.
  *
  * Most accessors delegate straight to the relation's own already-resolved facts
- * (endpoint exposure, mutation flags, includability, filters/sorts). The two derived
- * facts — the related-collection page {@see Schema} and the related-endpoint
- * includable paths — are resolved by the {@see MetadataSource} (which has the
+ * (endpoint exposure, mutation flags, includability, filters/sorts, the linkage example
+ * id). The derived facts — the related-collection page {@see Schema}, whether that
+ * paginator always counts, and the related-endpoint includable paths — are resolved by the {@see MetadataSource} (which has the
  * {@see \haddowg\JsonApi\Server\Server} fallback chain + the relation graph) and
  * passed in.
  */
-final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, DeclaresRelationUriFieldName
+final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, DeclaresRelationUriFieldName, DeclaresRelationExampleId, DeclaresAlwaysCounted
 {
     /**
      * @param list<string> $relatedIncludablePaths the related type's includable paths (resolved by the source)
@@ -31,7 +34,18 @@ final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, Decl
         private RelationInterface $relation,
         private ?Schema $pageSchema,
         private array $relatedIncludablePaths,
+        private bool $alwaysCounts = false,
     ) {}
+
+    public function exampleId(): ?string
+    {
+        return $this->relation instanceof ExemplifiedRelationInterface ? $this->relation->exampleId() : null;
+    }
+
+    public function alwaysCounts(): bool
+    {
+        return $this->alwaysCounts;
+    }
 
     public function name(): string
     {

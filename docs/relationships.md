@@ -51,7 +51,9 @@ over it (the OpenAPI export refuses too, whichever runs first). Three ways out:
   `User` row;
 - declare the relation **linkage-only** with `withoutRelatedEndpoint()`. The linkage
   `{"type": "users", "id": "1"}` asserts no shape, so an unregistered target is fine
-  there; the `related` link is omitted so nothing points at the 404.
+  there; the `related` link is omitted so nothing points at the 404. Give it `->exampleId('1')`
+  so its OpenAPI examples have an id to show, since the server has no `users` `Id` example
+  to take one from.
 
 A type reached only as linkage never needs registering. It is exposing the endpoint that
 makes the claim.
