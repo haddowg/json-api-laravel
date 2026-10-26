@@ -40,6 +40,8 @@ final readonly class ActionDescriptor
      * @param list<string>                                    $tags         the OpenAPI tag refs (empty = inherit the mount type's default)
      * @param bool                                            $asLink       expose the action as an ability-aware `links` member (resource scope only)
      * @param bool                                            $resolvesTrashed resolve the `{id}` target through the trashed-inclusive fetch ({@see \haddowg\JsonApiLaravel\DataProvider\FetchesTrashed}) rather than the strict, trashed-excluding one — the synthesized soft-delete restore/force-delete actions set this
+     * @param string|null                                     $summary      the operation's OpenAPI summary (null keeps the generated one)
+     * @param string|null                                     $description  the operation's OpenAPI description (null keeps the generated one)
      * @param bool                                            $conditionallyLinked the handler is {@see ConditionallyLinked}, so its `asLink` link is further gated per rendered entity by `shouldLink()` (recorded here so the link contributor resolves the handler only when it matters)
      */
     public function __construct(
@@ -59,10 +61,12 @@ final readonly class ActionDescriptor
         public bool $asLink = false,
         public bool $resolvesTrashed = false,
         public bool $conditionallyLinked = false,
+        public ?string $summary = null,
+        public ?string $description = null,
     ) {}
 
     /**
-     * @return array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null}>, ability: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name: ?string, tags: list<string>, asLink: bool, resolvesTrashed: bool, conditionallyLinked: bool}
+     * @return array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null}>, ability: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name: ?string, tags: list<string>, asLink: bool, resolvesTrashed: bool, conditionallyLinked: bool, summary: ?string, description: ?string}
      */
     public function toArray(): array
     {
@@ -83,11 +87,13 @@ final readonly class ActionDescriptor
             'asLink' => $this->asLink,
             'resolvesTrashed' => $this->resolvesTrashed,
             'conditionallyLinked' => $this->conditionallyLinked,
+            'summary' => $this->summary,
+            'description' => $this->description,
         ];
     }
 
     /**
-     * @param array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null}>, ability?: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name?: ?string, tags?: list<string>, asLink?: bool, resolvesTrashed?: bool, conditionallyLinked?: bool} $data
+     * @param array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null}>, ability?: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name?: ?string, tags?: list<string>, asLink?: bool, resolvesTrashed?: bool, conditionallyLinked?: bool, summary?: ?string, description?: ?string} $data
      */
     public static function fromArray(array $data): self
     {
@@ -108,6 +114,8 @@ final readonly class ActionDescriptor
             $data['asLink'] ?? false,
             $data['resolvesTrashed'] ?? false,
             $data['conditionallyLinked'] ?? false,
+            $data['summary'] ?? null,
+            $data['description'] ?? null,
         );
     }
 }

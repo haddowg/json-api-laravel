@@ -76,6 +76,9 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
  * action's `path`). It is **ability-aware**: when the action declares an `ability`, the
  * link renders only when the requester would pass that same gate. It is **resource-scope
  * only** — a collection-scope action with `asLink: true` is a declaration-time error.
+ *
+ * `summary` and `description` set the action operation's OpenAPI `summary` and
+ * `description`; left `null`, the document keeps its generated defaults.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final readonly class AsJsonApiAction
@@ -94,6 +97,8 @@ final readonly class AsJsonApiAction
      * @param ActionResponse|list<ActionResponse>|null $responds the success-response set the document advertises (default: a `200` document of the mount type)
      * @param list<string>                             $tags     the OpenAPI tag names this action is grouped under (empty = inherit the mount type's default tag)
      * @param bool                                     $asLink   expose the action as an ability-aware `links` member on the mount type's resources (resource scope only)
+     * @param string|null                              $summary     the operation's OpenAPI summary (null keeps the generated one)
+     * @param string|null                              $description the operation's OpenAPI description (null keeps the generated one)
      */
     public function __construct(
         public string $type,
@@ -108,6 +113,8 @@ final readonly class AsJsonApiAction
         public ?string $name = null,
         public array $tags = [],
         public bool $asLink = false,
+        public ?string $summary = null,
+        public ?string $description = null,
     ) {
         // Normalise the declaration: a single response object → a one-element list; an
         // omitted declaration → a `200` document of the mount type (the historical default).

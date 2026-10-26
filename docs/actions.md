@@ -100,6 +100,7 @@ POST /api/albums/1/-actions/artwork
 | `ability` | the Gate ability checked before the handler ([authorization](authorization.md)) |
 | `server` / `name` / `tags` | server exposure, route-name override, OpenAPI tags |
 | `asLink` | expose the action as an ability-aware `links` member on the mount type's resources (resource scope only) |
+| `summary` / `description` | the operation's OpenAPI `summary` and `description`; omitted, the generated ones stay |
 
 > [!NOTE]
 > `asLink` visibility matches invocation **exactly**: `Authorizer::allowsAction()` (which
@@ -125,4 +126,16 @@ the generated document matches what the handler returns.
 
 Each action projects an operation under its mount type's tag (or its own `tags`). A secured
 action carries its security requirement; its `responds` set becomes the advertised success
-responses (a `200` document or meta, `204`, `202`, `303`). See [openapi](openapi.md).
+responses (a `200` document or meta, `204`, `202`, `303`). Its `summary` and `description`
+are generated from the path and mount type unless the attribute sets them:
+
+```php
+#[AsJsonApiAction(
+    type: 'albums',
+    path: 'publish',
+    summary: 'Publish an album',
+    description: 'Sets the album status from the request and returns the updated album.',
+)]
+```
+
+See [openapi](openapi.md).

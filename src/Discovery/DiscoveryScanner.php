@@ -627,6 +627,8 @@ final class DiscoveryScanner
             $attribute->tags,
             $attribute->asLink,
             conditionallyLinked: \is_a($handlerClass, ConditionallyLinked::class, true),
+            summary: $attribute->summary,
+            description: $attribute->description,
         );
     }
 
