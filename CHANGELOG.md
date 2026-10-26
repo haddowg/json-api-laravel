@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/haddowg/json-api-laravel/compare/v1.12.0...v1.13.0) (2026-10-26)
+
+
+### Features
+
+* render and document declared resource links ([#146](https://github.com/haddowg/json-api-laravel/issues/146)) ([d284362](https://github.com/haddowg/json-api-laravel/commit/d284362f2cf9689bc10684f6e885039bb3dbd0c4))
+
 ## [1.12.0](https://github.com/haddowg/json-api-laravel/compare/v1.11.0...v1.12.0) (2026-10-26)
 
 
