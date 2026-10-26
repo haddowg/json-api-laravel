@@ -217,6 +217,30 @@ Removing a row the parent doesn't hold changes nothing. Removing one whose forei
 is `NOT NULL` is a `403` (`REMOVAL_PROHIBITED`, or `FULL_REPLACEMENT_PROHIBITED` for a
 replacement that would drop it), since the row can't be left without a parent.
 
+### Writing a relation through `fillUsing()`
+
+A relation with a `fillUsing()` hook writes its own linkage. The hook runs in place of the
+persister's relationship write on every path: an embedded relationship in a `POST` or `PATCH`,
+the `…/relationships/{name}` endpoints and atomic operations. The resource's save then persists
+what the hook set. A to-one hook receives the `ToOneRelationship`; a to-many hook receives the
+`ToManyRelationship` and the endpoint's mode as `$data['mode']`, so it can add, remove or
+replace:
+
+```php
+MorphTo::make('target', ['boards', 'cards'])
+    ->fillUsing(static function (Pin $pin, ToOneRelationship $linkage): Pin {
+        $pin->target_kind = $linkage->resourceIdentifier?->type;
+        $pin->target_key = $linkage->resourceIdentifier?->id;
+
+        return $pin;
+    });
+```
+
+The hook gets wire ids, so a type with an id encoder decodes them itself. Validation, the
+`cannot*` prohibitions, the policy gates and related-id scoping still run first. A hooked
+relation in a `POST` applies before the insert, like an attribute
+([ADR 0055](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0055-a-relation-fill-hook-replaces-the-persisters-relationship-write.md)).
+
 ## Hidden relations
 
 `hidden()` keeps a relation out of every response. `hidden(fn ($model, $request) => …)`
