@@ -282,6 +282,7 @@ operation in the document that describes its target, and the document gets a top
         "href": "https://music.example/api/albums/1",
         "describedby": "/docs.json#/paths/~1albums~1%7Bid%7D/get"
       },
+      "store": "https://store.example.com/albums/1",
       "reissue": {
         "href": "https://music.example/api/albums/1/-actions/reissue",
         "describedby": "/docs.json#/paths/~1albums~1%7Bid%7D~1-actions~1reissue/post"
@@ -386,7 +387,11 @@ replaces the per-operation one, so set it only when a response should point some
 The generated document describes these links: each `<Type>ResourceLinks`,
 `<Type>DocumentLinks`, `<Type>CollectionLinks` and `<Type><Rel>RelationshipLinks`
 component lists the members that context renders, with an example carrying the same
-`describedby`, and an `asLink` action is listed by its name.
+`describedby`, and an `asLink` action is listed by its name. A
+[declared link](resources.md#declared-links), such as the album's `store` above, is
+listed by its name too, with its description, its `meta` members and an example, and
+shows up in the operation examples. A document whose types declare a link is stamped
+with generator contract 14.
 
 `artisan optimize` writes a small map of each document's operations beside it, which is all
 a request reads to resolve a `describedby`. Without it, a request reads the operations from

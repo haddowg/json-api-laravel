@@ -234,6 +234,106 @@ public function emitsSelfLink(): bool
 }
 ```
 
+## Declared links
+
+A link that every resource of a type carries, and that clients should find in the
+OpenAPI document, is declared in `links()` next to `fields()`. A file uploaded to a signed
+URL is the usual case. The URL, the method and headers to send, and when the URL expires
+go in the file's `links`, not its attributes:
+
+```php
+use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\ArrayHash;
+use haddowg\JsonApi\Resource\Field\DateTime;
+use haddowg\JsonApi\Resource\Field\Str;
+use haddowg\JsonApi\Resource\Link\DeclaredLink;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
+
+final class FileResource extends AbstractResource
+{
+    public static string $type = 'files';
+
+    public function fields(): array { /* … */ }
+
+    public function links(): array
+    {
+        return [
+            DeclaredLink::make('upload')
+                ->describedAs('Where to PUT the file\'s bytes, until it is uploaded.')
+                ->meta(
+                    Str::make('method')->in(['PUT'])->guaranteed()
+                        ->describedAs('The HTTP method to upload with.')->example('PUT'),
+                    ArrayHash::make('headers')->guaranteed()
+                        ->describedAs('Headers the upload must send.')->example(['Content-Type' => 'image/png']),
+                    DateTime::make('expiresAt')->guaranteed()
+                        ->describedAs('When the URL stops working.')->example('2026-10-26T12:00:00+00:00'),
+                )
+                ->linkUsing(static function (mixed $file, JsonApiRequestInterface $request): ?array {
+                    \assert($file instanceof File);
+                    if ($file->uploaded_at !== null || Gate::denies('upload', $file)) {
+                        return null;
+                    }
+                    $expiresAt = now()->addMinutes(15);
+                    $signed = Storage::disk('s3')->temporaryUploadUrl($file->path, $expiresAt);
+
+                    return [
+                        'href' => $signed['url'],
+                        'meta' => ['method' => 'PUT', 'headers' => $signed['headers'], 'expiresAt' => $expiresAt],
+                    ];
+                })
+                ->example('https://uploads.example.com/f-1?signature=abc'),
+            DeclaredLink::make('download')
+                ->hrefUsing(static fn(mixed $file): ?string => $file instanceof File && $file->uploaded_at !== null
+                    ? '/files/' . $file->getKey() . '/content'
+                    : null)
+                ->example('https://api.example.com/files/f-1/content'),
+        ];
+    }
+}
+```
+
+`hrefUsing()` builds the href, and `metaUsing()` returns the meta values keyed by member
+name. `linkUsing()` does both in one closure, which suits a signing call that returns the
+URL and its headers together. A closure that returns `null` leaves the link out of that
+resource's `links`, so a gate check or a state check hides it per viewer or per resource.
+
+Each meta member is a field, so it brings its schema, description and example, and its
+value renders the way the field renders an attribute. A `DateTime` takes a Carbon instance
+and follows the server's [output timezone](configuration.md#output_timezone). `type()`, `title()`, `rel()`,
+`hreflang()` and `describedBy()` add static link object members. A link with no meta and
+no static members, like `download`, renders as a bare URL string; any other link renders
+as a link object on every response.
+
+The example app declares one of each. A track's `preview` is a link object with `format`
+and `expiresAt` meta, left out when the track has no duration, and an album's `store` is a
+bare URL:
+
+```json
+"links": {
+  "self": {
+    "href": "https://music.example/api/tracks/1",
+    "describedby": "/docs.json#/paths/~1tracks~1%7Bid%7D/get"
+  },
+  "preview": {
+    "href": "https://cdn.example.com/previews/1.mp3",
+    "type": "audio/mpeg",
+    "meta": { "format": "mp3", "expiresAt": "2026-01-01T12:00:00+00:00" }
+  }
+}
+```
+
+Declared links render wherever the resource does: a fetch, a collection, `included`, and
+the related endpoint of a pivot relation. When two links share a name, a link
+`getLinks()` returns wins, then a declared link, then an `asLink` action link, then the
+convention `self`, which can't be declared. A declared link sharing its name with an
+action link fails the OpenAPI export. The [OpenAPI document](openapi.md#links-and-describedby)
+lists each declared link by name in `<Type>ResourceLinks`. `links()` runs on the live
+resource when the document is built, since the discovery cache can't hold its closures.
+Core's [links guide](https://github.com/haddowg/json-api/blob/main/docs/links-and-meta.md#declared-links)
+has the full builder reference.
+
 ## Default includes and include-path safeguards
 
 Override the includes rendered when the client sends no `?include`, and whitelist the dotted

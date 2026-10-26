@@ -8,6 +8,7 @@ use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresAlwaysCounted;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationExamples;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationExtensions;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresResourceLinks;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresSingularName;
 use haddowg\JsonApi\OpenApi\Metadata\OperationExample;
 use haddowg\JsonApi\OpenApi\Metadata\OperationResponseInterface;
@@ -17,6 +18,7 @@ use haddowg\JsonApi\OpenApi\Metadata\RelationMetadataInterface;
 use haddowg\JsonApi\OpenApi\Schema;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Link\DeclaredLink;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
 
 /**
@@ -34,9 +36,11 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  * for one resource, or `null` to let core inflect it from the type name. Through
  * {@see DeclaresOperationExamples} it carries the `operationExamples` the resource attribute
  * declares. Through {@see DeclaresAlwaysCounted} it says whether the collection's paginator
- * counts on every request, so the collection example shows the total.
+ * counts on every request, so the collection example shows the total. Through
+ * {@see DeclaresResourceLinks} it carries the resource's declared links, read from the live
+ * resource when the document is built, since they hold closures the discovery snapshot can't.
  */
-final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresSingularName, DeclaresOperationExamples, DeclaresAlwaysCounted
+final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresSingularName, DeclaresOperationExamples, DeclaresAlwaysCounted, DeclaresResourceLinks
 {
     /**
      * @param list<FieldInterface>            $fields
@@ -56,6 +60,7 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
      * @param ?string                             $singularName        the declared singular noun for generated prose (null = inflected by core)
      * @param array<string, OperationExample|false|null> $operationExamples the example overrides keyed by operation name
      * @param bool                                $alwaysCounts        whether the resolved paginator counts on every request
+     * @param list<DeclaredLink>                  $declaredLinks       the resource's built declared links, in declaration order
      */
     public function __construct(
         private string $type,
@@ -84,7 +89,13 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
         private ?string $singularName = null,
         private array $operationExamples = [],
         private bool $alwaysCounts = false,
+        private array $declaredLinks = [],
     ) {}
+
+    public function declaredLinks(): array
+    {
+        return $this->declaredLinks;
+    }
 
     public function alwaysCounts(): bool
     {

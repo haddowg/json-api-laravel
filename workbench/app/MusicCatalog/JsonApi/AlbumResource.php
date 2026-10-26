@@ -23,6 +23,7 @@ use haddowg\JsonApi\Resource\Filter\Range;
 use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApi\Resource\Filter\WhereHas;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
+use haddowg\JsonApi\Resource\Link\DeclaredLink;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
@@ -37,6 +38,7 @@ use Workbench\App\MusicCatalog\Query\FullTextSearch;
  * `status`, a directional `CompareField` (availableUntil > availableFrom), a JSON `Map`
  * (`releaseInfo`), a relation-scoped to-one filter on `artist`, and a counting/filtered/
  * sorted `tracks` HasMany. Default include: `artist`. Default sort: `releasedAt` DESC.
+ * Its declared `store` link renders as a bare URL.
  */
 #[AsJsonApiResource(server: ['default', 'admin'], tags: ['Catalog'])]
 final class AlbumResource extends AbstractResource
@@ -95,6 +97,16 @@ final class AlbumResource extends AbstractResource
                 ->withFilters(Where::make('longerThan', 'length_seconds', '>')->integer())
                 ->withSorts(SortByField::make('duration', 'length_seconds'))
                 ->countable(),
+        ];
+    }
+
+    public function links(): array
+    {
+        return [
+            DeclaredLink::make('store')
+                ->describedAs('The album\'s page in the store.')
+                ->example('https://store.example.com/albums/1')
+                ->hrefUsing(fn(mixed $album): string => 'https://store.example.com/albums/' . $this->getId($album)),
         ];
     }
 

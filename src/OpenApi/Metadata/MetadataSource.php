@@ -397,6 +397,7 @@ final class MetadataSource
             singularName: $this->nonBlank($resource?->getSingularName()) ?? $descriptor->singular,
             operationExamples: $this->operationExamples($descriptor->class, AsJsonApiResource::class),
             alwaysCounts: self::alwaysCounts($paginator),
+            declaredLinks: $resource?->allLinks() ?? [],
         );
     }
 
