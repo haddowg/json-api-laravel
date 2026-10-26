@@ -24,4 +24,11 @@ final class Task extends Model
      * @var list<string>
      */
     protected $guarded = [];
+
+    /**
+     * A task created through the API belongs to user 1 in project 1.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = ['owner_id' => 1, 'project_id' => 1];
 }

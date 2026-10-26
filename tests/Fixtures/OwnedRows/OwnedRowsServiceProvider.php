@@ -40,7 +40,16 @@ final class OwnedRowsServiceProvider extends ServiceProvider
 
             JsonApi::provider(new InMemoryDataProvider('projects', $projects, identify: static fn(object $project): string => $project instanceof ProjectRecord ? $project->id : ''));
             JsonApi::provider(new OwnTasksOnly($tasks));
-            JsonApi::persister(new InMemoryDataPersister('tasks', new InMemoryStore($tasks), static fn(): TaskRecord => new TaskRecord()));
+            $store = new InMemoryStore(
+                $tasks,
+                identify: static fn(object $task): string => $task instanceof TaskRecord ? $task->id : '',
+                assignId: static function (object $task, string $id): void {
+                    if ($task instanceof TaskRecord) {
+                        $task->id = $id;
+                    }
+                },
+            );
+            JsonApi::persister(new InMemoryDataPersister('tasks', $store, static fn(): TaskRecord => new TaskRecord(owner_id: '1')));
 
             return;
         }

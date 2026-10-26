@@ -132,6 +132,49 @@ abstract class OwnedRowsTestCase extends Orchestra
         }
     }
 
+    #[Test]
+    public function aTitleHeldOnlyByAHiddenTaskIsFree(): void
+    {
+        // "Review" belongs to user 2, so user 1 can take it.
+        $this->write('POST', '/api/tasks', ['data' => ['type' => 'tasks', 'attributes' => ['title' => 'Review']]])->assertCreated();
+    }
+
+    #[Test]
+    public function aTitleAVisibleTaskHoldsIs422(): void
+    {
+        $this->write('POST', '/api/tasks', ['data' => ['type' => 'tasks', 'attributes' => ['title' => 'Ship']]])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.0.source.pointer', '/data/attributes/title');
+    }
+
+    #[Test]
+    public function anUpdateKeepingItsOwnTitlePasses(): void
+    {
+        $this->write('PATCH', '/api/tasks/1', ['data' => ['type' => 'tasks', 'id' => '1', 'attributes' => ['title' => 'Draft']]])->assertOk();
+        $this->write('PATCH', '/api/tasks/1', ['data' => ['type' => 'tasks', 'id' => '1', 'attributes' => []]])->assertOk();
+    }
+
+    #[Test]
+    public function anUpdateToAVisibleTasksTitleIs422(): void
+    {
+        $this->write('PATCH', '/api/tasks/1', ['data' => ['type' => 'tasks', 'id' => '1', 'attributes' => ['title' => 'Ship']]])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.0.source.pointer', '/data/attributes/title');
+
+        // A hidden task's title is free on update too.
+        $this->write('PATCH', '/api/tasks/1', ['data' => ['type' => 'tasks', 'id' => '1', 'attributes' => ['title' => 'Review']]])->assertOk();
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     *
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    protected function write(string $method, string $uri, array $body): TestResponse
+    {
+        return $this->call($method, $uri, [], [], [], ['HTTP_ACCEPT' => self::MEDIA_TYPE, 'CONTENT_TYPE' => self::MEDIA_TYPE], (string) \json_encode($body));
+    }
+
     /**
      * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
      */

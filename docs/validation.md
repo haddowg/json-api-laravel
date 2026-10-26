@@ -96,6 +96,39 @@ Email::make('email')->required()->strict()->constrain(new UniqueEntity(['email']
 ```
 
 A duplicate is a `422` at `/data/attributes/email`, caught against the table before any write.
+That check covers the whole table: a row the caller can't see still counts.
+
+### Unique among the rows the caller can see
+
+`scoped: true` compares only against the rows the caller can read, so one tenant's slug
+doesn't block another's:
+
+```php
+Str::make('slug')->constrain(new UniqueEntity(['slug'], scoped: true));
+```
+
+The rows that count are the ones the type's own endpoint would return: the model's global
+scopes apply, and a type served by a
+[provider that scopes its rows](custom-data-providers.md#a-provider-that-scopes-its-rows)
+counts only the rows that provider returns. A type with no Eloquent model is checked by
+reading its provider. On update the row being updated never counts, so a `PATCH` that leaves
+the value alone passes.
+
+More options, each mirroring the Symfony bundle's `UniqueEntity`:
+
+| Option | Effect |
+| --- | --- |
+| `using` | narrows the query: a local scope name such as `'active'`, or `fn (Builder $query) => …` |
+| `errorPath` | the attribute the `422` points at, such as the second field of a composite key |
+| `ignoreNull` | `true` by default: a null value skips the check; `false` treats null as a value |
+| `model` | compares against another model's table |
+
+```php
+Str::make('code')->constrain(new UniqueEntity(['code', 'region'], using: 'active', errorPath: 'region', ignoreNull: false));
+```
+
+Setting any of these runs the check against the stored rows instead of `Rule::unique`
+([ADR 0059](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0059-scoped-uniqueness-reads-the-rows-the-caller-can-see.md)).
 
 ## Entity-level (post-hydration) validation {#entity-level-validation}
 
