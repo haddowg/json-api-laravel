@@ -28,10 +28,12 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\Error\Error;
 use haddowg\JsonApi\Schema\Error\ErrorSource;
 use haddowg\JsonApi\Validation\SchemaValueValidator;
+use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\Validation\Constraint\UniqueEntity;
 use haddowg\JsonApiLaravel\Validation\Rules\NotNull;
 use haddowg\JsonApiLaravel\Validation\Rules\ParsableDate;
 use haddowg\JsonApiLaravel\Validation\Rules\RequiredOrNull;
+use haddowg\JsonApiLaravel\Validation\Rules\StoredRowsUnique;
 use Illuminate\Contracts\Validation\Factory as ValidationFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rule;
@@ -77,6 +79,9 @@ final class ResourceValidator
         // Null when opis/json-schema is not installed — a Shape then documents its
         // OpenAPI shape but is not value-validated (ADR 0013).
         private readonly ?SchemaValueValidator $schemaValues = null,
+        // Resolves the provider registry a scoped uniqueness check reads, lazily, since the
+        // registry is built after this validator.
+        private readonly ?\Closure $providers = null,
     ) {}
 
     /**
@@ -134,6 +139,8 @@ final class ResourceValidator
         $rules = [];
         /** @var list<array{0: string, 1: CompareField}> $compares */
         $compares = [];
+        /** @var list<array{0: string, 1: StoredRowsUnique}> $storedRowRules */
+        $storedRowRules = [];
 
         foreach ($resource->allFields() as $field) {
             if ($field instanceof Id || $field instanceof RelationInterface) {
@@ -164,6 +171,15 @@ final class ResourceValidator
             if ($unique !== null) {
                 $rules[$name][] = $unique;
             }
+
+            foreach ($this->storedRowsUniqueRules($resource, $field, $creating, $existingObject ?? $subject, $model) as $key => $rule) {
+                $storedRowRules[] = [$key, $rule];
+            }
+        }
+
+        // Added after every field's own rules, since one may report on another field.
+        foreach ($storedRowRules as [$key, $rule]) {
+            $rules[$key][] = $rule;
         }
 
         $errors = [];
@@ -474,6 +490,8 @@ final class ResourceValidator
         $rules = [];
         /** @var list<array{0: string, 1: CompareField}> $compares */
         $compares = [];
+        /** @var list<array{0: string, 1: StoredRowsUnique}> $storedRowRules */
+        $storedRowRules = [];
         foreach ($writable as $field) {
             /** @var mixed $value */
             $value = $meta[$field->name()] ?? null;
@@ -913,7 +931,7 @@ final class ResourceValidator
 
         $unique = null;
         foreach ($field->constraints() as $constraint) {
-            if (!$constraint instanceof UniqueEntity || !$constraint->context()->appliesTo($creating)) {
+            if (!$constraint instanceof UniqueEntity || $constraint->checksStoredRows() || !$constraint->context()->appliesTo($creating)) {
                 continue;
             }
             $unique = $constraint;
@@ -944,6 +962,37 @@ final class ResourceValidator
         }
 
         return $rule;
+    }
+
+    /**
+     * The rules for the field's {@see UniqueEntity} constraints that check the stored rows
+     * ({@see UniqueEntity::checksStoredRows()}), keyed by the attribute each reports on.
+     *
+     * @return iterable<string, StoredRowsUnique>
+     */
+    private function storedRowsUniqueRules(AbstractResource $resource, FieldInterface $field, bool $creating, ?object $current, ?Model $model): iterable
+    {
+        foreach ($field->constraints() as $constraint) {
+            if (!$constraint instanceof UniqueEntity || !$constraint->checksStoredRows() || !$constraint->context()->appliesTo($creating)) {
+                continue;
+            }
+
+            $columns = [];
+            foreach ($constraint->fields as $name) {
+                $columns[$name] = ($name === $field->name() ? $field : $this->fieldByName($resource, $name))?->column() ?? $name;
+            }
+
+            $providers = $this->providers !== null ? ($this->providers)() : null;
+
+            yield $constraint->errorPath ?? $field->name() => new StoredRowsUnique(
+                $constraint,
+                $resource,
+                $columns,
+                $constraint->model ?? ($model !== null ? $model::class : null),
+                $creating ? null : $current,
+                $providers instanceof DataProviderRegistry ? $providers : null,
+            );
+        }
     }
 
     /**

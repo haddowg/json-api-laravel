@@ -581,6 +581,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(ConstraintTranslator::class),
                 $app->make(JsonPointerBuilder::class),
                 $opisInstalled ? $app->make(SchemaValueValidator::class) : null,
+                static fn(): DataProviderRegistry => $app->make(DataProviderRegistry::class),
             );
         });
         $this->app->singleton(FilterValueValidator::class);

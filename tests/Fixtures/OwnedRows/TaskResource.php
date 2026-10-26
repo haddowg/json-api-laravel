@@ -8,6 +8,7 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\Contains;
+use haddowg\JsonApiLaravel\Validation\Constraint\UniqueEntity;
 
 final class TaskResource extends AbstractResource
 {
@@ -17,7 +18,8 @@ final class TaskResource extends AbstractResource
     {
         return [
             Id::make(),
-            Str::make('title'),
+            // A title is unique among the tasks the signed-in user can see.
+            Str::make('title')->constrain(new UniqueEntity(['title'], scoped: true)),
         ];
     }
 
