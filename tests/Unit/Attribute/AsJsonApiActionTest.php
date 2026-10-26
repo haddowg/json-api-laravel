@@ -64,4 +64,47 @@ final class AsJsonApiActionTest extends TestCase
 
         self::assertSame(ActionScope::Collection, $attribute->scope);
     }
+
+    public function test_safety_and_extensions_default_to_undeclared(): void
+    {
+        $attribute = new AsJsonApiAction(type: 'albums', path: 'publish');
+
+        self::assertNull($attribute->readOnly);
+        self::assertNull($attribute->destructive);
+        self::assertNull($attribute->idempotent);
+        self::assertSame([], $attribute->extensions);
+    }
+
+    public function test_it_passes_the_declared_safety_and_extensions_through(): void
+    {
+        $attribute = new AsJsonApiAction(
+            type: 'albums',
+            path: 'purge',
+            readOnly: false,
+            destructive: true,
+            idempotent: true,
+            extensions: ['x-workflows' => ['purge-albums']],
+        );
+
+        self::assertFalse($attribute->readOnly);
+        self::assertTrue($attribute->destructive);
+        self::assertTrue($attribute->idempotent);
+        self::assertSame(['x-workflows' => ['purge-albums']], $attribute->extensions);
+    }
+
+    public function test_it_rejects_an_extension_key_without_the_x_prefix(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('"workflows" is invalid');
+
+        new AsJsonApiAction(type: 'albums', path: 'purge', extensions: ['workflows' => true]);
+    }
+
+    public function test_it_rejects_a_reserved_extension_key(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('reserved');
+
+        new AsJsonApiAction(type: 'albums', path: 'purge', extensions: ['x-oai-thing' => true]);
+    }
 }

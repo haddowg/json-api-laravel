@@ -215,6 +215,10 @@ final class EloquentSoftDeleteTest extends Orchestra
         $force = $this->arrayAt($doc, 'paths', '/documents/{id}/-actions/force-delete', 'post');
         $this->assertArrayHasKey('204', $this->arrayAt($force, 'responses'));
         $this->assertNotEmpty($this->arrayAt($force, 'security'));
+
+        // Force-delete declares itself destructive; restore declares nothing.
+        $this->assertSame(['destructive' => true], $this->arrayAt($force, 'x-safety'));
+        $this->assertArrayNotHasKey('x-safety', $restore);
     }
 
     private function writer(): User

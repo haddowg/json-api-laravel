@@ -32,6 +32,7 @@ use Workbench\App\MusicCatalog\Models\Album;
     example: new OperationExample(responses: [
         200 => ['meta' => ['albums' => ['published' => 12, 'unpublished' => 3, 'total' => 15]]],
     ]),
+    readOnly: true,
 )]
 final class SummarizeAlbums implements ActionHandlerInterface
 {

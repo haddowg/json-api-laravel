@@ -15,6 +15,12 @@ use haddowg\JsonApiLaravel\Tests\Fixtures\Action\MetaHandlerWithOutputMeta;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\NoContentHandlerMissingReturns204;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\RawHandlerMissingRawResult;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\UnionReturnHandler;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ActionDeclarations\ExportAllAction;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ActionDeclarations\ExportOneAction;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ActionDeclarations\FetchOneAction;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ActionDeclarations\HyphenatedReindexAction;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ActionDeclarations\ReadOnlyDestructiveAction;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ActionDeclarations\ReindexAction;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ErrorCatalog\Scanned\QuotaExceeded;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ErrorCatalog\Unscanned\TenantSuspended;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Overrides\BadSerializerOverrideResource;
@@ -239,6 +245,45 @@ final class DiscoveryScannerTest extends TestCase
         $this->expectExceptionMessage('new NoContent()');
 
         (new DiscoveryScanner())->scan([], [NoContentHandlerMissingReturns204::class]);
+    }
+
+    public function test_one_action_path_at_both_scopes_fails_discovery_naming_the_handler(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessageMatches('/' . \preg_quote(ExportAllAction::class, '/') . '.*both the resource and the collection scope/');
+
+        (new DiscoveryScanner())->scan([], [ExportOneAction::class, ExportAllAction::class]);
+    }
+
+    public function test_an_action_path_named_like_a_reserved_operation_fails_discovery_naming_the_handler(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessageMatches('/' . \preg_quote(FetchOneAction::class, '/') . '.*"fetchOne" operation/');
+
+        (new DiscoveryScanner())->scan([], [FetchOneAction::class]);
+    }
+
+    public function test_action_ids_that_flatten_to_the_same_name_fail_discovery_naming_the_handler(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessageMatches('/' . \preg_quote(HyphenatedReindexAction::class, '/') . '.*differ only in case or punctuation/');
+
+        (new DiscoveryScanner())->scan([], [ReindexAction::class, HyphenatedReindexAction::class]);
+    }
+
+    public function test_an_action_declared_read_only_and_destructive_fails_discovery_naming_the_handler(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessageMatches('/' . \preg_quote(ReadOnlyDestructiveAction::class, '/') . '.*both read-only and destructive/');
+
+        (new DiscoveryScanner())->scan([], [ReadOnlyDestructiveAction::class]);
+    }
+
+    public function test_distinct_action_paths_on_one_type_pass_discovery(): void
+    {
+        $result = (new DiscoveryScanner())->scan([], [ExportOneAction::class, ReindexAction::class]);
+
+        self::assertCount(2, $result->actions);
     }
 
     public function test_an_action_handler_with_a_matching_output_flag_passes_discovery(): void
