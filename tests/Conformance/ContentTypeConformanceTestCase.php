@@ -169,7 +169,7 @@ abstract class ContentTypeConformanceTestCase extends Orchestra
         $import = $this->at($document, 'paths', '/albums/-actions/import', 'post');
         $content = $this->at($import, 'requestBody', 'content');
         self::assertSame([self::MEDIA_TYPE, 'text/csv'], \array_keys($content));
-        self::assertSame(['type' => 'string', 'format' => 'binary'], $this->at($content, 'text/csv', 'schema'));
+        self::assertSame(['type' => 'string'], $this->at($content, 'text/csv', 'schema'));
         self::assertSame(['$ref' => '#/components/schemas/AlbumsCreateRequest'], $this->at($content, self::MEDIA_TYPE, 'schema'));
         self::assertArrayHasKey('415', $this->at($import, 'responses'));
 
@@ -177,7 +177,7 @@ abstract class ContentTypeConformanceTestCase extends Orchestra
         self::assertSame(['application/json', 'multipart/form-data', 'text/plain'], \array_keys($scores));
         self::assertSame(['type' => 'object', 'properties' => ['score' => ['type' => 'integer']]], $this->at($scores, 'application/json', 'schema'));
         self::assertSame(['type' => 'object'], $this->at($scores, 'multipart/form-data', 'schema'));
-        self::assertSame(['type' => 'string', 'format' => 'binary'], $this->at($scores, 'text/plain', 'schema'));
+        self::assertSame(['type' => 'string'], $this->at($scores, 'text/plain', 'schema'));
 
         $upload = $this->at($document, 'paths', '/albums/-actions/upload-artwork', 'post');
         self::assertSame(['application/octet-stream'], \array_keys($this->at($upload, 'requestBody', 'content')));
