@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Feature\MusicCatalog;
 
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+use haddowg\JsonApiLaravel\Tests\Support\PinsCatalogClock;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use Workbench\App\MusicCatalog\Providers\MusicCatalogEloquentServiceProvider;
 use Workbench\Database\Seeders\McCatalogSeeder;
@@ -18,6 +19,8 @@ use Workbench\Database\Seeders\McCatalogSeeder;
 #[CoversNothing]
 final class EloquentAuditListenerTest extends AuditListenerTestCase
 {
+    use PinsCatalogClock;
+
     /**
      * @param \Illuminate\Foundation\Application $app
      *

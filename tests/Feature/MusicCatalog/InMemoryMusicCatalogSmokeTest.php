@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature\MusicCatalog;
 
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Testing\SchemaDocumentKind;
+use haddowg\JsonApiLaravel\Tests\Support\PinsCatalogClock;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use Workbench\App\MusicCatalog\Providers\MusicCatalogInMemoryServiceProvider;
 use Workbench\App\MusicCatalog\Support\Fixtures;
@@ -20,6 +21,8 @@ use Workbench\App\MusicCatalog\Support\Fixtures;
 #[CoversNothing]
 final class InMemoryMusicCatalogSmokeTest extends MusicCatalogSmokeTestCase
 {
+    use PinsCatalogClock;
+
     /**
      * @param \Illuminate\Foundation\Application $app
      *

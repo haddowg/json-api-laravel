@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature\MusicCatalog;
 
 use haddowg\JsonApi\Atomic\AtomicExtension;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+use haddowg\JsonApiLaravel\Tests\Support\PinsCatalogClock;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
@@ -23,6 +24,8 @@ use Workbench\Database\Seeders\McCatalogSeeder;
 #[CoversNothing]
 final class EloquentArtistSlugTest extends Orchestra
 {
+    use PinsCatalogClock;
+
     public const string MEDIA_TYPE = 'application/vnd.api+json';
 
     private const string ATOMIC_MEDIA_TYPE = 'application/vnd.api+json; ext="' . AtomicExtension::URI . '"';

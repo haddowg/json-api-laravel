@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature\MusicCatalog;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use haddowg\JsonApiLaravel\Tests\Support\InteractsWithOpenApiDocument;
+use haddowg\JsonApiLaravel\Tests\Support\PinsCatalogClock;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
@@ -24,6 +25,8 @@ use Workbench\App\MusicCatalog\Providers\MusicCatalogEloquentServiceProvider;
  */
 final class EloquentMusicCatalogServabilityTest extends Orchestra
 {
+    use PinsCatalogClock;
+
     use InteractsWithOpenApiDocument;
 
     /**

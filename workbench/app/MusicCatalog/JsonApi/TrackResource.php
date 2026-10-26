@@ -17,12 +17,14 @@ use haddowg\JsonApi\Resource\Field\ArrayListBuilder;
 use haddowg\JsonApi\Resource\Field\BelongsTo;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\Boolean;
+use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Integer;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Field\Time;
 use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApi\Resource\Filter\WhereIn;
+use haddowg\JsonApi\Resource\Link\DeclaredLink;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use Workbench\App\MusicCatalog\Domain\Track as TrackDomain;
 use Workbench\App\MusicCatalog\Models\Track as TrackModel;
@@ -42,6 +44,9 @@ use Workbench\App\MusicCatalog\Support\CatalogConfig;
  * It is also the pagination-menu witness: {@see pagination()} offers page, cursor and
  * offset strategies on the primary `tracks` collection, and the client picks one per
  * request.
+ *
+ * Its declared `preview` link is a link object with typed meta, left out for a track with
+ * no duration.
  *
  * (The Symfony example additionally binds a hand-written `TrackSerializer` with a DI
  * constructor arg via `serializer:`; the Laravel `AsJsonApiResource` attribute does not
@@ -87,6 +92,29 @@ final class TrackResource extends AbstractResource
                 ->cannotReplace()
                 ->countable()
                 ->withData(),
+        ];
+    }
+
+    public function links(): array
+    {
+        return [
+            DeclaredLink::make('preview')
+                ->describedAs('A short audio preview of the track, valid until expiresAt.')
+                ->type('audio/mpeg')
+                ->example('https://cdn.example.com/previews/1.mp3')
+                ->meta(
+                    Str::make('format')->describedAs('Audio encoding of the preview.')->example('mp3'),
+                    DateTime::make('expiresAt')->describedAs('When the preview URL stops working.')->example('2026-01-01T12:00:00+00:00'),
+                )
+                ->hrefUsing(function (mixed $track): ?string {
+                    $duration = \is_object($track) ? Accessor::get($track, 'length_seconds') : null;
+                    if (!\is_numeric($duration) || (int) $duration === 0) {
+                        return null;
+                    }
+
+                    return 'https://cdn.example.com/previews/' . $this->getId($track) . '.mp3';
+                })
+                ->metaUsing(static fn(): array => ['format' => 'mp3', 'expiresAt' => now()->addHour()]),
         ];
     }
 

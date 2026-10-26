@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Feature\MusicCatalog;
 
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+use haddowg\JsonApiLaravel\Tests\Support\PinsCatalogClock;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -45,6 +46,8 @@ use Workbench\Database\Seeders\McCatalogSeeder;
 #[CoversNothing]
 final class EloquentEncodedIdTest extends Orchestra
 {
+    use PinsCatalogClock;
+
     public const string MEDIA_TYPE = 'application/vnd.api+json';
 
     /**

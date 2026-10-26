@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
+use haddowg\JsonApiLaravel\Tests\Support\PinsCatalogClock;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use Workbench\App\MusicCatalog\Providers\MusicCatalogEloquentServiceProvider;
 use Workbench\Database\Seeders\McCatalogSeeder;
@@ -16,6 +17,8 @@ use Workbench\Database\Seeders\McCatalogSeeder;
 #[CoversNothing]
 final class EloquentDescribedLinksConformanceTest extends DescribedLinksConformanceTestCase
 {
+    use PinsCatalogClock;
+
     protected function conformanceServiceProvider(): string
     {
         return MusicCatalogEloquentServiceProvider::class;
