@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.1](https://github.com/haddowg/json-api-laravel/compare/v1.10.0...v1.10.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* require core 1.12.1 for correct text body schemas ([#140](https://github.com/haddowg/json-api-laravel/issues/140)) ([20fa0b2](https://github.com/haddowg/json-api-laravel/commit/20fa0b29a75bf4e31cb1a6dd9ca5bc428556f713))
+
 ## [1.10.0](https://github.com/haddowg/json-api-laravel/compare/v1.9.2...v1.10.0) (2026-10-26)
 
 
