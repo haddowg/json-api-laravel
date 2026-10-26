@@ -1063,7 +1063,6 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(MetadataSource::class),
                 $config->enumDescriptionMode,
                 $decorators,
-                $app->make(ActionRegistry::class),
             );
         });
 

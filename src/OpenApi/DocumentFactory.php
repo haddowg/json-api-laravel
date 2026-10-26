@@ -9,7 +9,6 @@ use haddowg\JsonApi\OpenApi\OpenApi;
 use haddowg\JsonApi\OpenApi\OpenApiProjector;
 use haddowg\JsonApi\OpenApi\OperationProjector;
 use haddowg\JsonApi\OpenApi\SchemaProjector;
-use haddowg\JsonApiLaravel\Action\ActionRegistry;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 
@@ -61,7 +60,6 @@ final class DocumentFactory
         private readonly MetadataSource $metadata,
         EnumDescriptionMode $enumDescriptionMode = EnumDescriptionMode::Both,
         iterable $decorators = [],
-        private readonly ?ActionRegistry $actions = null,
     ) {
         $schemaProjector = new SchemaProjector($enumDescriptionMode);
         $this->projector = new OpenApiProjector(
@@ -82,7 +80,7 @@ final class DocumentFactory
         $serverName ??= ServerRegistry::DEFAULT_SERVER;
 
         return $this->decorate(
-            AcceptedMediaTypes::apply($this->projector->project($this->metadata->forServer($serverName)), $this->actions?->forServer($serverName) ?? []),
+            $this->projector->project($this->metadata->forServer($serverName)),
             $serverName,
         );
     }
@@ -97,7 +95,7 @@ final class DocumentFactory
     public function combined(): OpenApi
     {
         return $this->decorate(
-            AcceptedMediaTypes::apply($this->projector->project($this->metadata->combined()), $this->actions?->all() ?? []),
+            $this->projector->project($this->metadata->combined()),
             self::COMBINED_KEY,
         );
     }
