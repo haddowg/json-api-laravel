@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.10.0](https://github.com/haddowg/json-api-laravel/compare/v1.9.2...v1.10.0) (2026-10-26)
+
+
+### Features
+
+* add a binary UUID id encoder for Eloquent keys ([#127](https://github.com/haddowg/json-api-laravel/issues/127)) ([9f8286b](https://github.com/haddowg/json-api-laravel/commit/9f8286b363890d4a0e219da04880b206ce85b44e))
+* add summary and description to custom actions ([#131](https://github.com/haddowg/json-api-laravel/issues/131)) ([9a60878](https://github.com/haddowg/json-api-laravel/commit/9a608783372fe924b4d7998084aeaae649aa13c0))
+* check uniqueness among the rows the caller can see ([#138](https://github.com/haddowg/json-api-laravel/issues/138)) ([b2b36c0](https://github.com/haddowg/json-api-laravel/commit/b2b36c0a3fd44d37257d57fd52684864b4dce0a5))
+* let a custom action answer with a raw response body ([#135](https://github.com/haddowg/json-api-laravel/issues/135)) ([7372227](https://github.com/haddowg/json-api-laravel/commit/7372227b7a14b5f8b37e22f96c3c860701c012bd))
+* let a server refuse read-only attributes in write bodies ([#134](https://github.com/haddowg/json-api-laravel/issues/134)) ([ad331c3](https://github.com/haddowg/json-api-laravel/commit/ad331c3ef0e051d7bf3eaa0704434bcba23c97e6))
+* let an app extend the Eloquent persister ([#130](https://github.com/haddowg/json-api-laravel/issues/130)) ([be105b5](https://github.com/haddowg/json-api-laravel/commit/be105b5a0e7dc4d51a699e689b310c4ad8a3c24a))
+* project accepted request bodies through core ([#137](https://github.com/haddowg/json-api-laravel/issues/137)) ([d3d3aa6](https://github.com/haddowg/json-api-laravel/commit/d3d3aa6f9a7b7769989a56df82e09a3b4cca0d7f))
+
+
+### Bug Fixes
+
+* require haddowg/json-api 1.11 ([#132](https://github.com/haddowg/json-api-laravel/issues/132)) ([942c5e4](https://github.com/haddowg/json-api-laravel/commit/942c5e48ebb708d9137fdef8ffe7641f77f5cf0b))
+* require the JSON:API content type on writes ([#133](https://github.com/haddowg/json-api-laravel/issues/133)) ([9cd8f35](https://github.com/haddowg/json-api-laravel/commit/9cd8f353ec143bf0a37114f70c1853dee502ac5f))
+* take a bodyless JSON:API POST on any action ([#136](https://github.com/haddowg/json-api-laravel/issues/136)) ([abae531](https://github.com/haddowg/json-api-laravel/commit/abae5311e0829b429681a0ffef4ec8752ace352a))
+* write a relation through its fillUsing hook ([#128](https://github.com/haddowg/json-api-laravel/issues/128)) ([aaa5430](https://github.com/haddowg/json-api-laravel/commit/aaa5430b90a0923c211c5c93ef8a618d8fcf5b29))
+
 ## [1.9.2](https://github.com/haddowg/json-api-laravel/compare/v1.9.1...v1.9.2) (2026-10-25)
 
 
