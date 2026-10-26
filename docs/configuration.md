@@ -227,7 +227,7 @@ its name to route names and to the OpenAPI path set. The music-catalog example a
 A resource joins a server with `#[AsJsonApiResource(server: 'admin')]` or
 `server: ['default', 'admin']`. See [multi-server-and-testing](multi-server-and-testing.md).
 
-Four optional keys per server:
+Six optional keys per server:
 
 | Key | What it does |
 | --- | --- |
@@ -235,6 +235,7 @@ Four optional keys per server:
 | `output_timezone` | The zone this server's `DateTime` attributes render in, overriding the global [`output_timezone`](#output_timezone). Omit it or set `null` to inherit; `''` turns conversion off for this server. |
 | `link_objects` | Whether this server renders its built links as link objects, overriding the global [`link_objects`](#link_objects). Omit it or set `null` to inherit. |
 | `reject_read_only_attributes` | Whether this server refuses a write body that sends a read-only attribute, overriding the global [`reject_read_only_attributes`](#reject_read_only_attributes). Omit it or set `null` to inherit. |
+| `openapi_examples` | Whether this server's OpenAPI document carries generated [operation examples](openapi.md#operation-examples), overriding `openapi.examples`. Omit it or set `null` to inherit. |
 | `route_defaults` | Route defaults set on every route of the server, such as `['tenant' => 'acme']` for a `{tenant}/api` prefix. The OpenAPI `servers` entry uses it as the variable's default. |
 
 ### Prefixes and the base
@@ -305,6 +306,7 @@ The OpenAPI 3.1 generation + exposure block. Highlights:
 | `ui.redoc_version` | the exact ReDoc release the `redoc` renderer loads (default `3.0.1`); a 2.x release such as `2.5.4` switches to the classic global script, and anything else fails the boot; see [the viewer](openapi.md#the-viewer) |
 | `ui.redoc_telemetry` | let ReDoc 3.x send its usage telemetry (default `false`, which renders `disable-telemetry="true"` on the `<redoc>` tag) |
 | `serve_allowed_classes` | classes, beyond core's OpenAPI value objects, that a document's example, default or extension values may hold and still be served from the serialized copy (default `[]`); see [per-request customisation](openapi.md#per-request-customisation) |
+| `examples` | give each operation's request and success responses, and each shared error response, an example built from the declared field and error-code examples (default `true`); a server's own `openapi_examples` overrides it; see [operation examples](openapi.md#operation-examples) |
 | `info` / `servers` / `tags` / `security` | the document `info`, advertised OAS servers, tag definitions, and security schemes + default requirement |
 
 The docs routes are gated behind `app.debug || openapi.expose_in_prod`; the CLI exporters

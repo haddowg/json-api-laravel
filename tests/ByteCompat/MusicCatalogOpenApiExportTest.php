@@ -60,7 +60,8 @@ final class MusicCatalogOpenApiExportTest extends Orchestra
         foreach (['default', 'admin'] as $server) {
             $path = \sprintf('%s/laravel-%s.json', $buildDir, $server);
 
-            $exitCode = Artisan::call('jsonapi:openapi:export', ['--server' => $server, '--output' => $path]);
+            // Strict: every music-catalog operation carries an example, overrides included.
+            $exitCode = Artisan::call('jsonapi:openapi:export', ['--server' => $server, '--output' => $path, '--strict' => true]);
             self::assertSame(0, $exitCode);
 
             self::assertFileExists($path);

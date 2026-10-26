@@ -8,6 +8,7 @@ use haddowg\JsonApi\OpenApi\EnumDescriptionMode;
 use haddowg\JsonApi\OpenApi\OpenApi;
 use haddowg\JsonApi\OpenApi\OpenApiProjector;
 use haddowg\JsonApi\OpenApi\OperationProjector;
+use haddowg\JsonApi\OpenApi\Projection;
 use haddowg\JsonApi\OpenApi\SchemaProjector;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
@@ -77,10 +78,21 @@ final class DocumentFactory
      */
     public function forServer(?string $serverName = null): OpenApi
     {
+        return $this->projectionForServer($serverName)->document;
+    }
+
+    /**
+     * The OpenAPI document for `$serverName` with the operation examples the projector
+     * could not build, for an export that reports them.
+     *
+     * @throws \LogicException when an unknown server name is requested
+     */
+    public function projectionForServer(?string $serverName = null): Projection
+    {
         $serverName ??= ServerRegistry::DEFAULT_SERVER;
 
-        return $this->decorate(
-            $this->projector->project($this->metadata->forServer($serverName)),
+        return $this->decorated(
+            $this->projector->projectWithDiagnostics($this->metadata->forServer($serverName)),
             $serverName,
         );
     }
@@ -94,10 +106,25 @@ final class DocumentFactory
      */
     public function combined(): OpenApi
     {
-        return $this->decorate(
-            $this->projector->project($this->metadata->combined()),
+        return $this->combinedProjection()->document;
+    }
+
+    /**
+     * The combined document with the operation examples the projector could not build.
+     *
+     * @throws \LogicException when two servers declare the same JSON:API type
+     */
+    public function combinedProjection(): Projection
+    {
+        return $this->decorated(
+            $this->projector->projectWithDiagnostics($this->metadata->combined()),
             self::COMBINED_KEY,
         );
+    }
+
+    private function decorated(Projection $projection, string $server): Projection
+    {
+        return new Projection($this->decorate($projection->document, $server), $projection->missingExamples);
     }
 
     /**

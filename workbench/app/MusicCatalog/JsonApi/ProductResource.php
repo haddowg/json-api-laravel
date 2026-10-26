@@ -25,10 +25,10 @@ final class ProductResource extends AbstractResource
     public function fields(): array
     {
         return [
-            Id::make()
+            Id::make()->example('prod-7b')
                 ->encodeUsing(new ProductIdCodec())
                 ->matchAs('prod-[0-9a-f]+'),
-            Str::make('name')->required(),
+            Str::make('name')->example('Turntable')->required(),
             BelongsTo::make('parent', 'products')->nullable(),
         ];
     }

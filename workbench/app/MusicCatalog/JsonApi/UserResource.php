@@ -45,14 +45,14 @@ final class UserResource extends AbstractResource
     public function fields(): array
     {
         return [
-            Id::make(),
-            Email::make('email')->required()->strict()->constrain(new UniqueEntity(['email'])),
-            Str::make('displayName')->storedAs('display_name')->required(),
-            Date::make('birthDate')->storedAs('birth_date')->nullable(),
-            ArrayHash::make('preferences')->minProperties(0)->maxProperties(20)->sortKeys()->guaranteed(),
-            Ip::make('lastSeenIp')->storedAs('last_seen_ip')->nullable(),
-            Str::make('password')->writeOnly()->minLength(8)->requiredOnCreate(),
-            Str::make('passwordConfirm')
+            Id::make()->example('1'),
+            Email::make('email')->example('ada@example.com')->required()->strict()->constrain(new UniqueEntity(['email'])),
+            Str::make('displayName')->example('Ada')->storedAs('display_name')->required(),
+            Date::make('birthDate')->example('1990-12-10')->storedAs('birth_date')->nullable(),
+            ArrayHash::make('preferences')->example(['theme' => 'dark'])->minProperties(0)->maxProperties(20)->sortKeys()->guaranteed(),
+            Ip::make('lastSeenIp')->example('203.0.113.7')->storedAs('last_seen_ip')->nullable(),
+            Str::make('password')->example('correct-horse-9')->writeOnly()->minLength(8)->requiredOnCreate(),
+            Str::make('passwordConfirm')->example('correct-horse-9')
                 ->computed()
                 ->writeOnly()
                 ->atLeastOneOf(

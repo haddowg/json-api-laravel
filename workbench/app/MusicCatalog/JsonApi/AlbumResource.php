@@ -46,29 +46,30 @@ final class AlbumResource extends AbstractResource
     public function fields(): array
     {
         return [
-            Id::make(),
-            Str::make('title')->required()->maxLength(200)->sortable(),
-            Decimal::make('averageRating')->storedAs('average_rating')->readOnly()->nullable(),
-            Str::make('artwork')->readOnly()->nullable(),
-            DateTime::make('releasedAt')
+            Id::make()->example('1'),
+            Str::make('title')->example('Abbey Road')->required()->maxLength(200)->sortable(),
+            Decimal::make('averageRating')->example(4.5)->storedAs('average_rating')->readOnly()->nullable(),
+            Str::make('artwork')->example('/uploads/artwork/1.png')->readOnly()->nullable(),
+            DateTime::make('releasedAt')->example('1969-09-26T00:00:00+00:00')
                 ->storedAs('released_at')
                 ->before(static fn(): \DateTimeImmutable => new \DateTimeImmutable())
                 ->useTimezone('UTC')
                 ->sortable(),
-            Boolean::make('explicit')->guaranteed(),
-            Str::make('status')
+            Boolean::make('explicit')->example(false)->guaranteed(),
+            Str::make('status')->example('released')
                 ->enum(AlbumStatus::class)
                 ->sortable()
                 ->describedAs('Where the album sits in its release lifecycle.')
                 ->guaranteed(),
-            Date::make('availableFrom')->storedAs('available_from')->nullable(),
-            Date::make('availableUntil')
+            Date::make('availableFrom')->example('2024-01-01')->storedAs('available_from')->nullable(),
+            Date::make('availableUntil')->example('2026-12-31')
                 ->storedAs('available_until')
                 ->nullable()
                 ->compareWith('availableFrom', Comparison::GreaterThan),
-            Map::make('releaseInfo')->nullable()->fields(
-                Str::make('label'),
-                Str::make('catalogueNumber')->readOnly(),
+            // The read hook shapes the value itself, so the map needs its own example.
+            Map::make('releaseInfo')->example(['label' => 'Apple Records', 'catalogueNumber' => 'PCS 7088'])->nullable()->fields(
+                Str::make('label')->example('Apple Records'),
+                Str::make('catalogueNumber')->example('PCS 7088')->readOnly(),
             )->serializeUsing(static function (mixed $model): mixed {
                 $info = \is_object($model) ? Accessor::get($model, 'release_info') : null;
 

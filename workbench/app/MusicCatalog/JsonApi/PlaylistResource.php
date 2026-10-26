@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Workbench\App\MusicCatalog\JsonApi;
 
+use haddowg\JsonApi\OpenApi\Metadata\OperationExample;
 use haddowg\JsonApi\Pagination\PagePaginator;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Constraint\Comparison;
@@ -64,6 +65,15 @@ use Workbench\App\MusicCatalog\Security\PlaylistApiPolicy;
         Operation::Delete->value => 'deletePlaylist',
     ],
     tags: ['Library'],
+    // `owner` links to `users`, which the default server does not register, so the
+    // projector has no users id to build its linkage from there. Spell it out.
+    operationExamples: [
+        'fetchRelationship.owner' => new OperationExample(responses: [200 => ['data' => ['type' => 'users', 'id' => '1']]]),
+        'updateRelationship.owner' => new OperationExample(
+            request: ['data' => ['type' => 'users', 'id' => '1']],
+            responses: [200 => ['data' => ['type' => 'users', 'id' => '1']]],
+        ),
+    ],
 )]
 final class PlaylistResource extends AbstractResource implements ResourceLifecycleHooksInterface
 {
@@ -74,11 +84,11 @@ final class PlaylistResource extends AbstractResource implements ResourceLifecyc
     public function fields(): array
     {
         return [
-            Id::make()->uuid()->generated()->build(),
-            Str::make('title')->required(),
+            Id::make()->example('0b9e3c34-2f4e-4c1a-9a57-6d3b2a1f8c10')->uuid()->generated()->build(),
+            Str::make('title')->example('Road trip')->required(),
             Slug::make('slug')->readOnly()->guaranteed(),
-            Boolean::make('public')->guaranteed()->build(),
-            Uuid::make('externalId')->storedAs('external_id')->nullable(),
+            Boolean::make('public')->example(true)->guaranteed()->build(),
+            Uuid::make('externalId')->example('5f1d7c2e-8a4b-4e6f-9c3d-2b1a0e9f8d7c')->storedAs('external_id')->nullable(),
             // `owner` targets the admin-only `users` type — the full record — and is
             // therefore linkage-only: withoutRelatedEndpoint() drops
             // `GET /playlists/{id}/owner` and its `related` link, because `users` is not
@@ -104,9 +114,9 @@ final class PlaylistResource extends AbstractResource implements ResourceLifecyc
             // witness (its related endpoint paginates two-per-page, a ?withCount is a 400).
             BelongsToMany::make('orderedTracks', 'tracks')
                 ->fields(
-                    Integer::make('position')->required()->min(1)->build(),
-                    Integer::make('weight')->compareWith('position', Comparison::GreaterThanOrEqual)->build(),
-                    DateTime::make('addedAt')->storedAs('added_at')->readOnly()->guaranteed()->build(),
+                    Integer::make('position')->example(1)->required()->min(1)->build(),
+                    Integer::make('weight')->example(2)->compareWith('position', Comparison::GreaterThanOrEqual)->build(),
+                    DateTime::make('addedAt')->example('2024-06-01T09:30:00+00:00')->storedAs('added_at')->readOnly()->guaranteed()->build(),
                 )
                 // `->integer()` types the documented value: `pivot.` is an Eloquent
                 // convention this package resolves, so core cannot read a type off the

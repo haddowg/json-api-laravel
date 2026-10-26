@@ -27,8 +27,8 @@ final class FavoriteResource extends AbstractResource
     public function fields(): array
     {
         return [
-            Id::make(),
-            DateTime::make('favoritedAt')->storedAs('favorited_at')->readOnlyOnUpdate(),
+            Id::make()->example('1'),
+            DateTime::make('favoritedAt')->example('2024-06-01T09:30:00+00:00')->storedAs('favorited_at')->readOnlyOnUpdate(),
             // Targets `public-profiles`, not `users`: `favorites` lives on the default
             // server and `users` is admin-only, so a relation naming it here would expose
             // `GET /favorites/{id}/user` to a type this server has no serializer for. The

@@ -1,0 +1,3 @@
+# Operation example overrides are read off the attributes
+
+`operationExamples` on `#[AsJsonApiResource]` and `#[AsJsonApiSerializer]`, and `example` on `#[AsJsonApiAction]`, hold whole example documents that may carry any value an attribute argument can, such as an enum or an object, which the `var_export`ed discovery snapshot can't hold as scalars. The metadata source reads them off the class's attribute when it builds the document, as it already does for an action's raw response and accepted bodies, rather than encoding them into the snapshot as the Symfony bundle does for its compiled container. `optimize` builds the documents ahead of time, so in an optimized app the reflection never runs while serving a request.
