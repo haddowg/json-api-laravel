@@ -21,9 +21,9 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
 final class RelationFillHook
 {
     /**
-     * @var array<int, bool>
+     * @var \WeakMap<AbstractFieldValue, bool>|null
      */
-    private static array $declared = [];
+    private static ?\WeakMap $declared = null;
 
     /**
      * Whether `$relation` declares a `fillUsing()` hook.
@@ -34,12 +34,14 @@ final class RelationFillHook
             return false;
         }
 
-        // Core exposes no accessor for the hook, so it is read off the field's state.
-        return self::$declared[\spl_object_id($relation)] ??= (static function (AbstractFieldValue $field): bool {
-            $state = (new \ReflectionProperty(AbstractFieldValue::class, 'state'))->getValue($field);
+        self::$declared ??= new \WeakMap();
+        if (!isset(self::$declared[$relation])) {
+            // Core exposes no accessor for the hook, so it is read off the field's state.
+            $state = (new \ReflectionProperty(AbstractFieldValue::class, 'state'))->getValue($relation);
+            self::$declared[$relation] = $state instanceof FieldState && $state->fillUsing !== null;
+        }
 
-            return $state instanceof FieldState && $state->fillUsing !== null;
-        })($relation);
+        return self::$declared[$relation];
     }
 
     /**
