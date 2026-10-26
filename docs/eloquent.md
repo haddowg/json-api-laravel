@@ -234,6 +234,31 @@ deletes with `#[AsJsonApiResource(softDeletes: true)]` — `DELETE` becomes a re
 delete and the package synthesizes `restore`/`force-delete` actions. See
 [soft deletes](soft-deletes.md).
 
+## UUID keys
+
+A string UUID key works with no extra wiring. Use Laravel's `HasUuids` trait on the model and
+declare `Id::make()->uuid()` on the resource; the canonical UUID the column holds is the wire id.
+
+A UUID stored as 16 raw bytes, such as a `BINARY(16)` column, keeps the bytes on the model and
+attaches the package's `BinaryUuidEncoder` to the id:
+
+```php
+use haddowg\JsonApi\Resource\Field\Id;
+use haddowg\JsonApiLaravel\Eloquent\BinaryUuidEncoder;
+
+Id::make()->uuid()->encodeUsing(new BinaryUuidEncoder());
+```
+
+The wire then carries the canonical UUID, and the package decodes it back to the bytes for
+`fetchOne`, linkage writes, client-supplied ids and every relation batch. Foreign keys hold the
+bytes too, so Eloquent's relations match them as they are. To mint the key, override
+`newUniqueId()` to return `Str::orderedUuid()->getBytes()`.
+
+Don't cast a key column with `AsBinary::uuid()`. Eloquent binds the cast string, not the
+bytes, when it queries by key or loads a relation, so `find()`, eager loading and pivot writes
+miss every row
+([ADR 0054](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0054-a-binary-uuid-key-stays-raw-on-the-model.md)).
+
 ## Sorting, sparse fieldsets, pagination
 
 `sortable()` fields drive `?sort` (`SortByField::make($key, $column)` maps a wire key to a

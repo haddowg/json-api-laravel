@@ -125,7 +125,8 @@ Id::make()->encodeUsing(new ProductIdCodec())->matchAs('prod-[0-9a-f]+'); // opa
 - **Encoded** (`encodeUsing()`) — a DB integer key never appears on the wire; an
   `IdEncoderInterface` (framework-neutral core interface — the example's `ProductIdCodec`)
   maps it to an opaque token. `matchAs()` pins the route `{id}` regex so a malformed token is
-  a route miss.
+  a route miss. A UUID stored as 16 raw bytes uses the package's `BinaryUuidEncoder`; see
+  [UUID keys](eloquent.md#uuid-keys).
 
 `matchAs()` becomes a `->where('id', …)` route constraint — see [routing](routing.md).
 
