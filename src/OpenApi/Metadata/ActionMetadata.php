@@ -12,7 +12,9 @@ use haddowg\JsonApi\OpenApi\Metadata\ActionResponse;
 use haddowg\JsonApi\OpenApi\Metadata\ActionScope;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresAcceptedBodies;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionExample;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionExtensions;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionLink;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionSafety;
 use haddowg\JsonApi\OpenApi\Metadata\MetaResult;
 use haddowg\JsonApi\OpenApi\Metadata\NoContent;
 use haddowg\JsonApi\OpenApi\Metadata\OperationExample;
@@ -36,7 +38,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
  * tags fall back to the mount type's default tag) so the projected document matches the
  * bundle's for an identical action.
  */
-final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAcceptedBodies, DeclaresActionExample
+final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAcceptedBodies, DeclaresActionExample, DeclaresActionSafety, DeclaresActionExtensions
 {
     /**
      * @param list<string> $tags the OpenAPI tag names (already resolved against the mount type's default)
@@ -170,5 +172,25 @@ final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAccep
     public function linkName(): ?string
     {
         return $this->descriptor->asLink ? $this->descriptor->path : null;
+    }
+
+    public function readOnly(): ?bool
+    {
+        return $this->descriptor->readOnly;
+    }
+
+    public function destructive(): ?bool
+    {
+        return $this->descriptor->destructive;
+    }
+
+    public function idempotent(): ?bool
+    {
+        return $this->descriptor->idempotent;
+    }
+
+    public function extensions(): array
+    {
+        return $this->descriptor->extensions;
     }
 }

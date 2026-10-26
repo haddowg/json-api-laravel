@@ -8,7 +8,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
 
 /**
  * The declaration checks `extensions`/`operationExtensions` share across the attributes
- * that carry them ({@see AsJsonApiResource}, {@see AsJsonApiSerializer}).
+ * that carry them ({@see AsJsonApiResource}, {@see AsJsonApiSerializer}, {@see AsJsonApiAction}).
  *
  * @internal
  */
@@ -63,9 +63,12 @@ final class VendorExtensions
     }
 
     /**
+     * Fails fast on one map of vendor extensions: a key without the `x-` prefix, a reserved
+     * `x-oai-`/`x-oas-` key, or a value the discovery cache can't export.
+     *
      * @param array<array-key, mixed> $extensions
      */
-    private static function assertMap(string $attribute, array $extensions, string $where): void
+    public static function assertMap(string $attribute, array $extensions, string $where): void
     {
         foreach ($extensions as $key => $value) {
             $key = (string) $key;

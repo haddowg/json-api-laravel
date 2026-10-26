@@ -38,6 +38,7 @@ use Workbench\App\MusicCatalog\OpenApi\AlbumCatalogueStats;
     tags: ['Catalog'],
     summary: 'Export the album catalogue',
     description: 'Exports every album in the format the Accept header asks for: a JSON:API meta document with counts, a CSV of ids and titles, a PDF report, or the counts as plain JSON.',
+    readOnly: true,
 )]
 final class ExportAlbums implements ActionHandlerInterface
 {

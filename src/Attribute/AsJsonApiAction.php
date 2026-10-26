@@ -93,6 +93,15 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
  * `example` replaces or removes the example the OpenAPI document generates for the action's
  * operation: an {@see OperationExample} replaces the parts it names, `false` emits none, and
  * `null` keeps the generated one.
+ *
+ * `readOnly`, `destructive` and `idempotent` say how safe the action is to call, so a client
+ * can tell a lookup from a write without guessing from the HTTP method. Each one left `null`
+ * is undeclared; the declared ones project onto the action operation as one `x-safety`
+ * object. An action cannot be both read-only and destructive; discovery rejects that pair.
+ *
+ * `extensions` are OpenAPI vendor extensions for the action's own operation, keyed by their
+ * `x-` name. They merge over the mount type's `extensions`, and the action's value wins on a
+ * shared key.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final readonly class AsJsonApiAction
@@ -115,6 +124,10 @@ final readonly class AsJsonApiAction
      * @param string|null                              $description the operation's OpenAPI description (null keeps the generated one)
      * @param array<int|string, string|ActionInput|AcceptedBody> $accepts the accepted request media types: media types or {@see AcceptedBody} entries in a list, or `mediaType => ActionInput`
      * @param OperationExample|false|null                        $example the operation's OpenAPI example override: replaces the parts it names, `false` emits none, `null` keeps the generated one
+     * @param bool|null                                          $readOnly    whether the action leaves server state unchanged (null leaves it undeclared)
+     * @param bool|null                                          $destructive whether the action may change data in a way that cannot be undone (null leaves it undeclared)
+     * @param bool|null                                          $idempotent  whether repeating the call with the same input has no further effect (null leaves it undeclared)
+     * @param array<string, mixed>                               $extensions  OpenAPI vendor extensions for the action's operation, keyed by `x-` name
      */
     public function __construct(
         public string $type,
@@ -133,6 +146,10 @@ final readonly class AsJsonApiAction
         public ?string $description = null,
         public array $accepts = [],
         public OperationExample|false|null $example = null,
+        public ?bool $readOnly = null,
+        public ?bool $destructive = null,
+        public ?bool $idempotent = null,
+        public array $extensions = [],
     ) {
         // Normalise the declaration: a single response object → a one-element list; an
         // omitted declaration → a `200` document of the mount type (the historical default).
@@ -192,6 +209,8 @@ final readonly class AsJsonApiAction
                 ));
             }
         }
+
+        VendorExtensions::assertMap(\sprintf('AsJsonApiAction "%s" on type "%s"', $path, $type), $extensions, 'extensions');
 
         foreach ($accepts as $key => $value) {
             $valid = \is_string($key)

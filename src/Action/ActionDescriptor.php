@@ -26,6 +26,9 @@ namespace haddowg\JsonApiLaravel\Action;
  * the handler returns renders through — the `resource` response's type when one is declared,
  * else the mount `type`.
  *
+ * `readOnly`, `destructive` and `idempotent` are the action's declared safety flags, `null`
+ * when undeclared, and `extensions` its own OpenAPI vendor extensions.
+ *
  * It carries only scalars + lists (enums by case name), so a set of descriptors
  * round-trips through {@see toArray()} / {@see fromArray()} to a `var_export`-able
  * discovery cache file, keeping route registration a pure function of the cached
@@ -43,6 +46,7 @@ final readonly class ActionDescriptor
      * @param string|null                                     $summary      the operation's OpenAPI summary (null keeps the generated one)
      * @param string|null                                     $description  the operation's OpenAPI description (null keeps the generated one)
      * @param array<string, string>                           $accepts      the accepted request media types, lowercased, each mapped to the {@see ActionInput} case name it is read in (empty = what the input mode implies)
+     * @param array<string, mixed>                            $extensions   the action operation's own OpenAPI vendor extensions, keyed by `x-` name
      * @param bool                                            $conditionallyLinked the handler is {@see ConditionallyLinked}, so its `asLink` link is further gated per rendered entity by `shouldLink()` (recorded here so the link contributor resolves the handler only when it matters)
      */
     public function __construct(
@@ -65,6 +69,10 @@ final readonly class ActionDescriptor
         public ?string $summary = null,
         public ?string $description = null,
         public array $accepts = [],
+        public ?bool $readOnly = null,
+        public ?bool $destructive = null,
+        public ?bool $idempotent = null,
+        public array $extensions = [],
     ) {}
 
     /**
@@ -100,7 +108,7 @@ final readonly class ActionDescriptor
     }
 
     /**
-     * @return array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null}>, ability: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name: ?string, tags: list<string>, asLink: bool, resolvesTrashed: bool, conditionallyLinked: bool, summary: ?string, description: ?string, accepts: array<string, string>}
+     * @return array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null}>, ability: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name: ?string, tags: list<string>, asLink: bool, resolvesTrashed: bool, conditionallyLinked: bool, summary: ?string, description: ?string, accepts: array<string, string>, readOnly: ?bool, destructive: ?bool, idempotent: ?bool, extensions: array<string, mixed>}
      */
     public function toArray(): array
     {
@@ -124,11 +132,15 @@ final readonly class ActionDescriptor
             'summary' => $this->summary,
             'description' => $this->description,
             'accepts' => $this->accepts,
+            'readOnly' => $this->readOnly,
+            'destructive' => $this->destructive,
+            'idempotent' => $this->idempotent,
+            'extensions' => $this->extensions,
         ];
     }
 
     /**
-     * @param array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null}>, ability?: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name?: ?string, tags?: list<string>, asLink?: bool, resolvesTrashed?: bool, conditionallyLinked?: bool, summary?: ?string, description?: ?string, accepts?: array<string, string>} $data
+     * @param array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null}>, ability?: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name?: ?string, tags?: list<string>, asLink?: bool, resolvesTrashed?: bool, conditionallyLinked?: bool, summary?: ?string, description?: ?string, accepts?: array<string, string>, readOnly?: ?bool, destructive?: ?bool, idempotent?: ?bool, extensions?: array<string, mixed>} $data
      */
     public static function fromArray(array $data): self
     {
@@ -152,6 +164,10 @@ final readonly class ActionDescriptor
             $data['summary'] ?? null,
             $data['description'] ?? null,
             $data['accepts'] ?? [],
+            $data['readOnly'] ?? null,
+            $data['destructive'] ?? null,
+            $data['idempotent'] ?? null,
+            $data['extensions'] ?? [],
         );
     }
 }

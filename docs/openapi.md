@@ -91,6 +91,25 @@ final class CountrySerializer implements SerializerInterface { /* ... */ }
 
 A type that declares none projects exactly as before.
 
+A custom action can carry its own set through `#[AsJsonApiAction(extensions: ...)]`. It
+merges over the mount type's `extensions` the way `operationExtensions` does for a CRUD
+operation, under the same key checks.
+
+## Action safety: `x-safety` {#action-safety-x-safety}
+
+An action that declares `readOnly`, `destructive` or `idempotent` on `#[AsJsonApiAction]`
+gets an `x-safety` object on its operation holding exactly the flags it declared:
+
+```json
+"x-safety": { "readOnly": true }
+```
+
+CRUD operations never carry it, since their HTTP method already says how safe they are. The
+document's `info.x-generator.contract` rises to 15 only when it uses `x-safety`, an action's
+own extensions, or an action with more than one method, whose operations get one id per
+method. [Custom actions](actions.md#operation-ids-safety-and-extensions) covers the ids and
+the declarations discovery rejects.
+
 ## The singular noun in generated prose {#singular-noun}
 
 The generated summaries and descriptions name one resource with the singular of its type

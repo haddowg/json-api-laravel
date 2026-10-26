@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Discovery;
 use haddowg\JsonApi\Exception\DescribedErrorInterface;
 use haddowg\JsonApi\Hydrator\HydratorInterface;
 use haddowg\JsonApi\OpenApi\Metadata\Accepted;
+use haddowg\JsonApi\OpenApi\Metadata\ActionDeclarations;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResource;
 use haddowg\JsonApi\OpenApi\Metadata\MetaResult;
 use haddowg\JsonApi\OpenApi\Metadata\NoContent;
@@ -31,6 +32,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiSerializer;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
+use haddowg\JsonApiLaravel\OpenApi\Metadata\ActionMetadata;
 use haddowg\JsonApiLaravel\Operation\Operation;
 use haddowg\JsonApiLaravel\Validation\ConstraintTranslatorInterface;
 use Illuminate\Database\Eloquent\Model;
@@ -197,6 +199,8 @@ final class DiscoveryScanner
             }
         }
 
+        self::guardActionDeclarations($actions);
+
         // Class-name order (case-insensitive, so a longer name is not split by a shorter
         // sibling) fixes the order the OpenAPI projection emits the error components in —
         // the rule core's own CoreErrorSource sorts by, and the one the Symfony bundle's
@@ -215,6 +219,31 @@ final class DiscoveryScanner
             $hydrators,
             [...$scannedErrors, ...$registeredErrors],
         );
+    }
+
+    /**
+     * Runs core's {@see ActionDeclarations::validate()} over each type's actions on each
+     * server, so a declaration the OpenAPI projection would reject fails at discovery rather
+     * than when the document is first generated. The actions are added one at a time, so
+     * the error names the handler class whose declaration made the set invalid.
+     *
+     * @param list<ActionDescriptor> $actions
+     */
+    private static function guardActionDeclarations(array $actions): void
+    {
+        /** @var array<string, array<string, list<ActionMetadata>>> $declared */
+        $declared = [];
+        foreach ($actions as $action) {
+            $set = [...$declared[$action->server][$action->type] ?? [], new ActionMetadata($action, [])];
+
+            try {
+                ActionDeclarations::validate($action->type, $set);
+            } catch (\LogicException|\InvalidArgumentException $e) {
+                throw new \LogicException(\sprintf('The JSON:API action handler %s is declared incorrectly. %s', $action->handlerClass, $e->getMessage()), 0, $e);
+            }
+
+            $declared[$action->server][$action->type] = $set;
+        }
     }
 
     /**
@@ -270,6 +299,7 @@ final class DiscoveryScanner
                     ForceDeleteAction::class,
                     $server,
                     resolvesTrashed: true,
+                    destructive: true,
                 );
             }
         }
@@ -634,6 +664,10 @@ final class DiscoveryScanner
             summary: $attribute->summary,
             description: $attribute->description,
             accepts: self::acceptedMediaTypes($attribute),
+            readOnly: $attribute->readOnly,
+            destructive: $attribute->destructive,
+            idempotent: $attribute->idempotent,
+            extensions: $attribute->extensions,
         );
     }
 

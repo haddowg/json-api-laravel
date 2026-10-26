@@ -164,6 +164,8 @@ that has a body must still match `accepts`.
 | `accepts` | the request media types the action takes: a list read in `input` mode, or `mediaType => ActionInput` ([below](#choosing-the-media-types-an-action-takes)) |
 | `summary` / `description` | the operation's OpenAPI `summary` and `description`; omitted, the generated ones stay |
 | `example` | the operation's OpenAPI example: an `OperationExample` replaces the parts it names, `false` emits none, `null` (default) keeps the generated one ([below](#actions-in-the-openapi-document)) |
+| `readOnly` / `destructive` / `idempotent` | how safe the action is to call, projected as the operation's `x-safety`; each `null` (default) stays undeclared ([below](#operation-ids-safety-and-extensions)) |
+| `extensions` | OpenAPI vendor extensions for the action's operation, keyed by `x-` name, merged over the mount type's `extensions` |
 
 > [!NOTE]
 > `asLink` visibility matches invocation **exactly**: `Authorizer::allowsAction()` (which
@@ -253,3 +255,46 @@ the input and response types' fields. `example` replaces or removes it:
 ```
 
 See [operation examples](openapi.md#operation-examples).
+
+### Operation ids, safety and extensions
+
+An action's operation id is `action.<type>.<path>`. An action that answers to more than one
+method gets one id per method, with the lower-case method appended, so an action declared
+with `methods: ['GET', 'POST']` projects `action.albums.preview.get` and
+`action.albums.preview.post`. Both methods share one route, so the route name and any `asLink`
+link stay the same.
+
+`readOnly`, `destructive` and `idempotent` tell a client whether a call changes anything,
+whether it can lose data, and whether repeating it is harmless. The ones you declare land on
+the operation as one `x-safety` object, and an action that declares none gets no `x-safety`:
+
+```php
+#[AsJsonApiAction(
+    type: 'albums',
+    path: 'export',
+    methods: ['GET'],
+    scope: ActionScope::Collection,
+    readOnly: true,
+)]
+```
+
+`extensions` adds vendor extensions to the action's operation only. They merge over the
+mount type's `#[AsJsonApiResource(extensions: ...)]`, and the action's value wins on a shared
+key. Keys need the `x-` prefix, and `x-oai-` and `x-oas-` are reserved, the same rules as the
+type-level `extensions`.
+
+Discovery checks every type's actions, per server, so a declaration that would produce a
+broken document stops the application booting, and `jsonapi:optimize` refuses to cache it.
+The error names the handler class. Discovery rejects:
+
+- one path declared at both the resource and the collection scope, since both would get the
+  same operation id;
+- a path that reads as one of the type's other operation-id words once case and punctuation
+  are dropped, such as `fetch-one` or `update`;
+- two actions on one type whose ids differ only in case or punctuation, such as `reindex`
+  and `re-index`;
+- an action declared both `readOnly` and `destructive`.
+
+The synthesized soft-delete `force-delete` action declares itself destructive.
+
+See [action safety](openapi.md#action-safety-x-safety) for how the document carries these.
