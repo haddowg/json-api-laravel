@@ -33,6 +33,8 @@ use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
     input: ActionInput::Document,
     ability: 'publish',
     asLink: true,
+    summary: 'Publish an album',
+    description: 'Sets the album status from the request and returns the updated album.',
 )]
 final readonly class PublishAlbumAction implements ActionHandlerInterface
 {

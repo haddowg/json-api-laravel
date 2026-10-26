@@ -163,6 +163,24 @@ final class CustomActionTest extends Orchestra
     #[Test]
     #[Group('actions')]
     #[Group('openapi')]
+    public function anActionsDeclaredSummaryAndDescriptionReachItsOperation(): void
+    {
+        $doc = $this->resolve(DocumentFactory::class)->forServer()->toArray();
+        \assert(\array_is_list($doc) === false);
+
+        $publish = $this->arrayAt($doc, 'paths', '/albums/{id}/-actions/publish', 'post');
+        $this->assertSame('Publish an album', $publish['summary'] ?? null);
+        $this->assertSame('Sets the album status from the request and returns the updated album.', $publish['description'] ?? null);
+
+        // The purge action declares neither, so it keeps the generated summary.
+        $purge = $this->arrayAt($doc, 'paths', '/albums/-actions/purge', 'post');
+        $this->assertIsString($purge['summary'] ?? null);
+        $this->assertNotSame('Publish an album', $purge['summary']);
+    }
+
+    #[Test]
+    #[Group('actions')]
+    #[Group('openapi')]
     public function theTypesExplicitTagFlowsToItsOperationsAndActions(): void
     {
         $doc = $this->resolve(DocumentFactory::class)->forServer()->toArray();
