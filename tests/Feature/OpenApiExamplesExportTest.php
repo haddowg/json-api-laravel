@@ -67,6 +67,8 @@ final class OpenApiExamplesExportTest extends Orchestra
     #[Test]
     public function strict_passes_when_no_example_is_missing(): void
     {
+        // The default server's gauges type has no fields, so it passes only because its
+        // fetch-one override replaces every part of the example.
         $this->jsonApiArtisan('jsonapi:openapi:export', ['--strict' => true])
             ->doesntExpectOutputToContain('Warning:')
             ->assertExitCode(0);

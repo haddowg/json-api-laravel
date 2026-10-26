@@ -22,8 +22,8 @@ use Workbench\App\Examples\WidgetResource;
 
 /**
  * Registers the operation-example witnesses: the fully exampled {@see WidgetResource} and
- * {@see VendorResource} with the widget actions on the `default` server, and on `legacy` the
- * standalone {@see GaugeSerializer} and {@see GizmoResource}, which misses an example.
+ * {@see VendorResource} with the widget actions and the standalone {@see GaugeSerializer} on
+ * the `default` server, and {@see GizmoResource}, which misses an example, on `legacy`.
  */
 final class ExamplesInMemoryServiceProvider extends ServiceProvider
 {

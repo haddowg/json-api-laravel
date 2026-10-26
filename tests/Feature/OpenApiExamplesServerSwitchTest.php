@@ -59,9 +59,9 @@ final class OpenApiExamplesServerSwitchTest extends Orchestra
     public function a_servers_own_setting_wins(): void
     {
         $projection = $this->resolve(DocumentFactory::class)->projectionForServer('legacy');
-        $media = $this->arrayAt($projection->document->toArray(), 'paths', '/gauges/{id}', 'get', 'responses', '200', 'content', 'application/vnd.api+json');
+        $media = $this->arrayAt($projection->document->toArray(), 'paths', '/gizmos', 'get', 'responses', '200', 'content', 'application/vnd.api+json');
 
-        self::assertArrayHasKey('example', $media);
+        self::assertArrayNotHasKey('example', $media);
         self::assertNotSame([], $projection->missingExamples);
     }
 }

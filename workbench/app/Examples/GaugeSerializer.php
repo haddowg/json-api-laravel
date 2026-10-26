@@ -12,12 +12,11 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiSerializer;
 use haddowg\JsonApiLaravel\Operation\Operation;
 
 /**
- * A resource-less type on the `legacy` server. It has no fields to build an example from,
- * so it declares its fetch-one example whole.
+ * A resource-less type has no fields to build an example from, so it declares its fetch-one
+ * example whole, which leaves nothing reported missing.
  */
 #[AsJsonApiSerializer(
     type: 'gauges',
-    server: 'legacy',
     operations: [Operation::FetchOne],
     operationExamples: [
         'fetchOne' => new OperationExample(responses: [200 => ['data' => ['type' => 'gauges', 'id' => 'g1', 'attributes' => ['reading' => 42]]]]),

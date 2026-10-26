@@ -122,7 +122,7 @@ final class OpenApiOperationExamplesTest extends Orchestra
     {
         self::assertSame(
             ['data' => ['type' => 'gauges', 'id' => 'g1', 'attributes' => ['reading' => 42]]],
-            $this->responseExample($this->document('legacy'), '/gauges/{id}', 'get', '200'),
+            $this->responseExample($this->document(), '/gauges/{id}', 'get', '200'),
         );
     }
 
