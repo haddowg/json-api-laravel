@@ -53,6 +53,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Read-only attributes in write bodies
+    |--------------------------------------------------------------------------
+    |
+    | By default a create or update ignores an attribute the client cannot
+    | write, such as a read-only or computed one. True refuses the whole body
+    | with a `403` (ATTRIBUTE_WRITE_PROHIBITED) naming each such attribute,
+    | before validation runs. A server's own `reject_read_only_attributes`
+    | (below) overrides it.
+    |
+    */
+    'reject_read_only_attributes' => false,
+
+    /*
+    |--------------------------------------------------------------------------
     | JSON:API version
     |--------------------------------------------------------------------------
     |
@@ -212,7 +226,8 @@ return [
     | Optional per server: `base_uri` overrides the global `base_uri` (include the
     | prefix in it), `output_timezone` overrides the global `output_timezone` (an
     | empty string turns conversion off for that server), `link_objects`
-    | overrides the global `link_objects` (null inherits it), and `route_defaults`
+    | overrides the global `link_objects` (null inherits it),
+    | `reject_read_only_attributes` overrides the global one (null inherits it), and `route_defaults`
     | sets route defaults on every route of the server, such as a default for a
     | `{tenant}` placeholder in the prefix, which the OpenAPI `servers` entry
     | advertises as the variable's default.

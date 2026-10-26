@@ -149,6 +149,9 @@ final class ServerFactory
         // Records the built server under its name, so a dispatch that carries no request
         // server still authorizes against this server's resources.
         private readonly ?ServerNames $serverNames = null,
+        // Whether a write body that sends a read-only attribute is refused with a `403`
+        // (`reject_read_only_attributes`); false ignores such attributes.
+        private readonly bool $rejectReadOnlyAttributes = false,
     ) {}
 
     /**
@@ -169,6 +172,7 @@ final class ServerFactory
             ->withStrictQueryParameters($this->strictQueryParameters)
             ->withOutputTimezone($this->outputTimezone)
             ->withLinkObjects($this->linkObjects)
+            ->withReadOnlyAttributesRejected($this->rejectReadOnlyAttributes)
             ->withRelationshipCount($this->relationshipCount)
             ->withRelationshipLoadState($this->relationshipLoadState)
             ->withRelationshipPagination($this->relationshipPagination)

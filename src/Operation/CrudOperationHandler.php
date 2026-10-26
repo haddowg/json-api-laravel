@@ -114,6 +114,7 @@ use haddowg\JsonApiLaravel\Server\ServerNames;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\FilterValueValidator;
+use haddowg\JsonApiLaravel\Validation\ReadOnlyAttributes;
 use haddowg\JsonApiLaravel\Validation\ResourceValidator;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -1454,6 +1455,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // `create` policy gate below, so validation precedes authorization (bundle
         // parity: 422 before 403).
         if ($resource !== null) {
+            ReadOnlyAttributes::reject($server, $resource, $request, true);
             $this->validator->validate($resource, $request, true, subject: $entity);
         }
 
@@ -1628,6 +1630,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // incoming partial), not the partial alone (bundle ADR 0049) — and the loaded
         // model supplies the UniqueEntity `Rule::unique` table + self-ignore id.
         if ($resource !== null) {
+            ReadOnlyAttributes::reject($server, $resource, $request, false);
             $this->validator->validate($resource, $request, false, existingObject: $entity, subject: $entity);
         }
 

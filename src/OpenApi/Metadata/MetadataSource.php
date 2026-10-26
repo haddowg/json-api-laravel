@@ -142,6 +142,7 @@ final class MetadataSource
             errorSources: $this->errorSources(),
             rendersLinkObjects: $server->rendersLinkObjects(),
             documentUrl: $this->documentUrls?->forServer($serverName),
+            rejectsReadOnlyAttributes: $server->rejectsReadOnlyAttributes(),
         );
     }
 
@@ -213,6 +214,8 @@ final class MetadataSource
             // Link form and document URL follow the default server too, as the info block does.
             rendersLinkObjects: $defaultServer->rendersLinkObjects(),
             documentUrl: $this->documentUrls?->forServer(ServerRegistry::DEFAULT_SERVER),
+            // The catalogue lists the refusal when any server can answer it.
+            rejectsReadOnlyAttributes: \array_filter($this->serverNames, fn(string $name): bool => $this->servers->get($name)->rejectsReadOnlyAttributes()) !== [],
         );
     }
 

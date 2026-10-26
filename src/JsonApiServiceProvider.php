@@ -72,6 +72,7 @@ use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use haddowg\JsonApiLaravel\Server\LinkObjectsConfig;
 use haddowg\JsonApiLaravel\Server\OutputTimezoneConfig;
 use haddowg\JsonApiLaravel\Server\PerServerInstances;
+use haddowg\JsonApiLaravel\Server\ReadOnlyAttributesConfig;
 use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use haddowg\JsonApiLaravel\Server\ServerFactory;
 use haddowg\JsonApiLaravel\Server\ServerNames;
@@ -364,6 +365,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         $servers = config('jsonapi.servers', []);
 
         LinkObjectsConfig::assertValid(config('jsonapi.link_objects'), \is_array($servers) ? $servers : []);
+        ReadOnlyAttributesConfig::assertValid(config('jsonapi.reject_read_only_attributes'), \is_array($servers) ? $servers : []);
     }
 
     /**
@@ -875,6 +877,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                         $server,
                     ),
                     $app->make(ServerNames::class),
+                    ReadOnlyAttributesConfig::forServer(config('jsonapi.reject_read_only_attributes'), $serversConfig, $server),
                 );
             }
 
