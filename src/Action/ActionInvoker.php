@@ -22,6 +22,7 @@ use haddowg\JsonApiLaravel\Event\AfterActionEvent;
 use haddowg\JsonApiLaravel\Event\BeforeActionEvent;
 use haddowg\JsonApiLaravel\Server\ServerNames;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
+use haddowg\JsonApiLaravel\Validation\ReadOnlyAttributes;
 use haddowg\JsonApiLaravel\Validation\ResourceValidator;
 use Illuminate\Contracts\Events\Dispatcher;
 
@@ -195,6 +196,7 @@ final readonly class ActionInvoker
             return;
         }
 
+        ReadOnlyAttributes::reject($server, $resource, $body, true);
         $this->validator->validate($resource, $body, true, subject: $instance);
     }
 

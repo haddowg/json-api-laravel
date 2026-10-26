@@ -78,6 +78,32 @@ link objects while the rest render objects:
 
 Anything other than `true`, `false` or `null` fails the app's boot with an
 `\InvalidArgumentException` that names the key.
+
+## `reject_read_only_attributes`
+
+```php
+'reject_read_only_attributes' => false,
+```
+
+By default a create or update ignores any attribute the client cannot write in that request:
+a `readOnly()` or computed field, or one whose `readOnly(fn …)` predicate holds. `true`
+refuses the whole body instead, with one `403` `ATTRIBUTE_WRITE_PROHIBITED` error per such
+attribute, pointing at `/data/attributes/<name>`. The check runs before validation, so a body
+that also breaks a validation rule still gets the `403`. It covers creates, updates, atomic
+operations and the input document of a custom action. The OpenAPI error catalogue lists the
+code only for a server that refuses.
+
+A server's own `reject_read_only_attributes` overrides the global value:
+
+```php
+'servers' => [
+    'default' => ['prefix' => 'api'],
+    'strict' => ['prefix' => 'strict', 'reject_read_only_attributes' => true],
+],
+```
+
+Anything other than `true`, `false` or `null` fails the boot, as `link_objects` does.
+
 ## `version`
 
 ```php
@@ -208,6 +234,7 @@ Four optional keys per server:
 | `base_uri` | This server's base, overriding the global `base_uri`. Omit it to inherit. Used verbatim, so include the prefix. |
 | `output_timezone` | The zone this server's `DateTime` attributes render in, overriding the global [`output_timezone`](#output_timezone). Omit it or set `null` to inherit; `''` turns conversion off for this server. |
 | `link_objects` | Whether this server renders its built links as link objects, overriding the global [`link_objects`](#link_objects). Omit it or set `null` to inherit. |
+| `reject_read_only_attributes` | Whether this server refuses a write body that sends a read-only attribute, overriding the global [`reject_read_only_attributes`](#reject_read_only_attributes). Omit it or set `null` to inherit. |
 | `route_defaults` | Route defaults set on every route of the server, such as `['tenant' => 'acme']` for a `{tenant}/api` prefix. The OpenAPI `servers` entry uses it as the variable's default. |
 
 ### Prefixes and the base
