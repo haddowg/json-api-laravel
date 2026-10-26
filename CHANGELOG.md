@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/haddowg/json-api-laravel/compare/v1.11.0...v1.12.0) (2026-10-26)
+
+
+### Features
+
+* show always-counted pages and relation example ids in examples ([#144](https://github.com/haddowg/json-api-laravel/issues/144)) ([06861f1](https://github.com/haddowg/json-api-laravel/commit/06861f13e47aace8fffe152b4cb8b33c78bad2fc))
+
 ## [1.11.0](https://github.com/haddowg/json-api-laravel/compare/v1.10.1...v1.11.0) (2026-10-26)
 
 
