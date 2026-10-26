@@ -11,10 +11,12 @@ use haddowg\JsonApi\OpenApi\Metadata\ActionResource;
 use haddowg\JsonApi\OpenApi\Metadata\MetaResult;
 use haddowg\JsonApi\OpenApi\Metadata\NoContent;
 use haddowg\JsonApi\OpenApi\Metadata\OperationResponseInterface;
+use haddowg\JsonApi\OpenApi\Metadata\RawResult;
 use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Response\MetaResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
+use haddowg\JsonApi\Response\RawResponse;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApiLaravel\Action\ActionDescriptor;
 use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
@@ -604,6 +606,8 @@ final class DiscoveryScanner
                 $responds[] = ['kind' => 'nocontent', 'ref' => null];
             } elseif ($response instanceof SeeOther) {
                 $responds[] = ['kind' => 'seeother', 'ref' => null];
+            } elseif ($response instanceof RawResult) {
+                $responds[] = ['kind' => 'raw', 'ref' => $response->essence()];
             }
         }
         \assert($responds !== []);
@@ -683,6 +687,16 @@ final class DiscoveryScanner
             throw new \LogicException(\sprintf(
                 'The JSON:API action "%s" on type "%s" has a handler (%s) returning NoContentResponse but its `responds` '
                 . 'set declares no 204 (new NoContent()); a body-less action must declare it so the generated document advertises a 204.',
+                $attribute->path,
+                $attribute->type,
+                $reflection->getName(),
+            ));
+        }
+
+        if ($name === RawResponse::class && !$this->respondsWith($attribute, RawResult::class)) {
+            throw new \LogicException(\sprintf(
+                'The JSON:API action "%s" on type "%s" has a handler (%s) returning RawResponse but its `responds` set '
+                . 'declares no raw result (new RawResult(\'text/csv\')); a raw body must be declared so the action can negotiate its media type.',
                 $attribute->path,
                 $attribute->type,
                 $reflection->getName(),

@@ -18,6 +18,7 @@ use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Operation\Target;
 use haddowg\JsonApi\Request\JsonApiRequest;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Response\RawResponse;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Action\ActionContext;
 use haddowg\JsonApiLaravel\Action\ActionInput;
@@ -139,7 +140,10 @@ final class JsonApiController
 
         $response = $server->dispatch($operation);
 
-        return $this->httpFoundationFactory->createResponse($response->toPsrResponse($server, $jsonApiRequest));
+        // A raw body read from a stream goes out as it is read rather than buffered first.
+        $streamed = $response instanceof RawResponse && !\is_string($response->body());
+
+        return $this->httpFoundationFactory->createResponse($response->toPsrResponse($server, $jsonApiRequest), $streamed);
     }
 
     /**

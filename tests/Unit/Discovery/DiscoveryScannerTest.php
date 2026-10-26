@@ -13,6 +13,7 @@ use haddowg\JsonApiLaravel\Tests\Fixtures\Action\AsyncPollHandler;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\MetaHandlerMissingOutputMeta;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\MetaHandlerWithOutputMeta;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\NoContentHandlerMissingReturns204;
+use haddowg\JsonApiLaravel\Tests\Fixtures\Action\RawHandlerMissingRawResult;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\UnionReturnHandler;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ErrorCatalog\Scanned\QuotaExceeded;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ErrorCatalog\Unscanned\TenantSuspended;
@@ -222,6 +223,14 @@ final class DiscoveryScannerTest extends TestCase
         $this->expectExceptionMessage('MetaResult');
 
         (new DiscoveryScanner())->scan([], [MetaHandlerMissingOutputMeta::class]);
+    }
+
+    public function test_an_action_handler_narrowing_to_a_raw_response_without_a_raw_result_fails_discovery(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('RawResult');
+
+        (new DiscoveryScanner())->scan([], [RawHandlerMissingRawResult::class]);
     }
 
     public function test_an_action_handler_narrowing_to_no_content_without_returns_204_fails_discovery(): void

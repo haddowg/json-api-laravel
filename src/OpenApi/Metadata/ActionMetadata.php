@@ -15,6 +15,7 @@ use haddowg\JsonApi\OpenApi\Metadata\MetaResult;
 use haddowg\JsonApi\OpenApi\Metadata\NoContent;
 use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
 use haddowg\JsonApiLaravel\Action\ActionDescriptor;
+use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
 
 /**
  * Adapts a package {@see ActionDescriptor} (a resolved `#[AsJsonApiAction]`) to the
@@ -75,6 +76,14 @@ final readonly class ActionMetadata implements DeclaresActionLink
      */
     public function responds(): array
     {
+        // A raw result carries a schema, headers and an example the discovery snapshot does
+        // not keep, so an action declaring one reads its declaration off the handler.
+        if (\in_array('raw', \array_column($this->descriptor->responds, 'kind'), true)) {
+            foreach ((new \ReflectionClass($this->descriptor->handlerClass))->getAttributes(AsJsonApiAction::class) as $attribute) {
+                return $attribute->newInstance()->responds;
+            }
+        }
+
         $responds = [];
         foreach ($this->descriptor->responds as $response) {
             $responds[] = match ($response['kind']) {

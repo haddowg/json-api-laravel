@@ -10,9 +10,11 @@ use haddowg\JsonApi\Response\AcceptedResponse;
 use haddowg\JsonApi\Response\DataResponse;
 use haddowg\JsonApi\Response\MetaResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
+use haddowg\JsonApi\Response\RawResponse;
 use haddowg\JsonApi\Response\SeeOtherResponse;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApi\Server\ResolvingServerInterface;
+use Psr\Http\Message\StreamInterface;
 
 /**
  * The resolved context handed to an {@see ActionHandlerInterface::handle()} (the Laravel
@@ -50,7 +52,30 @@ final readonly class ActionContext
         private ?object $input,
         private JsonApiRequestInterface $request,
         private QueryParameters $queryParameters,
+        private string $responseMediaType = 'application/vnd.api+json',
     ) {}
+
+    /**
+     * The media type the response must use, picked from the action's declared responses by
+     * the request's `Accept` header: `application/vnd.api+json` for a JSON:API document, or
+     * a raw result's media type such as `text/csv`.
+     */
+    public function responseMediaType(): string
+    {
+        return $this->responseMediaType;
+    }
+
+    /**
+     * A response whose body is not a JSON:API document, in the negotiated media type unless
+     * `$contentType` names another one the action declares and the client accepts.
+     *
+     * @param string|resource|StreamInterface $body
+     * @param array<string, string>           $headers
+     */
+    public function raw(mixed $body, ?string $contentType = null, int $status = 200, array $headers = []): RawResponse
+    {
+        return new RawResponse($body, $contentType ?? $this->responseMediaType, $status, $headers);
+    }
 
     /**
      * The resolved entity for a resource-scope action (fetched via the type's

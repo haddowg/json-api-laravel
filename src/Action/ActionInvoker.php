@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Action;
 
 use haddowg\JsonApi\Exception\ResourceNotFound;
+use haddowg\JsonApi\Negotiation\AcceptNegotiator;
 use haddowg\JsonApi\Operation\CustomActionOperation;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Request\MediaType;
 use haddowg\JsonApi\Response\AcceptedResponse;
 use haddowg\JsonApi\Response\DataResponse;
 use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Response\MetaResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
+use haddowg\JsonApi\Response\RawResponse;
 use haddowg\JsonApi\Response\SeeOtherResponse;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
@@ -62,7 +65,7 @@ final readonly class ActionInvoker
         private ?ServerNames $serverNames = null,
     ) {}
 
-    public function invoke(CustomActionOperation $operation): DataResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|ErrorResponse
+    public function invoke(CustomActionOperation $operation): DataResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|ErrorResponse|RawResponse
     {
         $server = $operation->context()->server;
         \assert($server instanceof Server);
@@ -76,6 +79,13 @@ final readonly class ActionInvoker
         if ($descriptor === null) {
             return ErrorResponse::fromException(new ResourceNotFound());
         }
+
+        // The response media type is picked from the declared responses before anything
+        // runs, so an `Accept` the action cannot answer is a 406 up front.
+        $responseMediaType = AcceptNegotiator::negotiate(
+            $this->request($operation)->getHeaderLine('accept'),
+            $descriptor->responseMediaTypes(),
+        );
 
         $handler = $this->registry->handlerFor($descriptor);
 
@@ -123,9 +133,20 @@ final readonly class ActionInvoker
             $input,
             $this->request($operation),
             $operation->queryParameters(),
+            $responseMediaType,
         );
 
         $response = $handler->handle($context);
+
+        if ($response instanceof RawResponse && MediaType::essence($response->contentType()) !== $responseMediaType) {
+            throw new \LogicException(\sprintf(
+                'The JSON:API action "%s" on type "%s" answered with a "%s" body, but the request negotiated "%s".',
+                $operation->action(),
+                $type,
+                $response->contentType(),
+                $responseMediaType,
+            ));
+        }
 
         // The after-action lifecycle event, for symmetry with the CRUD after-hooks. A
         // custom action is never part of an Atomic Operations batch, so it always fires
