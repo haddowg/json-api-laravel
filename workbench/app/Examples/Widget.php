@@ -10,5 +10,6 @@ final class Widget
         public string $id = '',
         public string $name = '',
         public ?Vendor $vendor = null,
+        public ?object $maker = null,
     ) {}
 }

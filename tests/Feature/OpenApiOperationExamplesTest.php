@@ -14,7 +14,8 @@ use Workbench\App\Providers\ExamplesInMemoryServiceProvider;
 /**
  * The OpenAPI document carries the operation examples core builds from field examples, the
  * `operationExamples` and action `example` overrides replace or remove them, and
- * `openapi.examples` switches them off per server.
+ * `openapi.examples` switches them off per server. An always-counting paginator shows its
+ * total, and a relation's `exampleId()` fills linkage to a type the server does not register.
  *
  * @internal
  */
@@ -136,6 +137,60 @@ final class OpenApiOperationExamplesTest extends Orchestra
             'fetchOne.gizmos has no example: "gizmos" declares no example for "colour".',
             \array_map(static fn(\haddowg\JsonApi\OpenApi\MissingExample $missing): string => $missing->message(), $projection->missingExamples),
         );
+    }
+
+    #[Test]
+    public function an_always_counting_collection_shows_its_total(): void
+    {
+        $collection = $this->responseExample($this->document(), '/vendors', 'get', '200');
+        self::assertIsArray($collection);
+
+        self::assertSame(75, $this->at($collection, 'meta', 'total'));
+        self::assertSame(75, $this->at($collection, 'meta', 'page', 'total'));
+        self::assertSame('/api/vendors?page%5Bnumber%5D=5&page%5Bsize%5D=15', $this->at($collection, 'links', 'last', 'href'));
+        self::assertStringNotContainsString('withCount', (string) \json_encode($collection));
+    }
+
+    #[Test]
+    public function a_count_free_collection_shows_no_total(): void
+    {
+        $collection = $this->responseExample($this->document(), '/widgets', 'get', '200');
+        self::assertIsArray($collection);
+        $meta = $this->arrayAt($collection, 'meta');
+
+        self::assertArrayNotHasKey('total', $meta);
+        self::assertArrayNotHasKey('last', $this->arrayAt($collection, 'links'));
+    }
+
+    #[Test]
+    public function a_relation_level_always_counting_paginator_shows_its_total(): void
+    {
+        $doc = $this->document();
+
+        foreach (['/vendors/{id}/widgets', '/vendors/{id}/relationships/widgets'] as $path) {
+            $collection = $this->responseExample($doc, $path, 'get', '200');
+            self::assertIsArray($collection);
+
+            self::assertSame(75, $this->at($collection, 'meta', 'total'), $path);
+            self::assertArrayHasKey('last', $this->arrayAt($collection, 'links'), $path);
+            self::assertStringNotContainsString('withCount', (string) \json_encode($collection), $path);
+        }
+    }
+
+    #[Test]
+    public function a_relation_example_id_fills_linkage_to_an_unregistered_type(): void
+    {
+        $doc = $this->document();
+        $linkage = ['data' => ['type' => 'makers', 'id' => 'm1']];
+
+        $fetched = $this->responseExample($doc, '/widgets/{id}/relationships/maker', 'get', '200');
+        self::assertIsArray($fetched);
+        self::assertSame($linkage['data'], $this->at($fetched, 'data'));
+        self::assertSame($linkage, $this->requestExample($doc, '/widgets/{id}/relationships/maker', 'patch'));
+
+        $collection = $this->responseExample($doc, '/widgets', 'get', '200');
+        self::assertIsArray($collection);
+        self::assertSame($linkage['data'], $this->at($collection, 'data', 0, 'relationships', 'maker', 'data'));
     }
 
     #[Test]

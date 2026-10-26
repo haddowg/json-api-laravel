@@ -10,6 +10,8 @@ use haddowg\JsonApi\OpenApi\Metadata\OperationType;
 use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\TypeMetadataInterface;
 use haddowg\JsonApi\OpenApi\Tag;
+use haddowg\JsonApi\Pagination\CursorPaginator;
+use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Server\Server;
@@ -61,6 +63,8 @@ use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
  *  - **`pageSchema`** is the resolved paginator's self-described `page[…]` object schema
  *    (`resource->pagination(serverDefault)->describePageSchema()`, a `oneOf` menu for a
  *    `MultiPaginator`); `null` for an unpaginated type or a to-one relation.
+ *  - **`alwaysCounts`** comes from the same paginator: `true` when its `wantsCount()` is,
+ *    unless it is a cursor, which the handler never counts.
  *  - **`tags`** are the explicit `#[AsJsonApiResource(tags: …)]` refs, else the
  *    humanized-type default ({@see TagNameResolver}); a custom action with no tags of its
  *    own inherits the mount type's explicit tags (then the default), exactly as the bundle
@@ -353,7 +357,8 @@ final class MetadataSource
         // The resolved paginator self-describes its `page[…]` object schema (a `oneOf`
         // menu for a MultiPaginator); `null` when the type is unpaginated. The projector
         // emits the whole `page` family as one deepObject parameter carrying this schema.
-        $pageSchema = $resource?->pagination($serverDefaultPaginator)?->describePageSchema();
+        $paginator = $resource?->pagination($serverDefaultPaginator);
+        $pageSchema = $paginator?->describePageSchema();
 
         return new TypeMetadata(
             type: $type,
@@ -391,7 +396,17 @@ final class MetadataSource
             // #[AsJsonApiResource(singular:)] attribute; core inflects when both are null.
             singularName: $this->nonBlank($resource?->getSingularName()) ?? $descriptor->singular,
             operationExamples: $this->operationExamples($descriptor->class, AsJsonApiResource::class),
+            alwaysCounts: self::alwaysCounts($paginator),
         );
+    }
+
+    /**
+     * Whether a paginator counts on every request, decided as the handler decides it: a
+     * `withCount()` opt-in counts, a cursor window never does.
+     */
+    private static function alwaysCounts(?PaginatorInterface $paginator): bool
+    {
+        return $paginator !== null && !($paginator instanceof CursorPaginator) && $paginator->wantsCount();
     }
 
     /**
@@ -452,18 +467,22 @@ final class MetadataSource
         // from the paginator the related and relationship endpoints serve, so the document
         // can't drift from the runtime's relation -> related resource -> server default chain.
         $pageSchema = null;
+        $alwaysCounts = false;
         if ($relation->isToMany()) {
             $relatedTypes = $relation->relatedTypes();
             $relatedResource = \count($relatedTypes) === 1
                 ? $this->types->resourceFor($server, $relatedTypes[0])
                 : null;
-            $pageSchema = $this->relationCriteria->paginatorFor($relation, $relatedResource, $server)?->describePageSchema();
+            $paginator = $this->relationCriteria->paginatorFor($relation, $relatedResource, $server);
+            $pageSchema = $paginator?->describePageSchema();
+            $alwaysCounts = self::alwaysCounts($paginator);
         }
 
         return new RelationMetadata(
             $relation,
             $pageSchema,
             $this->includePaths->relatedPathsFor($server, $relation),
+            $alwaysCounts,
         );
     }
 

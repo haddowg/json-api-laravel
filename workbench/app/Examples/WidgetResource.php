@@ -13,7 +13,8 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
 /**
  * Every field declares an example, so each operation gets a generated one. The update
- * response is replaced and the fetch-one example removed.
+ * response is replaced and the fetch-one example removed. `maker` links to a type no server
+ * registers, so its linkage example takes the id `exampleId()` declares.
  */
 #[AsJsonApiResource(operationExamples: [
     'update' => new OperationExample(responses: [200 => ['meta' => ['saved' => true]]]),
@@ -29,6 +30,7 @@ final class WidgetResource extends AbstractResource
             Id::make()->example('7'),
             Str::make('name')->example('Sprocket'),
             BelongsTo::make('vendor', 'vendors'),
+            BelongsTo::make('maker', 'makers')->withoutRelatedEndpoint()->exampleId('m1'),
         ];
     }
 }

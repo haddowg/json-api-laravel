@@ -105,6 +105,11 @@ and `playlists.tracks`/`orderedTracks` all page two-per-page. The OpenAPI docume
 same chain, so the related and relationship endpoints' `page` parameter states the `default` and
 `maximum` of the paginator that actually serves them.
 
+A paginator built with `withCount()`, on the resource or on the relation, counts on every
+request, so its pages always carry `meta.total` and a `last` link. The OpenAPI
+[operation examples](openapi.md#operation-examples) for that collection show them too. A
+`MultiPaginator` counts when its default strategy does.
+
 The relationship (linkage) endpoint of a to-many, `GET /{type}/{id}/relationships/{rel}`, pages
 by default just as its related twin does: a plain request with no query string serves page 1 at
 that default size, with `first`/`next` (and `last` when counted) links on the document. A relation
