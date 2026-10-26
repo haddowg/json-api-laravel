@@ -234,7 +234,8 @@ final class JsonApiController
 
         $validator = new RequestValidator();
         $strict = StrictContentType::appliesTo($jsonApiRequest);
-        if ($descriptor !== null && $strict && ($descriptor->accepts !== [] || $input === ActionInput::Raw)) {
+        if ($descriptor !== null && $strict && ($descriptor->accepts !== [] || $input === ActionInput::Raw)
+            && !StrictContentType::isBodylessJsonApi($jsonApiRequest)) {
             // A Raw action that lists no media types takes any, short of the form types a
             // browser sends without a preflight, which only an explicit entry admits.
             $match = $validator->negotiateContentType($jsonApiRequest, $descriptor->accepts !== [] ? \array_keys($descriptor->accepts) : ['*/*']);

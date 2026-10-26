@@ -123,6 +123,11 @@ Every `POST` must send a `Content-Type`, even with no body, and so must a `PATCH
 atomic `ext`). Any other type, or none, is a `415`. A `GET`, or a `DELETE` with no body, needs
 no `Content-Type`.
 
+A `POST` with no body and the `application/vnd.api+json` `Content-Type` reaches any action,
+whatever its `accepts` lists, and the handler sees no body. The JSON:API clients send that
+header on every `POST`, and a browser can't send it cross-site without a preflight. A request
+that has a body must still match `accepts`.
+
 ## The attribute
 
 | Parameter | Purpose |

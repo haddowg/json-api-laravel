@@ -80,6 +80,8 @@ abstract class ContentTypeConformanceTestCase extends Orchestra
         yield 'raw action as multipart' => ['POST', '/api/albums/-actions/upload-artwork', 'multipart/form-data; boundary=x', "--x--\r\n"];
         yield 'raw action as a form' => ['POST', '/api/albums/-actions/upload-artwork', 'application/x-www-form-urlencoded', 'a=1'];
         yield 'raw action with no content type' => ['POST', '/api/albums/-actions/upload-artwork', null, 'x'];
+        yield 'csv-only action, JSON:API with a body' => ['POST', '/api/albums/-actions/reindex', self::MEDIA_TYPE, '{"data":null}'];
+        yield 'csv-only action, plain text with no body' => ['POST', '/api/albums/-actions/reindex', 'text/plain', ''];
         yield 'accepts action, unlisted type' => ['POST', '/api/albums/-actions/import', 'application/json', '{}'];
         yield 'accepts action, JSON:API with an unknown parameter' => ['POST', '/api/albums/-actions/import', self::MEDIA_TYPE . '; charset=utf-8', '{}'];
     }
@@ -106,6 +108,16 @@ abstract class ContentTypeConformanceTestCase extends Orchestra
     public function aNoInputActionTakesTheJsonApiMediaType(): void
     {
         $this->send('POST', '/api/albums/-actions/ping', self::MEDIA_TYPE, '')->assertOk()->assertJsonPath('meta.pong', true);
+    }
+
+    #[Test]
+    public function aBodylessJsonApiPostReachesAnyAction(): void
+    {
+        $this->send('POST', '/api/albums/-actions/reindex', self::MEDIA_TYPE, '')
+            ->assertOk()
+            ->assertJsonPath('meta.bytes', 0)
+            ->assertJsonPath('meta.input', false);
+        $this->send('POST', '/api/albums/-actions/reindex', 'text/csv', 'a,b')->assertOk()->assertJsonPath('meta.bytes', 3);
     }
 
     #[Test]

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Http;
 
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Request\MediaType;
 
 /**
  * Decides which requests must declare their body's media type (core ADR 0172): every `POST`,
@@ -26,5 +27,17 @@ final class StrictContentType
         }
 
         return (string) $request->getBody() !== '' || !\in_array($request->getParsedBody(), [null, []], true);
+    }
+
+    /**
+     * Whether the request has no body and declares the JSON:API media type, as a client does
+     * on every `POST`. Any action takes it, whatever its `accepts` lists: a browser can't send
+     * that media type cross-site without a preflight.
+     */
+    public static function isBodylessJsonApi(JsonApiRequestInterface $request): bool
+    {
+        return (string) $request->getBody() === ''
+            && \in_array($request->getParsedBody(), [null, []], true)
+            && MediaType::isJsonApi($request->getHeaderLine('content-type'));
     }
 }
