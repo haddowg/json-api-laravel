@@ -57,6 +57,7 @@ use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Response\IdentifierResponse;
 use haddowg\JsonApi\Response\MetaResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
+use haddowg\JsonApi\Response\RawResponse;
 use haddowg\JsonApi\Response\RelatedResponse;
 use haddowg\JsonApi\Response\SeeOtherResponse;
 use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
@@ -214,7 +215,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         private readonly ?IdEncoderResolver $idEncoders = null,
     ) {}
 
-    public function handle(JsonApiOperationInterface $operation): DataResponse|RelatedResponse|IdentifierResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|AtomicResultsResponse|ErrorResponse
+    public function handle(JsonApiOperationInterface $operation): DataResponse|RelatedResponse|IdentifierResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|AtomicResultsResponse|ErrorResponse|RawResponse
     {
         // Clear the request-scoped `?withCount` seam at the very start of EVERY dispatch, so a
         // prior request's batched counts can never bleed into an arm that does not itself

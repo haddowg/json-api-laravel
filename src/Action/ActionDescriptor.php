@@ -68,6 +68,28 @@ final readonly class ActionDescriptor
     ) {}
 
     /**
+     * The media types the action can answer with, as core's `ActionResponses::mediaTypes()`
+     * lists them: the JSON:API media type first when any response is a JSON:API one, then
+     * each raw result's media type once, in declared order.
+     *
+     * @return list<string>
+     */
+    public function responseMediaTypes(): array
+    {
+        $jsonApi = [];
+        $raw = [];
+        foreach ($this->responds as $response) {
+            if ($response['kind'] === 'raw') {
+                $raw[(string) $response['ref']] = true;
+            } else {
+                $jsonApi = ['application/vnd.api+json'];
+            }
+        }
+
+        return [...$jsonApi, ...\array_keys($raw)];
+    }
+
+    /**
      * The input mode a request whose `Content-Type` matched the `$accepted` entry is read in.
      */
     public function inputFor(string $accepted): ActionInput

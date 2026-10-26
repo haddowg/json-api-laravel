@@ -153,6 +153,44 @@ no `Content-Type`.
 > and `outputType: 'x'` → `responds: [new ActionResource('x')]`. An **asynchronous** action
 > advertises `responds: [new Accepted('job-type'), new SeeOther()]` — see [async writes](async.md).
 
+## A raw response: CSV, PDF and other bodies
+
+An action can answer with a body that is not a JSON:API document. Declare each media type
+with a `RawResult` beside, or instead of, its JSON:API responses, and return
+`$context->raw()`:
+
+```php
+use haddowg\JsonApi\OpenApi\Metadata\MetaResult;
+use haddowg\JsonApi\OpenApi\Metadata\RawResult;
+
+#[AsJsonApiAction(
+    type: 'albums',
+    path: 'export',
+    methods: ['GET'],
+    scope: ActionScope::Collection,
+    responds: [new MetaResult(), new RawResult('text/csv', schema: ['type' => 'string']), new RawResult('application/pdf', binary: true)],
+)]
+final class ExportAlbums implements ActionHandlerInterface
+{
+    public function handle(ActionContext $context): MetaResponse|RawResponse
+    {
+        return match ($context->responseMediaType()) {
+            'text/csv' => $context->raw($csv, headers: ['Content-Disposition' => 'attachment; filename="albums.csv"']),
+            'application/pdf' => $context->raw($pdfStream),
+            default => $context->meta(['count' => $count]),
+        };
+    }
+}
+```
+
+Before the handler runs, the request's `Accept` header picks one of the declared media types
+(q-values and wildcards count, and JSON:API wins a tie). `$context->responseMediaType()`
+returns it, and `$context->raw()` uses it as the `Content-Type` unless you pass another. An
+`Accept` the action can't answer is a `406`. A raw body may be a string, a stream resource or
+a PSR-7 stream; a stream goes out as a `StreamedResponse`. Returning a raw body in a media
+type that wasn't negotiated is a server error. Errors always render as JSON:API documents.
+Each `RawResult` appears under the success response's `content` in the OpenAPI document.
+
 ## `ActionContext`
 
 The handler's single argument gives you the resolved entity (resource scope), the hydrated
