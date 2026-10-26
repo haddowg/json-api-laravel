@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature\MusicCatalog;
 
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
 use haddowg\JsonApiLaravel\Tests\Support\InteractsWithOpenApiDocument;
+use haddowg\JsonApiLaravel\Tests\Support\PinsCatalogClock;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
@@ -24,6 +25,7 @@ use Workbench\App\MusicCatalog\Support\Fixtures;
 abstract class DeclaredLinksTestCase extends Orchestra
 {
     use InteractsWithOpenApiDocument;
+    use PinsCatalogClock;
 
     public const string MEDIA_TYPE = 'application/vnd.api+json';
 
@@ -44,12 +46,6 @@ abstract class DeclaredLinksTestCase extends Orchestra
             'default' => ['prefix' => 'api', 'middleware' => [], 'domain' => null],
             'admin' => ['prefix' => 'admin', 'middleware' => [], 'domain' => null],
         ]);
-    }
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-        $this->travelTo(new \DateTimeImmutable('2026-01-01T11:00:00+00:00'));
     }
 
     public function test_fetch_one_renders_the_declared_links(): void

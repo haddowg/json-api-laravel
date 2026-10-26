@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
+use haddowg\JsonApiLaravel\Tests\Support\PinsCatalogClock;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Test;
@@ -23,6 +24,8 @@ use Workbench\App\MusicCatalog\Support\CatalogConfig;
 #[CoversNothing]
 final class ReadOnlyRejectionServerConfigTest extends Orchestra
 {
+    use PinsCatalogClock;
+
     /**
      * @param \Illuminate\Foundation\Application $app
      *

@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature\MusicCatalog;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Testing\SchemaConformanceTrait;
 use haddowg\JsonApiLaravel\Testing\SchemaDocumentKind;
+use haddowg\JsonApiLaravel\Tests\Support\PinsCatalogClock;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -31,6 +32,8 @@ use Workbench\Database\Seeders\McCatalogSeeder;
 #[CoversNothing]
 final class EloquentPivotRelationshipEndpointTest extends Orchestra
 {
+    use PinsCatalogClock;
+
     use SchemaConformanceTrait;
 
     public const string MEDIA_TYPE = 'application/vnd.api+json';

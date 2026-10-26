@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature\MusicCatalog;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
 use haddowg\JsonApiLaravel\Tests\Support\InteractsWithOpenApiDocument;
+use haddowg\JsonApiLaravel\Tests\Support\PinsCatalogClock;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Group;
@@ -24,6 +25,8 @@ use Workbench\App\MusicCatalog\Support\CatalogConfig;
 #[CoversNothing]
 final class GuaranteedReadAttributesOpenApiTest extends Orchestra
 {
+    use PinsCatalogClock;
+
     use InteractsWithOpenApiDocument;
 
     #[Test]

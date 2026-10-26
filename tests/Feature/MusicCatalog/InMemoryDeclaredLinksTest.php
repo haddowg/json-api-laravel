@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature\MusicCatalog;
 
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+use haddowg\JsonApiLaravel\Tests\Support\PinsCatalogClock;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use Workbench\App\MusicCatalog\Domain\Track;
 use Workbench\App\MusicCatalog\Providers\MusicCatalogInMemoryServiceProvider;
@@ -18,6 +19,8 @@ use Workbench\App\MusicCatalog\Providers\MusicCatalogInMemoryServiceProvider;
 #[CoversNothing]
 final class InMemoryDeclaredLinksTest extends DeclaredLinksTestCase
 {
+    use PinsCatalogClock;
+
     /**
      * @param \Illuminate\Foundation\Application $app
      *

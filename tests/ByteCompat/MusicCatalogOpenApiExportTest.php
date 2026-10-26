@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\ByteCompat;
 
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+use haddowg\JsonApiLaravel\Tests\Support\PinsCatalogClock;
 use Illuminate\Support\Facades\Artisan;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
@@ -27,6 +28,8 @@ use Workbench\App\MusicCatalog\Support\CatalogConfig;
 #[CoversNothing]
 final class MusicCatalogOpenApiExportTest extends Orchestra
 {
+    use PinsCatalogClock;
+
     /**
      * @param \Illuminate\Foundation\Application $app
      *
