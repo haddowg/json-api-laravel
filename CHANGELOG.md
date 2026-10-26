@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/haddowg/json-api-laravel/compare/v1.10.1...v1.11.0) (2026-10-26)
+
+
+### Features
+
+* generate OpenAPI operation examples from field examples ([#142](https://github.com/haddowg/json-api-laravel/issues/142)) ([1486b29](https://github.com/haddowg/json-api-laravel/commit/1486b29f726d30dc700f463cae7898ecdb39346d))
+
 ## [1.10.1](https://github.com/haddowg/json-api-laravel/compare/v1.10.0...v1.10.1) (2026-10-26)
 
 
