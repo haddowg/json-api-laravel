@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0](https://github.com/haddowg/json-api-laravel/compare/v1.14.0...v1.15.0) (2026-10-27)
+
+
+### Features
+
+* enforce, document and catalogue OAuth scopes per operation ([#150](https://github.com/haddowg/json-api-laravel/issues/150)) ([104b3e4](https://github.com/haddowg/json-api-laravel/commit/104b3e418170792ac4039bec56f8a5318923908e))
+
 ## [1.14.0](https://github.com/haddowg/json-api-laravel/compare/v1.13.0...v1.14.0) (2026-10-26)
 
 
