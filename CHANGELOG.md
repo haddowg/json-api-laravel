@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.2](https://github.com/haddowg/json-api-laravel/compare/v1.15.1...v1.15.2) (2026-10-27)
+
+
+### Bug Fixes
+
+* list no include paths through a single-type morph relation ([#154](https://github.com/haddowg/json-api-laravel/issues/154)) ([e8b7d3a](https://github.com/haddowg/json-api-laravel/commit/e8b7d3ab560321b7ae15cb4c0224930b01b8760e))
+
 ## [1.15.1](https://github.com/haddowg/json-api-laravel/compare/v1.15.0...v1.15.1) (2026-10-27)
 
 
