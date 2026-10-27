@@ -157,7 +157,7 @@ that has a body must still match `accepts`.
 | `methods` | HTTP verb allow-list (default `['POST']`) |
 | `input` | `None` (default) / `Document` (parse + validate + hydrate) / `Raw` (relaxed negotiation) |
 | `inputType` | decouple the **request** document type from the mount type |
-| `responds` | the advertised success response(s): a single object or a list of `new ActionResource('type')` (`200` document — default is the mount type), `new MetaResult()` (`200` meta), `new NoContent()` (`204`), `new Accepted('job-type')` (`202`), `new SeeOther()` (`303`), from `haddowg\JsonApi\OpenApi\Metadata` |
+| `responds` | the advertised success response(s): a single object or a list of `new ActionResource('type')` (`200` document — default is the mount type), `new MetaResult()` (`200` meta), `new NoContent()` (`204`), `new Accepted('job-type')` (`202`), `new SeeOther()` (`303`, or a URL with a `mediaType`, [below](#a-download-action-answering-with-a-url)), from `haddowg\JsonApi\OpenApi\Metadata` |
 | `ability` | the Gate ability checked before the handler ([authorization](authorization.md)) |
 | `server` / `name` / `tags` | server exposure, route-name override, OpenAPI tags |
 | `asLink` | expose the action as an ability-aware `links` member on the mount type's resources (resource scope only) |
@@ -218,6 +218,54 @@ returns it, and `$context->raw()` uses it as the `Content-Type` unless you pass 
 a PSR-7 stream; a stream goes out as a `StreamedResponse`. Returning a raw body in a media
 type that wasn't negotiated is a server error. Errors always render as JSON:API documents.
 Each `RawResult` appears under the success response's `content` in the OpenAPI document.
+
+## A download action: answering with a URL
+
+An action that hands out a URL, such as a short-lived presigned download link, declares
+`SeeOther` with the media type the URL serves. Use `application/octet-stream` when the type
+isn't known. The handler returns the URL with `$context->seeOther()` or
+`SeeOtherResponse::to()`, and an optional expiry:
+
+```php
+use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
+use haddowg\JsonApi\Response\SeeOtherResponse;
+use Illuminate\Support\Facades\Date;
+
+#[AsJsonApiAction(
+    type: 'albums',
+    path: 'download',
+    methods: ['GET'],
+    responds: [new SeeOther(description: 'A short-lived link to the album as CSV.', mediaType: 'text/csv')],
+    asLink: true,
+    readOnly: true,
+)]
+final readonly class DownloadAlbum implements ActionHandlerInterface
+{
+    public function __construct(private AlbumExports $exports) {}
+
+    public function handle(ActionContext $context): SeeOtherResponse
+    {
+        return $context->seeOther($this->exports->presignedUrl($context->entity()), Date::now()->addMinutes(5));
+    }
+}
+```
+
+The request's `Accept` decides what the client gets. A request naming
+`application/vnd.api+json`, with nothing it lists weighing more, gets a `200` document
+carrying the URL as `links.location`, with its `type` and `meta.expiresAt`. A script calling
+`fetch()` needs that, since it can't read a `303`'s `Location`. Any other request gets the
+`303` to the URL: a link click, a browser's address bar, `curl`, `*/*` or no `Accept` at
+all. So the `asLink` link on each album downloads the file when a user clicks it. The action
+never answers `406`, because it can always send its `303`. Both shapes carry
+`Cache-Control: no-store` and `Vary: Accept` unless the handler sets its own, and errors stay
+JSON:API documents.
+
+The `mediaType` is the opt-in. A bare `new SeeOther()`, such as an async completion, stays a
+plain `303` for every client, and an `Accept` it can't answer is still a `406`. The OpenAPI
+document describes both responses of a download action: the `200` location document and the
+`303` with its `Location` header. A document with one carries generator contract 17. Core's
+[location responses](https://github.com/haddowg/json-api/blob/main/docs/responses.md#location-responses)
+covers the rest, including `withType()` for a file whose type varies.
 
 ## `ActionContext`
 

@@ -635,7 +635,10 @@ final class DiscoveryScanner
             } elseif ($response instanceof NoContent) {
                 $responds[] = ['kind' => 'nocontent', 'ref' => null];
             } elseif ($response instanceof SeeOther) {
-                $responds[] = ['kind' => 'seeother', 'ref' => null];
+                $responds[] = ['kind' => 'seeother', 'ref' => null, ...\array_filter(
+                    ['description' => $response->description, 'mediaType' => $response->mediaType],
+                    static fn(?string $value): bool => $value !== null,
+                )];
             } elseif ($response instanceof RawResult) {
                 $responds[] = ['kind' => 'raw', 'ref' => $response->essence()];
             }

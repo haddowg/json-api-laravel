@@ -77,4 +77,22 @@ final class MusicCatalogOpenApiExportTest extends Orchestra
             self::assertArrayHasKey('paths', $document);
         }
     }
+
+    public function test_the_album_download_documents_both_of_its_responses(): void
+    {
+        $path = \sys_get_temp_dir() . '/jsonapi-download-' . \uniqid() . '.json';
+        self::assertSame(0, Artisan::call('jsonapi:openapi:export', ['--output' => $path, '--strict' => true]));
+
+        /** @var array{paths: array<string, array<string, array{responses: array<int, array{description: string, content: array<string, mixed>, headers: array<string, mixed>}>}>>} $document */
+        $document = \json_decode((string) \file_get_contents($path), true, 512, \JSON_THROW_ON_ERROR);
+        @\unlink($path);
+
+        $responses = $document['paths']['/albums/{id}/-actions/download']['get']['responses'];
+        self::assertSame('A short-lived link to the album as CSV.', $responses[200]['description']);
+        self::assertArrayHasKey('application/vnd.api+json', $responses[200]['content']);
+        self::assertArrayHasKey('Cache-Control', $responses[200]['headers']);
+        self::assertSame('A short-lived link to the album as CSV.', $responses[303]['description']);
+        self::assertArrayHasKey('Location', $responses[303]['headers']);
+        self::assertArrayHasKey('Cache-Control', $responses[303]['headers']);
+    }
 }

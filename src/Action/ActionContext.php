@@ -195,9 +195,14 @@ final readonly class ActionContext
      * A `303 See Other` {@see SeeOtherResponse} redirecting the client to `$location` —
      * the completion half of the async lifecycle: a job-status action returns this,
      * once the queued work is done, pointing at the produced resource.
+     *
+     * An action declaring `SeeOther` with a media type answers with a URL instead, such as
+     * a short-lived download link: a request preferring JSON:API gets a `200` document
+     * carrying it as `links.location`, any other request the `303`. `$expiresAt` is when
+     * that URL stops working.
      */
-    public function seeOther(string $location): SeeOtherResponse
+    public function seeOther(string $location, ?\DateTimeInterface $expiresAt = null): SeeOtherResponse
     {
-        return SeeOtherResponse::to($location);
+        return SeeOtherResponse::to($location, $expiresAt);
     }
 }
