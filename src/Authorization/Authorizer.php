@@ -252,6 +252,40 @@ final class Authorizer
      * The overrides `$type` declares on `$server`, or null when its resource there declares
      * none. A null server is the `default` server.
      */
+    public function resourceAuthorization(?string $server, string $type): ?ResourceAuthorization
+    {
+        return $this->configFor($server, $type);
+    }
+
+    /**
+     * The policy-convention ability `$operation` is checked against when nothing renames it.
+     */
+    public static function conventionAbility(Operation $operation): string
+    {
+        return match ($operation) {
+            Operation::FetchCollection => 'viewAny',
+            Operation::FetchOne => 'view',
+            Operation::Create => 'create',
+            Operation::Update => 'update',
+            Operation::Delete => 'delete',
+        };
+    }
+
+    /**
+     * Whether `$operation` is checked against the loaded resource rather than its class.
+     */
+    public static function checksInstance(Operation $operation): bool
+    {
+        return match ($operation) {
+            Operation::FetchOne, Operation::Update, Operation::Delete => true,
+            Operation::FetchCollection, Operation::Create => false,
+        };
+    }
+
+    /**
+     * The overrides `$type` declares on `$server`, or null when its resource there declares
+     * none. A null server is the `default` server.
+     */
     private function configFor(?string $server, string $type): ?ResourceAuthorization
     {
         return $this->servers[$server ?? ServerRegistry::DEFAULT_SERVER][$type] ?? null;
@@ -350,13 +384,7 @@ final class Authorizer
      */
     private function defaultAbility(Operation $operation): string
     {
-        return match ($operation) {
-            Operation::FetchCollection => 'viewAny',
-            Operation::FetchOne => 'view',
-            Operation::Create => 'create',
-            Operation::Update => 'update',
-            Operation::Delete => 'delete',
-        };
+        return self::conventionAbility($operation);
     }
 
     /**
@@ -366,9 +394,6 @@ final class Authorizer
      */
     private function carriesInstance(Operation $operation): bool
     {
-        return match ($operation) {
-            Operation::FetchOne, Operation::Update, Operation::Delete => true,
-            Operation::FetchCollection, Operation::Create => false,
-        };
+        return self::checksInstance($operation);
     }
 }

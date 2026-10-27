@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel;
 
+use haddowg\JsonApi\Catalog\OperationCatalog;
+use haddowg\JsonApi\Catalog\OperationSecuritySourceInterface;
+use haddowg\JsonApi\Catalog\SecurityEvaluatorInterface;
 use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
 use haddowg\JsonApi\OpenApi\Serve\ServeArtifactCodec;
 use haddowg\JsonApi\Scope\ExactScopeMatcher;
@@ -24,6 +27,8 @@ use haddowg\JsonApiLaravel\Authorization\Authorizer;
 use haddowg\JsonApiLaravel\Authorization\RelationAuthorizer;
 use haddowg\JsonApiLaravel\Authorization\ResourceAuthorization;
 use haddowg\JsonApiLaravel\Authorization\ViewableRows;
+use haddowg\JsonApiLaravel\Catalog\GateSecurityEvaluator;
+use haddowg\JsonApiLaravel\Catalog\OperationSecuritySource;
 use haddowg\JsonApiLaravel\Console\ClearCommand;
 use haddowg\JsonApiLaravel\Console\JsonSchemaExportCommand;
 use haddowg\JsonApiLaravel\Console\OpenApiExportCommand;
@@ -917,6 +922,8 @@ final class JsonApiServiceProvider extends ServiceProvider
      */
     private function registerScopes(): void
     {
+        $app = $this->app;
+
         $this->app->singleton(ScopeTables::class, function (Container $app): ScopeTables {
             $resolver = $app->bound(OperationScopeResolverInterface::class) ? $app->make(OperationScopeResolverInterface::class) : null;
             \assert($resolver === null || $resolver instanceof OperationScopeResolverInterface);
@@ -944,6 +951,27 @@ final class JsonApiServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(ScopeChecker::class, static fn(Container $app): ScopeChecker => new ScopeChecker(self::scopeMatcher($app)));
+
+        // The operation catalogue: every operation a server exposes, with the Gate ability
+        // guarding it and the scopes it needs, so a client can be shown what its user may call.
+        $models = static function () use ($app): array {
+            return $app->bound(ModelMapResolver::class) ? $app->make(ModelMapResolver::class)->map() : [];
+        };
+        $this->app->singleton(OperationSecuritySourceInterface::class, static fn(Container $app): OperationSecuritySource => new OperationSecuritySource(
+            $app->make(Authorizer::class),
+            $app->make(ActionRegistry::class),
+            $app->make(\Illuminate\Contracts\Auth\Access\Gate::class),
+            $models,
+        ));
+        $this->app->singleton(SecurityEvaluatorInterface::class, static fn(Container $app): GateSecurityEvaluator => new GateSecurityEvaluator(
+            $app->make(Authorizer::class),
+            $app->make(\Illuminate\Contracts\Auth\Access\Gate::class),
+            $models,
+        ));
+        $this->app->singleton(OperationCatalog::class, static fn(Container $app): OperationCatalog => new OperationCatalog(
+            static fn(string $server): ServerMetadataInterface => $app->make(MetadataSource::class)->forServer($server),
+            $app->make(OperationSecuritySourceInterface::class),
+        ));
     }
 
     /**
