@@ -36,6 +36,9 @@ final class PostResource extends AbstractResource
             BelongsToMany::make('tags', 'tags'),
             MorphTo::make('feature', ['authors', 'tags']),
             MorphToMany::make('related', ['authors', 'tags']),
+            // Polymorphic over one type: served like `feature`/`related`, not like `tags`.
+            MorphTo::make('pin', ['tags']),
+            MorphToMany::make('pinned', ['tags']),
         ];
     }
 }

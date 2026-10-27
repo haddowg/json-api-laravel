@@ -47,8 +47,8 @@ final class BlogRelationsServiceProvider extends ServiceProvider
         $tags = ['1' => $php, '2' => $json];
 
         $posts = [
-            '1' => new Post('1', 'Hello', author: $ada, tags: [$php, $json], feature: $json, related: [$ada, $php]),
-            '2' => new Post('2', 'World', author: $grace, tags: [$php], feature: $ada, related: [$json]),
+            '1' => new Post('1', 'Hello', author: $ada, tags: [$php, $json], feature: $json, related: [$ada, $php], pin: $php, pinned: [$php]),
+            '2' => new Post('2', 'World', author: $grace, tags: [$php], feature: $ada, related: [$json], pinned: [$json]),
             '3' => new Post('3', 'Empty', author: null, tags: [], feature: null, related: []),
         ];
 

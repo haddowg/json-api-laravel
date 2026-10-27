@@ -11,7 +11,8 @@ namespace haddowg\JsonApiLaravel\Tests\Fixtures\Relations;
  *  - `$tags` — a monomorphic to-many ({@see Tag}), the `belongsToMany` linkage whose
  *    in-memory pivot meta is empty (the documented boundary);
  *  - `$feature` — a **polymorphic** to-one (an {@see Author} OR a {@see Tag}), null when unset;
- *  - `$related` — a **polymorphic** to-many (a mixed list of {@see Author}/{@see Tag}).
+ *  - `$related` — a **polymorphic** to-many (a mixed list of {@see Author}/{@see Tag});
+ *  - `$pin` and `$pinned` — a polymorphic to-one and to-many over the single type {@see Tag}.
  *
  * The property names are the relation `column ?? name`, read by core's `Accessor`.
  */
@@ -21,6 +22,7 @@ final class Post
      * @param list<Tag>            $tags
      * @param Author|Tag|null      $feature
      * @param list<Author|Tag>     $related
+     * @param list<Tag>            $pinned
      */
     public function __construct(
         public string $id = '',
@@ -29,5 +31,7 @@ final class Post
         public array $tags = [],
         public Author|Tag|null $feature = null,
         public array $related = [],
+        public ?Tag $pin = null,
+        public array $pinned = [],
     ) {}
 }

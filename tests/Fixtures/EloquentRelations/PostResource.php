@@ -45,6 +45,9 @@ final class PostResource extends AbstractResource
             MorphTo::make('feature', ['authors', 'tags']),
             MorphToMany::make('related', ['authors', 'tags'])
                 ->extractUsing(static fn(mixed $post): array => $post instanceof Post ? $post->relatedMembers() : []),
+            // Polymorphic over one type: served like `feature`/`related`, not like `tags`.
+            MorphTo::make('pin', ['tags']),
+            MorphToMany::make('pinned', ['tags'])->storedAs('relatedTags'),
         ];
     }
 }

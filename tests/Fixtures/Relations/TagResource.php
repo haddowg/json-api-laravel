@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Tests\Fixtures\Relations;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Str;
+use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
 /**
@@ -26,7 +27,14 @@ final class TagResource extends AbstractResource
     {
         return [
             Id::make(),
-            Str::make('label'),
+            Str::make('label')->sortable(),
+        ];
+    }
+
+    public function filters(): array
+    {
+        return [
+            Where::make('label'),
         ];
     }
 }

@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature;
 
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Relations\BlogRelationsServiceProvider;
+use haddowg\JsonApiLaravel\Tests\Support\ServesSingleTargetPolymorphism;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Testing\TestResponse;
@@ -24,6 +25,8 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 #[CoversNothing]
 final class InMemoryPolymorphicRelationshipTest extends Orchestra
 {
+    use ServesSingleTargetPolymorphism;
+
     public const string MEDIA_TYPE = 'application/vnd.api+json';
 
     /**

@@ -297,6 +297,13 @@ MorphToMany::make('items', ['tracks', 'albums', 'artists'])
 A polymorphic to-many carries no shared filter/sort vocabulary, so `?filter`/`?sort` on its
 endpoint are a `400` while `?page` slices.
 
+A `MorphTo` or `MorphToMany` is polymorphic however many types it lists. Declared over one type,
+it is still served and documented as polymorphic: the OpenAPI document shows its linkage and
+related resource as a one-member union, and its endpoints answer `?filter`, `?sort`, `?page`
+and `?withCount` exactly as they would with several types. Adding a second type later
+only adds a member to the union. A relation that should take the related type's query
+parameters is a `BelongsTo` or `HasMany`.
+
 When a member type is served by its own scoping provider, the members are narrowed per member
 type to the rows that provider admits, before the page is cut, so pages stay full and every
 count matches. A write naming a member resolves it through its own member type's provider: a

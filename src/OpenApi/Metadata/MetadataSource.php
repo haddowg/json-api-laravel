@@ -17,6 +17,7 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiSerializer;
+use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\ResourceDescriptor;
@@ -505,7 +506,7 @@ final class MetadataSource
         $alwaysCounts = false;
         if ($relation->isToMany()) {
             $relatedTypes = $relation->relatedTypes();
-            $relatedResource = \count($relatedTypes) === 1
+            $relatedResource = Polymorphism::isMonomorphic($relation)
                 ? $this->types->resourceFor($server, $relatedTypes[0])
                 : null;
             $paginator = $this->relationCriteria->paginatorFor($relation, $relatedResource, $server);
