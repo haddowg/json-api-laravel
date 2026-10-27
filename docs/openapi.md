@@ -104,10 +104,10 @@ gets an `x-safety` object on its operation holding exactly the flags it declared
 "x-safety": { "readOnly": true }
 ```
 
-CRUD operations never carry it, since their HTTP method already says how safe they are. The
-document's `info.x-generator.contract` rises to 15 only when it uses `x-safety`, an action's
-own extensions, or an action with more than one method, whose operations get one id per
-method. [Custom actions](actions.md#operation-ids-safety-and-extensions) covers the ids and
+CRUD operations never carry it, since their HTTP method already says how safe they are.
+Generator contract 15 introduced `x-safety`, an action's own extensions, and one operation
+id per method for an action with more than one. Contract 18 then raised the baseline past
+it, so every document's `info.x-generator.contract` is 18. [Custom actions](actions.md#operation-ids-safety-and-extensions) covers the ids and
 the declarations discovery rejects.
 
 ## The singular noun in generated prose {#singular-noun}
@@ -403,16 +403,19 @@ anywhere else. Error documents get none.
 A `describedby` set on a response with `withDescribedby()`, or one inside its `withLinks()`,
 replaces the per-operation one, so set it only when a response should point somewhere else.
 
-The generated document describes these links: each `<Type>ResourceLinks`,
-`<Type>DocumentLinks`, `<Type>CollectionLinks` and `<Type><Rel>RelationshipLinks`
-component lists the members that context renders, with an example carrying the same
-`describedby`, and an `asLink` action is listed by its name. So is an action the resource
-links with an [`ActionLink`](actions.md#showing-an-action-link-only-in-some-states),
-described by its `describedAs()` when it sets one. A
-[declared link](resources.md#declared-links), such as the album's `store` above, is
-listed by its name too, with its description, its `meta` members and an example, and
-shows up in the operation examples. A document whose types declare a link is stamped
-with generator contract 14.
+The generated document describes these links with one shared component per context,
+`ResourceLinks`, `DocumentLinks`, `CollectionLinks`, `RelationshipLinks`,
+`RelationshipDocumentLinks` and `RelatedDocumentLinks`, each listing the members that
+context can render. The link schemas carry no examples. The operation examples show each
+response whole, so that's where a type's own link URLs and their `describedby` appear.
+
+A type whose resources carry named links gets its own `<Type>ResourceLinks`, an `allOf` of
+`ResourceLinks` and an object with one property per named link. An `asLink` action is
+listed there by its name. So is an action the resource links with an
+[`ActionLink`](actions.md#showing-an-action-link-only-in-some-states), described by its
+`describedAs()` when it sets one. A [declared link](resources.md#declared-links), such as
+the album's `store` above, is listed by its name too, with its description and its `meta`
+members, and shows up in the operation examples.
 
 `artisan optimize` writes a small map of each document's operations beside it, which is all
 a request reads to resolve a `describedby`. Without it, a request reads the operations from

@@ -170,13 +170,19 @@ abstract class ActionLinksConformanceTestCase extends Orchestra
     {
         $response = $this->get('/docs.json');
         $response->assertOk();
-        $properties = self::at($this->decode($response), 'components', 'schemas', 'RecordsResourceLinks', 'properties');
+        $schemas = self::at($this->decode($response), 'components', 'schemas');
+        self::assertSame(['$ref' => '#/components/schemas/ResourceLinks'], self::at($schemas, 'RecordsResourceLinks', 'allOf', 0));
+        self::assertIsArray(self::at($schemas, 'ResourceLinks', 'properties', 'self'));
+        $properties = self::at($schemas, 'RecordsResourceLinks', 'allOf', 1, 'properties');
         self::assertIsArray($properties);
 
-        self::assertSame(['self', 'review', 'feature', 'archive'], \array_keys($properties));
-        self::assertStringStartsWith('Present while the record is released. ', self::string(self::at($properties, 'review', 'description')));
-        self::assertStringStartsWith('The `feature` action on this resource. ', self::string(self::at($properties, 'feature', 'description')));
-        self::assertStringStartsWith('Present while the record is withdrawn. ', self::string(self::at($properties, 'archive', 'description')));
+        self::assertSame(['review', 'feature', 'archive'], \array_keys($properties));
+        foreach ($properties as $name => $link) {
+            self::assertSame('#/components/schemas/RenderedLink', self::at($link, '$ref'), (string) $name);
+        }
+        self::assertSame('Present while the record is released.', self::string(self::at($properties, 'review', 'description')));
+        self::assertSame('The `feature` action on this resource.', self::string(self::at($properties, 'feature', 'description')));
+        self::assertSame('Present while the record is withdrawn.', self::string(self::at($properties, 'archive', 'description')));
     }
 
     #[Test]

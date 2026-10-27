@@ -111,11 +111,15 @@ abstract class DeclaredLinksTestCase extends Orchestra
     {
         $doc = $this->resolve(DocumentFactory::class)->forServer('default')->toArray();
 
-        // The catalogue declares OAuth scopes, which stamp the scoped tier of 16, and the
-        // download action's location document raises it to 17.
-        self::assertSame(17, $this->at($doc, 'info', 'x-generator', 'contract'));
+        // The catalogue declares OAuth scopes, the scoped tier of 16, but the shared links
+        // components raised the baseline to 18.
+        self::assertSame(18, $this->at($doc, 'info', 'x-generator', 'contract'));
 
-        $preview = $this->arrayAt($doc, 'components', 'schemas', 'TracksResourceLinks', 'properties', 'preview');
+        foreach (['AlbumsResourceLinks', 'TracksResourceLinks'] as $name) {
+            self::assertSame(['$ref' => '#/components/schemas/ResourceLinks'], $this->at($doc, 'components', 'schemas', $name, 'allOf', 0), $name);
+        }
+
+        $preview = $this->arrayAt($doc, 'components', 'schemas', 'TracksResourceLinks', 'allOf', 1, 'properties', 'preview');
         self::assertSame('A short audio preview of the track, valid until expiresAt.', $preview['description'] ?? null);
         self::assertSame(['href', 'type', 'meta'], $preview['required'] ?? null);
         self::assertSame('audio/mpeg', $this->at($preview, 'properties', 'type', 'const'));
@@ -123,12 +127,14 @@ abstract class DeclaredLinksTestCase extends Orchestra
         self::assertSame(['format', 'expiresAt'], $meta['required'] ?? null);
         self::assertSame('Audio encoding of the preview.', $this->at($meta, 'properties', 'format', 'description'));
         self::assertSame('date-time', $this->at($meta, 'properties', 'expiresAt', 'format'));
-        self::assertSame(self::PREVIEW_ONE, $preview['example'] ?? null);
+        // The link schemas carry no example; the operation examples below show the links.
+        self::assertArrayNotHasKey('example', $preview);
 
-        $store = $this->arrayAt($doc, 'components', 'schemas', 'AlbumsResourceLinks', 'properties', 'store');
+        $store = $this->arrayAt($doc, 'components', 'schemas', 'AlbumsResourceLinks', 'allOf', 1, 'properties', 'store');
+        self::assertSame('#/components/schemas/LinkObject', $store['$ref'] ?? null);
         self::assertSame("The album's page in the store.", $store['description'] ?? null);
-        self::assertSame('https://store.example.com/albums/1', $store['example'] ?? null);
-        self::assertNotContains('store', (array) ($this->arrayAt($doc, 'components', 'schemas', 'AlbumsResourceLinks')['required'] ?? []));
+        self::assertArrayNotHasKey('example', $store);
+        self::assertNotContains('store', (array) ($this->arrayAt($doc, 'components', 'schemas', 'AlbumsResourceLinks', 'allOf', 1)['required'] ?? []));
 
         $example = fn(string $path): mixed => $this->at($doc, 'paths', $path, 'get', 'responses', '200', 'content', self::MEDIA_TYPE, 'example');
         self::assertSame(self::PREVIEW_ONE, $this->at($example('/tracks/{id}'), 'data', 'links', 'preview'));

@@ -318,10 +318,15 @@ abstract class DescribedLinksConformanceTestCase extends Orchestra
         $response = $this->get('/admin/docs.json');
         $response->assertOk();
         $document = $this->decode($response);
-        $properties = self::at($document, 'components', 'schemas', 'AlbumsResourceLinks', 'properties');
+        $properties = self::at($document, 'components', 'schemas', 'AlbumsResourceLinks', 'allOf', 1, 'properties');
         self::assertIsArray($properties);
+        self::assertArrayHasKey('store', $properties);
         self::assertArrayNotHasKey('download', $properties);
         self::assertNull(self::at($document, 'paths', '/albums/{id}/-actions/download'));
+        $example = self::at($document, 'paths', '/albums/{id}', 'get', 'responses', '200', 'content', self::MEDIA_TYPE, 'example', 'data', 'links');
+        self::assertIsArray($example);
+        self::assertArrayHasKey('store', $example);
+        self::assertArrayNotHasKey('download', $example);
     }
 
     #[Test]
@@ -330,9 +335,16 @@ abstract class DescribedLinksConformanceTestCase extends Orchestra
     {
         $response = $this->get(self::DOCUMENT);
         $response->assertOk();
-        $description = self::at($this->decode($response), 'components', 'schemas', 'AlbumsResourceLinks', 'properties', 'download', 'description');
-        self::assertIsString($description);
-        self::assertStringStartsWith('A short-lived link to the album as CSV, present while the album is released.', $description);
+        $document = $this->decode($response);
+        $download = self::at($document, 'components', 'schemas', 'AlbumsResourceLinks', 'allOf', 1, 'properties', 'download');
+        self::assertSame('#/components/schemas/RenderedLink', self::at($download, '$ref'));
+        self::assertSame('A short-lived link to the album as CSV, present while the album is released.', self::at($download, 'description'));
+
+        // The operation example shows the link the action builds.
+        self::assertSame(
+            ['href' => self::BASE . '/albums/1/-actions/download', 'describedby' => $this->pointer('/albums/{id}/-actions/download')],
+            $this->exampleLinks($document)['download'] ?? null,
+        );
     }
 
     #[Test]
@@ -412,17 +424,27 @@ abstract class DescribedLinksConformanceTestCase extends Orchestra
     #[Group('openapi')]
     public function theServedDocumentDescribesTheLinksTheResponsesCarry(): void
     {
-        $links = self::at($this->servedDocument(), 'components', 'schemas', 'AlbumsResourceLinks');
+        $document = $this->servedDocument();
+        $schemas = self::at($document, 'components', 'schemas');
+        $links = self::at($schemas, 'AlbumsResourceLinks');
         self::assertIsArray($links);
+        self::assertSame(['$ref' => '#/components/schemas/ResourceLinks'], self::at($links, 'allOf', 0));
 
-        // The link carries an example, so the reference is wrapped in a single-entry allOf.
-        self::assertNull(self::at($links, 'properties', 'self', '$ref'));
-        self::assertSame('#/components/schemas/RenderedLink', self::at($links, 'properties', 'self', 'allOf', 0, '$ref'));
-        self::assertSame($this->pointer('/albums/{id}'), self::at($links, 'properties', 'self', 'example', 'describedby'));
-        // The asLink action is listed by name, described by its first method.
+        // The shared self link carries no example, so the reference is written plainly.
+        $self = self::at($schemas, 'ResourceLinks', 'properties', 'self');
+        self::assertIsArray($self);
+        self::assertSame('#/components/schemas/RenderedLink', self::at($self, '$ref'));
+        self::assertArrayNotHasKey('allOf', $self);
+        self::assertArrayNotHasKey('example', $self);
+        // The asLink action is listed by name, beside the shared members.
+        self::assertSame('#/components/schemas/RenderedLink', self::at($links, 'allOf', 1, 'properties', 'reissue', '$ref'));
+
+        // The operation example carries the describedby, the action's by its first method.
+        $example = $this->exampleLinks($document);
+        self::assertSame(['href' => self::BASE . '/albums/1', 'describedby' => $this->pointer('/albums/{id}')], $example['self'] ?? null);
         self::assertSame(
-            $this->pointer('/albums/{id}/-actions/reissue', 'post'),
-            self::at($links, 'properties', 'reissue', 'example', 'describedby'),
+            ['href' => self::BASE . '/albums/1/-actions/reissue', 'describedby' => $this->pointer('/albums/{id}/-actions/reissue', 'post')],
+            $example['reissue'] ?? null,
         );
     }
 
@@ -443,7 +465,13 @@ abstract class DescribedLinksConformanceTestCase extends Orchestra
         self::assertSame($this->pointer('/albums/{id}'), self::at($document, 'links', 'describedby'));
 
         // And the document describes strings, not link objects.
-        self::assertSame('#/components/schemas/LinkObject', self::at($this->servedDocument(), 'components', 'schemas', 'AlbumsResourceLinks', 'properties', 'self', 'allOf', 0, '$ref'));
+        $served = $this->servedDocument();
+        $schemas = self::at($served, 'components', 'schemas');
+        self::assertIsArray($schemas);
+        self::assertArrayNotHasKey('RenderedLink', $schemas);
+        self::assertSame('#/components/schemas/LinkObject', self::at($schemas, 'ResourceLinks', 'properties', 'self', '$ref'));
+        self::assertSame('#/components/schemas/LinkObject', self::at($schemas, 'AlbumsResourceLinks', 'allOf', 1, 'properties', 'reissue', '$ref'));
+        self::assertSame(self::BASE . '/albums/1', $this->exampleLinks($served)['self'] ?? null);
     }
 
     #[Test]
@@ -507,6 +535,21 @@ abstract class DescribedLinksConformanceTestCase extends Orchestra
     /**
      * The `describedby` the suite expects for an operation of the served document.
      */
+    /**
+     * The `links` of the album in the fetch-one operation's response example.
+     *
+     * @param array<array-key, mixed> $document
+     *
+     * @return array<array-key, mixed>
+     */
+    private function exampleLinks(array $document): array
+    {
+        $links = self::at($document, 'paths', '/albums/{id}', 'get', 'responses', '200', 'content', self::MEDIA_TYPE, 'example', 'data', 'links');
+        self::assertIsArray($links);
+
+        return $links;
+    }
+
     private function pointer(string $path, string $method = 'get'): string
     {
         return self::DOCUMENT . '#/paths/' . \str_replace(['~', '/', '{', '}'], ['~0', '~1', '%7B', '%7D'], $path) . '/' . $method;
