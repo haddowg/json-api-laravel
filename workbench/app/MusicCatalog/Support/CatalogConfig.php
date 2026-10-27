@@ -4,7 +4,13 @@ declare(strict_types=1);
 
 namespace Workbench\App\MusicCatalog\Support;
 
+use haddowg\JsonApi\Scope\GrantedScopesProviderInterface;
+use haddowg\JsonApi\Scope\OperationScopeResolverInterface;
+use haddowg\JsonApi\Scope\ScopeCatalogInterface;
 use Illuminate\Contracts\Config\Repository;
+use Illuminate\Contracts\Foundation\Application;
+use Workbench\App\MusicCatalog\Security\BearerTokenScopes;
+use Workbench\App\MusicCatalog\Security\CatalogScopes;
 
 /**
  * The single source of truth for the music-catalog `jsonapi.*` configuration (decision 14)
@@ -39,6 +45,7 @@ final class CatalogConfig
         $config->set('jsonapi.pagination.max_per_page', self::MAX_PER_PAGE);
         $config->set('jsonapi.atomic_operations.enabled', true);
         $config->set('jsonapi.atomic_operations.path', '/operations');
+        $config->set('jsonapi.atomic_operations.scopes', ['batch']);
         $config->set('jsonapi.servers', self::servers());
         // Serve the document outside debug, as the bundle example does, so its links (and the
         // document's link examples) carry a describedby into it.
@@ -80,9 +87,36 @@ final class CatalogConfig
     }
 
     /**
+     * Binds the catalogue's OAuth scope services: the resolver and scope catalogue
+     * ({@see CatalogScopes}) and the grant read off the bearer token
+     * ({@see BearerTokenScopes}). Both data-layer wirings call it.
+     *
+     * The playlist and artwork declarations name scopes, which the document lists under the
+     * `oauth2` scheme, so the wiring declares that scheme once every provider has registered
+     * even where the rest of {@see apply()} is not in place.
+     */
+    public static function bindScopes(Application $app): void
+    {
+        $app->singleton(CatalogScopes::class);
+        $app->alias(CatalogScopes::class, OperationScopeResolverInterface::class);
+        $app->alias(CatalogScopes::class, ScopeCatalogInterface::class);
+        $app->singleton(GrantedScopesProviderInterface::class, BearerTokenScopes::class);
+
+        $app->booting(static function (Application $app): void {
+            /** @var Repository $config */
+            $config = $app->make('config');
+            if ($config->get('jsonapi.openapi.security.schemes.oauth2') === null) {
+                $config->set('jsonapi.openapi.security.schemes.oauth2', self::security()['schemes']['oauth2']);
+            }
+            $config->set('jsonapi.openapi.security.scope_scheme', 'oauth2');
+        });
+    }
+
+    /**
      * A `bearer` scheme + the document-level default requirement — the operations a
      * policy/ability secures inherit this requirement (a `401`), matching the bundle's
-     * security-expression projection.
+     * security-expression projection — and the `oauth2` scheme each operation's scopes are
+     * listed under. Its flow declares no scopes; the scope catalogue supplies them.
      *
      * @return array<string, mixed>
      */
@@ -95,10 +129,20 @@ final class CatalogConfig
                     'bearerFormat' => 'JWT',
                     'description' => 'A Bearer access token (the user identifier in this example).',
                 ],
+                'oauth2' => [
+                    'type' => 'oauth2',
+                    'description' => 'An OAuth 2.0 access token. Its scopes gate the catalogue and library writes.',
+                    'flows' => [
+                        'clientCredentials' => [
+                            'tokenUrl' => 'https://music.example/oauth/token',
+                        ],
+                    ],
+                ],
             ],
             'default_requirement' => [
                 ['name' => 'bearer'],
             ],
+            'scope_scheme' => 'oauth2',
         ];
     }
 

@@ -55,6 +55,7 @@ use Workbench\App\MusicCatalog\Security\PlaylistApiPolicy;
 use Workbench\App\MusicCatalog\Serializer\ChartSerializer;
 use Workbench\App\MusicCatalog\Serializer\CountrySerializer;
 use Workbench\App\MusicCatalog\Support\AuditLog;
+use Workbench\App\MusicCatalog\Support\CatalogConfig;
 
 /**
  * The Eloquent half of the unified music-catalog wiring (decision 14): it registers the
@@ -81,6 +82,8 @@ final class MusicCatalogEloquentServiceProvider extends ServiceProvider
 
     public function register(): void
     {
+        CatalogConfig::bindScopes($this->app);
+
         // Registered in ascending type order so the projected OpenAPI `paths` (emitted in
         // discovery order) match the bundle's alphabetical-by-type descriptor order — the
         // byte-compat contract (decision 11). Actions attach to their mount type, so their
