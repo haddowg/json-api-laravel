@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.1](https://github.com/haddowg/json-api-laravel/compare/v1.15.0...v1.15.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* serve a single-type morph relation as polymorphic ([#152](https://github.com/haddowg/json-api-laravel/issues/152)) ([2f842cc](https://github.com/haddowg/json-api-laravel/commit/2f842ccfbbd1abebf4014ad1c720871de52db29b))
+
 ## [1.15.0](https://github.com/haddowg/json-api-laravel/compare/v1.14.0...v1.15.0) (2026-10-27)
 
 
