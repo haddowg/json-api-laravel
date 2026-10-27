@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0](https://github.com/haddowg/json-api-laravel/compare/v1.15.2...v1.16.0) (2026-10-27)
+
+
+### Features
+
+* let a custom action answer with a URL ([#156](https://github.com/haddowg/json-api-laravel/issues/156)) ([03266d7](https://github.com/haddowg/json-api-laravel/commit/03266d756d168406c7ec096730fe56491eb07be3))
+
 ## [1.15.2](https://github.com/haddowg/json-api-laravel/compare/v1.15.1...v1.15.2) (2026-10-27)
 
 
