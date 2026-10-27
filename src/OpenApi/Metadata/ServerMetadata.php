@@ -12,6 +12,7 @@ use haddowg\JsonApi\OpenApi\Metadata\AtomicOperationsMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\ContributesErrorCodes;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresExampleGeneration;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresLinkObjects;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresMethodNotAllowed;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationScopeTable;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresReadOnlyAttributeRejection;
 use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
@@ -49,8 +50,12 @@ use haddowg\JsonApiLaravel\Scope\ScopeTables;
  * server enforces. The table is fetched from {@see ScopeTables} only when it is read, because
  * building it needs this server's metadata. Without the service the table is empty, which
  * leaves the document unchanged.
+ *
+ * Through {@see DeclaresMethodNotAllowed} it says the exception renderer answers a method
+ * a JSON:API path does not accept with a `405` error document, so the catalogue lists
+ * `METHOD_NOT_ALLOWED` (ADR 0065).
  */
-final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLinkObjects, DeclaresReadOnlyAttributeRejection, DeclaresExampleGeneration, DeclaresOperationScopeTable
+final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLinkObjects, DeclaresReadOnlyAttributeRejection, DeclaresExampleGeneration, DeclaresOperationScopeTable, DeclaresMethodNotAllowed
 {
     /**
      * @param list<Server>                  $servers
@@ -113,6 +118,11 @@ final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLi
     public function rejectsReadOnlyAttributes(): bool
     {
         return $this->rejectsReadOnlyAttributes;
+    }
+
+    public function rendersMethodNotAllowed(): bool
+    {
+        return true;
     }
 
     public function rendersLinkObjects(): bool
