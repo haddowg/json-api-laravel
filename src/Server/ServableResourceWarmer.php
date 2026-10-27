@@ -12,6 +12,8 @@ use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Sort\SortByField;
+use haddowg\JsonApiLaravel\Action\ActionRegistry;
+use haddowg\JsonApiLaravel\Action\ActionScope;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
@@ -67,6 +69,13 @@ use Illuminate\Database\Eloquent\Model;
  *    set and the OpenAPI projector refuses to build a document while it is non-empty;
  *    this reports the same fault at `artisan optimize`, in core's own wording, naming the
  *    configured server rather than its document title.
+ *  - **A resource's action links must name an action it has.** An
+ *    {@see \haddowg\JsonApi\Resource\Link\ActionLink} in `links()` links a resource-scope
+ *    custom action of the type. A server without it leaves the link out, but a path no
+ *    server serving the type has would never render, so it is reported, naming the
+ *    resource class (ADR 0064). Building the
+ *    links also throws core's own declaration errors: two action links for one path, or a
+ *    declared link named like an action link.
  *
  * Standalone-serializer types (PLAN decision 3, bundle ADR 0024) are validated too — a
  * fetch-opened standalone type without a provider is exactly the deploy-time
@@ -87,6 +96,7 @@ final class ServableResourceWarmer
         private readonly TypeMetadataResolver $types,
         private readonly MetadataSource $metadata,
         private readonly array $serverNames,
+        private readonly ?ActionRegistry $actions = null,
     ) {}
 
     /**
@@ -112,6 +122,7 @@ final class ServableResourceWarmer
                 $this->guardPolymorphicDiscrimination($serverName, $type, $problems);
                 $this->guardEloquentRelationMethods($serverName, $type, $problems);
                 $this->guardSortableFilterableColumns($serverName, $type, $problems);
+                $this->guardActionLinks($serverName, $type, $problems);
             }
 
             // The standalone-serializer types (PLAN decision 3, bundle ADR 0024) run the
@@ -208,6 +219,59 @@ final class ServableResourceWarmer
                 $type,
             );
         }
+    }
+
+    /**
+     * Builds the resource's links, so a duplicate or clashing declaration throws, and reports
+     * each declared action link whose path no server serving `$type` has a resource-scope
+     * action for. A server without the action leaves the link out, so only that fails.
+     *
+     * @param list<string> $problems
+     */
+    private function guardActionLinks(string $serverName, string $type, array &$problems): void
+    {
+        $resource = $this->types->resourceFor($this->servers->get($serverName), $type);
+        if (!$resource instanceof AbstractResource) {
+            return;
+        }
+
+        // A duplicate or clashing declaration throws core's \LogicException, naming the
+        // resource class, as the OpenAPI metadata would when it reads the same links.
+        $resource->allLinks();
+        foreach ($resource->allActionLinks() as $link) {
+            foreach ($this->serverNames as $candidate) {
+                if ($this->servesType($candidate, $type)
+                    && $this->actions?->descriptorFor($candidate, $type, ActionScope::Resource, $link->path) !== null) {
+                    continue 2;
+                }
+            }
+
+            $problem = \sprintf(
+                'The JSON:API resource %s declares an action link for "%s", but no server serving type "%s" has a '
+                . 'resource-scope action with that path. Declare #[AsJsonApiAction(type: \'%s\', path: \'%s\')], '
+                . 'or remove the action link.',
+                $resource::class,
+                $link->path,
+                $type,
+                $type,
+                $link->path,
+            );
+            // Reported once, though every server serving the type reaches it.
+            if (!\in_array($problem, $problems, true)) {
+                $problems[] = $problem;
+            }
+        }
+    }
+
+    private function servesType(string $serverName, string $type): bool
+    {
+        foreach ($this->discovery->resourcesFor($serverName) as $descriptor) {
+            if ($descriptor->type === $type) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

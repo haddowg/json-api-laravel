@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Workbench\App\MusicCatalog\JsonApi;
 
 use haddowg\JsonApi\Pagination\PagePaginator;
+use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Constraint\Comparison;
 use haddowg\JsonApi\Resource\Field\Accessor;
@@ -23,6 +24,7 @@ use haddowg\JsonApi\Resource\Filter\Range;
 use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApi\Resource\Filter\WhereHas;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
+use haddowg\JsonApi\Resource\Link\ActionLink;
 use haddowg\JsonApi\Resource\Link\DeclaredLink;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
@@ -100,6 +102,10 @@ final class AlbumResource extends AbstractResource
         ];
     }
 
+    /**
+     * The `store` link, and the `download` action as a link only while the album is
+     * released: the action builds the href, the condition decides when it shows.
+     */
     public function links(): array
     {
         return [
@@ -107,6 +113,9 @@ final class AlbumResource extends AbstractResource
                 ->describedAs('The album\'s page in the store.')
                 ->example('https://store.example.com/albums/1')
                 ->hrefUsing(fn(mixed $album): string => 'https://store.example.com/albums/' . $this->getId($album)),
+            ActionLink::for('download')
+                ->when(static fn(AlbumModel|AlbumDomain $album, JsonApiRequestInterface $request): bool => $album->status === AlbumStatus::Released->value)
+                ->describedAs('A short-lived link to the album as CSV, present while the album is released.'),
         ];
     }
 

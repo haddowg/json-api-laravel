@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Action;
 use haddowg\JsonApi\OpenApi\Metadata\ActionScope as OpenApiActionScope;
 use haddowg\JsonApi\OpenApi\OperationReference;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\Link\ActionLink;
 use haddowg\JsonApi\Schema\Link\OperationLink;
 use haddowg\JsonApi\Serializer\ResourceLinkContributorInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
@@ -16,8 +17,9 @@ use haddowg\JsonApiLaravel\Authorization\Authorizer;
 /**
  * Contributes a custom action's URL as an out-of-band `links` member on every rendered
  * resource of its mount type — core's {@see ResourceLinkContributorInterface} seam — when
- * the action declared `asLink: true` (the Laravel twin of the bundle's
- * `Action\ActionLinkContributor`).
+ * the action declared `asLink: true`, or when the type's resource declares an
+ * {@see ActionLink} for the action's path in its `links()` (ADR 0064). The Laravel twin of
+ * the bundle's `Action\ActionLinkContributor`.
  *
  * It is **per server**: each declared server's memoized {@see \haddowg\JsonApi\Server\Server}
  * is threaded its own contributor (via
@@ -37,6 +39,10 @@ use haddowg\JsonApiLaravel\Authorization\Authorizer;
  * resolved lazily — and only for a `conditionallyLinked` descriptor — through the injected
  * resolver, and memoized per class (handlers are stateless).
  *
+ * A declared {@see ActionLink} adds its own `when()` condition, run after the ability gate
+ * with the rendered object and the request. It wins over `asLink`, so its condition applies
+ * even when the action also sets `asLink`.
+ *
  * The href is the action route's path relative to the server, `/{uriType}/{id}/-actions/{path}`,
  * and core prefixes it with the same base as the resource's `self` link: the configured
  * `base_uri`, or the request origin plus the route prefix when that is empty (ADR 0028).
@@ -55,20 +61,38 @@ final class ActionLinkContributor implements ResourceLinkContributorInterface
     private array $handlers = [];
 
     /**
-     * @param array<string, list<ActionDescriptor>>                                  $linksByType        this server's `asLink` action descriptors, keyed by mount JSON:API type
-     * @param \Closure(string): SerializerInterface                                  $serializerResolver resolves a type's serializer lazily at render time (avoids a build-time cycle with the Server)
-     * @param \Closure(class-string<ActionHandlerInterface>): ActionHandlerInterface $handlerResolver    resolves a conditionally-linked action's handler lazily at render time
+     * Memoized declared action links, keyed by mount type then by action path.
+     *
+     * @var array<string, array<string, ActionLink>>
+     */
+    private array $actionLinks = [];
+
+    /**
+     * @param array<string, list<ActionDescriptor>>                                  $linksByType         this server's resource-scope action descriptors, keyed by mount JSON:API type
+     * @param \Closure(string): SerializerInterface                                  $serializerResolver  resolves a type's serializer lazily at render time (avoids a build-time cycle with the Server)
+     * @param \Closure(class-string<ActionHandlerInterface>): ActionHandlerInterface $handlerResolver     resolves a conditionally-linked action's handler lazily at render time
+     * @param (\Closure(string): list<ActionLink>)|null                              $actionLinksResolver resolves a type's declared action links lazily at render time; null declares none
      */
     public function __construct(
         private readonly array $linksByType,
         private readonly \Closure $serializerResolver,
         private readonly Authorizer $authorizer,
         private readonly \Closure $handlerResolver,
+        private readonly ?\Closure $actionLinksResolver = null,
     ) {}
 
     public function linksFor(mixed $object, string $type, JsonApiRequestInterface $request): array
     {
         $descriptors = $this->linksByType[$type] ?? [];
+        if ($descriptors === []) {
+            return [];
+        }
+
+        $declared = $this->actionLinksFor($type);
+        $descriptors = \array_filter(
+            $descriptors,
+            static fn(ActionDescriptor $descriptor): bool => $descriptor->asLink || isset($declared[$descriptor->path]),
+        );
         if ($descriptors === []) {
             return [];
         }
@@ -95,6 +119,9 @@ final class ActionLinkContributor implements ResourceLinkContributorInterface
             if ($descriptor->conditionallyLinked && !$this->shouldLink($descriptor, $object)) {
                 continue;
             }
+            if (isset($declared[$descriptor->path]) && !$declared[$descriptor->path]->appliesTo($object, $request)) {
+                continue;
+            }
 
             // Names the action's operation, by its first declared method as the OpenAPI
             // projection does, so the link can carry a `describedby`.
@@ -105,6 +132,23 @@ final class ActionLinkContributor implements ResourceLinkContributorInterface
         }
 
         return $links;
+    }
+
+    /**
+     * The type's declared action links, keyed by action path, resolved once per type.
+     *
+     * @return array<string, ActionLink>
+     */
+    private function actionLinksFor(string $type): array
+    {
+        if (!isset($this->actionLinks[$type])) {
+            $this->actionLinks[$type] = [];
+            foreach ($this->actionLinksResolver === null ? [] : ($this->actionLinksResolver)($type) as $link) {
+                $this->actionLinks[$type][$link->path] = $link;
+            }
+        }
+
+        return $this->actionLinks[$type];
     }
 
     /**

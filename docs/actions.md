@@ -160,7 +160,7 @@ that has a body must still match `accepts`.
 | `responds` | the advertised success response(s): a single object or a list of `new ActionResource('type')` (`200` document — default is the mount type), `new MetaResult()` (`200` meta), `new NoContent()` (`204`), `new Accepted('job-type')` (`202`), `new SeeOther()` (`303`, or a URL with a `mediaType`, [below](#a-download-action-answering-with-a-url)), from `haddowg\JsonApi\OpenApi\Metadata` |
 | `ability` | the Gate ability checked before the handler ([authorization](authorization.md)) |
 | `server` / `name` / `tags` | server exposure, route-name override, OpenAPI tags |
-| `asLink` | expose the action as an ability-aware `links` member on the mount type's resources (resource scope only) |
+| `asLink` | expose the action as an ability-aware `links` member on the mount type's resources (resource scope only); a resource's [`ActionLink`](#showing-an-action-link-only-in-some-states) does the same with a condition |
 | `accepts` | the request media types the action takes: a list read in `input` mode, or `mediaType => ActionInput` ([below](#choosing-the-media-types-an-action-takes)) |
 | `summary` / `description` | the operation's OpenAPI `summary` and `description`; omitted, the generated ones stay |
 | `example` | the operation's OpenAPI example: an `OperationExample` replaces the parts it names, `false` emits none, `null` (default) keeps the generated one ([below](#actions-in-the-openapi-document)) |
@@ -178,6 +178,52 @@ that has a body must still match `accepts`.
 An `asLink` link's href sits on the same base as the resource's `self` link. That's the
 server's `base_uri` when one is configured, or the request host plus the server's route
 prefix when it's empty.
+
+### Showing an action link only in some states
+
+`asLink` renders the link whenever the ability passes. A link that belongs only to some
+states, such as completing an upload only while the file is pending, shouldn't move that
+state into the ability. The gate would then answer an out-of-state call with a plain `403`
+instead of the handler's own error. Declare the link on the resource instead, with core's
+`ActionLink`, next to its [declared links](resources.md#declared-links):
+
+```php
+use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\Link\ActionLink;
+
+final class AlbumResource extends AbstractResource
+{
+    public function links(): array
+    {
+        return [
+            ActionLink::for('download')
+                ->when(static fn(Album $album, JsonApiRequestInterface $request): bool => $album->status === AlbumStatus::Released->value)
+                ->describedAs('A short-lived link to the album as CSV, present while the album is released.'),
+        ];
+    }
+}
+```
+
+`ActionLink::for()` names a resource-scope action of the resource's own type. The package
+still builds the href, the method and the `describedby` from the action, on the server's
+link base. It checks the action's `ability` first, then a `ConditionallyLinked` handler's
+`shouldLink()`, then `when()` with the rendered model and the request, and renders the link
+only when all of them pass. `when()` is optional. Prefer it to `ConditionallyLinked` when
+the condition belongs to the resource, or needs the request.
+
+Declaring an `ActionLink` implies the link, so the action needs no `asLink: true`. When it
+has one anyway, the `ActionLink`'s condition and description apply. `describedAs()`
+replaces the generic description of the link in `<Type>ResourceLinks`; the rest of the
+schema is unchanged and the condition isn't described.
+
+A resource served on several servers may name an action only some of them expose. A
+server without the action neither renders the link nor lists it in its document.
+`jsonapi:optimize` fails on these, naming the resource class:
+
+- an `ActionLink` for a path that no server serving the type has a resource-scope action
+  for, which is usually a typo;
+- a declared link named like an `ActionLink`'s path;
+- two `ActionLink`s for one path.
 
 > [!NOTE]
 > `responds` replaces the former `outputType` / `outputMeta` / `returns204` params. Migrate
@@ -240,7 +286,6 @@ use Illuminate\Support\Facades\Date;
     path: 'download',
     methods: ['GET'],
     responds: [new SeeOther(description: 'A short-lived link to the album as CSV.', mediaType: 'text/csv')],
-    asLink: true,
     readOnly: true,
 )]
 final readonly class DownloadAlbum implements ActionHandlerInterface
@@ -259,7 +304,9 @@ The request's `Accept` decides what the client gets. A request naming
 carrying the URL as `links.location`, with its `type` and `meta.expiresAt`. A script calling
 `fetch()` needs that, since it can't read a `303`'s `Location`. Any other request gets the
 `303` to the URL: a link click, a browser's address bar, `curl`, `*/*` or no `Accept` at
-all. So the `asLink` link on each album downloads the file when a user clicks it. The action
+all. So the `download` link on each released album, which the album resource declares with
+an [`ActionLink`](#showing-an-action-link-only-in-some-states), downloads the file when a
+user clicks it. The action
 never answers `406`, because it can always send its `303`. Both shapes carry
 `Cache-Control: no-store` and `Vary: Accept` unless the handler sets its own, and errors stay
 JSON:API documents.

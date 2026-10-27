@@ -412,6 +412,7 @@ final class MetadataSource
             declaredLinks: $resource?->allLinks() ?? [],
             operationScopes: $this->operationScopes($descriptor->class, AsJsonApiResource::class),
             resourceClass: $descriptor->class,
+            actionLinks: $resource?->allActionLinks() ?? [],
         );
     }
 

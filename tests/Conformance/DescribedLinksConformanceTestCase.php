@@ -286,6 +286,57 @@ abstract class DescribedLinksConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('actions')]
+    public function anAlbumLinksItsDownloadOnlyWhileReleased(): void
+    {
+        $this->actingAs(new User(['id' => 1, 'name' => 'Writer', 'can_write' => true, 'can_read' => true, 'is_admin' => false]));
+        self::assertSame(self::BASE . '/albums/1/-actions/download', self::at($this->fetch('/api/albums/1'), 'data', 'links', 'download', 'href'));
+
+        $patch = $this->call('PATCH', '/api/albums/1', [], [], [], [
+            'HTTP_ACCEPT' => self::MEDIA_TYPE,
+            'CONTENT_TYPE' => self::MEDIA_TYPE,
+        ], (string) \json_encode(['data' => ['type' => 'albums', 'id' => '1', 'attributes' => ['status' => 'withdrawn']]]));
+        $patch->assertOk();
+
+        $links = self::at($this->fetch('/api/albums/1'), 'data', 'links');
+        self::assertIsArray($links);
+        self::assertArrayNotHasKey('download', $links);
+        self::assertArrayHasKey('reissue', $links);
+    }
+
+    #[Test]
+    #[Group('actions')]
+    public function theAdminServerHasNoDownloadActionSoItsAlbumsCarryNoDownloadLink(): void
+    {
+        // The album resource declares the link on every server, but only the default server
+        // exposes the action, so the admin server leaves the link out of the resource and
+        // its document.
+        $links = self::at($this->fetch('/admin/albums/1'), 'data', 'links');
+        self::assertIsArray($links);
+        self::assertArrayNotHasKey('download', $links);
+        self::assertArrayHasKey('store', $links);
+
+        $response = $this->get('/admin/docs.json');
+        $response->assertOk();
+        $document = $this->decode($response);
+        $properties = self::at($document, 'components', 'schemas', 'AlbumsResourceLinks', 'properties');
+        self::assertIsArray($properties);
+        self::assertArrayNotHasKey('download', $properties);
+        self::assertNull(self::at($document, 'paths', '/albums/{id}/-actions/download'));
+    }
+
+    #[Test]
+    #[Group('openapi')]
+    public function theDownloadLinkCarriesItsDeclaredDescription(): void
+    {
+        $response = $this->get(self::DOCUMENT);
+        $response->assertOk();
+        $description = self::at($this->decode($response), 'components', 'schemas', 'AlbumsResourceLinks', 'properties', 'download', 'description');
+        self::assertIsString($description);
+        self::assertStringStartsWith('A short-lived link to the album as CSV, present while the album is released.', $description);
+    }
+
+    #[Test]
+    #[Group('actions')]
     public function anActionLinkUsesTheConfiguredBaseUriWhateverTheRequestHost(): void
     {
         $this->actingAs(new User(['id' => 1, 'name' => 'Writer', 'can_write' => true, 'can_read' => true, 'is_admin' => false]));
