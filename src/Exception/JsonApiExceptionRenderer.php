@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Exception;
 
+use haddowg\JsonApi\Atomic\AtomicExtension;
 use haddowg\JsonApi\Exception\AccessDenied;
 use haddowg\JsonApi\Exception\AuthenticationRequired;
 use haddowg\JsonApi\Exception\JsonApiExceptionInterface;
+use haddowg\JsonApi\Exception\MediaTypeUnacceptable;
+use haddowg\JsonApi\Exception\MediaTypeUnsupported;
 use haddowg\JsonApi\Exception\MethodNotAllowed;
 use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Schema\Error\Error;
 use haddowg\JsonApi\Schema\Error\InternalServerError;
+use haddowg\JsonApiLaravel\Http\JsonApiController;
 use haddowg\JsonApiLaravel\Http\WireBody;
 use haddowg\JsonApiLaravel\Http\WireQuery;
 use haddowg\JsonApiLaravel\Routing\JsonApiRoute;
@@ -54,6 +58,12 @@ use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
  * each allowed method reaches on that path, and when one is a JSON:API route it renders
  * core's {@see MethodNotAllowed} under that route's server, with the `Allow` header. A
  * path none of whose routes is a JSON:API endpoint is left to Laravel (ADR 0065).
+ *
+ * On the Atomic Operations route every error document declares the atomic extension on
+ * its `Content-Type` `ext` parameter, as the rolled-back in-loop error already does: the
+ * empty-batch `400`, a parse or query-parameter error, the pre-flight `403`/`404` and a
+ * `405`. A `415` ({@see MediaTypeUnsupported}) or `406` ({@see MediaTypeUnacceptable})
+ * omits it, since the extension was not negotiated (ADR 0066, matching the bundle).
  *
  * Reporting/logging is deliberately NOT done here: unlike the Symfony bundle's
  * `ExceptionListener` (the only reporter in that kernel), Laravel's exception handler
@@ -113,9 +123,24 @@ final class JsonApiExceptionRenderer
         $psrRequest = WireBody::apply($this->psrHttpFactory->createRequest($request), $request)
             ->withQueryParams(WireQuery::params($request));
 
-        $psrResponse = $this->toErrorResponse($throwable)->toPsrResponse($server, $psrRequest);
+        $errorResponse = $this->toErrorResponse($throwable);
+        if (self::isAtomicRoute($request)
+            && !$throwable instanceof MediaTypeUnsupported
+            && !$throwable instanceof MediaTypeUnacceptable
+        ) {
+            $errorResponse = $errorResponse->withExtensions([AtomicExtension::URI]);
+        }
+
+        $psrResponse = $errorResponse->toPsrResponse($server, $psrRequest);
 
         return $this->httpFoundationFactory->createResponse($psrResponse);
+    }
+
+    private static function isAtomicRoute(Request $request): bool
+    {
+        $route = $request->route();
+
+        return $route instanceof Route && ($route->defaults[JsonApiController::ATOMIC_ATTRIBUTE] ?? null) === true;
     }
 
     /**

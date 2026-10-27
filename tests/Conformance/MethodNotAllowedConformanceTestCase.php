@@ -131,12 +131,13 @@ abstract class MethodNotAllowedConformanceTestCase extends Orchestra
 
         $response->assertStatus(405);
         $response->assertHeader('Allow', 'POST');
+        $response->assertHeader('Content-Type', self::ATOMIC);
         $response->assertJsonPath('errors.0.code', 'METHOD_NOT_ALLOWED');
 
         // An empty batch fails before the loop too, and the 405 carries the same media type.
         $empty = $this->call('POST', '/api/v5/operations', [], [], [], ['HTTP_ACCEPT' => self::ATOMIC, 'CONTENT_TYPE' => self::ATOMIC], '{"atomic:operations": []}');
         $empty->assertStatus(400);
-        self::assertSame($empty->headers->get('Content-Type'), $response->headers->get('Content-Type'));
+        $empty->assertHeader('Content-Type', self::ATOMIC);
     }
 
     #[Test]

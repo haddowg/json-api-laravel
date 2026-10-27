@@ -77,6 +77,14 @@ operation is bodyless). A failing operation aborts the whole batch: the transact
 and the response is the failing operation's JSON:API error, rendered through the standard
 [error pipeline](errors.md).
 
+Every error from `/operations` declares the extension on its `Content-Type`, as
+`application/vnd.api+json; ext="https://jsonapi.org/ext/atomic"`. That includes the errors
+raised before the batch runs: an empty or malformed batch, an unknown query parameter, a
+pre-flight refusal such as a missing scope or an unknown type, and a `405` for a method other
+than `POST`. The two exceptions are the `415` and the `406`. They mean the extension was not
+negotiated, so their `Content-Type` is plain `application/vnd.api+json`. The Symfony bundle
+applies the same rule.
+
 ## In the OpenAPI document
 
 The `/operations` endpoint is projected into the document with the atomic extension declared,

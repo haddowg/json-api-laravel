@@ -130,6 +130,7 @@ abstract class ScopeEnforcementTestCase extends Orchestra
     {
         $this->atomic([['op' => 'add', 'data' => $this->playlist()['data']]], 'alice#library:write')
             ->assertStatus(403)
+            ->assertHeader('Content-Type', self::ATOMIC_MEDIA_TYPE)
             ->assertJsonPath('errors.0.meta.missingScopes', ['batch']);
     }
 
@@ -142,6 +143,7 @@ abstract class ScopeEnforcementTestCase extends Orchestra
             ['op' => 'remove', 'ref' => ['type' => 'albums', 'id' => '1']],
         ], 'alice#batch library:write')
             ->assertStatus(403)
+            ->assertHeader('Content-Type', self::ATOMIC_MEDIA_TYPE)
             ->assertJsonPath('errors.0.code', 'INSUFFICIENT_SCOPE')
             ->assertJsonPath('errors.0.source.pointer', '/atomic:operations/1')
             ->assertJsonPath('errors.0.meta.missingScopes', ['catalog:write']);

@@ -58,6 +58,7 @@ final class AtomicAllowListTest extends Orchestra
             ['op' => 'add', 'data' => ['type' => 'atomic_catalog', 'attributes' => ['name' => 'sneaky']]],
         ])
             ->assertStatus(403)
+            ->assertHeader('Content-Type', self::ATOMIC_MEDIA_TYPE)
             ->assertJsonPath('errors.0.code', 'ATOMIC_OPERATION_NOT_EXPOSED');
 
         // The batch never ran: the seed row is the only catalog entry.
@@ -75,6 +76,7 @@ final class AtomicAllowListTest extends Orchestra
             ['op' => 'add', 'data' => ['type' => 'atomic_ledger', 'attributes' => ['name' => 'entry']]],
         ])
             ->assertStatus(403)
+            ->assertHeader('Content-Type', self::ATOMIC_MEDIA_TYPE)
             ->assertJsonPath('errors.0.code', 'ATOMIC_OPERATIONS_NOT_SUPPORTED');
     }
 
