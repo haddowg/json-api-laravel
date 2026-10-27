@@ -18,13 +18,16 @@ use Illuminate\Console\Command;
  * to `--output=DIR` (one `<type>.json` per type). The schema is the **same** core
  * {@see \haddowg\JsonApi\OpenApi\SchemaProjector} projection the OpenAPI document uses,
  * so the standalone artifact and the in-document component agree.
+ *
+ * `--compact` writes each document on one line, with the same encoding as the pretty default.
  */
 final class JsonSchemaExportCommand extends Command
 {
     protected $signature = 'jsonapi:jsonschema:export
         {--server= : The JSON:API server name to export (default: the "default" server)}
         {--type= : Export only this JSON:API type (default: every type)}
-        {--output= : Write to this file (single type) or directory (all types) instead of stdout}';
+        {--output= : Write to this file (single type) or directory (all types) instead of stdout}
+        {--compact : Write the JSON on one line instead of pretty-printing it}';
 
     protected $description = 'Export a server\'s per-type JSON Schema 2020-12 documents to a file, directory, or stdout.';
 
@@ -36,11 +39,12 @@ final class JsonSchemaExportCommand extends Command
         $type = \is_string($type) && $type !== '' ? $type : null;
         $outputPath = $this->option('output');
         $outputPath = \is_string($outputPath) && $outputPath !== '' ? $outputPath : null;
+        $compact = (bool) $this->option('compact');
 
         try {
             return $type !== null
-                ? $this->exportOne($schemas, $server, $type, $outputPath)
-                : $this->exportAll($schemas, $server, $outputPath);
+                ? $this->exportOne($schemas, $server, $type, $outputPath, $compact)
+                : $this->exportAll($schemas, $server, $outputPath, $compact);
         } catch (\Throwable $e) {
             $this->error(\sprintf('Could not export JSON Schema for server "%s": %s', $server, $e->getMessage()));
 
@@ -48,9 +52,9 @@ final class JsonSchemaExportCommand extends Command
         }
     }
 
-    private function exportOne(JsonSchemaFactory $schemas, string $server, string $type, ?string $outputPath): int
+    private function exportOne(JsonSchemaFactory $schemas, string $server, string $type, ?string $outputPath, bool $compact): int
     {
-        $json = $this->encode($schemas->forType($type, $server));
+        $json = $this->encode($schemas->forType($type, $server), $compact);
 
         if ($outputPath === null) {
             $this->output->write($json . "\n");
@@ -69,14 +73,14 @@ final class JsonSchemaExportCommand extends Command
         return self::SUCCESS;
     }
 
-    private function exportAll(JsonSchemaFactory $schemas, string $server, ?string $outputPath): int
+    private function exportAll(JsonSchemaFactory $schemas, string $server, ?string $outputPath, bool $compact): int
     {
         $documents = $schemas->forServer($server);
 
         if ($outputPath === null) {
             // No directory: emit a single JSON object keyed by type so stdout stays one
             // well-formed document.
-            $this->output->write($this->encode((object) $documents) . "\n");
+            $this->output->write($this->encode((object) $documents, $compact) . "\n");
 
             return self::SUCCESS;
         }
@@ -91,7 +95,7 @@ final class JsonSchemaExportCommand extends Command
             // Reuse the artifact store's path-segment sanitiser so a type carrying a
             // separator can't escape the output directory.
             $file = \rtrim($outputPath, '/') . '/' . ArtifactStore::sanitizeSegment((string) $type) . '.json';
-            if (\file_put_contents($file, $this->encode($document)) === false) {
+            if (\file_put_contents($file, $this->encode($document, $compact)) === false) {
                 $this->error(\sprintf('Could not write to "%s".', $file));
 
                 return self::FAILURE;
@@ -103,8 +107,10 @@ final class JsonSchemaExportCommand extends Command
         return self::SUCCESS;
     }
 
-    private function encode(\stdClass $document): string
+    private function encode(\stdClass $document, bool $compact): string
     {
-        return (string) \json_encode($document, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_PRETTY_PRINT);
+        $flags = \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE;
+
+        return (string) \json_encode($document, $compact ? $flags : $flags | \JSON_PRETTY_PRINT);
     }
 }

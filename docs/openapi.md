@@ -427,11 +427,18 @@ The export commands are **always available** (independent of the HTTP expose gat
 php artisan jsonapi:openapi:export --server=default --output=build/openapi.json
 php artisan jsonapi:openapi:export --server=admin --format=yaml
 php artisan jsonapi:jsonschema:export --server=default --output=build/schemas
+php artisan jsonapi:openapi:export --compact --output=build/openapi.min.json
 ```
 
 `--server` selects the server (default `default`); `--format` is `json` (default) or `yaml`;
 `--output` writes to a file/directory (omit for stdout). The document renders byte-clean
 (`toJsonString(true)."\n"`).
+
+Both commands pretty-print JSON by default. `--compact` writes each document on a single line
+with the same encoding otherwise: slashes and unicode stay unescaped, empty objects stay `{}`,
+and the trailing newline is there exactly when the pretty form has one. It works with stdout
+and `--output`. YAML has no compact form, so `jsonapi:openapi:export` rejects `--compact` with
+`--format=yaml` and exits with status `2`.
 
 `jsonapi:openapi:export` prints a warning on stderr for each value an
 [operation example](#operation-examples) needed and found no example for, naming the

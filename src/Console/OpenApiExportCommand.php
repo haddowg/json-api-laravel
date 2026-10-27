@@ -17,7 +17,9 @@ use Symfony\Component\Yaml\Yaml;
  *
  * `--format=yaml` requires `symfony/yaml`; without it the command fails with a clear
  * message rather than emitting broken output. `--combined` exports the single document
- * spanning every server (`multi_server: combined`).
+ * spanning every server (`multi_server: combined`). `--compact` writes the JSON on one
+ * line with the same encoding as the pretty default; YAML has no compact form, so
+ * `--compact` with `--format=yaml` is rejected.
  *
  * Each operation example the projector could not build, because a value it needed declares
  * no example, is printed as a warning on stderr, so a piped document stays clean, and so is
@@ -32,6 +34,7 @@ final class OpenApiExportCommand extends Command
         {--format=json : Output format: json or yaml}
         {--output= : Write to this file instead of stdout}
         {--combined : Export the single combined document spanning every server}
+        {--compact : Write the JSON on one line instead of pretty-printing it (JSON only)}
         {--strict : Fail, writing no document, when any operation example is missing or any required scope is undeclared}';
 
     protected $description = 'Export a server\'s OpenAPI 3.1 document (JSON or YAML) to a file or stdout.';
@@ -53,6 +56,13 @@ final class OpenApiExportCommand extends Command
         }
 
         $isYaml = $format === 'yaml' || $format === 'yml';
+        $compact = (bool) $this->option('compact');
+        if ($isYaml && $compact) {
+            $this->error('The --compact option only applies to JSON output; drop it or export with --format=json.');
+
+            return self::INVALID;
+        }
+
         if ($isYaml && !\class_exists(Yaml::class)) {
             $this->error('YAML export requires symfony/yaml; install it (composer require symfony/yaml) or export JSON.');
 
@@ -98,7 +108,7 @@ final class OpenApiExportCommand extends Command
         $document = $projection->document;
         $rendered = $isYaml
             ? Yaml::dump($document->toArray(), 16, 2, Yaml::DUMP_OBJECT_AS_MAP)
-            : $document->toJsonString(true) . "\n";
+            : $document->toJsonString(!$compact) . "\n";
 
         if ($outputFile === null) {
             // Write straight to the output stream (no styling) so a piped/redirected
