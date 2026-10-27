@@ -1011,9 +1011,9 @@ final class JsonApiServiceProvider extends ServiceProvider
 
     /**
      * Builds the per-server {@see ActionLinkContributor} threaded into a server's
-     * {@see \haddowg\JsonApi\Server\Server} — the out-of-band merge of each `asLink` custom
+     * {@see \haddowg\JsonApi\Server\Server} — the out-of-band merge of each linked custom
      * action's URL onto its mount type's resources. Returns `null` when the server declares no
-     * `asLink` action, so a server with none pays nothing (its resource links are exactly the
+     * resource-scope action, so a server with none pays nothing (its resource links are exactly the
      * author's + the convention self link). The serializer is resolved lazily (via the
      * memoized {@see ServerRegistry}) so building the Server — which is threaded this
      * contributor — does not recurse.
@@ -1023,9 +1023,11 @@ final class JsonApiServiceProvider extends ServiceProvider
         /** @var ActionRegistry $registry */
         $registry = $app->make(ActionRegistry::class);
 
+        // Every resource-scope action may link: through asLink, or through an ActionLink
+        // its type's resource declares, which only the live resource knows.
         $byType = [];
         foreach ($registry->forServer($server) as $descriptor) {
-            if ($descriptor->asLink) {
+            if ($descriptor->scope === \haddowg\JsonApiLaravel\Action\ActionScope::Resource) {
                 $byType[$descriptor->type][] = $descriptor;
             }
         }
@@ -1043,11 +1045,18 @@ final class JsonApiServiceProvider extends ServiceProvider
             return $handler;
         };
 
+        $actionLinksResolver = static function (string $type) use ($app, $server): array {
+            $jsonApiServer = $app->make(ServerRegistry::class)->get($server);
+
+            return $jsonApiServer->hasResourceFor($type) ? $jsonApiServer->resourceFor($type)->allActionLinks() : [];
+        };
+
         return new ActionLinkContributor(
             $byType,
             $resolver,
             $app->make(Authorizer::class),
             $handlerResolver,
+            $actionLinksResolver,
         );
     }
 
@@ -1265,6 +1274,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(TypeMetadataResolver::class),
                 $app->make(MetadataSource::class),
                 $this->serverNames(),
+                $app->make(ActionRegistry::class),
             );
         });
     }

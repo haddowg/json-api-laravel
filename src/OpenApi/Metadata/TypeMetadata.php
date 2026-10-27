@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
 use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionLinks;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresAlwaysCounted;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationExamples;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationExtensions;
@@ -20,6 +21,7 @@ use haddowg\JsonApi\OpenApi\Metadata\RelationMetadataInterface;
 use haddowg\JsonApi\OpenApi\Schema;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Link\ActionLink;
 use haddowg\JsonApi\Resource\Link\DeclaredLink;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
 
@@ -39,13 +41,14 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  * {@see DeclaresOperationExamples} it carries the `operationExamples` the resource attribute
  * declares. Through {@see DeclaresAlwaysCounted} it says whether the collection's paginator
  * counts on every request, so the collection example shows the total. Through
- * {@see DeclaresResourceLinks} it carries the resource's declared links, read from the live
- * resource when the document is built, since they hold closures the discovery snapshot can't.
+ * {@see DeclaresResourceLinks} and {@see DeclaresActionLinks} it carries the resource's
+ * declared links and action links, read from the live resource when the document is built,
+ * since they hold closures the discovery snapshot can't.
  * Through {@see DeclaresOperationScopes} it carries the attribute's `operationScopes`, and
  * through {@see DeclaresResourceClass} the class declaring the type, so a scope resolver can
  * read the application's own attributes off it.
  */
-final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresSingularName, DeclaresOperationExamples, DeclaresAlwaysCounted, DeclaresResourceLinks, DeclaresOperationScopes, DeclaresResourceClass
+final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresSingularName, DeclaresOperationExamples, DeclaresAlwaysCounted, DeclaresResourceLinks, DeclaresActionLinks, DeclaresOperationScopes, DeclaresResourceClass
 {
     /**
      * @param list<FieldInterface>            $fields
@@ -68,6 +71,7 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
      * @param list<DeclaredLink>                  $declaredLinks       the resource's built declared links, in declaration order
      * @param array<string, list<string>>         $operationScopes     the OAuth scope overrides keyed by operation name
      * @param class-string|null                   $resourceClass       the resource or serializer class declaring the type
+     * @param list<ActionLink>                    $actionLinks         the resource's built action links, in declaration order
      */
     public function __construct(
         private string $type,
@@ -99,6 +103,7 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
         private array $declaredLinks = [],
         private array $operationScopes = [],
         private ?string $resourceClass = null,
+        private array $actionLinks = [],
     ) {}
 
     public function operationScopes(): array
@@ -109,6 +114,11 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
     public function resourceClass(): ?string
     {
         return $this->resourceClass;
+    }
+
+    public function actionLinks(): array
+    {
+        return $this->actionLinks;
     }
 
     public function declaredLinks(): array

@@ -326,7 +326,7 @@ bare URL:
 
 Declared links render wherever the resource does: a fetch, a collection, `included`, and
 the related endpoint of a pivot relation. When two links share a name, a link
-`getLinks()` returns wins, then a declared link, then an `asLink` action link, then the
+`getLinks()` returns wins, then a declared link, then an action link (`asLink` or an [`ActionLink`](actions.md#showing-an-action-link-only-in-some-states)), then the
 convention `self`, which can't be declared. A declared link sharing its name with an
 action link fails the OpenAPI export. The [OpenAPI document](openapi.md#links-and-describedby)
 lists each declared link by name in `<Type>ResourceLinks`. `links()` runs on the live

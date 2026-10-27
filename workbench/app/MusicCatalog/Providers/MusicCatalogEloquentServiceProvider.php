@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\Models\User as AuthUser;
+use Workbench\App\MusicCatalog\Action\AdminDownloadAlbum;
 use Workbench\App\MusicCatalog\Action\DownloadAlbum;
 use Workbench\App\MusicCatalog\Action\ExportAlbums;
 use Workbench\App\MusicCatalog\Action\ImportAlbums;
@@ -107,6 +108,7 @@ final class MusicCatalogEloquentServiceProvider extends ServiceProvider
             UserResource::class,
             // In the bundle example's discovery order, which the document's paths follow.
             DownloadAlbum::class,
+            AdminDownloadAlbum::class,
             ExportAlbums::class,
             ImportAlbums::class,
             ReissueAlbum::class,

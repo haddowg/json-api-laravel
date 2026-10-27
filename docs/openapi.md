@@ -406,7 +406,9 @@ replaces the per-operation one, so set it only when a response should point some
 The generated document describes these links: each `<Type>ResourceLinks`,
 `<Type>DocumentLinks`, `<Type>CollectionLinks` and `<Type><Rel>RelationshipLinks`
 component lists the members that context renders, with an example carrying the same
-`describedby`, and an `asLink` action is listed by its name. A
+`describedby`, and an `asLink` action is listed by its name. So is an action the resource
+links with an [`ActionLink`](actions.md#showing-an-action-link-only-in-some-states),
+described by its `describedAs()` when it sets one. A
 [declared link](resources.md#declared-links), such as the album's `store` above, is
 listed by its name too, with its description, its `meta` members and an example, and
 shows up in the operation examples. A document whose types declare a link is stamped
