@@ -191,8 +191,8 @@ abstract class ActionLinksConformanceTestCase extends Orchestra
         RecordResource::$variant = 'missing';
 
         self::assertContains(
-            'The JSON:API resource ' . RecordResource::class . ' declares an action link for "retract", but type "records" has no resource-scope '
-            . 'action with that path on server "default". Declare #[AsJsonApiAction(type: \'records\', path: \'retract\')] on that server, or remove the action link.',
+            'The JSON:API resource ' . RecordResource::class . ' declares an action link for "retract", but no server serving type "records" has a '
+            . 'resource-scope action with that path. Declare #[AsJsonApiAction(type: \'records\', path: \'retract\')], or remove the action link.',
             $this->warm(),
         );
     }

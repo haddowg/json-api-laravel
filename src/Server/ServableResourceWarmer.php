@@ -71,8 +71,9 @@ use Illuminate\Database\Eloquent\Model;
  *    configured server rather than its document title.
  *  - **A resource's action links must name an action it has.** An
  *    {@see \haddowg\JsonApi\Resource\Link\ActionLink} in `links()` links a resource-scope
- *    custom action of the type on this server; one naming a path no such action has would
- *    never render, so it is reported, naming the resource class (ADR 0064). Building the
+ *    custom action of the type. A server without it leaves the link out, but a path no
+ *    server serving the type has would never render, so it is reported, naming the
+ *    resource class (ADR 0064). Building the
  *    links also throws core's own declaration errors: two action links for one path, or a
  *    declared link named like an action link.
  *
@@ -222,8 +223,8 @@ final class ServableResourceWarmer
 
     /**
      * Builds the resource's links, so a duplicate or clashing declaration throws, and reports
-     * each declared action link that names no resource-scope action of `$type` on
-     * `$serverName`.
+     * each declared action link whose path no server serving `$type` has a resource-scope
+     * action for. A server without the action leaves the link out, so only that fails.
      *
      * @param list<string> $problems
      */
@@ -238,22 +239,39 @@ final class ServableResourceWarmer
         // resource class, as the OpenAPI metadata would when it reads the same links.
         $resource->allLinks();
         foreach ($resource->allActionLinks() as $link) {
-            if ($this->actions?->descriptorFor($serverName, $type, ActionScope::Resource, $link->path) !== null) {
-                continue;
+            foreach ($this->serverNames as $candidate) {
+                if ($this->servesType($candidate, $type)
+                    && $this->actions?->descriptorFor($candidate, $type, ActionScope::Resource, $link->path) !== null) {
+                    continue 2;
+                }
             }
 
-            $problems[] = \sprintf(
-                'The JSON:API resource %s declares an action link for "%s", but type "%s" has no resource-scope '
-                . 'action with that path on server "%s". Declare #[AsJsonApiAction(type: \'%s\', path: \'%s\')] '
-                . 'on that server, or remove the action link.',
+            $problem = \sprintf(
+                'The JSON:API resource %s declares an action link for "%s", but no server serving type "%s" has a '
+                . 'resource-scope action with that path. Declare #[AsJsonApiAction(type: \'%s\', path: \'%s\')], '
+                . 'or remove the action link.',
                 $resource::class,
                 $link->path,
                 $type,
-                $serverName,
                 $type,
                 $link->path,
             );
+            // Reported once, though every server serving the type reaches it.
+            if (!\in_array($problem, $problems, true)) {
+                $problems[] = $problem;
+            }
         }
+    }
+
+    private function servesType(string $serverName, string $type): bool
+    {
+        foreach ($this->discovery->resourcesFor($serverName) as $descriptor) {
+            if ($descriptor->type === $type) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

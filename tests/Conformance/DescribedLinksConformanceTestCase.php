@@ -304,6 +304,27 @@ abstract class DescribedLinksConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    #[Group('actions')]
+    public function theAdminServerHasNoDownloadActionSoItsAlbumsCarryNoDownloadLink(): void
+    {
+        // The album resource declares the link on every server, but only the default server
+        // exposes the action, so the admin server leaves the link out of the resource and
+        // its document.
+        $links = self::at($this->fetch('/admin/albums/1'), 'data', 'links');
+        self::assertIsArray($links);
+        self::assertArrayNotHasKey('download', $links);
+        self::assertArrayHasKey('store', $links);
+
+        $response = $this->get('/admin/docs.json');
+        $response->assertOk();
+        $document = $this->decode($response);
+        $properties = self::at($document, 'components', 'schemas', 'AlbumsResourceLinks', 'properties');
+        self::assertIsArray($properties);
+        self::assertArrayNotHasKey('download', $properties);
+        self::assertNull(self::at($document, 'paths', '/albums/{id}/-actions/download'));
+    }
+
+    #[Test]
     #[Group('openapi')]
     public function theDownloadLinkCarriesItsDeclaredDescription(): void
     {
