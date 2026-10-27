@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.1](https://github.com/haddowg/json-api-laravel/compare/v1.16.0...v1.16.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* build action links on the server's link base ([#158](https://github.com/haddowg/json-api-laravel/issues/158)) ([7b9c5f4](https://github.com/haddowg/json-api-laravel/commit/7b9c5f461cdd116aa454dd7cefeeb10a21778b20))
+
 ## [1.16.0](https://github.com/haddowg/json-api-laravel/compare/v1.15.2...v1.16.0) (2026-10-27)
 
 
