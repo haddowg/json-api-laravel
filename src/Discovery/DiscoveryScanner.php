@@ -668,6 +668,7 @@ final class DiscoveryScanner
             destructive: $attribute->destructive,
             idempotent: $attribute->idempotent,
             extensions: $attribute->extensions,
+            scopes: $attribute->scopes,
         );
     }
 

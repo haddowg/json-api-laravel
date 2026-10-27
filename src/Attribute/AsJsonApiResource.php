@@ -116,6 +116,12 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * `false` or `null` removes the operation's example. An unknown name, or a CRUD operation the
  * type does not expose, is a constructor {@see \LogicException}; core fails the projection for
  * a relation the type does not have.
+ *
+ * **OAuth scopes.** `operationScopes` names the scopes an operation needs, keyed exactly like
+ * `operationExamples`, overriding the application's
+ * {@see \haddowg\JsonApi\Scope\OperationScopeResolverInterface} for that operation. `[]`
+ * declares that it needs none. `fetchOne` and `fetchCollection` may be named even when the type
+ * does not expose them, because an `?include` reaching the type is checked against them.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final readonly class AsJsonApiResource
@@ -161,6 +167,7 @@ final readonly class AsJsonApiResource
      * @param array<string, array<string, mixed>>                        $operationExtensions per-CRUD-operation vendor extensions keyed by {@see Operation} case value, merged over `extensions`
      * @param string|null                                                $singular        the noun the generated OpenAPI prose uses for one resource, as words without an article (null = inflected from the type name)
      * @param array<string, OperationExample|false|null>                $operationExamples the OpenAPI example overrides keyed by operation name: an {@see OperationExample} replaces the parts it names, `false` or `null` removes the example
+     * @param array<string, list<string>>                                $operationScopes the OAuth scopes each named operation needs, keyed like `operationExamples`; `[]` declares none
      * @param bool|SoftDeletes                                           $softDeletes     opt this type into first-class soft deletes: `true` (or a configured {@see SoftDeletes}) synthesizes the `restore`/`force-delete` actions (`DELETE` stays a recoverable soft delete); `false` (the default) leaves the type unaffected
      */
     public function __construct(
@@ -188,6 +195,7 @@ final readonly class AsJsonApiResource
         public array $operationExtensions = [],
         public ?string $singular = null,
         public array $operationExamples = [],
+        public array $operationScopes = [],
     ) {
         if ($singular !== null && \trim($singular) === '') {
             throw new \LogicException(
@@ -222,6 +230,12 @@ final readonly class AsJsonApiResource
         OperationExamples::assertValid(
             'AsJsonApiResource',
             $this->operationExamples,
+            self::exposedOperations($operations, $readOnly),
+            'add it to `operations` (or drop `readOnly`)',
+        );
+        OperationScopes::assertValid(
+            'AsJsonApiResource',
+            $this->operationScopes,
             self::exposedOperations($operations, $readOnly),
             'add it to `operations` (or drop `readOnly`)',
         );

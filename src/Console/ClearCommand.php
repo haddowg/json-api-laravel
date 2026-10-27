@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Console;
 
 use haddowg\JsonApiLaravel\Discovery\DiscoverySnapshotWriter;
 use haddowg\JsonApiLaravel\OpenApi\ArtifactStore;
+use haddowg\JsonApiLaravel\Scope\ScopeTables;
 use Illuminate\Console\Command;
 
 /**
@@ -19,9 +20,10 @@ final class ClearCommand extends Command
 
     protected $description = 'Remove the warmed JSON:API OpenAPI document + JSON Schema artifacts.';
 
-    public function handle(ArtifactStore $store, DiscoverySnapshotWriter $snapshot): int
+    public function handle(ArtifactStore $store, DiscoverySnapshotWriter $snapshot, ScopeTables $scopes): int
     {
         $store->clear();
+        $scopes->clear();
 
         $cachePath = config('jsonapi.discovery.cache');
         if (\is_string($cachePath) && $cachePath !== '') {

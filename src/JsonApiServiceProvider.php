@@ -4,7 +4,15 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel;
 
+use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
 use haddowg\JsonApi\OpenApi\Serve\ServeArtifactCodec;
+use haddowg\JsonApi\Scope\ExactScopeMatcher;
+use haddowg\JsonApi\Scope\GrantedScopesProviderInterface;
+use haddowg\JsonApi\Scope\OperationScopeResolverInterface;
+use haddowg\JsonApi\Scope\ScopeCatalogInterface;
+use haddowg\JsonApi\Scope\ScopeChecker;
+use haddowg\JsonApi\Scope\ScopeEnforcer;
+use haddowg\JsonApi\Scope\ScopeMatcherInterface;
 use haddowg\JsonApi\Serializer\RelationshipLoadStateInterface;
 use haddowg\JsonApi\Serializer\ResourceLinkContributorInterface;
 use haddowg\JsonApi\Validation\SchemaValueValidator;
@@ -66,6 +74,7 @@ use haddowg\JsonApiLaravel\Operation\TargetResolver;
 use haddowg\JsonApiLaravel\Routing\JsonApiRoute;
 use haddowg\JsonApiLaravel\Routing\OpenApiRouteRegistrar;
 use haddowg\JsonApiLaravel\Routing\RouteRegistrar;
+use haddowg\JsonApiLaravel\Scope\ScopeTables;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipPagination;
@@ -176,6 +185,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->registerAtomic();
         $this->registerResponseHeaders();
         $this->registerServers();
+        $this->registerScopes();
         $this->registerOpenApi();
 
         $this->app->singleton(TargetResolver::class);
@@ -882,6 +892,10 @@ final class JsonApiServiceProvider extends ServiceProvider
                     ),
                     $app->make(ServerNames::class),
                     ReadOnlyAttributesConfig::forServer(config('jsonapi.reject_read_only_attributes'), $serversConfig, $server),
+                    // Scopes are enforced only when the app says which ones a request grants.
+                    $app->bound(GrantedScopesProviderInterface::class)
+                        ? static fn(): ScopeEnforcer => self::scopeEnforcer($app, $server)
+                        : null,
                 );
             }
 
@@ -891,6 +905,80 @@ final class JsonApiServiceProvider extends ServiceProvider
                 static fn(): DescribedByResolverProvider => $app->make(DescribedByResolverProvider::class),
             );
         });
+    }
+
+    /**
+     * Binds the OAuth scope services. Each one the app supplies is optional and bound in its
+     * own container: a {@see GrantedScopesProviderInterface} turns enforcement on, an
+     * {@see OperationScopeResolverInterface} says which scopes an operation needs (none
+     * without one, unless an attribute declares them), a {@see ScopeMatcherInterface}
+     * replaces the exact match, and a {@see ScopeCatalogInterface} describes the scopes for
+     * the OpenAPI document. Nothing is read from config but names, so `config:cache` holds.
+     */
+    private function registerScopes(): void
+    {
+        $this->app->singleton(ScopeTables::class, function (Container $app): ScopeTables {
+            $resolver = $app->bound(OperationScopeResolverInterface::class) ? $app->make(OperationScopeResolverInterface::class) : null;
+            \assert($resolver === null || $resolver instanceof OperationScopeResolverInterface);
+            $catalog = $app->bound(ScopeCatalogInterface::class) ? $app->make(ScopeCatalogInterface::class) : null;
+            \assert($catalog === null || $catalog instanceof ScopeCatalogInterface);
+            $scheme = config('jsonapi.openapi.security.scope_scheme');
+            $store = config('jsonapi.scopes.cache_store');
+
+            $cache = null;
+            if ($app->bound('cache')) {
+                $manager = $app->make('cache');
+                \assert($manager instanceof \Illuminate\Contracts\Cache\Factory);
+                $cache = $manager->store(\is_string($store) && $store !== '' ? $store : null);
+            }
+
+            return new ScopeTables(
+                $app->make(Discovery::class),
+                static fn(string $server): ServerMetadataInterface => $app->make(MetadataSource::class)->forServer($server),
+                $this->serverNames(),
+                $resolver,
+                $catalog,
+                \is_string($scheme) && $scheme !== '' ? $scheme : ScopeTables::DEFAULT_SCHEME,
+                $cache,
+            );
+        });
+
+        $this->app->singleton(ScopeChecker::class, static fn(Container $app): ScopeChecker => new ScopeChecker(self::scopeMatcher($app)));
+    }
+
+    /**
+     * The app's {@see ScopeMatcherInterface}, or the exact match.
+     */
+    private static function scopeMatcher(Container $app): ScopeMatcherInterface
+    {
+        if (!$app->bound(ScopeMatcherInterface::class)) {
+            return new ExactScopeMatcher();
+        }
+
+        $matcher = $app->make(ScopeMatcherInterface::class);
+        \assert($matcher instanceof ScopeMatcherInterface);
+
+        return $matcher;
+    }
+
+    /**
+     * The scope enforcer one server runs, checking the table the scope tables hold for it.
+     */
+    private static function scopeEnforcer(Container $app, string $server): ScopeEnforcer
+    {
+        $granted = $app->make(GrantedScopesProviderInterface::class);
+        \assert($granted instanceof GrantedScopesProviderInterface);
+        $tables = $app->make(ScopeTables::class);
+        \assert($tables instanceof ScopeTables);
+        $logger = $app->bound(LoggerInterface::class) ? $app->make(LoggerInterface::class) : null;
+
+        return new ScopeEnforcer(
+            $granted,
+            $tables->builderFor($server),
+            $tables->tableFor($server),
+            self::scopeMatcher($app),
+            $logger instanceof LoggerInterface ? $logger : new \Psr\Log\NullLogger(),
+        );
     }
 
     /**
@@ -964,6 +1052,11 @@ final class JsonApiServiceProvider extends ServiceProvider
             $atomicEnabled = config('jsonapi.atomic_operations.enabled', false);
             /** @var string $atomicPath */
             $atomicPath = config('jsonapi.atomic_operations.path', '/operations');
+            $atomicScopes = config('jsonapi.atomic_operations.scopes');
+            if ($atomicScopes !== null) {
+                \haddowg\JsonApiLaravel\Attribute\OperationScopes::assertList('jsonapi.atomic_operations.scopes', $atomicScopes);
+            }
+            /** @var list<string>|null $atomicScopes */
 
             $actions = $app->bound(ActionMetadataProviderInterface::class)
                 ? $app->make(ActionMetadataProviderInterface::class)
@@ -984,6 +1077,8 @@ final class JsonApiServiceProvider extends ServiceProvider
                 new PrefixServers($app->make(Router::class)),
                 $app->make(RelationCriteriaFactory::class),
                 $app->make(DocumentUrlProvider::class),
+                $atomicScopes,
+                $app->make(ScopeTables::class),
             );
         });
 

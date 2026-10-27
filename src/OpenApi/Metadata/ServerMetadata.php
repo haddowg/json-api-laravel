@@ -12,6 +12,7 @@ use haddowg\JsonApi\OpenApi\Metadata\AtomicOperationsMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\ContributesErrorCodes;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresExampleGeneration;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresLinkObjects;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationScopeTable;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresReadOnlyAttributeRejection;
 use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\TypeMetadataInterface;
@@ -19,6 +20,8 @@ use haddowg\JsonApi\OpenApi\SecurityRequirement;
 use haddowg\JsonApi\OpenApi\SecurityScheme;
 use haddowg\JsonApi\OpenApi\Server;
 use haddowg\JsonApi\OpenApi\Tag;
+use haddowg\JsonApi\Scope\ScopeTable;
+use haddowg\JsonApiLaravel\Scope\ScopeTables;
 
 /**
  * One server's worth of OpenAPI metadata, assembled by the {@see MetadataSource} into
@@ -41,8 +44,13 @@ use haddowg\JsonApi\OpenApi\Tag;
  * {@see DeclaresReadOnlyAttributeRejection}, so the error catalogue lists the `403` a server
  * that refuses read-only attributes can answer. Through {@see DeclaresExampleGeneration} it
  * carries the `openapi.examples` switch, so a server can turn generated examples off.
+ *
+ * Through {@see DeclaresOperationScopeTable} it hands the projector the scope table the
+ * server enforces. The table is fetched from {@see ScopeTables} only when it is read, because
+ * building it needs this server's metadata. Without the service the table is empty, which
+ * leaves the document unchanged.
  */
-final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLinkObjects, DeclaresReadOnlyAttributeRejection, DeclaresExampleGeneration
+final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLinkObjects, DeclaresReadOnlyAttributeRejection, DeclaresExampleGeneration, DeclaresOperationScopeTable
 {
     /**
      * @param list<Server>                  $servers
@@ -52,6 +60,7 @@ final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLi
      * @param list<TypeMetadataInterface>   $types
      * @param list<string>                  $profiles
      * @param list<ErrorCatalogSourceInterface> $errorSources
+     * @param string|null                   $scopeServer the server whose scope table this is, null for every server's merged
      */
     public function __construct(
         private string $title,
@@ -73,7 +82,28 @@ final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLi
         private ?string $documentUrl = null,
         private bool $rejectsReadOnlyAttributes = false,
         private bool $generatesExamples = true,
+        private ?ScopeTables $scopes = null,
+        private ?string $scopeServer = null,
     ) {}
+
+    public function scopeTable(): ScopeTable
+    {
+        if ($this->scopes === null) {
+            return new ScopeTable();
+        }
+
+        return $this->scopeServer === null ? $this->scopes->combined() : $this->scopes->tableFor($this->scopeServer);
+    }
+
+    public function scopeScheme(): string
+    {
+        return $this->scopes?->scheme() ?? ScopeTables::DEFAULT_SCHEME;
+    }
+
+    public function scopeCatalog(): array
+    {
+        return $this->scopes?->catalog() ?? [];
+    }
 
     public function generatesExamples(): bool
     {

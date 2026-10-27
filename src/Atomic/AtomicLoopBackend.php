@@ -29,6 +29,7 @@ use haddowg\JsonApi\Resource\Field\AbstractRelationValue;
 use haddowg\JsonApi\Response\AbstractResponse;
 use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
+use haddowg\JsonApi\Scope\ScopeEnforcer;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
@@ -70,11 +71,13 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * operation can reference it (a duplicate throws
  * {@see \haddowg\JsonApi\Exception\LocalIdConflict}).
  *
- * **Pre-flight.** Before opening anything, two refusals run: (1) every sub-operation must
+ * **Pre-flight.** Before opening anything, three refusals run: (1) every sub-operation must
  * target a CRUD operation its type exposes on the HTTP surface — the same per-type allow-list
  * the router gates direct calls with — else the batch is refused with
  * {@see AtomicOperationNotExposed} (`403`), so a `readOnly` type cannot be written via the
- * batch; (2) every participating type's persister is resolved and must implement
+ * batch; (2) the request's token must grant the OAuth scopes each sub-operation needs, else
+ * the batch is refused with `403 INSUFFICIENT_SCOPE` pointing at the first failing entry;
+ * (3) every participating type's persister is resolved and must implement
  * {@see TransactionalDataPersisterInterface}, else the batch is refused with
  * {@see AtomicOperationsNotSupported} (`403`) before a single write — and our Eloquent /
  * in-memory reference persisters both nest as savepoints, so a single shared persister
@@ -125,7 +128,12 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         // would write a type in a way its HTTP surface forbids (the per-type operation
         // allow-list the router gates direct calls with), then resolve every participating
         // type's persister and refuse if ANY is not transactional.
-        $this->guardExposedOperations();
+        $targets = [];
+        foreach ($this->descriptors as $descriptor) {
+            $targets[$descriptor->index] = $this->targetOf($descriptor);
+        }
+        $this->guardExposedOperations($targets);
+        $this->enforceScopes($targets);
         $this->transactional = $this->collectTransactionalPersisters();
     }
 
@@ -264,14 +272,14 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
      * for an Update-exposed type). A target type absent from the map declares no resource, so
      * it exposes nothing and every write is refused.
      *
+     * @param array<int, array{0: string, 1: OperationKey}> $targets each operation's type and key, by batch index
+     *
      * @throws AtomicTargetTypeUnknown
      * @throws AtomicOperationNotExposed
-     * @throws AtomicHrefUnresolvable
      */
-    private function guardExposedOperations(): void
+    private function guardExposedOperations(array $targets): void
     {
-        foreach ($this->descriptors as $descriptor) {
-            [$type, $key] = $this->targetOf($descriptor);
+        foreach ($targets as [$type, $key]) {
 
             // The batch runs on one server: a type that server does not serve is unknown to
             // it, as a direct call to another server's route would be.
@@ -296,6 +304,32 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
                 throw new AtomicOperationNotExposed($type, $required->value);
             }
         }
+    }
+
+    /**
+     * Refuses the whole batch, in pre-flight, when the request's token lacks a scope any of
+     * its operations needs. The endpoint's own scopes were checked on dispatch; this checks
+     * each operation as the equivalent direct call would be, so a batch cannot reach what
+     * its token could not reach one request at a time. A create or update carrying
+     * `data.relationships` needs only its own scopes.
+     *
+     * @param array<int, array{0: string, 1: OperationKey}> $targets each operation's type and key, by batch index
+     *
+     * @throws \haddowg\JsonApi\Exception\InsufficientScope
+     */
+    private function enforceScopes(array $targets): void
+    {
+        $enforcer = ScopeEnforcer::forServer($this->server);
+        if ($enforcer === null) {
+            return;
+        }
+
+        $operations = [];
+        foreach ($targets as $index => [$type, $key]) {
+            $operations[$index] = [$type, $key->withType($type)];
+        }
+
+        $enforcer->enforceBatch($this->request, $operations);
     }
 
     /**

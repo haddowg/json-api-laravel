@@ -8,6 +8,7 @@ use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\DiscoverySnapshotWriter;
 use haddowg\JsonApiLaravel\OpenApi\DocumentRouteWarmer;
 use haddowg\JsonApiLaravel\OpenApi\DocumentWarmer;
+use haddowg\JsonApiLaravel\Scope\ScopeTables;
 use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use Illuminate\Console\Command;
 
@@ -21,6 +22,8 @@ use Illuminate\Console\Command;
  *    problem it reports (a routed type with no provider/persister, a missing/duplicate Id,
  *    a non-discriminating polymorphic candidate, an Eloquent relation with no model method)
  *    fails this command, so a bad config fails the deploy step rather than a runtime 500.
+ *  - **Scope tables ({@see ScopeTables}) — mandatory.** Every server's OAuth scope table is
+ *    built, so a resolver error or an unknown `operationScopes` key fails the command.
  *  - **Artifact warming ({@see DocumentRouteWarmer}, then {@see DocumentWarmer}) —
  *    optional / non-fatal.** A docs build failure, or a server whose document no route
  *    serves, is logged and reported as a warning but never fails the command; the
@@ -58,6 +61,16 @@ final class OptimizeCommand extends Command
 
         if ($problems !== []) {
             $this->error(\sprintf('JSON:API servability validation failed with %d problem(s).', \count($problems)));
+
+            return self::FAILURE;
+        }
+
+        // Phase 1b — mandatory: every server's OAuth scope table must build. A resolver that
+        // throws, or an override naming an operation the type lacks, fails the deploy.
+        try {
+            $this->laravel->make(ScopeTables::class)->rebuild();
+        } catch (\LogicException $e) {
+            $this->error(\sprintf('JSON:API scope table build failed: %s', $e->getMessage()));
 
             return self::FAILURE;
         }

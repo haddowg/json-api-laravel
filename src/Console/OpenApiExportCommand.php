@@ -20,8 +20,10 @@ use Symfony\Component\Yaml\Yaml;
  * spanning every server (`multi_server: combined`).
  *
  * Each operation example the projector could not build, because a value it needed declares
- * no example, is printed as a warning on stderr, so a piped document stays clean. `--strict`
- * turns any such warning into a failure and writes no document.
+ * no example, is printed as a warning on stderr, so a piped document stays clean, and so is
+ * each OAuth scope an operation needs that neither the scope catalogue nor the scope scheme
+ * declares. `--strict` turns either into a failure and writes no document. A scope scheme
+ * that is not `oauth2` is only ever a warning.
  */
 final class OpenApiExportCommand extends Command
 {
@@ -30,7 +32,7 @@ final class OpenApiExportCommand extends Command
         {--format=json : Output format: json or yaml}
         {--output= : Write to this file instead of stdout}
         {--combined : Export the single combined document spanning every server}
-        {--strict : Fail, writing no document, when any operation example is missing}';
+        {--strict : Fail, writing no document, when any operation example is missing or any required scope is undeclared}';
 
     protected $description = 'Export a server\'s OpenAPI 3.1 document (JSON or YAML) to a file or stdout.';
 
@@ -69,12 +71,26 @@ final class OpenApiExportCommand extends Command
         foreach ($projection->missingExamples as $missing) {
             $errors->writeln(\sprintf('<comment>Warning: %s</comment>', $missing->message()));
         }
+        foreach ($projection->undeclaredScopes as $undeclared) {
+            $errors->writeln(\sprintf('<comment>Warning: %s</comment>', $undeclared->message()));
+        }
+        if ($projection->scopeScheme !== null) {
+            $errors->writeln(\sprintf('<comment>Warning: %s</comment>', $projection->scopeScheme->message()));
+        }
 
-        if ($projection->missingExamples !== [] && (bool) $this->option('strict')) {
-            $errors->writeln(\sprintf(
-                '<error>%d operation example(s) missing, and --strict fails the export on any.</error>',
-                \count($projection->missingExamples),
-            ));
+        if ((bool) $this->option('strict') && ($projection->missingExamples !== [] || $projection->undeclaredScopes !== [])) {
+            if ($projection->missingExamples !== []) {
+                $errors->writeln(\sprintf(
+                    '<error>%d operation example(s) missing, and --strict fails the export on any.</error>',
+                    \count($projection->missingExamples),
+                ));
+            }
+            if ($projection->undeclaredScopes !== []) {
+                $errors->writeln(\sprintf(
+                    '<error>%d required scope(s) undeclared, and --strict fails the export on any.</error>',
+                    \count($projection->undeclaredScopes),
+                ));
+            }
 
             return self::FAILURE;
         }

@@ -250,10 +250,40 @@ return [
     | The JSON:API Atomic Operations extension endpoint (opt-in; wired in a later
     | phase). `path` is the batch endpoint path.
     |
+    | `scopes` lists the OAuth scopes the endpoint itself needs, such as
+    | ['batch']. Null asks your scope resolver, and [] declares none. Each
+    | operation in a batch is still checked against its own scopes, before the
+    | batch writes anything.
+    |
     */
     'atomic_operations' => [
         'enabled' => false,
         'path' => '/operations',
+        'scopes' => null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | OAuth scopes
+    |--------------------------------------------------------------------------
+    |
+    | A request is refused with a 403 INSUFFICIENT_SCOPE when its access token
+    | lacks a scope its operation needs. You turn this on by binding services in
+    | your container, never here, so `config:cache` keeps working:
+    |
+    |   GrantedScopesProviderInterface  reads the request's granted scopes, and
+    |                                   enforcement runs only when it is bound
+    |   OperationScopeResolverInterface says which scopes an operation needs
+    |   ScopeMatcherInterface           replaces the exact string match
+    |   ScopeCatalogInterface           describes each scope for OpenAPI
+    |
+    | All four live in haddowg\JsonApi\Scope. The resolved scopes are kept in
+    | the discovery snapshot `jsonapi:optimize` writes, or without one in the
+    | cache store named by `cache_store` (null is the default store).
+    |
+    */
+    'scopes' => [
+        'cache_store' => null,
     ],
 
     /*
@@ -377,9 +407,12 @@ return [
         'tags' => [],
 
         // Named security schemes + the document-level default requirement.
+        // `scope_scheme` names the scheme each operation's OAuth scopes are listed
+        // under; it should be an oauth2 scheme declared in `schemes`.
         'security' => [
             'schemes' => [],
             'default_requirement' => [],
+            'scope_scheme' => 'oauth2',
         ],
 
         'externalDocs' => null,
