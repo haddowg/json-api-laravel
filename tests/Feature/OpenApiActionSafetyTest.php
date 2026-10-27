@@ -96,9 +96,10 @@ final class OpenApiActionSafetyTest extends Orchestra
     }
 
     #[Test]
-    public function the_document_is_stamped_with_the_contract_that_introduced_action_safety(): void
+    public function the_document_is_stamped_with_the_baseline_that_overtook_action_safety(): void
     {
-        self::assertSame(['contract' => 15], $this->arrayAt($this->document(), 'info', 'x-generator'));
+        // Action safety is tier 15, but the shared links components raised the baseline to 18.
+        self::assertSame(['contract' => 18], $this->arrayAt($this->document(), 'info', 'x-generator'));
     }
 
     #[Test]
