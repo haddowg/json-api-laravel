@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.0](https://github.com/haddowg/json-api-laravel/compare/v1.17.1...v1.18.0) (2026-10-27)
+
+
+### Features
+
+* add a --compact option to the export commands ([#164](https://github.com/haddowg/json-api-laravel/issues/164)) ([4d3ac01](https://github.com/haddowg/json-api-laravel/commit/4d3ac015508a9fbc9d9ee321f418ac35d0f92200))
+
 ## [1.17.1](https://github.com/haddowg/json-api-laravel/compare/v1.17.0...v1.17.1) (2026-10-27)
 
 
