@@ -65,9 +65,9 @@ a JSON:API route it renders core's `MethodNotAllowed` under that route's server:
 ```
 
 The response keeps Laravel's `Allow` header. The method is refused before content
-negotiation, so the document is JSON:API whatever the `Accept` header asks for, and on the
-atomic endpoint it declares the atomic `ext`, as the endpoint's other errors do
-(see [atomic operations](atomic-operations.md#responses-and-errors)). A path
+negotiation, so the document is JSON:API whatever the `Accept` header asks for. On the atomic
+endpoint it declares the atomic `ext` when the request named it on `Content-Type` or `Accept`,
+and is plain JSON:API otherwise (see [atomic operations](atomic-operations.md#responses-and-errors)). A path
 whose routes are none of them JSON:API endpoints, such as a route of your own under the same
 prefix, keeps Laravel's own `405`. The OpenAPI document catalogues `METHOD_NOT_ALLOWED` but
 lists no `405` response on any operation, since an operation is one method on one path.

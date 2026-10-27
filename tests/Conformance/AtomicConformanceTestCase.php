@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Tests\Conformance;
 use haddowg\JsonApi\Atomic\AtomicExtension;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use Illuminate\Testing\TestResponse;
+use Orchestra\Testbench\Attributes\DefineEnvironment;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
@@ -262,6 +263,60 @@ abstract class AtomicConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:atomic')]
+    public function aMethodTheEndpointDoesNotAcceptDeclaresTheAtomicExtOnlyWhenTheRequestNamedIt(): void
+    {
+        $this->call('GET', '/api/operations', [], [], [], ['HTTP_ACCEPT' => self::ATOMIC_MEDIA_TYPE])
+            ->assertStatus(405)
+            ->assertHeader('Content-Type', self::ATOMIC_MEDIA_TYPE);
+
+        $this->call('GET', '/api/operations', [], [], [], ['HTTP_ACCEPT' => 'text/html, ' . self::ATOMIC_MEDIA_TYPE . ';q=0.9'])
+            ->assertStatus(405)
+            ->assertHeader('Content-Type', self::ATOMIC_MEDIA_TYPE);
+
+        $this->call('GET', '/api/operations', [], [], [], ['HTTP_ACCEPT' => self::MEDIA_TYPE])
+            ->assertStatus(405)
+            ->assertHeader('Content-Type', self::MEDIA_TYPE);
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    #[DefineEnvironment('behindAuthMiddleware')]
+    public function anAuthMiddleware401DeclaresTheAtomicExtOnlyWhenTheRequestNamedIt(): void
+    {
+        $operations = [['op' => 'remove', 'ref' => ['type' => 'artists', 'id' => '1']]];
+
+        $this->atomic($operations)
+            ->assertStatus(401)
+            ->assertJsonPath('errors.0.code', 'AUTHENTICATION_REQUIRED')
+            ->assertHeader('Content-Type', self::ATOMIC_MEDIA_TYPE);
+
+        $this->atomic($operations, contentType: self::MEDIA_TYPE, accept: self::MEDIA_TYPE)
+            ->assertStatus(401)
+            ->assertJsonPath('errors.0.code', 'AUTHENTICATION_REQUIRED')
+            ->assertHeader('Content-Type', self::MEDIA_TYPE);
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function aValidationErrorDeclaresTheAtomicExtOnlyWhenTheRequestNamedIt(): void
+    {
+        $body = '{"atomic:operations": [{"op": "remove", "ref": {"type": "artists", "id": "1"}}]}';
+
+        $this->atomicRaw($body, '?unknown=1')
+            ->assertStatus(400)
+            ->assertHeader('Content-Type', self::ATOMIC_MEDIA_TYPE);
+
+        // Without the ext the same request fails negotiation before its query is checked.
+        $this->call('POST', '/api/operations?unknown=1', [], [], [], [
+            'HTTP_ACCEPT' => self::MEDIA_TYPE,
+            'CONTENT_TYPE' => self::MEDIA_TYPE,
+        ], $body)
+            ->assertStatus(415)
+            ->assertHeader('Content-Type', self::MEDIA_TYPE);
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
     public function aBatchTargetingAnUnregisteredTypeIsRefusedPreFlight(): void
     {
         // No persister is registered for `widgets`, so the pre-flight scan refuses the batch
@@ -271,6 +326,19 @@ abstract class AtomicConformanceTestCase extends Orchestra
         ])
             ->assertStatus(404)
             ->assertJsonPath('errors.0.code', 'ATOMIC_TARGET_TYPE_UNKNOWN');
+    }
+
+    /**
+     * Puts the default server behind Laravel's `auth` middleware, which refuses a guest
+     * before the batch's media types are negotiated.
+     *
+     * @param \Illuminate\Foundation\Application $app
+     */
+    protected function behindAuthMiddleware($app): void
+    {
+        /** @var \Illuminate\Contracts\Config\Repository $config */
+        $config = $app['config'];
+        $config->set('jsonapi.servers.default.middleware', ['auth']);
     }
 
     /**

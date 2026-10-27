@@ -141,6 +141,18 @@ abstract class MethodNotAllowedConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    #[Group('spec:atomic')]
+    public function aMethodTheAtomicEndpointDoesNotAcceptIsAPlainErrorWhenTheRequestDidNotNameTheExtension(): void
+    {
+        $response = $this->call('GET', '/api/v5/operations', [], [], [], ['HTTP_ACCEPT' => self::MEDIA_TYPE]);
+
+        $response->assertStatus(405);
+        $response->assertHeader('Allow', 'POST');
+        $response->assertHeader('Content-Type', self::MEDIA_TYPE);
+        $response->assertJsonPath('errors.0.code', 'METHOD_NOT_ALLOWED');
+    }
+
+    #[Test]
     public function aPlainRouteUnderTheSamePrefixKeepsLaravelsOwn405(): void
     {
         $response = $this->call('POST', '/api/v5/status', [], [], [], ['HTTP_ACCEPT' => self::MEDIA_TYPE]);

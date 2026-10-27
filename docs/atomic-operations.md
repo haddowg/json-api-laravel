@@ -72,18 +72,21 @@ fails refuses the whole batch with a `403 INSUFFICIENT_SCOPE` pointing at
 
 ## Responses and errors
 
-A successful batch returns `atomic:results` in operation order (a `200`, or a `204` when every
-operation is bodyless). A failing operation aborts the whole batch: the transaction rolls back
+A successful batch is always a `200` with `atomic:results` in operation order. An operation
+with nothing to return, such as a `remove`, has an empty result object `{}`, so a batch of
+only bodyless operations is still a `200`, never a `204`. A failing operation aborts the whole batch: the transaction rolls back
 and the response is the failing operation's JSON:API error, rendered through the standard
 [error pipeline](errors.md).
 
-Every error from `/operations` declares the extension on its `Content-Type`, as
-`application/vnd.api+json; ext="https://jsonapi.org/ext/atomic"`. That includes the errors
-raised before the batch runs: an empty or malformed batch, an unknown query parameter, a
-pre-flight refusal such as a missing scope or an unknown type, and a `405` for a method other
-than `POST`. The two exceptions are the `415` and the `406`. They mean the extension was not
-negotiated, so their `Content-Type` is plain `application/vnd.api+json`. The Symfony bundle
-applies the same rule.
+An error from `/operations` declares the extension on its `Content-Type`, as
+`application/vnd.api+json; ext="https://jsonapi.org/ext/atomic"`, only when the request named
+it, in the `Content-Type` `ext` or in the `ext` of any `Accept` range. The renderer reads the
+headers itself, because some errors come before negotiation runs, such as a `405` for a method
+other than `POST` or a `401` from the `auth` middleware. A request that never named the
+extension gets a plain `application/vnd.api+json` error. A `415` or `406` never declares it,
+because negotiation failed. Errors from a batch that got past negotiation, such as an empty or
+malformed batch, an unknown query parameter, a pre-flight refusal or a rolled-back operation,
+always declare it, since both headers named it. The Symfony bundle applies the same rule.
 
 ## In the OpenAPI document
 
