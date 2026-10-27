@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Exception;
 use haddowg\JsonApi\Exception\AccessDenied;
 use haddowg\JsonApi\Exception\AuthenticationRequired;
 use haddowg\JsonApi\Exception\JsonApiExceptionInterface;
+use haddowg\JsonApi\Exception\MethodNotAllowed;
 use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Schema\Error\Error;
 use haddowg\JsonApi\Schema\Error\InternalServerError;
@@ -17,10 +18,13 @@ use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
+use Illuminate\Routing\Router;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
 use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
+use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 
 /**
  * The route-scoped renderable that owns every error on a JSON:API route (PLAN
@@ -45,6 +49,12 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
  *  5. anything else → a `500` via core's shared {@see InternalServerError::for()},
  *     with `{exception, file, line, trace}` in the error `meta` gated on debug.
  *
+ * A method the path does not accept is refused by the router before any route matches,
+ * so the request has no route to carry the marker. The renderer then asks which route
+ * each allowed method reaches on that path, and when one is a JSON:API route it renders
+ * core's {@see MethodNotAllowed} under that route's server, with the `Allow` header. A
+ * path none of whose routes is a JSON:API endpoint is left to Laravel (ADR 0065).
+ *
  * Reporting/logging is deliberately NOT done here: unlike the Symfony bundle's
  * `ExceptionListener` (the only reporter in that kernel), Laravel's exception handler
  * has already run its `report()` phase — with full context — before render callbacks
@@ -67,15 +77,18 @@ final class JsonApiExceptionRenderer
         private readonly HttpFoundationFactory $httpFoundationFactory,
         private readonly bool $debug = false,
         private readonly iterable $mappers = [],
+        private readonly ?Router $router = null,
     ) {}
 
     /**
-     * Whether the request is matched to a JSON:API route (so this renderer owns its
-     * errors). A request with no matched route, or a non-JSON:API route, is declined.
+     * Whether this renderer owns the error: the request is matched to a JSON:API route,
+     * or `$throwable` is the router refusing a method on a path a JSON:API route serves.
+     * Any other request is declined.
      */
-    public function handles(Request $request): bool
+    public function handles(Request $request, ?\Throwable $throwable = null): bool
     {
-        return JsonApiRoute::matches($request);
+        return JsonApiRoute::matches($request)
+            || ($throwable !== null && $this->jsonApiRouteForUnroutedMethod($request, $throwable) !== null);
     }
 
     /**
@@ -83,6 +96,18 @@ final class JsonApiExceptionRenderer
      */
     public function render(\Throwable $throwable, Request $request): Response
     {
+        if (!JsonApiRoute::matches($request)) {
+            $route = $this->jsonApiRouteForUnroutedMethod($request, $throwable);
+            if ($route !== null) {
+                // Resolve the server off a copy routed to the JSON:API route, so its mount
+                // is recovered as it would be for a matched request.
+                $routed = $request->duplicate();
+                $routed->setRouteResolver(static fn(): Route => $route);
+                $throwable = new MethodNotAllowed($request->getMethod(), self::allowedMethods($throwable), $throwable);
+                $request = $routed;
+            }
+        }
+
         $server = $this->servers->forRequest($request);
 
         $psrRequest = WireBody::apply($this->psrHttpFactory->createRequest($request), $request)
@@ -91,6 +116,51 @@ final class JsonApiExceptionRenderer
         $psrResponse = $this->toErrorResponse($throwable)->toPsrResponse($server, $psrRequest);
 
         return $this->httpFoundationFactory->createResponse($psrResponse);
+    }
+
+    /**
+     * When the router refused the request's method, the JSON:API route one of the allowed
+     * methods reaches on the same path, bound to the request, or `null` when none of them
+     * is a JSON:API route.
+     */
+    private function jsonApiRouteForUnroutedMethod(Request $request, \Throwable $throwable): ?Route
+    {
+        if ($this->router === null || !$throwable instanceof MethodNotAllowedHttpException) {
+            return null;
+        }
+
+        $routes = $this->router->getRoutes();
+        foreach (self::allowedMethods($throwable) as $method) {
+            foreach ($routes->get($method) as $route) {
+                if (!$route->matches($request, includingMethod: false)) {
+                    continue;
+                }
+
+                // The first route the method reaches is the one the router would pick.
+                if (($route->defaults[JsonApiRoute::MARKER] ?? false) !== true) {
+                    break;
+                }
+
+                return (clone $route)->bind($request);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The methods the router's `Allow` header says the path accepts.
+     *
+     * @return list<string>
+     */
+    private static function allowedMethods(\Throwable $throwable): array
+    {
+        $allow = $throwable instanceof HttpExceptionInterface ? ($throwable->getHeaders()['Allow'] ?? '') : '';
+        if (!\is_string($allow)) {
+            return [];
+        }
+
+        return \array_values(\array_filter(\array_map(\trim(...), \explode(',', $allow)), static fn(string $method): bool => $method !== ''));
     }
 
     private function toErrorResponse(\Throwable $throwable): ErrorResponse

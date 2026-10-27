@@ -1348,6 +1348,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(HttpFoundationFactory::class),
                 $debug,
                 $this->exceptionMappers($app),
+                $app->make(\Illuminate\Routing\Router::class),
             );
         });
     }
@@ -1417,7 +1418,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         $handler->renderable(static function (\Throwable $throwable, Request $request) use ($app): mixed {
             /** @var JsonApiExceptionRenderer $renderer */
             $renderer = $app->make(JsonApiExceptionRenderer::class);
-            if (!$renderer->handles($request)) {
+            if (!$renderer->handles($request, $throwable)) {
                 return null;
             }
 

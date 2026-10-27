@@ -47,6 +47,29 @@ A denied policy check renders as:
 } ] }
 ```
 
+### A method the path does not accept
+
+A `PATCH` to a read-only type, or a `POST` to a relationship on one, has no route: the
+package registers only the routes a type allows, so Laravel's router finds the path and
+throws a `405` before any route matches. The renderable still owns it. It asks the router
+which route each method in the `Allow` header reaches on that path, and when one of them is
+a JSON:API route it renders core's `MethodNotAllowed` under that route's server:
+
+```json
+{ "errors": [ {
+  "status": "405",
+  "code": "METHOD_NOT_ALLOWED",
+  "title": "Method Not Allowed",
+  "detail": "The method PATCH is not allowed on this path, which accepts GET, HEAD."
+} ] }
+```
+
+The response keeps Laravel's `Allow` header. The method is refused before content
+negotiation, so the document is JSON:API whatever the `Accept` header asks for. A path
+whose routes are none of them JSON:API endpoints, such as a route of your own under the same
+prefix, keeps Laravel's own `405`. The OpenAPI document catalogues `METHOD_NOT_ALLOWED` but
+lists no `405` response on any operation, since an operation is one method on one path.
+
 Because the exception reaches this renderable through Laravel's handler, Laravel has already
 logged an unexpected `500` — the renderable does not log again (no double logging).
 
