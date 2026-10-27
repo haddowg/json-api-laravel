@@ -1,0 +1,3 @@
+# Action links share the server's link base
+
+An `asLink` action link was generated through Laravel's URL generator as an absolute URL, so it followed the request host and ignored a configured `base_uri`, while the resource's own `self` and relationship links used that base. `ActionLinkContributor` now returns the action route's server-relative path, `/{uriType}/{id}/-actions/{path}`, and core prefixes it with the same base it gives every other link: the configured `base_uri`, or the request origin plus the route prefix when that is empty (ADR 0028). The bundle made the same change in its ADR 0158.

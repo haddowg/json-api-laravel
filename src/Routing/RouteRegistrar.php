@@ -408,8 +408,7 @@ final class RouteRegistrar
     /**
      * The stable route name for a custom action: `{namePrefix}{name}` when the attribute
      * declared a `name` override, else `{namePrefix}{type}.action.{scope}.{path}` (mirroring
-     * the bundle). Shared with {@see \haddowg\JsonApiLaravel\Action\ActionLinkContributor} so
-     * the `asLink` URL resolves the same route.
+     * the bundle).
      */
     public static function actionRouteName(ActionDescriptor $descriptor): string
     {

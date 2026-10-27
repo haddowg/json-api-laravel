@@ -1046,7 +1046,6 @@ final class JsonApiServiceProvider extends ServiceProvider
         return new ActionLinkContributor(
             $byType,
             $resolver,
-            $app->make(UrlGenerator::class),
             $app->make(Authorizer::class),
             $handlerResolver,
         );

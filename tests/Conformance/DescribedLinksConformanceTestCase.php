@@ -42,6 +42,10 @@ abstract class DescribedLinksConformanceTestCase extends Orchestra
 
     private ?bool $adminLinkObjects = null;
 
+    private bool $emptyBase = false;
+
+    private bool $unprefixed = false;
+
     /**
      * @return class-string
      */
@@ -80,6 +84,17 @@ abstract class DescribedLinksConformanceTestCase extends Orchestra
             /** @var array<string, array<string, mixed>> $servers */
             $servers = $config->get('jsonapi.servers');
             $servers['admin']['link_objects'] = $this->adminLinkObjects;
+            $config->set('jsonapi.servers', $servers);
+        }
+
+        if ($this->emptyBase) {
+            $config->set('jsonapi.base_uri', '');
+        }
+
+        if ($this->unprefixed) {
+            /** @var array<string, array<string, mixed>> $servers */
+            $servers = $config->get('jsonapi.servers');
+            $servers['default']['prefix'] = '';
             $config->set('jsonapi.servers', $servers);
         }
     }
@@ -123,6 +138,24 @@ abstract class DescribedLinksConformanceTestCase extends Orchestra
         /** @var \Illuminate\Contracts\Config\Repository $config */
         $config = $app['config'];
         $config->set('jsonapi.openapi.expose_in_prod', false);
+    }
+
+    /**
+     * @param \Illuminate\Foundation\Application $app
+     */
+    protected function emptyBaseUri($app): void
+    {
+        // Flags, not config writes: CatalogConfig runs after this hook and would undo them.
+        $this->emptyBase = true;
+    }
+
+    /**
+     * @param \Illuminate\Foundation\Application $app
+     */
+    protected function emptyBaseUriUnprefixed($app): void
+    {
+        $this->emptyBase = true;
+        $this->unprefixed = true;
     }
 
     protected function setUp(): void
@@ -242,14 +275,54 @@ abstract class DescribedLinksConformanceTestCase extends Orchestra
 
         self::assertSame(
             [
-                // Action links follow the request host, as they always have.
-                'href' => 'http://localhost/api/albums/1/-actions/reissue',
+                'href' => self::BASE . '/albums/1/-actions/reissue',
                 'describedby' => $this->pointer('/albums/{id}/-actions/reissue', 'post'),
             ],
             self::at($document, 'data', 'links', 'reissue'),
         );
 
         $this->assertEveryDescribedbyResolves($document);
+    }
+
+    #[Test]
+    #[Group('actions')]
+    public function anActionLinkUsesTheConfiguredBaseUriWhateverTheRequestHost(): void
+    {
+        $this->actingAs(new User(['id' => 1, 'name' => 'Writer', 'can_write' => true, 'can_read' => true, 'is_admin' => false]));
+
+        $document = $this->fetch('https://tenant.example/api/albums/1');
+
+        self::assertSame(self::BASE . '/albums/1', self::at($document, 'data', 'links', 'self', 'href'));
+        self::assertSame(self::BASE . '/albums/1/-actions/reissue', self::at($document, 'data', 'links', 'reissue', 'href'));
+        self::assertSame(self::BASE . '/albums/1/-actions/download', self::at($document, 'data', 'links', 'download', 'href'));
+    }
+
+    #[Test]
+    #[Group('actions')]
+    #[DefineEnvironment('emptyBaseUri')]
+    public function anActionLinkUsesTheRequestHostAndPrefixWhenTheBaseUriIsEmpty(): void
+    {
+        $this->actingAs(new User(['id' => 1, 'name' => 'Writer', 'can_write' => true, 'can_read' => true, 'is_admin' => false]));
+
+        $document = $this->fetch('https://tenant.example/api/albums/1');
+
+        self::assertSame('https://tenant.example/api/albums/1', self::at($document, 'data', 'links', 'self', 'href'));
+        self::assertSame('https://tenant.example/api/albums/1/-actions/reissue', self::at($document, 'data', 'links', 'reissue', 'href'));
+        self::assertSame('https://tenant.example/api/albums/1/-actions/download', self::at($document, 'data', 'links', 'download', 'href'));
+    }
+
+    #[Test]
+    #[Group('actions')]
+    #[DefineEnvironment('emptyBaseUriUnprefixed')]
+    public function anActionLinkUsesTheRequestHostAloneWhenUnprefixed(): void
+    {
+        $this->actingAs(new User(['id' => 1, 'name' => 'Writer', 'can_write' => true, 'can_read' => true, 'is_admin' => false]));
+
+        $document = $this->fetch('https://tenant.example/albums/1');
+
+        self::assertSame('https://tenant.example/albums/1', self::at($document, 'data', 'links', 'self', 'href'));
+        self::assertSame('https://tenant.example/albums/1/-actions/reissue', self::at($document, 'data', 'links', 'reissue', 'href'));
+        self::assertSame('https://tenant.example/albums/1/-actions/download', self::at($document, 'data', 'links', 'download', 'href'));
     }
 
     #[Test]

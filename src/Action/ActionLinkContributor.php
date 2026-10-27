@@ -12,8 +12,6 @@ use haddowg\JsonApi\Serializer\ResourceLinkContributorInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApi\Serializer\UriTypeAwareInterface;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
-use haddowg\JsonApiLaravel\Routing\RouteRegistrar;
-use Illuminate\Contracts\Routing\UrlGenerator;
 
 /**
  * Contributes a custom action's URL as an out-of-band `links` member on every rendered
@@ -39,10 +37,11 @@ use Illuminate\Contracts\Routing\UrlGenerator;
  * resolved lazily — and only for a `conditionallyLinked` descriptor — through the injected
  * resolver, and memoized per class (handlers are stateless).
  *
- * The URL is generated through Laravel's {@see UrlGenerator} for the action's named route,
- * with the rendered object's id (resolved through the serializer the render uses) as the
- * `{id}` parameter, as an absolute URL — matching the request-host-absolute `self` link.
- * The serializer is resolved LAZILY at render time (via the injected resolver closure) so
+ * The href is the action route's path relative to the server, `/{uriType}/{id}/-actions/{path}`,
+ * and core prefixes it with the same base as the resource's `self` link: the configured
+ * `base_uri`, or the request origin plus the route prefix when that is empty (ADR 0028).
+ * Generating it through the URL generator instead would base it on the request host and
+ * ignore a configured `base_uri`. The serializer is resolved LAZILY at render time (via the injected resolver closure) so
  * building the Server — which is threaded this contributor — does not recurse.
  */
 final class ActionLinkContributor implements ResourceLinkContributorInterface
@@ -63,7 +62,6 @@ final class ActionLinkContributor implements ResourceLinkContributorInterface
     public function __construct(
         private readonly array $linksByType,
         private readonly \Closure $serializerResolver,
-        private readonly UrlGenerator $urls,
         private readonly Authorizer $authorizer,
         private readonly \Closure $handlerResolver,
     ) {}
@@ -98,11 +96,10 @@ final class ActionLinkContributor implements ResourceLinkContributorInterface
                 continue;
             }
 
-            $url = $this->urls->route(RouteRegistrar::actionRouteName($descriptor), ['id' => $id], true);
             // Names the action's operation, by its first declared method as the OpenAPI
             // projection does, so the link can carry a `describedby`.
             $links[$descriptor->path] = new OperationLink(
-                $url,
+                '/' . $uriType . '/' . $id . '/-actions/' . $descriptor->path,
                 OperationReference::action($uriType, $descriptor->path, OpenApiActionScope::Resource, $descriptor->methods[0] ?? 'POST'),
             );
         }

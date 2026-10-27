@@ -175,6 +175,10 @@ that has a body must still match `accepts`.
 > policy or `Gate::define()` answers denies both the call and the link. A client never sees a link to an action it could
 > not invoke, and never loses a link to one it could.
 
+An `asLink` link's href sits on the same base as the resource's `self` link. That's the
+server's `base_uri` when one is configured, or the request host plus the server's route
+prefix when it's empty.
+
 > [!NOTE]
 > `responds` replaces the former `outputType` / `outputMeta` / `returns204` params. Migrate
 > `outputMeta: true` → `responds: [new MetaResult()]`, `returns204: true` → `responds: [new NoContent()]`,
