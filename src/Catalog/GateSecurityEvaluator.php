@@ -18,6 +18,7 @@ use Illuminate\Contracts\Auth\Access\Gate;
  * class, else the model's Gate policy, else a `Gate::define()` closure. When the policy
  * method or closure needs an argument after the user, it needs the resource, so the verdict
  * is {@see SecurityVerdict::Depends}. A policy with a `before()` method is `Depends` too,
+ * whether it is the type's policy or the class a `Gate::define()` ability points at,
  * since `before()` may decide differently for each resource. Otherwise the ability is
  * inspected with `Gate::forUser()->inspect()` against the resource class, and the answer is
  * `Allowed` or `Denied`.
@@ -75,7 +76,7 @@ final class GateSecurityEvaluator implements SecurityEvaluatorInterface
             }
         } elseif ($this->gate->has($ability)) {
             $callback = $this->gate->abilities()[$ability] ?? null;
-            if ($callback instanceof \Closure && self::needsMoreThanTheUser(new \ReflectionFunction($callback))) {
+            if ($callback instanceof \Closure && self::abilityDepends($callback)) {
                 return SecurityVerdict::Depends;
             }
         }
@@ -85,6 +86,28 @@ final class GateSecurityEvaluator implements SecurityEvaluatorInterface
         return $gate->forUser($user)->inspect($ability, $arguments)->allowed()
             ? SecurityVerdict::Allowed
             : SecurityVerdict::Denied;
+    }
+
+    /**
+     * Whether a `Gate::define()` ability needs the resource. An ability defined as a
+     * `[Policy::class, 'method']` pair or a `Policy@method` string is wrapped in a closure
+     * that takes any arguments and calls the policy's `before()` first, so the method itself
+     * and the policy are read instead.
+     */
+    private static function abilityDepends(\Closure $callback): bool
+    {
+        $function = new \ReflectionFunction($callback);
+        $target = $function->getStaticVariables()['callback'] ?? null;
+        if (!\is_string($target)) {
+            return self::needsMoreThanTheUser($function);
+        }
+
+        [$class, $method] = \str_contains($target, '@') ? \explode('@', $target, 2) : [$target, '__invoke'];
+        if (!\class_exists($class) || !\method_exists($class, $method)) {
+            return false;
+        }
+
+        return \method_exists($class, 'before') || self::needsMoreThanTheUser(new \ReflectionMethod($class, $method));
     }
 
     /**

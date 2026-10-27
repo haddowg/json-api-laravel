@@ -106,9 +106,8 @@ final class CatalogConfig
             /** @var Repository $config */
             $config = $app->make('config');
             if ($config->get('jsonapi.openapi.security.schemes.oauth2') === null) {
-                $config->set('jsonapi.openapi.security.schemes.oauth2', self::security()['schemes']['oauth2']);
+                $config->set('jsonapi.openapi.security.schemes.oauth2', self::oauth2());
             }
-            $config->set('jsonapi.openapi.security.scope_scheme', 'oauth2');
         });
     }
 
@@ -129,20 +128,31 @@ final class CatalogConfig
                     'bearerFormat' => 'JWT',
                     'description' => 'A Bearer access token (the user identifier in this example).',
                 ],
-                'oauth2' => [
-                    'type' => 'oauth2',
-                    'description' => 'An OAuth 2.0 access token. Its scopes gate the catalogue and library writes.',
-                    'flows' => [
-                        'clientCredentials' => [
-                            'tokenUrl' => 'https://music.example/oauth/token',
-                        ],
-                    ],
-                ],
+                'oauth2' => self::oauth2(),
             ],
             'default_requirement' => [
                 ['name' => 'bearer'],
             ],
             'scope_scheme' => 'oauth2',
+        ];
+    }
+
+    /**
+     * The `oauth2` scheme the operation scopes are listed under. Its flow declares no scopes;
+     * the scope catalogue supplies them.
+     *
+     * @return array<string, mixed>
+     */
+    private static function oauth2(): array
+    {
+        return [
+            'type' => 'oauth2',
+            'description' => 'An OAuth 2.0 access token. Its scopes gate the catalogue and library writes.',
+            'flows' => [
+                'clientCredentials' => [
+                    'tokenUrl' => 'https://music.example/oauth/token',
+                ],
+            ],
         ];
     }
 

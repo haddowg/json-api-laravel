@@ -17,13 +17,13 @@ use Illuminate\Console\Command;
  * (PLAN decision 11) — the `optimizes()` pipeline hook (`php artisan optimize` runs it,
  * `optimize:clear` clears it via {@see ClearCommand}).
  *
- * Two phases, mirroring the Symfony bundle's two cache warmers:
+ * Every server's OAuth scope table is built first ({@see ScopeTables}), so a resolver error
+ * or an unknown `operationScopes` key fails the command. Then two phases, mirroring the
+ * Symfony bundle's two cache warmers:
  *  - **Servability validation ({@see ServableResourceWarmer}) — mandatory.** Every
  *    problem it reports (a routed type with no provider/persister, a missing/duplicate Id,
  *    a non-discriminating polymorphic candidate, an Eloquent relation with no model method)
  *    fails this command, so a bad config fails the deploy step rather than a runtime 500.
- *  - **Scope tables ({@see ScopeTables}) — mandatory.** Every server's OAuth scope table is
- *    built, so a resolver error or an unknown `operationScopes` key fails the command.
  *  - **Artifact warming ({@see DocumentRouteWarmer}, then {@see DocumentWarmer}) —
  *    optional / non-fatal.** A docs build failure, or a server whose document no route
  *    serves, is logged and reported as a warning but never fails the command; the
@@ -53,6 +53,17 @@ final class OptimizeCommand extends Command
         $documents = $this->laravel->make(DocumentWarmer::class);
         $snapshot = $this->laravel->make(DiscoverySnapshotWriter::class);
 
+        // Phase 0 — mandatory: every server's OAuth scope table must build. A resolver that
+        // throws, or an override naming an operation the type lacks, fails the deploy. It
+        // runs first because a server enforcing scopes cannot be built without its table.
+        try {
+            $this->laravel->make(ScopeTables::class)->rebuild();
+        } catch (\LogicException $e) {
+            $this->error(\sprintf('JSON:API scope table build failed: %s', $e->getMessage()));
+
+            return self::FAILURE;
+        }
+
         // Phase 1 — mandatory servability validation. A problem fails the deploy.
         $problems = $servable->warm();
         foreach ($problems as $problem) {
@@ -61,16 +72,6 @@ final class OptimizeCommand extends Command
 
         if ($problems !== []) {
             $this->error(\sprintf('JSON:API servability validation failed with %d problem(s).', \count($problems)));
-
-            return self::FAILURE;
-        }
-
-        // Phase 1b — mandatory: every server's OAuth scope table must build. A resolver that
-        // throws, or an override naming an operation the type lacks, fails the deploy.
-        try {
-            $this->laravel->make(ScopeTables::class)->rebuild();
-        } catch (\LogicException $e) {
-            $this->error(\sprintf('JSON:API scope table build failed: %s', $e->getMessage()));
 
             return self::FAILURE;
         }
