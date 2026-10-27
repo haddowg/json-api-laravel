@@ -119,6 +119,60 @@ trait ServesSingleTargetPolymorphism
         $this->get('/api/posts/1?include=pin&relatedQuery[pin][filter][label]=php', $accept)->assertStatus(400);
     }
 
+    public function test_a_single_type_polymorphic_relation_takes_nested_includes(): void
+    {
+        // Post 1's pin is the php tag, whose owner is Ada.
+        foreach (['/api/posts/1?include=pin.owner', '/api/posts/1/pin?include=owner'] as $uri) {
+            $response = $this->getJsonApi($uri);
+            $response->assertOk();
+            self::assertContains(['type' => 'authors', 'id' => '1'], \array_map(
+                static fn(mixed $row): array => \array_intersect_key((array) $row, ['type' => true, 'id' => true]),
+                (array) $response->json('included'),
+            ), $uri);
+        }
+    }
+
+    public function test_the_document_lists_no_include_path_through_a_single_type_polymorphic_relation(): void
+    {
+        $doc = $this->resolve(DocumentFactory::class)->forServer()->toArray();
+
+        $paths = $this->includeEnum($doc, '/posts/{id}');
+        self::assertContains('pin', $paths);
+        self::assertContains('pinned', $paths);
+        self::assertContains('tags.owner', $paths);
+        self::assertNotContains('pin.owner', $paths);
+        self::assertNotContains('pinned.owner', $paths);
+
+        // The monomorphic relation over the same type roots its related endpoint's enum on it.
+        self::assertSame(['owner'], $this->includeEnum($doc, '/posts/{id}/tags'));
+        self::assertSame([], $this->includeEnum($doc, '/posts/{id}/pin'));
+        self::assertSame([], $this->includeEnum($doc, '/posts/{id}/pinned'));
+    }
+
+    /**
+     * The `include` enum on `$path`'s GET operation, empty when it has no `include` parameter.
+     *
+     * @param array<string, mixed> $doc
+     *
+     * @return list<string>
+     */
+    private function includeEnum(array $doc, string $path): array
+    {
+        $operation = $this->arrayAt($doc, 'paths', $path, 'get');
+        $parameters = $operation['parameters'] ?? [];
+        self::assertIsArray($parameters);
+
+        foreach ($parameters as $parameter) {
+            if (!\is_array($parameter) || ($parameter['name'] ?? null) !== 'include') {
+                continue;
+            }
+
+            return \array_values(\array_filter($this->arrayAt($parameter, 'schema', 'items', 'enum'), \is_string(...)));
+        }
+
+        return [];
+    }
+
     /**
      * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
      */

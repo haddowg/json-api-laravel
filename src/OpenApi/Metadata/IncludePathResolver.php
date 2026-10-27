@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Server\Server;
+use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 
 /**
@@ -55,19 +56,19 @@ final class IncludePathResolver
      * The includable dotted paths valid on a **related** endpoint
      * (`GET /{type}/{id}/{rel}`), scoped to the *related* type (not the parent): the
      * related resource is the primary data there, so the walk roots on it with its own
-     * depth cap / allow-list. For a polymorphic relation (several related types sharing
-     * no include vocabulary) the result is empty.
+     * depth cap / allow-list. For a polymorphic relation the result is empty, a `MorphTo`
+     * or `MorphToMany` over one type included, so the document does not change when the
+     * relation gains a second type.
      *
      * @return list<string>
      */
     public function relatedPathsFor(Server $server, RelationInterface $relation): array
     {
-        $relatedTypes = $relation->relatedTypes();
-        if (\count($relatedTypes) !== 1) {
+        if (!Polymorphism::isMonomorphic($relation)) {
             return [];
         }
 
-        return $this->pathsFor($server, $relatedTypes[0]);
+        return $this->pathsFor($server, $relation->relatedTypes()[0]);
     }
 
     /**
@@ -110,13 +111,12 @@ final class IncludePathResolver
             $paths[] = $path;
 
             // Descend only into a monomorphic related type not already on this branch
-            // (cycle guard). A polymorphic relation has no single type to descend.
-            $relatedTypes = $relation->relatedTypes();
-            if (\count($relatedTypes) !== 1) {
+            // (cycle guard). A polymorphic relation, even over one type, is not descended.
+            if (!Polymorphism::isMonomorphic($relation)) {
                 continue;
             }
 
-            $relatedType = $relatedTypes[0];
+            $relatedType = $relation->relatedTypes()[0];
             if (\in_array($relatedType, $branch, true)) {
                 continue;
             }

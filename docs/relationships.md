@@ -304,6 +304,12 @@ and `?withCount` exactly as they would with several types. Adding a second type 
 only adds a member to the union. A relation that should take the related type's query
 parameters is a `BelongsTo` or `HasMany`.
 
+The documented `include` enum follows the same rule. A single-type `MorphTo::make('pin', ['tags'])`
+is listed as `pin`, but no path through it is, so `pin.owner` is not in the parent's enum and
+`GET /posts/{id}/pin` documents no `include` parameter, as for a relation over several types.
+A request may still send those includes. While there is one type the server knows the
+vocabulary, so `?include=pin.owner` and `GET /posts/{id}/pin?include=owner` still work.
+
 When a member type is served by its own scoping provider, the members are narrowed per member
 type to the rows that provider admits, before the page is cut, so pages stay full and every
 count matches. A write naming a member resolves it through its own member type's provider: a
