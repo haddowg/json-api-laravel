@@ -447,6 +447,10 @@ every operation exampled:
 php artisan jsonapi:openapi:export --strict --output=build/openapi.json
 ```
 
+The export also warns about each [OAuth scope](scopes.md#the-openapi-document) an operation
+needs that neither the scope catalogue nor the scope scheme declares, and `--strict` fails on
+those too. A scope scheme that is not `oauth2` is a warning only.
+
 ## Profile-gated parameters (`x-profile`)
 
 Some query parameters are recognised by the runtime **only when a JSON:API

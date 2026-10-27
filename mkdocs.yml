@@ -92,6 +92,7 @@ nav:
   - Writing, validation & authorization:
       - validation.md
       - authorization.md
+      - scopes.md
       - lifecycle.md
       - lifecycle-hooks.md
       - async.md

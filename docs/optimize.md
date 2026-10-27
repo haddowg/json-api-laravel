@@ -18,7 +18,10 @@ Both are wired into the framework pipeline via `optimizes()`:
 
 ## What `jsonapi:optimize` does
 
-Three phases, mirroring the bundle's two warmers plus a deploy-time safety check:
+It first builds every server's [OAuth scope table](scopes.md#where-the-scopes-are-kept). A
+resolver that throws, an `operationScopes` key naming an operation the type does not have, or a
+public operation given a scope fails the command. Then three phases, mirroring the bundle's two
+warmers plus a deploy-time safety check:
 
 1. **Servability validation (mandatory).** Eagerly checks that every discovered resource is
    actually serveable — sortable/filterable columns resolve against the table/casts, relation
@@ -39,7 +42,8 @@ Three phases, mirroring the bundle's two warmers plus a deploy-time safety check
    is resolved live as before, and so is one whose namespace no longer matches the config.
    The command always scans your discovery paths itself and never reads the snapshot already
    on disk, so running it again over an old file picks up every resource added or changed
-   since. `php artisan optimize` and `jsonapi:optimize` also boot from a live scan, so the
+   since. The snapshot carries each server's scope table too, so a request loads the scopes
+   rather than asking your resolver. `php artisan optimize` and `jsonapi:optimize` also boot from a live scan, so the
    routes they register and validate match the code. See
    [ADR 0053](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0053-the-discovery-snapshot-carries-the-resolved-model-map.md).
 3. **Artifact warming (optional, non-fatal).** Pre-builds the OpenAPI document + JSON Schema
