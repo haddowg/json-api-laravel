@@ -144,6 +144,19 @@ abstract class AsyncWriteConformanceTestCase extends Orchestra
         $response->assertStatus(303);
         $response->assertHeader('Location', 'http://localhost/api/albums/1');
         $this->assertSame('', $response->getContent());
+        $this->assertStringNotContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+    }
+
+    #[Test]
+    #[Group('spec:negotiation')]
+    public function aBareSeeOtherActionStillRefusesAnAcceptItCannotAnswer(): void
+    {
+        // Only a SeeOther declaring a media type answers with a URL; a bare one may answer
+        // with a JSON:API body, so an Accept that excludes JSON:API is still a 406.
+        $this->call('POST', '/api/jobs/-actions/complete', [], [], [], [
+            'HTTP_ACCEPT' => 'text/csv',
+            'CONTENT_TYPE' => 'application/vnd.api+json',
+        ], '{}')->assertStatus(406);
     }
 
     #[Test]

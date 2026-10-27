@@ -81,11 +81,12 @@ final readonly class ActionInvoker
         }
 
         // The response media type is picked from the declared responses before anything
-        // runs, so an `Accept` the action cannot answer is a 406 up front.
-        $responseMediaType = AcceptNegotiator::negotiate(
+        // runs, so an `Accept` the action cannot answer is a 406 up front. An action that
+        // answers with a URL is never refused: it can always send its 303.
+        $responseMediaType = AcceptNegotiator::negotiateAction(
             $this->request($operation)->getHeaderLine('accept'),
-            $descriptor->responseMediaTypes(),
-        );
+            $descriptor->declaredResponses(),
+        ) ?? 'application/vnd.api+json';
 
         $handler = $this->registry->handlerFor($descriptor);
 

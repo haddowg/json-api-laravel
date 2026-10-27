@@ -362,6 +362,55 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         $response->assertJsonPath('data.type', 'export-jobs');
     }
 
+    // --- the download action ----------------------------------------------------
+
+    public function test_album_download_answers_a_json_api_client_with_the_location_document(): void
+    {
+        $response = $this->fetch('/api/albums/1/-actions/download')->assertOk();
+
+        $response->assertHeaderMissing('Location');
+        self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        self::assertSame('Accept', $response->headers->get('Vary'));
+        $response->assertExactJson([
+            'jsonapi' => ['version' => '1.1'],
+            'links' => [
+                'self' => ['href' => 'http://localhost/api/albums/1/-actions/download'],
+                'location' => [
+                    'href' => 'https://storage.example.com/albums/1.csv?signature=example',
+                    'type' => 'text/csv',
+                    'meta' => ['expiresAt' => '2026-01-01T11:05:00+00:00'],
+                ],
+            ],
+            'meta' => ['expiresAt' => '2026-01-01T11:05:00+00:00'],
+        ]);
+    }
+
+    public function test_album_download_redirects_a_browser(): void
+    {
+        $accept = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+        foreach ([$accept, 'text/csv', '*/*', ''] as $header) {
+            $response = $this->get('/api/albums/1/-actions/download', ['Accept' => $header]);
+
+            $response->assertStatus(303);
+            $response->assertHeader('Location', 'https://storage.example.com/albums/1.csv?signature=example');
+            self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+            self::assertSame('Accept', $response->headers->get('Vary'));
+        }
+    }
+
+    public function test_album_download_is_an_album_link(): void
+    {
+        $this->fetch('/api/albums/1')->assertOk()
+            ->assertJsonPath('data.links.download.href', 'http://localhost/api/albums/1/-actions/download');
+    }
+
+    public function test_album_download_errors_stay_json_api(): void
+    {
+        $this->get('/api/albums/999999/-actions/download', ['Accept' => 'text/html'])
+            ->assertNotFound()
+            ->assertJsonPath('errors.0.status', '404');
+    }
+
     /**
      * Issues a JSON:API GET with the correct Accept header.
      *

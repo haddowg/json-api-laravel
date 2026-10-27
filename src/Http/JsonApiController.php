@@ -270,6 +270,7 @@ final class JsonApiController
             $actionName,
             \strtoupper($jsonApiRequest->getMethod()),
             $body,
+            responds: $descriptor?->declaredResponses() ?? [],
         );
     }
 

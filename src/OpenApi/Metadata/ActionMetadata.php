@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
-use haddowg\JsonApi\OpenApi\Metadata\Accepted;
 use haddowg\JsonApi\OpenApi\Metadata\ActionInputMode;
 use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
-use haddowg\JsonApi\OpenApi\Metadata\ActionResource;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResponse;
 use haddowg\JsonApi\OpenApi\Metadata\ActionScope;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresAcceptedBodies;
@@ -16,10 +14,7 @@ use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionExtensions;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionLink;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionSafety;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionScopes;
-use haddowg\JsonApi\OpenApi\Metadata\MetaResult;
-use haddowg\JsonApi\OpenApi\Metadata\NoContent;
 use haddowg\JsonApi\OpenApi\Metadata\OperationExample;
-use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
 use haddowg\JsonApiLaravel\Action\ActionDescriptor;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
 
@@ -92,24 +87,7 @@ final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAccep
             }
         }
 
-        $responds = [];
-        foreach ($this->descriptor->responds as $response) {
-            $responds[] = match ($response['kind']) {
-                'resource' => new ActionResource((string) $response['ref']),
-                'accepted' => new Accepted((string) $response['ref']),
-                'meta' => new MetaResult(),
-                'nocontent' => new NoContent(),
-                'seeother' => new SeeOther(),
-                default => throw new \LogicException(\sprintf(
-                    'Unknown action response kind "%s" for action "%s" on type "%s".',
-                    $response['kind'],
-                    $this->descriptor->path,
-                    $this->descriptor->type,
-                )),
-            };
-        }
-
-        return $responds;
+        return $this->descriptor->declaredResponses();
     }
 
     public function isSecured(): bool
