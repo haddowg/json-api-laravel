@@ -29,6 +29,8 @@ use Illuminate\Database\Eloquent\Relations\MorphToMany;
  * @property int|null $author_id
  * @property int|null $feature_id
  * @property string|null $feature_type
+ * @property int|null $pin_id
+ * @property string|null $pin_type
  */
 final class Post extends Model
 {
@@ -62,6 +64,16 @@ final class Post extends Model
      * @return MorphTo<Model, $this>
      */
     public function feature(): MorphTo
+    {
+        return $this->morphTo();
+    }
+
+    /**
+     * A polymorphic to-one over the single type `tags`.
+     *
+     * @return MorphTo<Model, $this>
+     */
+    public function pin(): MorphTo
     {
         return $this->morphTo();
     }

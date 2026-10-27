@@ -159,7 +159,7 @@ final class RelationCountBatcher
     private function countCriteria(Server $server, RelationInterface $relation, JsonApiRequestInterface $request): CollectionCriteria
     {
         $relatedType = $relation->relatedTypes()[0] ?? null;
-        $relatedResource = $relatedType !== null && \count($relation->relatedTypes()) === 1
+        $relatedResource = $relatedType !== null && Polymorphism::isMonomorphic($relation)
             ? $this->types->resourceFor($server, $relatedType)
             : null;
 

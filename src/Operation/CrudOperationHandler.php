@@ -80,6 +80,7 @@ use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
@@ -593,7 +594,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->gateRelatedList($type, $parent, $relation);
 
         $relatedTypes = $relation->relatedTypes();
-        $polymorphic = \count($relatedTypes) > 1;
+        $polymorphic = Polymorphism::of($relation);
         $relatedType = $relatedTypes[0] ?? $type;
 
         $request = $this->jsonApiRequest($operation->context());
@@ -647,9 +648,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // resource ⊕ relation-scoped), so a mistyped value is the same 400 as elsewhere.
             $this->filterValidator->validate($operation->queryParameters()->filter, $criteria->filters);
 
-            // A polymorphic relation reaching a scoped type is read off the parent and narrowed per
-            // member type before the page is cut, so the page stays full (ADR 0051).
-            $result = $polymorphic && $this->providers->relatesToScopedType($type, $relation)
+            // A relation over several types reaching a scoped type is read off the parent and
+            // narrowed per member type before the page is cut, so the page stays full (ADR 0051).
+            // Over one type, that type's own provider reads it in one query.
+            $result = \count($relatedTypes) > 1 && $this->providers->relatesToScopedType($type, $relation)
                 ? $this->polymorphicMembers()->window($criteria, $this->narrowedMembers($server, $type, $parent, $relation, $request))
                 : $relatedProvider->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
 
@@ -855,7 +857,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $queried = $this->relationshipEndpointQueried($operation->queryParameters(), $request);
         $relatedTypes = $relation->relatedTypes();
 
-        if ($relation->isToMany() && \count($relatedTypes) === 1
+        if ($relation->isToMany() && Polymorphism::isMonomorphic($relation)
             && ($queried || $this->providers->supportsType($relatedTypes[0]))) {
             // A monomorphic to-many (pivot or not) is paginated by default, queried or not, so
             // the plain read serves the page the OpenAPI document advertises. A miss (unknown
@@ -1402,7 +1404,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
     private function pivotQueryingProvider(object $parent, RelationInterface $relation): ?QueriesPivotColumnsInterface
     {
         $relatedTypes = $relation->relatedTypes();
-        if (\count($relatedTypes) !== 1 || !$this->providers->supportsType($relatedTypes[0])) {
+        if (!Polymorphism::isMonomorphic($relation) || !$this->providers->supportsType($relatedTypes[0])) {
             return null;
         }
 

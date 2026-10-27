@@ -393,7 +393,7 @@ final class RelationshipWindowBatcher
 
             // Polymorphic to-many: members span types, so there is no single related provider to
             // window through — leave it to its endpoint.
-            if (\count($relation->relatedTypes()) > 1) {
+            if (Polymorphism::of($relation)) {
                 continue;
             }
 
@@ -438,7 +438,7 @@ final class RelationshipWindowBatcher
         foreach ($allRelations as $relation) {
             // Only monomorphic to-many relations are windowable; a to-one is handled by the
             // nulling path and a polymorphic to-many carries no shared vocabulary.
-            if (!$relation->isToMany() || \count($relation->relatedTypes()) > 1) {
+            if (!$relation->isToMany() || Polymorphism::of($relation)) {
                 continue;
             }
 
@@ -564,7 +564,7 @@ final class RelationshipWindowBatcher
     {
         $filtered = [];
         foreach ($allRelations as $relation) {
-            if ($relation->isToMany() || \count($relation->relatedTypes()) > 1) {
+            if ($relation->isToMany() || Polymorphism::of($relation)) {
                 continue;
             }
 
@@ -679,9 +679,9 @@ final class RelationshipWindowBatcher
         $windowable = [];
         $toOne = [];
         foreach ($allRelations as $relation) {
-            if ($relation->isToMany() && \count($relation->relatedTypes()) === 1) {
+            if ($relation->isToMany() && Polymorphism::isMonomorphic($relation)) {
                 $windowable[$relation->name()] = true;
-            } elseif (!$relation->isToMany() && \count($relation->relatedTypes()) === 1) {
+            } elseif (!$relation->isToMany() && Polymorphism::isMonomorphic($relation)) {
                 $toOne[$relation->name()] = true;
             }
         }

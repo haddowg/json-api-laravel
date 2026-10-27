@@ -12,6 +12,7 @@ use haddowg\JsonApiLaravel\Tests\Fixtures\EloquentRelations\EloquentBlogRelation
 use haddowg\JsonApiLaravel\Tests\Fixtures\EloquentRelations\Post;
 use haddowg\JsonApiLaravel\Tests\Fixtures\EloquentRelations\PostResource;
 use haddowg\JsonApiLaravel\Tests\Fixtures\EloquentRelations\Tag;
+use haddowg\JsonApiLaravel\Tests\Support\ServesSingleTargetPolymorphism;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Gate;
@@ -34,6 +35,8 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 #[CoversNothing]
 final class EloquentPolymorphicRelationshipTest extends Orchestra
 {
+    use ServesSingleTargetPolymorphism;
+
     public const string MEDIA_TYPE = 'application/vnd.api+json';
 
     /**
@@ -81,6 +84,8 @@ final class EloquentPolymorphicRelationshipTest extends Orchestra
             $table->unsignedInteger('author_id')->nullable();
             $table->unsignedInteger('feature_id')->nullable();
             $table->string('feature_type')->nullable();
+            $table->unsignedInteger('pin_id')->nullable();
+            $table->string('pin_type')->nullable();
         });
         Schema::create('blog_post_tag', static function (Blueprint $table): void {
             $table->unsignedInteger('post_id');
@@ -329,6 +334,8 @@ final class EloquentPolymorphicRelationshipTest extends Orchestra
             'author_id' => 1,
             'feature_id' => $json->id,
             'feature_type' => $json->getMorphClass(),
+            'pin_id' => $php->id,
+            'pin_type' => $php->getMorphClass(),
         ]);
         $hello->tags()->attach([1 => ['position' => 0], 2 => ['position' => 1]]);
         $hello->relatedAuthors()->attach($ada->id);
