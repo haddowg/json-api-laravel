@@ -12,6 +12,8 @@ use haddowg\JsonApi\Atomic\LocalIdRegistry;
 use haddowg\JsonApi\Atomic\OperationDescriptor;
 use haddowg\JsonApi\Atomic\Ref;
 use haddowg\JsonApi\Exception\AtomicOperationsInvalid;
+use haddowg\JsonApi\OpenApi\Metadata\OperationKey;
+use haddowg\JsonApi\OpenApi\Metadata\OperationType;
 use haddowg\JsonApi\Operation\AddToRelationshipOperation;
 use haddowg\JsonApi\Operation\CreateResourceOperation;
 use haddowg\JsonApi\Operation\DeleteResourceOperation;
@@ -32,7 +34,6 @@ use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
-use haddowg\JsonApiLaravel\Operation\Operation;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\ObjectAttributes;
 use Illuminate\Http\Request;
@@ -270,7 +271,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
     private function guardExposedOperations(): void
     {
         foreach ($this->descriptors as $descriptor) {
-            [$type, $targetsRelationship] = $this->targetShapeFor($descriptor);
+            [$type, $key] = $this->targetOf($descriptor);
 
             // The batch runs on one server: a type that server does not serve is unknown to
             // it, as a direct call to another server's route would be.
@@ -288,7 +289,9 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
                 continue;
             }
 
-            $required = $this->requiredOperation($descriptor->opCode, $targetsRelationship);
+            // The router emits a type's relationship-mutation routes only when it exposes
+            // Update, so a relationship operation is gated on the parent's Update.
+            $required = $key->kind->operationType() ?? OperationType::Update;
             if (!\in_array($required->value, $exposed, true)) {
                 throw new AtomicOperationNotExposed($type, $required->value);
             }
@@ -296,17 +299,17 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
     }
 
     /**
-     * The (type, targets-a-relationship) shape of a descriptor's target, resolved without
-     * its lids (the type + relationship-ness do not depend on lid values): a `ref` carries
-     * both; an `href` is matched against the router; a resource `add` reads its `data.type`
-     * and never targets a relationship.
+     * The type a descriptor targets and the operation it performs there, resolved without
+     * its lids (neither depends on lid values): a `ref` carries both; an `href` is matched
+     * against the router; a resource `add` reads its `data.type` and never targets a
+     * relationship.
      *
-     * @return array{0: string, 1: bool}
+     * @return array{0: string, 1: OperationKey}
      */
-    private function targetShapeFor(OperationDescriptor $descriptor): array
+    private function targetOf(OperationDescriptor $descriptor): array
     {
         if ($descriptor->ref !== null) {
-            return [$descriptor->ref->type, $descriptor->ref->relationship !== null];
+            return [$descriptor->ref->type, OperationKey::forAtomicOperation($descriptor->opCode, $descriptor->ref->relationship)];
         }
 
         if ($descriptor->href !== null) {
@@ -315,28 +318,15 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
             if (!\is_string($type) || $type === '') {
                 throw new AtomicHrefUnresolvable($descriptor->href);
             }
-            $relationship = $match['relationship'] ?? null;
+            $segment = $match['relationship'] ?? null;
+            $relationship = \is_string($segment) && $segment !== ''
+                ? ($this->types->relationAtUriSegment($this->server, $type, $segment)?->name() ?? $segment)
+                : null;
 
-            return [$type, \is_string($relationship) && $relationship !== ''];
+            return [$type, OperationKey::forAtomicOperation($descriptor->opCode, $relationship)];
         }
 
-        return [$this->createTypeFromData($descriptor->data), false];
-    }
-
-    /**
-     * The CRUD operation the router would gate the equivalent direct call on.
-     */
-    private function requiredOperation(AtomicOperationCode $opCode, bool $targetsRelationship): Operation
-    {
-        if ($targetsRelationship) {
-            return Operation::Update;
-        }
-
-        return match ($opCode) {
-            AtomicOperationCode::Add => Operation::Create,
-            AtomicOperationCode::Update => Operation::Update,
-            AtomicOperationCode::Remove => Operation::Delete,
-        };
+        return [$this->createTypeFromData($descriptor->data), OperationKey::forAtomicOperation($descriptor->opCode)];
     }
 
     /**
