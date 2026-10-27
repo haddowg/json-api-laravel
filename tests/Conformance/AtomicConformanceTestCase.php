@@ -210,12 +210,54 @@ abstract class AtomicConformanceTestCase extends Orchestra
         $operations = [['op' => 'add', 'data' => ['type' => 'artists', 'attributes' => ['name' => 'X', 'slug' => 'x']]]];
 
         // A plain Content-Type (no atomic ext) is a 415 — the extension's media-type contract.
+        // The extension was not negotiated, so neither error declares it.
         $this->atomic($operations, contentType: self::MEDIA_TYPE)
-            ->assertStatus(415);
+            ->assertStatus(415)
+            ->assertHeader('Content-Type', self::MEDIA_TYPE);
 
         // The atomic ext present on Content-Type but absent from Accept is a 406.
         $this->atomic($operations, accept: self::MEDIA_TYPE)
-            ->assertStatus(406);
+            ->assertStatus(406)
+            ->assertHeader('Content-Type', self::MEDIA_TYPE);
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function anErrorRaisedBeforeTheBatchRunsDeclaresTheAtomicExt(): void
+    {
+        $this->atomicRaw('{"atomic:operations": []}')
+            ->assertStatus(400)
+            ->assertHeader('Content-Type', self::ATOMIC_MEDIA_TYPE);
+
+        $this->atomicRaw('{"atomic:operations": [')
+            ->assertStatus(400)
+            ->assertHeader('Content-Type', self::ATOMIC_MEDIA_TYPE);
+
+        $this->atomicRaw('{"atomic:operations": [{"op": "remove", "ref": {"type": "artists", "id": "1"}}]}', '?unknown=1')
+            ->assertStatus(400)
+            ->assertJsonPath('errors.0.source.parameter', 'unknown')
+            ->assertHeader('Content-Type', self::ATOMIC_MEDIA_TYPE);
+
+        $this->atomic([['op' => 'remove', 'href' => '/api/no-such-type/1']])
+            ->assertStatus(400)
+            ->assertHeader('Content-Type', self::ATOMIC_MEDIA_TYPE);
+
+        $this->atomic([['op' => 'add', 'data' => ['type' => 'widgets', 'attributes' => ['name' => 'nope']]]])
+            ->assertStatus(404)
+            ->assertHeader('Content-Type', self::ATOMIC_MEDIA_TYPE);
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function anErrorInsideTheBatchDeclaresTheAtomicExt(): void
+    {
+        $this->atomic([['op' => 'remove', 'ref' => ['type' => 'albums', 'id' => '999']]])
+            ->assertStatus(404)
+            ->assertHeader('Content-Type', self::ATOMIC_MEDIA_TYPE);
+
+        $this->atomic([['op' => 'add', 'data' => ['type' => 'artists', 'attributes' => ['slug' => 'nameless']]]])
+            ->assertStatus(422)
+            ->assertHeader('Content-Type', self::ATOMIC_MEDIA_TYPE);
     }
 
     #[Test]
@@ -247,6 +289,20 @@ abstract class AtomicConformanceTestCase extends Orchestra
         return $this->call('POST', '/api/operations', [], [], [], [
             'HTTP_ACCEPT' => $accept ?? self::ATOMIC_MEDIA_TYPE,
             'CONTENT_TYPE' => $contentType ?? self::ATOMIC_MEDIA_TYPE,
+        ], $body);
+    }
+
+    /**
+     * Posts a raw batch body, with the atomic ext on both headers, to `/api/operations`
+     * followed by `$query`.
+     *
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    protected function atomicRaw(string $body, string $query = ''): TestResponse
+    {
+        return $this->call('POST', '/api/operations' . $query, [], [], [], [
+            'HTTP_ACCEPT' => self::ATOMIC_MEDIA_TYPE,
+            'CONTENT_TYPE' => self::ATOMIC_MEDIA_TYPE,
         ], $body);
     }
 
