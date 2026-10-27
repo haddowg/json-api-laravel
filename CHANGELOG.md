@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.2](https://github.com/haddowg/json-api-laravel/compare/v1.18.1...v1.18.2) (2026-10-27)
+
+
+### Bug Fixes
+
+* declare the atomic ext on an error only when the request named it ([#169](https://github.com/haddowg/json-api-laravel/issues/169)) ([4c74a75](https://github.com/haddowg/json-api-laravel/commit/4c74a75a16b0b791642c1671b0e156dd868deba4))
+
 ## [1.18.1](https://github.com/haddowg/json-api-laravel/compare/v1.18.0...v1.18.1) (2026-10-27)
 
 
