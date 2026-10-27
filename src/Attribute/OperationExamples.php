@@ -15,17 +15,6 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  */
 final class OperationExamples
 {
-    /** Core's operation name for each CRUD {@see Operation}. */
-    private const array CRUD = [
-        'fetchCollection' => Operation::FetchCollection,
-        'fetchOne' => Operation::FetchOne,
-        'create' => Operation::Create,
-        'update' => Operation::Update,
-        'delete' => Operation::Delete,
-    ];
-
-    private const array RELATION_PREFIXES = ['fetchRelated', 'fetchRelationship', 'updateRelationship', 'addRelationship', 'removeRelationship'];
-
     /**
      * Fails fast on an override core could not apply: an unknown operation name, a CRUD
      * operation the type does not expose, or a value other than an {@see OperationExample},
@@ -42,16 +31,7 @@ final class OperationExamples
     {
         foreach ($examples as $key => $example) {
             $key = (string) $key;
-            $operation = self::CRUD[$key] ?? null;
-            if ($operation === null && !self::isRelationKey($key)) {
-                throw new \LogicException(\sprintf(
-                    '%s operationExamples names "%s", which is not an operation; use one of %s, or %s followed by a dot and the relation name.',
-                    $attribute,
-                    $key,
-                    \implode(', ', \array_keys(self::CRUD)),
-                    \implode(', ', self::RELATION_PREFIXES),
-                ));
-            }
+            $operation = OperationKeys::parse($attribute . ' operationExamples', $key)->kind->operationType();
 
             if ($operation !== null && !\in_array($operation->value, $exposed, true)) {
                 throw new \LogicException(\sprintf(
@@ -72,14 +52,5 @@ final class OperationExamples
                 ));
             }
         }
-    }
-
-    private static function isRelationKey(string $key): bool
-    {
-        $dot = \strpos($key, '.');
-
-        return $dot !== false
-            && $dot < \strlen($key) - 1
-            && \in_array(\substr($key, 0, $dot), self::RELATION_PREFIXES, true);
     }
 }

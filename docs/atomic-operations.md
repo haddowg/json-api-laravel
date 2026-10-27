@@ -61,6 +61,15 @@ failure rolls back. Note the split:
 > run on a rolled-back operation, put it in an After\* [hook](lifecycle-hooks.md), not a
 > model observer. See [eloquent](eloquent.md#eloquent-model-events-still-fire).
 
+## OAuth scopes
+
+With [scope enforcement](scopes.md) on, the batch needs the endpoint's own scopes,
+`jsonapi.atomic_operations.scopes`, and every operation in it is checked against the scopes
+the equivalent request would need, before the transaction opens. The first operation that
+fails refuses the whole batch with a `403 INSUFFICIENT_SCOPE` pointing at
+`/atomic:operations/<index>`, and nothing is written. A create or update carrying
+`relationships` needs only its own scopes.
+
 ## Responses and errors
 
 A successful batch returns `atomic:results` in operation order (a `200`, or a `204` when every

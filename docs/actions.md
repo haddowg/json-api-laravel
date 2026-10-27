@@ -166,6 +166,7 @@ that has a body must still match `accepts`.
 | `example` | the operation's OpenAPI example: an `OperationExample` replaces the parts it names, `false` emits none, `null` (default) keeps the generated one ([below](#actions-in-the-openapi-document)) |
 | `readOnly` / `destructive` / `idempotent` | how safe the action is to call, projected as the operation's `x-safety`; each `null` (default) stays undeclared ([below](#operation-ids-safety-and-extensions)) |
 | `extensions` | OpenAPI vendor extensions for the action's operation, keyed by `x-` name, merged over the mount type's `extensions` |
+| `scopes` | the [OAuth scopes](scopes.md) every method of the action needs; `[]` for none, `null` (default) asks the scope resolver |
 
 > [!NOTE]
 > `asLink` visibility matches invocation **exactly**: `Authorizer::allowsAction()` (which

@@ -281,11 +281,22 @@ The OpenAPI document advertises the same prefix as a relative `servers` URL (`/a
 ## `atomic_operations`
 
 ```php
-'atomic_operations' => ['enabled' => false, 'path' => '/operations'],
+'atomic_operations' => ['enabled' => false, 'path' => '/operations', 'scopes' => null],
 ```
 
-The JSON:API Atomic Operations extension endpoint (opt-in). See
+The JSON:API Atomic Operations extension endpoint (opt-in). `scopes` lists the OAuth scopes
+the endpoint itself needs, `null` to ask your scope resolver. See
 [atomic-operations](atomic-operations.md).
+
+## `scopes`
+
+```php
+'scopes' => ['cache_store' => null],
+```
+
+The cache store each server's resolved [OAuth scope table](scopes.md#where-the-scopes-are-kept)
+is kept in when there is no discovery snapshot; null is the default store. Scope enforcement
+itself is turned on by binding services in your container, not here.
 
 ## `openapi`
 
@@ -308,6 +319,7 @@ The OpenAPI 3.1 generation + exposure block. Highlights:
 | `serve_allowed_classes` | classes, beyond core's OpenAPI value objects, that a document's example, default or extension values may hold and still be served from the serialized copy (default `[]`); see [per-request customisation](openapi.md#per-request-customisation) |
 | `examples` | give each operation's request and success responses, and each shared error response, an example built from the declared field and error-code examples (default `true`); a server's own `openapi_examples` overrides it; see [operation examples](openapi.md#operation-examples) |
 | `info` / `servers` / `tags` / `security` | the document `info`, advertised OAS servers, tag definitions, and security schemes + default requirement |
+| `security.scope_scheme` | the security scheme each operation's [OAuth scopes](scopes.md#the-openapi-document) are listed under (default `oauth2`) |
 
 The docs routes are gated behind `app.debug || openapi.expose_in_prod`; the CLI exporters
 (`jsonapi:openapi:export`, `jsonapi:jsonschema:export`) are always available. The

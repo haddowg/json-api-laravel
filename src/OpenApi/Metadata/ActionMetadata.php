@@ -15,6 +15,7 @@ use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionExample;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionExtensions;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionLink;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionSafety;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionScopes;
 use haddowg\JsonApi\OpenApi\Metadata\MetaResult;
 use haddowg\JsonApi\OpenApi\Metadata\NoContent;
 use haddowg\JsonApi\OpenApi\Metadata\OperationExample;
@@ -38,7 +39,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
  * tags fall back to the mount type's default tag) so the projected document matches the
  * bundle's for an identical action.
  */
-final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAcceptedBodies, DeclaresActionExample, DeclaresActionSafety, DeclaresActionExtensions
+final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAcceptedBodies, DeclaresActionExample, DeclaresActionSafety, DeclaresActionExtensions, DeclaresActionScopes
 {
     /**
      * @param list<string> $tags the OpenAPI tag names (already resolved against the mount type's default)
@@ -192,5 +193,10 @@ final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAccep
     public function extensions(): array
     {
         return $this->descriptor->extensions;
+    }
+
+    public function scopes(): ?array
+    {
+        return $this->descriptor->scopes;
     }
 }

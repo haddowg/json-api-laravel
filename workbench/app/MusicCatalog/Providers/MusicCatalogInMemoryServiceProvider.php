@@ -54,6 +54,7 @@ use Workbench\App\MusicCatalog\Security\PlaylistApiPolicy;
 use Workbench\App\MusicCatalog\Serializer\ChartSerializer;
 use Workbench\App\MusicCatalog\Serializer\CountrySerializer;
 use Workbench\App\MusicCatalog\Support\AuditLog;
+use Workbench\App\MusicCatalog\Support\CatalogConfig;
 use Workbench\App\MusicCatalog\Support\Fixtures;
 
 /**
@@ -83,6 +84,8 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        CatalogConfig::bindScopes($this->app);
+
         // Ascending type order — see MusicCatalogEloquentServiceProvider: the projected
         // OpenAPI `paths` follow discovery order, and the byte-compat contract requires them
         // to match the bundle's alphabetical-by-type descriptor order (decision 11).

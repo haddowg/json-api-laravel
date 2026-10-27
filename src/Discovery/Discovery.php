@@ -71,6 +71,13 @@ final class Discovery
      */
     private ?array $modelMap = null;
 
+    /**
+     * The scope tables the snapshot carries, keyed by server name.
+     *
+     * @var array<string, \haddowg\JsonApi\Scope\ScopeTable>
+     */
+    private array $scopeTables = [];
+
     private bool $ignoreCache = false;
 
     private ?bool $loadedFromSnapshot = null;
@@ -265,7 +272,29 @@ final class Discovery
         $this->resources = $this->providers = $this->persisters = $this->translators = null;
         $this->actions = $this->serializers = $this->hydrators = $this->errors = null;
         $this->modelMap = null;
+        $this->scopeTables = [];
         $this->loadedFromSnapshot = null;
+    }
+
+    /**
+     * Whether the descriptors came from the snapshot rather than a scan.
+     */
+    public function loadedFromSnapshot(): bool
+    {
+        $this->resources();
+
+        return $this->loadedFromSnapshot === true;
+    }
+
+    /**
+     * The scope table the loaded snapshot carries for `$server`, or `null` when there is no
+     * snapshot or it carries none for that server.
+     */
+    public function scopeTable(string $server): ?\haddowg\JsonApi\Scope\ScopeTable
+    {
+        $this->resources();
+
+        return $this->scopeTables[$server] ?? null;
     }
 
     /**
@@ -302,6 +331,7 @@ final class Discovery
             $this->hydrators = $snapshot['hydrators'];
             $this->errors = $snapshot['errors'];
             $this->modelMap = $snapshot['models'];
+            $this->scopeTables = $snapshot['scopes'];
             $this->loadedFromSnapshot = true;
 
             return $snapshot;
@@ -340,7 +370,7 @@ final class Discovery
      * configuration is behaviourally identical to a scanned one. Missing keys degrade
      * gracefully to empty lists (a resources-only file still loads its resources).
      *
-     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>, serializers: list<SerializerDescriptor>, hydrators: list<HydratorDescriptor>, errors: list<class-string<\haddowg\JsonApi\Exception\DescribedErrorInterface>>, models: array{namespace: ?string, map: array<string, class-string<\Illuminate\Database\Eloquent\Model>>}|null}|null
+     * @return array{resources: list<ResourceDescriptor>, providers: list<class-string>, persisters: list<class-string>, translators: list<class-string>, actions: list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>, serializers: list<SerializerDescriptor>, hydrators: list<HydratorDescriptor>, errors: list<class-string<\haddowg\JsonApi\Exception\DescribedErrorInterface>>, models: array{namespace: ?string, map: array<string, class-string<\Illuminate\Database\Eloquent\Model>>}|null, scopes: array<string, \haddowg\JsonApi\Scope\ScopeTable>}|null
      */
     private function loadSnapshot(): ?array
     {
@@ -364,7 +394,36 @@ final class Discovery
             'hydrators' => $this->readHydrators($data['hydrators'] ?? []),
             'errors' => $this->readErrors($data['errors'] ?? []),
             'models' => $this->readModelMap($data['models'] ?? null),
+            'scopes' => $this->readScopeTables($data['scopes'] ?? null),
         ];
+    }
+
+    /**
+     * Reads the snapshot's scope tables, keyed by server name, skipping a malformed one so
+     * its server builds the table again.
+     *
+     * @return array<string, \haddowg\JsonApi\Scope\ScopeTable>
+     */
+    private function readScopeTables(mixed $entries): array
+    {
+        if (!\is_array($entries)) {
+            return [];
+        }
+
+        $tables = [];
+        foreach ($entries as $server => $table) {
+            if (!\is_string($server) || !\is_array($table)) {
+                continue;
+            }
+
+            try {
+                $tables[$server] = \haddowg\JsonApi\Scope\ScopeTable::fromArray($table);
+            } catch (\InvalidArgumentException) {
+                continue;
+            }
+        }
+
+        return $tables;
     }
 
     /**

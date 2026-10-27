@@ -23,6 +23,7 @@ use haddowg\JsonApiLaravel\Discovery\ResourceDescriptor;
 use haddowg\JsonApiLaravel\Discovery\SerializerDescriptor;
 use haddowg\JsonApiLaravel\OpenApi\DocumentUrlProvider;
 use haddowg\JsonApiLaravel\Operation\Operation;
+use haddowg\JsonApiLaravel\Scope\ScopeTables;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 
@@ -82,6 +83,8 @@ final class MetadataSource
      * @param list<string>                         $serverNames    the declared server names (`default` first), the same per-server type source `forServer()` reads
      * @param bool                                 $atomicEnabled  whether the Atomic Operations extension is enabled (`jsonapi.atomic_operations.enabled`); when true every server's document gains the atomic endpoint
      * @param string                               $atomicPath     the path the per-server atomic endpoint is served at (`jsonapi.atomic_operations.path`)
+     * @param list<string>|null                    $atomicScopes   the OAuth scopes the atomic endpoint needs (`jsonapi.atomic_operations.scopes`; null asks the scope resolver)
+     * @param ScopeTables|null                     $scopes         the scope tables each server's metadata hands the projector; null declares none
      */
     public function __construct(
         private readonly ServerRegistry $servers,
@@ -97,6 +100,8 @@ final class MetadataSource
         private readonly ?PrefixServers $prefixServers = null,
         private readonly RelationCriteriaFactory $relationCriteria = new RelationCriteriaFactory(),
         private readonly ?DocumentUrlProvider $documentUrls = null,
+        private readonly ?array $atomicScopes = null,
+        private readonly ?ScopeTables $scopes = null,
     ) {}
 
     /**
@@ -150,6 +155,8 @@ final class MetadataSource
             documentUrl: $this->documentUrls?->forServer($serverName),
             rejectsReadOnlyAttributes: $server->rejectsReadOnlyAttributes(),
             generatesExamples: $config->generatesExamples,
+            scopes: $this->scopes,
+            scopeServer: $serverName,
         );
     }
 
@@ -225,6 +232,8 @@ final class MetadataSource
             rejectsReadOnlyAttributes: \array_filter($this->serverNames, fn(string $name): bool => $this->servers->get($name)->rejectsReadOnlyAttributes()) !== [],
             // The examples switch follows the default server, as the info block does.
             generatesExamples: $defaultConfig->generatesExamples,
+            // The servers' tables, merged: the types do not collide, so neither do their entries.
+            scopes: $this->scopes,
         );
     }
 
@@ -260,7 +269,7 @@ final class MetadataSource
             return null;
         }
 
-        return new AtomicOperationsMetadata($this->atomicPath);
+        return new AtomicOperationsMetadata($this->atomicPath, scopes: $this->atomicScopes);
     }
 
     /**
@@ -332,6 +341,8 @@ final class MetadataSource
             extensions: $descriptor->extensions,
             operationExtensions: $descriptor->operationExtensions,
             operationExamples: $this->operationExamples($descriptor->class, AsJsonApiSerializer::class),
+            operationScopes: $this->operationScopes($descriptor->class, AsJsonApiSerializer::class),
+            resourceClass: $descriptor->class,
         );
     }
 
@@ -398,6 +409,8 @@ final class MetadataSource
             operationExamples: $this->operationExamples($descriptor->class, AsJsonApiResource::class),
             alwaysCounts: self::alwaysCounts($paginator),
             declaredLinks: $resource?->allLinks() ?? [],
+            operationScopes: $this->operationScopes($descriptor->class, AsJsonApiResource::class),
+            resourceClass: $descriptor->class,
         );
     }
 
@@ -427,6 +440,27 @@ final class MetadataSource
 
         foreach ((new \ReflectionClass($class))->getAttributes($attribute) as $declared) {
             return $declared->newInstance()->operationExamples;
+        }
+
+        return [];
+    }
+
+    /**
+     * The `operationScopes` a type's `#[AsJsonApiResource]` or `#[AsJsonApiSerializer]`
+     * declares, read off the class as its `operationExamples` are.
+     *
+     * @param class-string<AsJsonApiResource|AsJsonApiSerializer> $attribute
+     *
+     * @return array<string, list<string>>
+     */
+    private function operationScopes(string $class, string $attribute): array
+    {
+        if (!\class_exists($class)) {
+            return [];
+        }
+
+        foreach ((new \ReflectionClass($class))->getAttributes($attribute) as $declared) {
+            return $declared->newInstance()->operationScopes;
         }
 
         return [];

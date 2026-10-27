@@ -111,7 +111,8 @@ abstract class DeclaredLinksTestCase extends Orchestra
     {
         $doc = $this->resolve(DocumentFactory::class)->forServer('default')->toArray();
 
-        self::assertSame(15, $this->at($doc, 'info', 'x-generator', 'contract'));
+        // The catalogue declares OAuth scopes, which stamp the scoped contract tier.
+        self::assertSame(16, $this->at($doc, 'info', 'x-generator', 'contract'));
 
         $preview = $this->arrayAt($doc, 'components', 'schemas', 'TracksResourceLinks', 'properties', 'preview');
         self::assertSame('A short audio preview of the track, valid until expiresAt.', $preview['description'] ?? null);

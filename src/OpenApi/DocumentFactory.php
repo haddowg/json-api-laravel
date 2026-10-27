@@ -124,7 +124,12 @@ final class DocumentFactory
 
     private function decorated(Projection $projection, string $server): Projection
     {
-        return new Projection($this->decorate($projection->document, $server), $projection->missingExamples);
+        return new Projection(
+            $this->decorate($projection->document, $server),
+            $projection->missingExamples,
+            $projection->undeclaredScopes,
+            $projection->scopeScheme,
+        );
     }
 
     /**

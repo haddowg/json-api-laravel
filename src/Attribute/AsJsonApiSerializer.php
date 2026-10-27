@@ -46,7 +46,8 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * and values must be scalars, `null` or arrays of them.
  *
  * `operationExamples` replaces or removes the type's generated OpenAPI operation examples,
- * as on {@see AsJsonApiResource}.
+ * as on {@see AsJsonApiResource}, and `operationScopes` names the OAuth scopes an operation
+ * needs, as on {@see AsJsonApiResource}.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final readonly class AsJsonApiSerializer
@@ -58,6 +59,7 @@ final readonly class AsJsonApiSerializer
      * @param array<string, mixed>     $extensions OpenAPI vendor extensions (`x-…`) stamped on every operation of this type, custom actions included
      * @param array<string, array<string, mixed>> $operationExtensions per-CRUD-operation vendor extensions keyed by {@see Operation} case value, merged over `extensions`
      * @param array<string, OperationExample|false|null> $operationExamples the OpenAPI example overrides keyed by operation name, as on {@see AsJsonApiResource}
+     * @param array<string, list<string>>                $operationScopes   the OAuth scopes each named operation needs, as on {@see AsJsonApiResource}
      */
     public function __construct(
         public string $type,
@@ -67,9 +69,11 @@ final readonly class AsJsonApiSerializer
         public array $extensions = [],
         public array $operationExtensions = [],
         public array $operationExamples = [],
+        public array $operationScopes = [],
     ) {
         $exposed = \array_map(static fn(Operation $op): string => $op->value, $operations);
         VendorExtensions::assertValid('AsJsonApiSerializer', $extensions, $operationExtensions, $exposed, 'add it to `operations`');
         OperationExamples::assertValid('AsJsonApiSerializer', $operationExamples, $exposed, 'add it to `operations`');
+        OperationScopes::assertValid('AsJsonApiSerializer', $operationScopes, $exposed, 'add it to `operations`');
     }
 }

@@ -41,9 +41,9 @@ use Psr\Http\Message\StreamFactoryInterface;
  * throws without one). The built Server is an immutable value, so it is memoized and
  * shared.
  *
- * The relationship seams, profiles, and the serving/events bridge (a
+ * The relationship seams, profiles, the serving/events bridge (a
  * `Server::withServing()` handler dispatching a {@see ServingEvent}, PLAN decision 10)
- * are all threaded here.
+ * and the OAuth scope enforcer are all threaded here.
  */
 final class ServerFactory
 {
@@ -152,6 +152,10 @@ final class ServerFactory
         // Whether a write body that sends a read-only attribute is refused with a `403`
         // (`reject_read_only_attributes`); false ignores such attributes.
         private readonly bool $rejectReadOnlyAttributes = false,
+        // Builds the scope enforcer for this server, or null when the app grants no scopes.
+        // It is called once the unenforced server is memoized, because resolving the scope
+        // table builds this server's metadata, which reads the server back.
+        private readonly ?\Closure $scopeEnforcer = null,
     ) {}
 
     /**
@@ -239,6 +243,18 @@ final class ServerFactory
         }
 
         $this->server = $server->withHandler($this->handler);
+
+        if ($this->scopeEnforcer !== null) {
+            try {
+                $this->server = $this->server->withScopeEnforcement(($this->scopeEnforcer)());
+            } catch (\Throwable $throwable) {
+                // Never leave the unenforced server memoized for the next caller.
+                $this->server = null;
+
+                throw $throwable;
+            }
+        }
+
         $this->serverNames?->register($this->server, $this->serverName);
 
         return $this->server;

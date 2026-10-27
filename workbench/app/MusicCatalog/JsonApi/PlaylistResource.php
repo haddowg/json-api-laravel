@@ -64,6 +64,8 @@ use Workbench\App\MusicCatalog\Security\PlaylistApiPolicy;
         Operation::Delete->value => 'deletePlaylist',
     ],
     tags: ['Library'],
+    // Deleting a playlist needs the admin scope on top of the write scope the resolver gives.
+    operationScopes: ['delete' => ['library:write', 'library:admin']],
 )]
 final class PlaylistResource extends AbstractResource implements ResourceLifecycleHooksInterface
 {

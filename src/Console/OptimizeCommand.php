@@ -8,6 +8,7 @@ use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\DiscoverySnapshotWriter;
 use haddowg\JsonApiLaravel\OpenApi\DocumentRouteWarmer;
 use haddowg\JsonApiLaravel\OpenApi\DocumentWarmer;
+use haddowg\JsonApiLaravel\Scope\ScopeTables;
 use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use Illuminate\Console\Command;
 
@@ -16,7 +17,9 @@ use Illuminate\Console\Command;
  * (PLAN decision 11) — the `optimizes()` pipeline hook (`php artisan optimize` runs it,
  * `optimize:clear` clears it via {@see ClearCommand}).
  *
- * Two phases, mirroring the Symfony bundle's two cache warmers:
+ * Every server's OAuth scope table is built first ({@see ScopeTables}), so a resolver error
+ * or an unknown `operationScopes` key fails the command. Then two phases, mirroring the
+ * Symfony bundle's two cache warmers:
  *  - **Servability validation ({@see ServableResourceWarmer}) — mandatory.** Every
  *    problem it reports (a routed type with no provider/persister, a missing/duplicate Id,
  *    a non-discriminating polymorphic candidate, an Eloquent relation with no model method)
@@ -49,6 +52,17 @@ final class OptimizeCommand extends Command
         $documentRoutes = $this->laravel->make(DocumentRouteWarmer::class);
         $documents = $this->laravel->make(DocumentWarmer::class);
         $snapshot = $this->laravel->make(DiscoverySnapshotWriter::class);
+
+        // Phase 0 — mandatory: every server's OAuth scope table must build. A resolver that
+        // throws, or an override naming an operation the type lacks, fails the deploy. It
+        // runs first because a server enforcing scopes cannot be built without its table.
+        try {
+            $this->laravel->make(ScopeTables::class)->rebuild();
+        } catch (\LogicException $e) {
+            $this->error(\sprintf('JSON:API scope table build failed: %s', $e->getMessage()));
+
+            return self::FAILURE;
+        }
 
         // Phase 1 — mandatory servability validation. A problem fails the deploy.
         $problems = $servable->warm();

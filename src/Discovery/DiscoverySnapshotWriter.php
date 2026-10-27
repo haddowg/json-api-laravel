@@ -18,7 +18,8 @@ use haddowg\JsonApiLaravel\Eloquent\ModelMapResolver;
  * described-error class-strings — so a cached configuration is behaviourally identical to
  * a live scan. It also writes the resolved Eloquent `type → model` map with the namespace
  * it was resolved under, so a request served from the snapshot runs no inflection
- * (ADR 0053).
+ * (ADR 0053), and each server's resolved scope table, so the scope enforcer loads it
+ * rather than asking the resolver again.
  *
  * The snapshot is **opt-in**: it is written only when `jsonapi.discovery.cache` names a
  * path (null keeps the always-scan default). `php artisan optimize` writes it,
@@ -29,6 +30,7 @@ final class DiscoverySnapshotWriter
     public function __construct(
         private readonly Discovery $discovery,
         private readonly ?ModelMapResolver $models = null,
+        private readonly ?\haddowg\JsonApiLaravel\Scope\ScopeTables $scopes = null,
     ) {}
 
     /**
@@ -72,6 +74,14 @@ final class DiscoverySnapshotWriter
                 'namespace' => $namespace,
                 'map' => (new ModelMapResolver($this->discovery->resources(), $namespace))->resolve(),
             ];
+        }
+
+        if ($this->scopes !== null) {
+            // Built from the rescanned declarations; a resolver error fails the write.
+            $snapshot['scopes'] = \array_map(
+                static fn(\haddowg\JsonApi\Scope\ScopeTable $table): array => $table->toArray(),
+                $this->scopes->rebuild(),
+            );
         }
 
         $php = '<?php' . "\n\n" . 'return ' . \var_export($snapshot, true) . ';' . "\n";

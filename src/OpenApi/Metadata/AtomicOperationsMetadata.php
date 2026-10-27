@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
-use haddowg\JsonApi\OpenApi\Metadata\AtomicOperationsMetadataInterface;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresAtomicScopes;
 use haddowg\JsonApi\OpenApi\SecurityRequirement;
 
 /**
@@ -21,8 +21,12 @@ use haddowg\JsonApi\OpenApi\SecurityRequirement;
  * **Security**: the atomic endpoint carries no per-endpoint security of its own — it
  * is subject to the document-level default like any other write. So {@see security()}
  * returns an empty list and core's projector falls back to the document-level default.
+ *
+ * **Scopes**: {@see scopes()} is `jsonapi.atomic_operations.scopes`, the OAuth scopes the
+ * endpoint itself needs, or `null` to ask the scope resolver. Each operation in a batch is
+ * still checked against its own scopes.
  */
-final readonly class AtomicOperationsMetadata implements AtomicOperationsMetadataInterface
+final readonly class AtomicOperationsMetadata implements DeclaresAtomicScopes
 {
     /**
      * The default OpenAPI tag the atomic operation is grouped under.
@@ -31,12 +35,19 @@ final readonly class AtomicOperationsMetadata implements AtomicOperationsMetadat
 
     /**
      * @param list<SecurityRequirement> $security the OR-ed security alternatives for the atomic operation; empty inherits the document-level default
+     * @param list<string>|null         $scopes   the OAuth scopes the endpoint needs (null = ask the scope resolver)
      */
     public function __construct(
         private string $path,
         private string $tag = self::DEFAULT_TAG,
         private array $security = [],
+        private ?array $scopes = null,
     ) {}
+
+    public function scopes(): ?array
+    {
+        return $this->scopes;
+    }
 
     public function path(): string
     {

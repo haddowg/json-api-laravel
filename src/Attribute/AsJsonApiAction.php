@@ -102,6 +102,10 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
  * `extensions` are OpenAPI vendor extensions for the action's own operation, keyed by their
  * `x-` name. They merge over the mount type's `extensions`, and the action's value wins on a
  * shared key.
+ *
+ * `scopes` names the OAuth scopes every method of the action needs, overriding the
+ * application's {@see \haddowg\JsonApi\Scope\OperationScopeResolverInterface}. `[]`
+ * declares that it needs none, and `null` leaves the resolver to decide.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final readonly class AsJsonApiAction
@@ -128,6 +132,7 @@ final readonly class AsJsonApiAction
      * @param bool|null                                          $destructive whether the action may change data in a way that cannot be undone (null leaves it undeclared)
      * @param bool|null                                          $idempotent  whether repeating the call with the same input has no further effect (null leaves it undeclared)
      * @param array<string, mixed>                               $extensions  OpenAPI vendor extensions for the action's operation, keyed by `x-` name
+     * @param list<string>|null                                  $scopes      the OAuth scopes the action needs (`[]` for none, null to ask the scope resolver)
      */
     public function __construct(
         public string $type,
@@ -150,6 +155,7 @@ final readonly class AsJsonApiAction
         public ?bool $destructive = null,
         public ?bool $idempotent = null,
         public array $extensions = [],
+        public ?array $scopes = null,
     ) {
         // Normalise the declaration: a single response object → a one-element list; an
         // omitted declaration → a `200` document of the mount type (the historical default).
@@ -211,6 +217,10 @@ final readonly class AsJsonApiAction
         }
 
         VendorExtensions::assertMap(\sprintf('AsJsonApiAction "%s" on type "%s"', $path, $type), $extensions, 'extensions');
+
+        if ($scopes !== null) {
+            OperationScopes::assertList(\sprintf('AsJsonApiAction "%s" on type "%s" scopes', $path, $type), $scopes);
+        }
 
         foreach ($accepts as $key => $value) {
             $valid = \is_string($key)

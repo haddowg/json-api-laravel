@@ -23,7 +23,7 @@ use Psr\Http\Message\UploadedFileInterface;
  * request, attaches it to the resolved album, persists, and returns a bodyless `204` — so it
  * declares `responds: [new NoContent()]` (the generated document advertises a `204`, not an albums body).
  */
-#[AsJsonApiAction(type: 'albums', path: 'artwork', input: ActionInput::Raw, responds: [new NoContent()], accepts: ['multipart/form-data', 'image/*'], idempotent: true)]
+#[AsJsonApiAction(type: 'albums', path: 'artwork', input: ActionInput::Raw, responds: [new NoContent()], accepts: ['multipart/form-data', 'image/*'], idempotent: true, scopes: ['catalog:write', 'catalog:media'])]
 final class UploadAlbumArtwork implements ActionHandlerInterface
 {
     public function __construct(private readonly DataPersisterRegistry $persisters) {}
