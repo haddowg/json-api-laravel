@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.0](https://github.com/haddowg/json-api-laravel/compare/v1.16.1...v1.17.0) (2026-10-27)
+
+
+### Features
+
+* render a resource's conditional action links ([#160](https://github.com/haddowg/json-api-laravel/issues/160)) ([8e39f1c](https://github.com/haddowg/json-api-laravel/commit/8e39f1cf73c96b9bcb5634e29e6b21b45929783b))
+
 ## [1.16.1](https://github.com/haddowg/json-api-laravel/compare/v1.16.0...v1.16.1) (2026-10-27)
 
 
