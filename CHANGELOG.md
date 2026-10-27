@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.1](https://github.com/haddowg/json-api-laravel/compare/v1.17.0...v1.17.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* render a 405 on a JSON:API path as a JSON:API error ([#162](https://github.com/haddowg/json-api-laravel/issues/162)) ([f34d43d](https://github.com/haddowg/json-api-laravel/commit/f34d43d7e4bb4078728ada5a9d137b614e4b8657))
+
 ## [1.17.0](https://github.com/haddowg/json-api-laravel/compare/v1.16.1...v1.17.0) (2026-10-27)
 
 
