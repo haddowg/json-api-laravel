@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Fixtures\Relations;
 
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\BelongsTo;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\Where;
@@ -28,6 +29,7 @@ final class TagResource extends AbstractResource
         return [
             Id::make(),
             Str::make('label')->sortable(),
+            BelongsTo::make('owner', 'authors'),
         ];
     }
 

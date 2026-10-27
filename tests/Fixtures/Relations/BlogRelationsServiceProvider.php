@@ -42,7 +42,7 @@ final class BlogRelationsServiceProvider extends ServiceProvider
         $grace = new Author('2', 'Grace');
         $authors = ['1' => $ada, '2' => $grace];
 
-        $php = new Tag('1', 'php');
+        $php = new Tag('1', 'php', $ada);
         $json = new Tag('2', 'json');
         $tags = ['1' => $php, '2' => $json];
 

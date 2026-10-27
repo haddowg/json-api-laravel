@@ -77,6 +77,7 @@ final class EloquentPolymorphicRelationshipTest extends Orchestra
         Schema::create('blog_tags', static function (Blueprint $table): void {
             $table->increments('id');
             $table->string('label');
+            $table->unsignedInteger('owner_id')->nullable();
         });
         Schema::create('blog_posts', static function (Blueprint $table): void {
             $table->increments('id');
@@ -324,7 +325,7 @@ final class EloquentPolymorphicRelationshipTest extends Orchestra
         $ada = Author::query()->create(['id' => 1, 'name' => 'Ada']);
         Author::query()->create(['id' => 2, 'name' => 'Grace']);
 
-        $php = Tag::query()->create(['id' => 1, 'label' => 'php']);
+        $php = Tag::query()->create(['id' => 1, 'label' => 'php', 'owner_id' => $ada->id]);
         $json = Tag::query()->create(['id' => 2, 'label' => 'json']);
 
         // Post 1 'Hello': author Ada, feature the json Tag, tags [php@0, json@1], related [Ada, php].
