@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.0](https://github.com/haddowg/json-api-laravel/compare/v1.19.1...v1.20.0) (2026-10-28)
+
+
+### Features
+
+* let each server declare its own response-header defaults ([#175](https://github.com/haddowg/json-api-laravel/issues/175)) ([c8b2a12](https://github.com/haddowg/json-api-laravel/commit/c8b2a12ca6149dd0ac6b9bfe418c2514794c65b5))
+
 ## [1.19.1](https://github.com/haddowg/json-api-laravel/compare/v1.19.0...v1.19.1) (2026-10-28)
 
 
