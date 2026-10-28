@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.0](https://github.com/haddowg/json-api-laravel/compare/v1.18.2...v1.19.0) (2026-10-28)
+
+
+### Features
+
+* load an identified MorphTo's targets through each type's provider ([#171](https://github.com/haddowg/json-api-laravel/issues/171)) ([0e13c16](https://github.com/haddowg/json-api-laravel/commit/0e13c16acb730321717f7e3646f747a9c86d9a07))
+
 ## [1.18.2](https://github.com/haddowg/json-api-laravel/compare/v1.18.1...v1.18.2) (2026-10-27)
 
 
