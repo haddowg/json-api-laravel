@@ -58,6 +58,7 @@ use haddowg\JsonApiLaravel\Exception\JsonApiExceptionRenderer;
 use haddowg\JsonApiLaravel\Http\JsonApiController;
 use haddowg\JsonApiLaravel\Http\JsonSchemaController;
 use haddowg\JsonApiLaravel\Http\OpenApiController;
+use haddowg\JsonApiLaravel\Http\ResponseHeaderDefaultsConfig;
 use haddowg\JsonApiLaravel\Http\ResponseHeadersRegistry;
 use haddowg\JsonApiLaravel\OpenApi\ArtifactStore;
 use haddowg\JsonApiLaravel\OpenApi\Config\ExamplesConfig;
@@ -306,8 +307,8 @@ final class JsonApiServiceProvider extends ServiceProvider
      * Binds the response-header registry (PLAN decision 12): the per-type declarative
      * cache + deprecation/sunset config projected off the discovered
      * {@see \haddowg\JsonApiLaravel\Discovery\ResourceDescriptor}s (a discovery-time
-     * projection, like the Authorizer config), layered over the global
-     * `jsonapi.defaults.*` defaults. The {@see \haddowg\JsonApiLaravel\Http\ResponseHeadersMiddleware}
+     * projection, like the Authorizer config), layered over each server's own
+     * `jsonapi.servers.<name>.defaults` and then the global `jsonapi.defaults.*` (ADR 0053). The {@see \haddowg\JsonApiLaravel\Http\ResponseHeadersMiddleware}
      * queries it per request.
      */
     private function registerResponseHeaders(): void
@@ -326,16 +327,16 @@ final class JsonApiServiceProvider extends ServiceProvider
                 }
             }
 
-            /** @var array<string, mixed> $defaultCache */
-            $defaultCache = config('jsonapi.defaults.cache_headers', []);
+            $global = ResponseHeaderDefaultsConfig::fromBlock(config('jsonapi.defaults'), 'jsonapi.defaults');
+            $servers = config('jsonapi.servers', []);
 
-            $defaultDeprecation = [
-                'deprecation' => config('jsonapi.defaults.deprecation'),
-                'sunset' => config('jsonapi.defaults.sunset'),
-                'sunset_link' => config('jsonapi.defaults.sunset_link'),
-            ];
-
-            return new ResponseHeadersRegistry([], $defaultCache, $defaultDeprecation, $byServer);
+            return new ResponseHeadersRegistry(
+                [],
+                $global['cache'],
+                $global['deprecation'],
+                $byServer,
+                ResponseHeaderDefaultsConfig::forServers(\is_array($servers) ? $servers : []),
+            );
         });
     }
 
@@ -377,7 +378,8 @@ final class JsonApiServiceProvider extends ServiceProvider
 
     /**
      * Fails the boot on a `link_objects`, `reject_read_only_attributes` or `openapi.examples`
-     * that is not a boolean or null.
+     * that is not a boolean or null, and on a bad value in the global or any server's
+     * response-header `defaults`.
      */
     private function assertLinkObjects(): void
     {
@@ -386,6 +388,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         LinkObjectsConfig::assertValid(config('jsonapi.link_objects'), \is_array($servers) ? $servers : []);
         ReadOnlyAttributesConfig::assertValid(config('jsonapi.reject_read_only_attributes'), \is_array($servers) ? $servers : []);
         ExamplesConfig::assertValid(config('jsonapi.openapi.examples'), \is_array($servers) ? $servers : []);
+        ResponseHeaderDefaultsConfig::assertValid(config('jsonapi.defaults'), \is_array($servers) ? $servers : []);
     }
 
     /**
