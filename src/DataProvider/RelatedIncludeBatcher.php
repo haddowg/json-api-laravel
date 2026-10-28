@@ -71,6 +71,12 @@ use Illuminate\Database\Eloquent\Model;
  * of these `400`s in core before this runs, so this is belt and braces — and the recursion
  * is bounded by the same effective depth so a mutual default-include cycle terminates here.
  *
+ * A `MorphTo` declared with `identifiedBy()` renders its linkage from the pair its parent stores.
+ * Its targets load through each type's own provider, one read per type for the level, batching on
+ * or off, since nothing else can read them ({@see IdentifiedMorphTargets}, ADR 0068): every type's
+ * when included, and the nested include walk continues from them, otherwise only the guarded
+ * types', so a hidden target's linkage renders as none.
+ *
  * The `on()` eager-load pass the bundle also runs (flattened to-one chains) is a phase-4
  * flattened-attribute concern with no declarations in this package yet, so it is a
  * documented seam here (inert without `on()`), not ported.
@@ -92,6 +98,7 @@ final class RelatedIncludeBatcher
         private readonly DataProviderRegistry $providers,
         private readonly TypeMetadataResolver $types,
         private readonly ScopedPolymorphicMembers $polymorphicMembers,
+        private readonly IdentifiedMorphTargets $identified,
     ) {}
 
     /**
@@ -261,6 +268,20 @@ final class RelatedIncludeBatcher
                 && ($maxDepth === null || (\substr_count($childPath, '.') + 1) <= $maxDepth)
                 && ($allowedPaths === null || \in_array($childPath, $allowedPaths, true));
 
+            if (IdentifiedMorphTargets::identifies($relation)) {
+                if (!$included) {
+                    $this->identified->load($entities, $relation, $request, $this->identified->guardedTypes($relation));
+
+                    continue;
+                }
+
+                foreach ($this->identified->load($entities, $relation, $request) as $targetType => $targets) {
+                    $this->preloadLevel($server, $targets, $targetType, $request, $childPath, $maxDepth, $allowedPaths, true, $batch, $linkages, $reach);
+                }
+
+                continue;
+            }
+
             if ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation)) {
                 $targets = $this->loadScoped($server, $entities, $type, $relation, $request, $included, $linkages);
                 if ($included) {
@@ -382,8 +403,8 @@ final class RelatedIncludeBatcher
 
     /**
      * Whether a relation reachable from any of `$types` (themselves included) relates to a
-     * type served by its own scoping provider, so an unbatched level must still be walked to
-     * reach it. Resolved for the whole reachable type graph at once, cycles included, and
+     * type served by its own scoping provider, or is an identified `MorphTo`, so an unbatched
+     * level must still be walked to reach it. Resolved for the whole reachable type graph at once, cycles included, and
      * memoized in `$reach` per {@see preload()} call.
      *
      * @param list<string>        $types
@@ -402,7 +423,9 @@ final class RelatedIncludeBatcher
             $edges[$type] = [];
             $seed = false;
             foreach ($this->types->readableRelationsFor($server, $type, $request) as $relation) {
-                $seed = $seed || ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation));
+                $seed = $seed
+                    || ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation))
+                    || IdentifiedMorphTargets::identifies($relation);
                 foreach ($relation->relatedTypes() as $relatedType) {
                     $edges[$type][] = $relatedType;
                     $queue[] = $relatedType;

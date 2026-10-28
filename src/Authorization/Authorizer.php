@@ -112,6 +112,36 @@ final class Authorizer
     }
 
     /**
+     * Whether a single row of `$type` may be refused by its `view` check on `$server`: the
+     * type declares a policy or renames the ability, or its rows of `$subjectClass` have a
+     * Gate policy, or the ability is a defined Gate ability. A type whose check is inert, as
+     * {@see authorize()} would find it, is not guarded. A null class with nothing declared is
+     * guarded when the Gate defines the ability or maps any policy, since the rows' policy
+     * can't be ruled out.
+     *
+     * @param class-string|null $subjectClass
+     */
+    public function guardsRow(string $type, ?string $subjectClass, ?string $server = null): bool
+    {
+        $config = $this->configFor($server, $type);
+        $declared = $config?->ability(Operation::FetchOne);
+        $ability = $declared ?? $this->defaultAbility(Operation::FetchOne);
+        if (\is_bool($ability)) {
+            return false;
+        }
+
+        if ($config?->policy !== null || \is_string($declared) || $this->gate->has($ability)) {
+            return true;
+        }
+
+        if ($subjectClass !== null) {
+            return $this->gate->getPolicyFor($subjectClass) !== null;
+        }
+
+        return !$this->gate instanceof \Illuminate\Auth\Access\Gate || $this->gate->policies() !== [];
+    }
+
+    /**
      * Abilities a relation's convention name may not take, since they already mean something
      * for the parent type (a relation named `any` would otherwise read as `viewAny`).
      */

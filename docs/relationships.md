@@ -310,6 +310,52 @@ is listed as `pin`, but no path through it is, so `pin.owner` is not in the pare
 A request may still send those includes. While there is one type the server knows the
 vocabulary, so `?include=pin.owner` and `GET /posts/{id}/pin?include=owner` still work.
 
+### A `MorphTo` stored as a type and id
+
+A parent that stores its target as two plain columns, rather than through an Eloquent
+`morphTo`, declares `identifiedBy()` and the relation reads the pair instead of the target:
+
+```php
+MorphTo::make('target', ['advertisers', 'agencies'])
+    ->identifiedBy(static fn(mixed $campaign): ?array => $campaign instanceof Campaign && $campaign->target_id !== null
+        ? [$campaign->target_type, $campaign->target_id]
+        : null),
+```
+
+The closure returns the JSON:API type and the target's key, or `null` for an empty relation.
+A column that stores some other name for the type maps it to the JSON:API type in the closure.
+The model needs no relation method for it.
+
+Whether linkage needs a query depends on whether the target's type is guarded on the server.
+A type is guarded when something other than a row's existence decides whether a read shows it:
+a global scope on its model, a data provider of its own that may scope or hide rows, or a `view`
+check that can refuse a row, through a policy, a declared ability or a Gate ability. The answer
+is worked out once per server and type and kept.
+
+- An unguarded type's linkage renders from the pair with no query. A list of ten campaigns that
+  target only unguarded types is one query, where a native `morphTo` lazy-loads each target to
+  learn its type.
+- A guarded type's targets load whenever the linkage renders, included or not, in one query
+  per guarded type for the whole page through that type's provider, the read
+  `GET /advertisers/{id}` makes. A target that read doesn't return, or that the `view` check
+  refuses, renders as `null` linkage, the same as any guarded to-one. Unguarded types in the
+  same relation keep rendering their pairs.
+- `?include=target` loads every type's targets the same way, and a hidden one is left out of
+  `included`. Includes below the target, such as `target.owner`, are loaded as usual.
+- The relationship endpoint, `GET /campaigns/{id}/relationships/target`, follows the same rule
+  as linkage. The related endpoint, `GET /campaigns/{id}/target`, fetches the one target
+  through its type's provider and renders `data: null` for an empty pair or a hidden target.
+
+A read permission the relation itself declares is checked against the parent, so it needs no
+load: when it refuses, the linkage is `null` whatever the pair says.
+
+A pair naming a type the relation doesn't declare is a `500`, from core's `\LogicException`.
+The target renders with the serializer of the pair's type, so its resource needs no
+object-aware `getType()`.
+Writes are unchanged, so `fillUsing()` owns them, and the OpenAPI document is the same as for
+any `MorphTo`. Core's [relations guide](https://github.com/haddowg/json-api/blob/main/docs/relations.md#identifying-the-target-without-loading-it)
+covers the declaration ([ADR 0068](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0068-an-identified-morph-to-loads-a-guarded-types-targets-whenever-its-linkage-renders.md)).
+
 When a member type is served by its own scoping provider, the members are narrowed per member
 type to the rows that provider admits, before the page is cut, so pages stay full and every
 count matches. A write naming a member resolves it through its own member type's provider: a

@@ -80,6 +80,7 @@ use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphTargets;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
@@ -768,7 +769,17 @@ final class CrudOperationHandler implements OperationHandlerInterface
             }
         }
 
-        $serializer = $relation->resolveSerializer($related, $server) ?? $server->serializerFor($relatedType);
+        // An identified MorphTo's target loaded as the type its parent stores, so it renders,
+        // and preloads its own includes, as that type (ADR 0068).
+        $pair = \is_object($related) && IdentifiedMorphTargets::identifies($relation) ? $relation->storedIdentifier($parent, $request) : null;
+        if ($pair !== null) {
+            $relatedType = $pair[0];
+            $polymorphic = false;
+        }
+
+        $serializer = $pair !== null
+            ? $server->serializerFor($relatedType)
+            : $relation->resolveSerializer($related, $server) ?? $server->serializerFor($relatedType);
 
         // Preload the related resource's own ?include tree (a single related object as a
         // one-element list) and install its `?withCount` counts, so a `?withCount=<rel>` named

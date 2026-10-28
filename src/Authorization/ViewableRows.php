@@ -95,11 +95,12 @@ final class ViewableRows
     }
 
     /**
-     * Whether the caller may see `$row`, reached through `$relation`.
+     * Whether the caller may see `$row`, reached through `$relation`, as `$type` when the caller
+     * knows it, otherwise as the type `$relation` resolves for the row.
      */
-    public function allows(object $row, RelationInterface $relation): bool
+    public function allows(object $row, RelationInterface $relation, ?string $type = null): bool
     {
-        $type = $this->typeOf($row, $relation);
+        $type ??= $this->typeOf($row, $relation);
         if ($type === null) {
             return true;
         }
