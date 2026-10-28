@@ -310,6 +310,41 @@ is listed as `pin`, but no path through it is, so `pin.owner` is not in the pare
 A request may still send those includes. While there is one type the server knows the
 vocabulary, so `?include=pin.owner` and `GET /posts/{id}/pin?include=owner` still work.
 
+### A `MorphTo` stored as a type and id
+
+A parent that stores its target as two plain columns, rather than through an Eloquent
+`morphTo`, declares `identifiedBy()` and the relation reads the pair instead of the target:
+
+```php
+MorphTo::make('target', ['advertisers', 'agencies'])
+    ->identifiedBy(static fn(mixed $campaign): ?array => $campaign instanceof Campaign && $campaign->target_id !== null
+        ? [$campaign->target_type, $campaign->target_id]
+        : null),
+```
+
+The closure returns the JSON:API type and the target's key, or `null` for an empty relation.
+A column that stores some other name for the type maps it to the JSON:API type in the closure.
+The model needs no relation method for it.
+
+Linkage renders from the pair with no query, on every read. A list of ten campaigns is one
+query, where a native `morphTo` lazy-loads each target to learn its type. The target is read
+only when it renders as a resource:
+
+- `?include=target` loads each type's targets in one query through that type's provider, the
+  read `GET /advertisers/{id}` makes. A global scope or a scoping provider that hides a target
+  there hides it here too, and so does its type's `view` policy or the relation's own read
+  permission: that campaign's linkage is `null` and the target is left out of `included`.
+  Includes below the target, such as `target.owner`, are loaded as usual.
+- `GET /campaigns/{id}/target` fetches the one target through its type's provider, and renders
+  `data: null` for an empty pair or a hidden target.
+
+A pair naming a type the relation doesn't declare is a `500`, from core's `\LogicException`.
+Each member type's resource still reports its own type from the object, as any polymorphic
+member's does (see [resources](resources.md#object-aware-gettype-and-the-self-link-opt-out)).
+Writes are unchanged, so `fillUsing()` owns them, and the OpenAPI document is the same as for
+any `MorphTo`. Core's [relations guide](https://github.com/haddowg/json-api/blob/main/docs/relations.md#identifying-the-target-without-loading-it)
+covers the declaration ([ADR 0068](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0068-an-identified-morph-to-loads-its-targets-through-each-types-provider.md)).
+
 When a member type is served by its own scoping provider, the members are narrowed per member
 type to the rows that provider admits, before the page is cut, so pages stay full and every
 count matches. A write naming a member resolves it through its own member type's provider: a
