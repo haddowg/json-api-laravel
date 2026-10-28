@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Feature\IdentifiedMorph;
 
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
+use haddowg\JsonApiLaravel\Tests\Fixtures\IdentifiedMorph\AgencyRecord;
 use haddowg\JsonApiLaravel\Tests\Fixtures\IdentifiedMorph\CampaignRecord;
 use PHPUnit\Framework\Attributes\CoversNothing;
 
@@ -24,6 +25,11 @@ final class InMemoryIdentifiedMorphTest extends IdentifiedMorphTestCase
     protected function queries(\Closure $read): ?array
     {
         return null;
+    }
+
+    protected function agencyClass(): string
+    {
+        return AgencyRecord::class;
     }
 
     protected function addCampaign(int $id, string $type, int $target): void

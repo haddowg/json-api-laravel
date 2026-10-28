@@ -41,8 +41,8 @@ use haddowg\JsonApiLaravel\DataProvider\ScopedToOneTargets;
  * Every to-one target it hands core leaves out a related row the caller may not `view`
  * ({@see ViewableRows}, ADR 0045), so it is missing from `data` and from `included`. A `MorphTo`
  * declared with `identifiedBy()` is never read off the parent here: it answers with the target
- * {@see IdentifiedMorphTargets} loaded for the parent, or `null` so core renders the stored pair
- * (ADR 0068). A to-many
+ * {@see IdentifiedMorphTargets} loaded for the parent, loading it when the pair names a guarded
+ * type, or `null` so core renders the stored pair (ADR 0068). A to-many
  * shows exactly what its query returns; a related type the caller may not list is withheld
  * whole by the relation authorizer instead.
  *
@@ -74,7 +74,7 @@ final class RequestScopedRelationshipLinkage implements ToOneRelationshipLinkage
         $this->delegate = null;
         $this->scoped = [];
         $this->toOne->bind($server);
-        $this->identified->bind($server);
+        $this->identified->bind($server, $serverName);
         $this->rows->bind($server, $serverName);
     }
 
@@ -103,7 +103,7 @@ final class RequestScopedRelationshipLinkage implements ToOneRelationshipLinkage
         $type = null;
         if (IdentifiedMorphTargets::identifies($relation)) {
             $this->identified->load([$model], $relation, $request);
-            $target = $this->identified->linkageFor($model, $relation)?->target;
+            $target = $this->identified->linkageFor($model, $relation, $request)?->target;
             $type = $relation->storedIdentifier($model, $request)[0] ?? null;
         } else {
             $target = $this->toOne->targetFor($model, $relation, $request);
@@ -166,11 +166,11 @@ final class RequestScopedRelationshipLinkage implements ToOneRelationshipLinkage
             return ToOneRelationshipLinkage::none();
         }
 
-        // An identified MorphTo answers only with a target loaded for it, so its pair renders
-        // without a load when nothing was.
+        // An identified MorphTo answers with its loaded target, loading it when its type is
+        // guarded, so an unguarded pair renders without a load.
         $identified = IdentifiedMorphTargets::identifies($relation);
         $linkage = $identified
-            ? $this->identified->linkageFor($model, $relation)
+            ? $this->identified->linkageFor($model, $relation, $request)
             : $this->toOne->linkageFor($model, $relation, $request);
         if ($permission === true) {
             return $linkage;

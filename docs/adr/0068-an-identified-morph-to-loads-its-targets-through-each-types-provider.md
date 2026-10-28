@@ -1,3 +1,0 @@
-# An identified MorphTo loads its targets through each type's provider
-
-Core renders an identified `MorphTo`'s linkage from the stored pair and leaves loading the target to the host (core ADR 0189). The package loads it only when the target renders as a resource, included or on the related endpoint, with one read per type through that type's own provider, so a global scope, a scoping provider and the type's `view` gate hide a target exactly as `GET /{type}/{id}` would. The load runs whether include batching is on or off, because nothing else can read the target, and the linkage seam answers with the loaded target, or with nothing so the pair renders, and never reads the relation off the parent.

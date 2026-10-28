@@ -13,11 +13,6 @@ final class AdvertiserResource extends AbstractResource
 {
     public static string $type = 'advertisers';
 
-    public function getType(mixed $object): string
-    {
-        return $object instanceof Advertiser || $object instanceof AdvertiserRecord ? 'advertisers' : '';
-    }
-
     public function fields(): array
     {
         return [

@@ -11,11 +11,15 @@ use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\Relationship\ToOneRelationshipLinkage;
 use haddowg\JsonApi\Server\Server;
+use haddowg\JsonApiLaravel\Authorization\GuardedTypes;
+use haddowg\JsonApiLaravel\Server\ServerRegistry;
 
 /**
  * Loads the targets of a `MorphTo` declared with `identifiedBy()` from the `[type, id]` pairs
- * its parents store (ADR 0068). Core renders such a relation's linkage straight from the pair, so
- * a target is read only when it renders as a resource: included, or on the related endpoint.
+ * its parents store (ADR 0068). Core renders such a relation's linkage straight from the pair,
+ * which is right for a target type nothing guards. A guarded type's targets are loaded whenever
+ * the linkage renders, so a hidden one renders as none, and every type's targets are loaded when
+ * they render as resources: included, or on the related endpoint.
  *
  * Each type's ids load in one read through that type's own provider, the read
  * `GET /{type}/{id}` makes, so a global scope or a scoping provider hides a target exactly as it
@@ -26,13 +30,17 @@ final class IdentifiedMorphTargets
 {
     private ?Server $server = null;
 
+    private string $serverName = ServerRegistry::DEFAULT_SERVER;
+
     /**
      * @var \WeakMap<object, array<string, ToOneRelationshipLinkage>>
      */
     private \WeakMap $loaded;
 
-    public function __construct(private readonly DataProviderRegistry $providers)
-    {
+    public function __construct(
+        private readonly DataProviderRegistry $providers,
+        private readonly GuardedTypes $guarded,
+    ) {
         $this->loaded = new \WeakMap();
     }
 
@@ -47,11 +55,13 @@ final class IdentifiedMorphTargets
     }
 
     /**
-     * Sets the server whose serializers render the loaded targets, and drops every loaded target.
+     * Sets the server, named `$serverName`, whose serializers render the loaded targets, and drops
+     * every loaded target. A null name is the `default` server.
      */
-    public function bind(?Server $server): void
+    public function bind(?Server $server, ?string $serverName = null): void
     {
         $this->server = $server;
+        $this->serverName = $serverName ?? ServerRegistry::DEFAULT_SERVER;
         $this->forget();
     }
 
@@ -64,15 +74,34 @@ final class IdentifiedMorphTargets
     }
 
     /**
-     * Loads the targets `$relation` identifies on each of `$parents` not loaded yet, one read per
-     * type, and returns the targets loaded by type.
+     * The declared types of `$relation` whose rows are guarded on the bound server.
      *
-     * @param iterable<object> $parents
+     * @return list<string>
+     */
+    public function guardedTypes(MorphTo $relation): array
+    {
+        return \array_values(\array_filter(
+            $relation->relatedTypes(),
+            fn(string $type): bool => $this->guarded->isGuarded($this->serverName, $type),
+        ));
+    }
+
+    /**
+     * Loads the targets `$relation` identifies on each of `$parents` not loaded yet, one read per
+     * type, and returns the targets loaded by type. With `$types`, only pairs of those types load;
+     * the others stay unloaded and render as their pair.
+     *
+     * @param iterable<object>  $parents
+     * @param list<string>|null $types
      *
      * @return array<string, list<object>>
      */
-    public function load(iterable $parents, MorphTo $relation, JsonApiRequestInterface $request): array
+    public function load(iterable $parents, MorphTo $relation, JsonApiRequestInterface $request, ?array $types = null): array
     {
+        if ($this->server === null || $types === []) {
+            return [];
+        }
+
         $name = $relation->name();
         $pending = [];
         foreach ($parents as $parent) {
@@ -81,19 +110,21 @@ final class IdentifiedMorphTargets
             }
         }
 
-        if ($pending === [] || $this->server === null) {
-            return [];
-        }
-
         $rows = [];
         $targets = [];
         foreach ($relation->storedIdentifiers($pending, $request) as $type => $keys) {
-            $rows[$type] = $this->fetch($this->server, $type, $keys);
-            $targets[$type] = \array_values($rows[$type]);
+            if ($types === null || \in_array($type, $types, true)) {
+                $rows[$type] = $this->fetch($this->server, $type, $keys);
+                $targets[$type] = \array_values($rows[$type]);
+            }
         }
 
         foreach ($pending as $parent) {
             $pair = $relation->storedIdentifier($parent, $request);
+            if ($pair !== null && !isset($rows[$pair[0]])) {
+                continue;
+            }
+
             $target = $pair === null ? null : ($rows[$pair[0]][$this->wireId($this->server, $pair[0], $pair[1])] ?? null);
 
             $entry = $this->loaded[$parent] ?? [];
@@ -105,12 +136,21 @@ final class IdentifiedMorphTargets
     }
 
     /**
-     * The target loaded for `$relation` on `$model`, or `null` when none was loaded, so core
-     * renders the stored pair.
+     * The target loaded for `$relation` on `$model`, loading it first when its pair names a
+     * guarded type, or `null` when its pair renders as stored.
      */
-    public function linkageFor(mixed $model, RelationInterface $relation): ?ToOneRelationshipLinkage
+    public function linkageFor(mixed $model, RelationInterface $relation, JsonApiRequestInterface $request): ?ToOneRelationshipLinkage
     {
-        return \is_object($model) ? ($this->loaded[$model][$relation->name()] ?? null) : null;
+        if (!\is_object($model) || !self::identifies($relation)) {
+            return null;
+        }
+
+        $name = $relation->name();
+        if (!isset($this->loaded[$model][$name])) {
+            $this->load([$model], $relation, $request, $this->guardedTypes($relation));
+        }
+
+        return $this->loaded[$model][$name] ?? null;
     }
 
     /**

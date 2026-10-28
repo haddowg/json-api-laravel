@@ -24,6 +24,7 @@ use haddowg\JsonApiLaravel\Action\ActionInvoker;
 use haddowg\JsonApiLaravel\Action\ActionLinkContributor;
 use haddowg\JsonApiLaravel\Action\ActionRegistry;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
+use haddowg\JsonApiLaravel\Authorization\GuardedTypes;
 use haddowg\JsonApiLaravel\Authorization\RelationAuthorizer;
 use haddowg\JsonApiLaravel\Authorization\ResourceAuthorization;
 use haddowg\JsonApiLaravel\Authorization\ViewableRows;
@@ -707,6 +708,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->app->singleton(RequestScopedRelationshipCount::class);
         $this->app->singleton(RequestScopedRelationshipPagination::class);
         $this->app->singleton(ViewableRows::class);
+        $this->app->singleton(GuardedTypes::class);
         $this->app->singleton(IdentifiedMorphTargets::class);
         $this->app->singleton(RequestScopedRelationshipLinkage::class);
 

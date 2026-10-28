@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature\IdentifiedMorph;
 
+use haddowg\JsonApiLaravel\Tests\Fixtures\IdentifiedMorph\Agency;
 use haddowg\JsonApiLaravel\Tests\Fixtures\IdentifiedMorph\IdentifiedMorphServiceProvider;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -36,6 +37,11 @@ final class EloquentIdentifiedMorphTest extends IdentifiedMorphTestCase
         }
 
         return \array_map(static fn(array $query): string => (string) $query['query'], $connection->getQueryLog());
+    }
+
+    protected function agencyClass(): string
+    {
+        return Agency::class;
     }
 
     protected function addCampaign(int $id, string $type, int $target): void

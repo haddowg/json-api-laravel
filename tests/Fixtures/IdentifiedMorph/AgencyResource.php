@@ -13,11 +13,6 @@ final class AgencyResource extends AbstractResource
 {
     public static string $type = 'agencies';
 
-    public function getType(mixed $object): string
-    {
-        return $object instanceof Agency || $object instanceof AgencyRecord ? 'agencies' : '';
-    }
-
     public function fields(): array
     {
         return [

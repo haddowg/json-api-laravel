@@ -71,10 +71,11 @@ use Illuminate\Database\Eloquent\Model;
  * of these `400`s in core before this runs, so this is belt and braces — and the recursion
  * is bounded by the same effective depth so a mutual default-include cycle terminates here.
  *
- * A `MorphTo` declared with `identifiedBy()` renders its linkage from the pair its parent stores,
- * so it loads nothing unless included. Included, its targets load through each type's own
- * provider, one read per type for the level, batching on or off, since nothing else can read
- * them ({@see IdentifiedMorphTargets}, ADR 0068). The nested include walk continues from them.
+ * A `MorphTo` declared with `identifiedBy()` renders its linkage from the pair its parent stores.
+ * Its targets load through each type's own provider, one read per type for the level, batching on
+ * or off, since nothing else can read them ({@see IdentifiedMorphTargets}, ADR 0068): every type's
+ * when included, and the nested include walk continues from them, otherwise only the guarded
+ * types', so a hidden target's linkage renders as none.
  *
  * The `on()` eager-load pass the bundle also runs (flattened to-one chains) is a phase-4
  * flattened-attribute concern with no declarations in this package yet, so it is a
@@ -268,10 +269,14 @@ final class RelatedIncludeBatcher
                 && ($allowedPaths === null || \in_array($childPath, $allowedPaths, true));
 
             if (IdentifiedMorphTargets::identifies($relation)) {
-                if ($included) {
-                    foreach ($this->identified->load($entities, $relation, $request) as $targetType => $targets) {
-                        $this->preloadLevel($server, $targets, $targetType, $request, $childPath, $maxDepth, $allowedPaths, true, $batch, $linkages, $reach);
-                    }
+                if (!$included) {
+                    $this->identified->load($entities, $relation, $request, $this->identified->guardedTypes($relation));
+
+                    continue;
+                }
+
+                foreach ($this->identified->load($entities, $relation, $request) as $targetType => $targets) {
+                    $this->preloadLevel($server, $targets, $targetType, $request, $childPath, $maxDepth, $allowedPaths, true, $batch, $linkages, $reach);
                 }
 
                 continue;
