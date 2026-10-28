@@ -84,7 +84,7 @@ provider decodes wire ids with the encoder on that server's class's `Id` field.
 A class on several servers applies its declarations on each of them. A server whose class
 declares nothing for a type gets nothing from another server's class: the type falls back to
 the model's Gate policy there, the same as in a single-server app, its responses carry the
-global `jsonapi.defaults` headers, and its operations get the default tag. That fallback is per model,
+server's own `defaults` headers layered over the global `jsonapi.defaults`, and its operations get the default tag. That fallback is per model,
 so a `Gate::policy()` mapping applies on every server. A check dispatched in code, with no
 routed request behind it, reads the server the operation was built on, and the `default`
 server when there is none. See [ADR 0052](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0052-authorization-is-keyed-by-server-and-type.md).

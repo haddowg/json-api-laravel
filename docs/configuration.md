@@ -167,11 +167,15 @@ the published cursor-pagination profile — see
 ],
 ```
 
-Global declarative response headers, layered under a resource's own
-`#[AsJsonApiResource(cacheHeaders:…, deprecation:…, sunset:…)]`. `cache_headers` declares
-`Cache-Control`/`Vary` directives applied only to a successful `GET`;
-`deprecation`/`sunset`/`sunset_link` declare the IETF Deprecation + RFC 8594 Sunset headers
-emitted on every response. See [resources](resources.md#response-headers).
+Global declarative response headers, layered under a server's own
+[`defaults`](#per-server-response-header-defaults) and a resource's own
+`#[AsJsonApiResource(cacheHeaders:…, deprecation:…, sunset:…, sunsetLink:…)]`.
+`cache_headers` declares `Cache-Control`/`Vary` directives (`max_age`, `s_maxage`,
+`public`, `private`, `no_cache`, `must_revalidate`, `vary`) applied only to a successful
+`GET`; `deprecation`/`sunset`/`sunset_link` declare the IETF Deprecation + RFC 8594 Sunset
+headers emitted on every response. An unknown key or a value of the wrong type, such as a
+string `max_age` or an integer `sunset`, fails the boot. See
+[resources](resources.md#response-headers).
 
 ## `discovery`
 
@@ -227,7 +231,7 @@ its name to route names and to the OpenAPI path set. The music-catalog example a
 A resource joins a server with `#[AsJsonApiResource(server: 'admin')]` or
 `server: ['default', 'admin']`. See [multi-server-and-testing](multi-server-and-testing.md).
 
-Six optional keys per server:
+Seven optional keys per server:
 
 | Key | What it does |
 | --- | --- |
@@ -237,6 +241,42 @@ Six optional keys per server:
 | `reject_read_only_attributes` | Whether this server refuses a write body that sends a read-only attribute, overriding the global [`reject_read_only_attributes`](#reject_read_only_attributes). Omit it or set `null` to inherit. |
 | `openapi_examples` | Whether this server's OpenAPI document carries generated [operation examples](openapi.md#operation-examples), overriding `openapi.examples`. Omit it or set `null` to inherit. |
 | `route_defaults` | Route defaults set on every route of the server, such as `['tenant' => 'acme']` for a `{tenant}/api` prefix. The OpenAPI `servers` entry uses it as the variable's default. |
+| `defaults` | This server's own [response-header defaults](#per-server-response-header-defaults), the same keys as the global `defaults`. Each value it sets replaces the global one on this server's responses. |
+
+### Per-server response-header defaults
+
+A server's `defaults` block applies only to that server's responses, which is how you
+deprecate a whole API version while its successor runs beside it:
+
+```php
+'defaults' => [
+    'cache_headers' => ['max_age' => 60, 'public' => true],
+    'deprecation'   => true,
+],
+'servers' => [
+    'v5' => ['prefix' => 'v5', 'defaults' => [
+        'sunset'        => 'Sat, 01 May 2027 00:00:00 GMT',
+        'sunset_link'   => 'https://music.example/migrating-to-v6',
+        'cache_headers' => ['max_age' => 30],
+    ]],
+    'v6' => ['prefix' => 'v6'],
+],
+```
+
+Each header value resolves in this order: the resource's own declaration, then its
+server's `defaults`, then the global `defaults`. The merge is key by key, so every `v5`
+response above carries the global `Deprecation: true` beside the server's `Sunset` and
+sunset `Link`, while `v6` gets only `Deprecation: true`. A resource on `v5` that declares
+its own `sunset` keeps it, and still inherits the server's `sunset_link` unless it sets
+`sunsetLink` too. Cache directives follow the same order with their usual merge: reads on
+`v5` cache for 30 seconds and stay `public` from the global block. `no_cache` and
+`must_revalidate` switch on at any layer and can't be switched off by a lower one, and
+`vary` lists add up across all three.
+
+The `default` server takes a block too, since it is configured under `servers` like any
+other. A server block fails the boot on the same bad values as the global one. The OpenAPI
+document describes none of these headers on any server, so a server block doesn't change
+it. See [ADR 0053](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0053-a-server-may-declare-its-own-response-header-defaults.md).
 
 ### Prefixes and the base
 

@@ -145,16 +145,17 @@ return [
     | Response header defaults
     |--------------------------------------------------------------------------
     |
-    | Global declarative response headers, applied to every JSON:API type unless a
-    | resource overrides them on its `#[AsJsonApiResource(cacheHeaders:…, deprecation:…,
-    | sunset:…)]` attribute (which layers over these). `cache_headers` declares the
-    | HTTP cache directives for safe (GET) reads — `max_age`/`s_maxage`/`public`/
-    | `private`/`no_cache`/`must_revalidate`/`vary`, with an optional nested `operations`
-    | per-read-shape override map (`collection`/`read`/`related`/`relationship`); it is
-    | applied only to a successful GET, never a write or an error. `deprecation`/`sunset`/
-    | `sunset_link` declare the IETF Deprecation header + RFC 8594 Sunset (+ its companion
-    | Link), emitted on every response for the type. All empty/null by default (no
-    | Cache-Control, no deprecation — today's behaviour).
+    | Global declarative response headers, applied to every JSON:API type on every
+    | server. A server's own `defaults` block (below) layers over these, and a resource's
+    | `#[AsJsonApiResource(cacheHeaders:…, deprecation:…, sunset:…, sunsetLink:…)]`
+    | layers over both, key by key. `cache_headers` declares the HTTP cache directives
+    | for safe (GET) reads: `max_age`, `s_maxage`, `public`, `private`, `no_cache`,
+    | `must_revalidate` and `vary`. It is applied only to a successful GET, never a write
+    | or an error; per-read-shape `operations` overrides belong on the resource
+    | attribute. `deprecation`, `sunset` and `sunset_link` declare the IETF Deprecation
+    | header and the RFC 8594 Sunset header with its companion Link, emitted on every
+    | response for the type. All empty or null by default. An unknown key or a value of
+    | the wrong type fails the boot.
     |
     */
     'defaults' => [
@@ -228,7 +229,9 @@ return [
     | empty string turns conversion off for that server), `link_objects`
     | overrides the global `link_objects` (null inherits it),
     | `reject_read_only_attributes` overrides the global one (null inherits it),
-    | `openapi_examples` overrides `openapi.examples` (null inherits it), and `route_defaults`
+    | `openapi_examples` overrides `openapi.examples` (null inherits it), `defaults`
+    | takes the same keys as the global response-header `defaults` and replaces only
+    | the values it sets for that server's responses, and `route_defaults`
     | sets route defaults on every route of the server, such as a default for a
     | `{tenant}` placeholder in the prefix, which the OpenAPI `servers` entry
     | advertises as the variable's default.
