@@ -7,7 +7,8 @@ namespace haddowg\JsonApiLaravel\Serializer;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
-use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
+use haddowg\JsonApi\Schema\Relationship\ToOneRelationshipLinkage;
+use haddowg\JsonApi\Serializer\ToOneRelationshipLinkageInterface;
 
 /**
  * The package's fill of core's {@see RelationshipLinkageInterface} seam: a render-time lookup
@@ -27,17 +28,21 @@ use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
  * Keyed by the parent's object identity ({@see \spl_object_id()}) then by relation name —
  * exactly as {@see WindowedRelationshipPagination} is — because the very object instances the
  * batcher windowed are the ones the serializer renders. A parent/relation absent from the map
- * (a to-one, a relation not windowed, or a provider that supplied no page) returns `null`,
+ * (a relation not windowed, or a provider that supplied no page) returns `null`,
  * and core then reads that relation's linkage off the model as before.
+ *
+ * A to-one entry is the target a to-one renders for this request: one the include batch loaded
+ * for a parent that is not an Eloquent model, or none for a to-one a `relatedQuery` filter
+ * excludes. Neither is written onto the parent, which may be a record every request shares.
  *
  * Injected per request behind the {@see RequestScopedRelationshipLinkage} holder (which the
  * handler swaps in only for a profile read), so it lives only for the render of the page it
  * was built from.
  */
-final class WindowedRelationshipLinkage implements RelationshipLinkageInterface
+final class WindowedRelationshipLinkage implements ToOneRelationshipLinkageInterface
 {
     /**
-     * @param array<int, array<string, RelationshipLinkage>> $linkages `spl_object_id(parent) => [relationName => linkage]`
+     * @param array<int, array<string, RelationshipLinkage|ToOneRelationshipLinkage>> $linkages `spl_object_id(parent) => [relationName => linkage]`
      */
     public function __construct(private readonly array $linkages) {}
 
@@ -50,6 +55,22 @@ final class WindowedRelationshipLinkage implements RelationshipLinkageInterface
             return null;
         }
 
-        return $this->linkages[\spl_object_id($model)][$relation->name()] ?? null;
+        $linkage = $this->linkages[\spl_object_id($model)][$relation->name()] ?? null;
+
+        return $linkage instanceof RelationshipLinkage ? $linkage : null;
+    }
+
+    public function toOneLinkageForRelationship(
+        mixed $model,
+        RelationInterface $relation,
+        JsonApiRequestInterface $request,
+    ): ?ToOneRelationshipLinkage {
+        if (!\is_object($model)) {
+            return null;
+        }
+
+        $linkage = $this->linkages[\spl_object_id($model)][$relation->name()] ?? null;
+
+        return $linkage instanceof ToOneRelationshipLinkage ? $linkage : null;
     }
 }

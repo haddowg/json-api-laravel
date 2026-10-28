@@ -377,8 +377,8 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * through the identical code.
      *
      * `match()` both partitions (the dictionary match) AND {@see Model::setRelation()}s each
-     * parent, so the write-back that makes {@see Model::relationLoaded()} true (and the
-     * load-state seam report loaded) happens here; the orchestrator's subsequent write-back
+     * parent, so the write that makes {@see Model::relationLoaded()} true (and the
+     * load-state seam report loaded) happens here; the orchestrator's own `setRelation()`
      * is then idempotent.
      *
      * **No PHP-window fallback (PLAN decision 9, ADR 0006).** A windowed multi-parent batch
@@ -393,7 +393,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * A relation this provider cannot batch (a computed/`extractUsing` column with no
      * Eloquent relation method, a polymorphic relation the include orchestrator already
      * skips, or a page carrying no Eloquent models) returns an empty {@see RelatedBatch}, so
-     * the caller's write-back is a no-op and the relation renders lazily.
+     * the relation renders lazily.
      */
     public function fetchRelatedCollectionBatch(
         string $parentType,

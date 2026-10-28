@@ -149,7 +149,8 @@ final class DataProviderRegistry
      * parent's wire id: through the parent type's batch when that matches the related endpoint,
      * otherwise one {@see DataProviderInterface::fetchRelatedCollection()} per parent through
      * the related type's own provider (the related endpoint's exact read), so a render path
-     * never shows a member the related endpoint would not.
+     * never shows a member the related endpoint would not. A parent the batch did not load is
+     * read the same way through the parent type's provider.
      *
      * Monomorphic relations only; a polymorphic relation has no single related provider.
      *
@@ -165,14 +166,21 @@ final class DataProviderRegistry
         \Closure $wireIdOf,
     ): RelatedBatch {
         $relatedType = $relation->relatedTypes()[0] ?? $parentType;
-        $scoped = $this->scopedRelatedProvider($parentType, $relatedType);
-        if ($scoped === null) {
-            return $this->forType($parentType)->fetchRelatedCollectionBatch($parentType, $parents, $relation, $criteria, $request);
+        $reader = $this->scopedRelatedProvider($parentType, $relatedType);
+        $batch = null;
+        if ($reader === null) {
+            $reader = $this->forType($parentType);
+            $batch = $reader->fetchRelatedCollectionBatch($parentType, $parents, $relation, $criteria, $request);
         }
 
+        // A parent the batch did not load, or every parent when the related type has its own
+        // provider, is read one at a time, never taken as having no members.
         $results = [];
         foreach ($parents as $parent) {
-            $results[$wireIdOf($parent)] = $scoped->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
+            $wireId = $wireIdOf($parent);
+            $results[$wireId] = $batch?->has($wireId) === true
+                ? $batch->for($wireId)
+                : $reader->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
         }
 
         return new RelatedBatch($results);

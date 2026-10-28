@@ -108,13 +108,14 @@ interface DataProviderInterface
      * set). A **to-one** relation's per-parent result is a 0-or-1 {@see CollectionResult}
      * carrying its single target. A relation the provider cannot batch (a
      * computed/`extractUsing` column that is not a real association, or a composite-id
-     * target) returns an empty {@see RelatedBatch}, so the caller's write-back is a no-op
-     * and the relation renders lazily.
+     * target) returns an empty {@see RelatedBatch}, and the relation renders lazily.
      *
      * Keyed by each parent's JSON:API (wire) id, exactly as {@see countRelated()} keys
      * its map, so a caller reconciles a result back to its parent object through the same
-     * wire-id resolution. A parent with no related members is simply absent from the map;
-     * {@see RelatedBatch::for()} fills it with an empty result.
+     * wire-id resolution. The batch holds an entry for every parent it loaded, an empty
+     * result for one with no related members. A parent with no entry was not loaded: the
+     * include batcher renders that parent's own relation and the windowed and counted paths
+     * read it with {@see fetchRelatedCollection()}, so leaving a parent out never empties it.
      *
      * @param list<object> $parents the already-fetched page of parents (the handler holds it)
      *

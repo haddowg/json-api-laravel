@@ -22,9 +22,9 @@ use haddowg\JsonApi\Collection\CollectionResult;
  * Keyed by the parent **wire** id (the value the serializer renders / the store identifies
  * a parent by), exactly as {@see DataProviderInterface::countRelated()} keys its map, so a
  * caller reconciles a result back to its parent object through the same wire-id resolution.
- * A parent with no related members is simply absent from the map; {@see for()} fills that
- * gap with an EMPTY {@see CollectionResult} so every parent in the page has a renderable
- * result.
+ * A provider holds an entry for every parent it loaded, an empty result for one with no
+ * related members. A parent with no entry was not loaded ({@see has()}), so the caller reads
+ * that parent's relation another way instead of treating it as empty.
  */
 final readonly class RelatedBatch
 {
@@ -41,11 +41,18 @@ final readonly class RelatedBatch
     ) {}
 
     /**
+     * Whether the batch loaded the parent with `$parentWireId`. An empty batch, such as
+     * {@see AbstractDataProvider}'s default, loaded no parent at all.
+     */
+    public function has(string $parentWireId): bool
+    {
+        return \array_key_exists($parentWireId, $this->resultsByParentWireId);
+    }
+
+    /**
      * The windowed page for the parent with `$parentWireId`, or an EMPTY
-     * {@see CollectionResult} when the parent has no related members in this batch (it was
-     * absent from the partitioned result). The empty result carries no window metadata (no
-     * total, not windowed, no further page), so a parent whose related set is empty renders
-     * an empty relationship exactly as a per-parent fetch of an empty set would.
+     * {@see CollectionResult} when the batch holds no entry for the parent ({@see has()}). The
+     * empty result carries no window metadata (no total, not windowed, no further page).
      *
      * @return CollectionResult<object>
      */

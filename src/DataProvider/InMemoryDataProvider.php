@@ -218,7 +218,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
      *
      * A **to-one** relation's per-parent result is its single related object (or `null`),
      * wrapped as a 0-or-1 {@see CollectionResult} — no window, no criteria (a to-one include
-     * has neither). The orchestrator writes back `items[0] ?? null` onto the to-one column.
+     * has neither). The orchestrator renders `items[0] ?? null` as the to-one's target.
      *
      * @param list<object> $parents
      */

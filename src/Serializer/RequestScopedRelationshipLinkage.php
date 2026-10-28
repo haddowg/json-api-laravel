@@ -35,8 +35,9 @@ use haddowg\JsonApiLaravel\DataProvider\ScopedToOneTargets;
  *
  * It carries a second backing, {@see scope()}: the members of every rendered to-many whose
  * related type is served by its own scoping provider, loaded through that provider by the
- * {@see \haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher}. A windowed page wins
- * over it, since the window is itself fetched through the same provider.
+ * {@see \haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher}, and the relations it
+ * batch-loaded for parents that are not Eloquent models. A windowed page wins over it, since
+ * the window is itself fetched through the same provider.
  *
  * Every to-one target it hands core leaves out a related row the caller may not `view`
  * ({@see ViewableRows}, ADR 0045), so it is missing from `data` and from `included`. A `MorphTo`
@@ -166,12 +167,8 @@ final class RequestScopedRelationshipLinkage implements ToOneRelationshipLinkage
             return ToOneRelationshipLinkage::none();
         }
 
-        // An identified MorphTo answers with its loaded target, loading it when its type is
-        // guarded, so an unguarded pair renders without a load.
         $identified = IdentifiedMorphTargets::identifies($relation);
-        $linkage = $identified
-            ? $this->identified->linkageFor($model, $relation, $request)
-            : $this->toOne->linkageFor($model, $relation, $request);
+        $linkage = $this->suppliedToOne($model, $relation, $request, $identified);
         if ($permission === true) {
             return $linkage;
         }
@@ -181,5 +178,31 @@ final class RequestScopedRelationshipLinkage implements ToOneRelationshipLinkage
         $type = $identified && \is_object($target) ? $relation->storedIdentifier($model, $request)[0] ?? null : null;
 
         return \is_object($target) && !$this->rows->allows($target, $relation, $type) ? ToOneRelationshipLinkage::none() : $linkage;
+    }
+
+    /**
+     * The to-one target supplied for this request: a `relatedQuery` filter's exclusion first,
+     * then an identified MorphTo's loaded target or the related type's scoping provider, then
+     * the include batch's loaded target.
+     */
+    private function suppliedToOne(mixed $model, RelationInterface $relation, JsonApiRequestInterface $request, bool $identified): ?ToOneRelationshipLinkage
+    {
+        $linkage = $this->delegate instanceof ToOneRelationshipLinkageInterface
+            ? $this->delegate->toOneLinkageForRelationship($model, $relation, $request)
+            : null;
+
+        // An identified MorphTo answers with its loaded target, loading it when its type is
+        // guarded, so an unguarded pair renders without a load.
+        $linkage ??= $identified
+            ? $this->identified->linkageFor($model, $relation, $request)
+            : $this->toOne->linkageFor($model, $relation, $request);
+
+        foreach ($this->scoped as $scoped) {
+            if ($scoped instanceof ToOneRelationshipLinkageInterface) {
+                $linkage ??= $scoped->toOneLinkageForRelationship($model, $relation, $request);
+            }
+        }
+
+        return $linkage;
     }
 }
