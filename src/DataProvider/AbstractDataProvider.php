@@ -66,10 +66,9 @@ abstract class AbstractDataProvider implements DataProviderInterface
     }
 
     /**
-     * Default: an **empty {@see RelatedBatch}** — no parent has any related members in
-     * the batch, so {@see RelatedBatch::for()} fills every parent with its own empty
-     * result and the include preloader loads this relation lazily instead. Override to
-     * batch a to-many include without N+1.
+     * Default: an **empty {@see RelatedBatch}**, which loads no parent, so the include
+     * preloader renders each parent's own relation and a windowed or counted read calls
+     * {@see fetchRelatedCollection()} per parent. Override to batch an include without N+1.
      */
     public function fetchRelatedCollectionBatch(
         string $parentType,

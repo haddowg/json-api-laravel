@@ -7,9 +7,9 @@ namespace haddowg\JsonApiLaravel\DataProvider;
 use haddowg\JsonApi\Collection\CollectionResult;
 use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
-use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
+use haddowg\JsonApi\Schema\Relationship\ToOneRelationshipLinkage;
 use haddowg\JsonApi\Serializer\IncludeControlsInterface;
 use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
@@ -24,18 +24,20 @@ use Illuminate\Database\Eloquent\Model;
  * relationship does not N+1 (PLAN decision 8): one batched call loads a relation for every
  * source entity at a level, then its loaded targets seed the next level. Provider-agnostic
  * — the per-relation load runs through the SPI's
- * {@see DataProviderInterface::fetchRelatedCollectionBatch()} and a write-back, so it
+ * {@see DataProviderInterface::fetchRelatedCollectionBatch()}, so it
  * batches includes for EVERY batching provider (the in-memory witness AND the Eloquent
  * reference) per level, with no per-provider branching.
  *
  * Each level loads in PLAIN-INCLUDE (fast-path) mode: an empty filter/sort criteria with a
  * NULL window, so the batch loads the WHOLE related set per parent — byte-for-byte the rows
- * a lazy read would have materialised. The write-back is provider-aware (PLAN decision 8):
+ * a lazy read would have materialised. How a parent takes its batched value depends on the
+ * parent (PLAN decision 8):
  *  - an **Eloquent model** takes `$model->setRelation($column, $value)` — which makes
  *    `relationLoaded()` true, so the load-state seam then reports loaded and core reads the
  *    linkage off the model without a query;
- *  - any **other object** (an in-memory POPO) takes {@see Accessor::set} — idempotent for
- *    the witness, whose relation property already holds the whole set.
+ *  - any **other object** (an in-memory POPO) is left untouched and gets the value as
+ *    out-of-band linkage for this request. An in-memory record is shared by every request, so
+ *    a write onto it would outlive the read.
  *
  * Batching is a pure optimization: a relation/provider that cannot batch falls back to a
  * lazy load and the rendered document is identical. The orchestrator skips such a relation
@@ -44,8 +46,9 @@ use Illuminate\Database\Eloquent\Model;
  *    in-memory provider (which CAN read a mixed set) is left lazy, keeping includes
  *    byte-identical across providers;
  *  - a related type with no batching provider is skipped;
- *  - a relation the provider cannot batch returns an empty {@see RelatedBatch}, so the
- *    write-back is a no-op and the relation renders lazily.
+ *  - a parent the provider's {@see RelatedBatch} holds no entry for was not loaded, so it
+ *    renders its own relation. A provider that cannot batch a relation returns an empty
+ *    batch, and every parent renders lazily.
  *
  * A to-many whose related type is served by its own provider (not the parent's, not a
  * reference provider) is different: that provider may scope its rows, and the related endpoint
@@ -60,7 +63,7 @@ use Illuminate\Database\Eloquent\Model;
  * `MorphTo`, or a `withData()` override) — for an Eloquent page ({@see preloadEagerLinkage()}).
  * Core never consults the load-state seam for an eager relation, so without this an Eloquent
  * collection would lazy-load that to-one once per parent just to emit identifiers (the N+1
- * PLAN decision 8 eliminates). It rides the SAME batched fast path + `setRelation` write-back
+ * PLAN decision 8 eliminates). It rides the SAME batched fast path + `setRelation`
  * and does not recurse; it is inert for the in-memory witness (whose value is already in
  * memory) so the two providers stay byte-identical.
  *
@@ -210,12 +213,12 @@ final class RelatedIncludeBatcher
     /**
      * One level of {@see preload()}.
      *
-     * @param list<object>                                   $entities
-     * @param ?int                                           $maxDepth     the effective include-depth cap resolved at the root (null = unlimited)
-     * @param list<string>|null                              $allowedPaths the root resource's allowed-include-paths whitelist (null = unrestricted)
-     * @param bool                                           $batch        whether trusted relations at this level are batch-loaded
-     * @param array<int, array<string, RelationshipLinkage>> $linkages     the scoped linkage collected so far
-     * @param array<string, bool>                            $reach        memo for {@see reachesScopedRelation()}
+     * @param list<object>                                                            $entities
+     * @param ?int                                                                    $maxDepth     the effective include-depth cap resolved at the root (null = unlimited)
+     * @param list<string>|null                                                       $allowedPaths the root resource's allowed-include-paths whitelist (null = unrestricted)
+     * @param bool                                                                    $batch        whether trusted relations at this level are batch-loaded
+     * @param array<int, array<string, RelationshipLinkage|ToOneRelationshipLinkage>> $linkages     the scoped linkage collected so far
+     * @param array<string, bool>                                                     $reach        memo for {@see reachesScopedRelation()}
      */
     private function preloadLevel(
         Server $server,
@@ -308,7 +311,7 @@ final class RelatedIncludeBatcher
             // Preload it through the SAME batched fast path so the linkage renders from the
             // loaded relation in ONE query for the whole page.
             if ($batch) {
-                $this->preloadEagerLinkage($server, $entities, $type, $relation, $request);
+                $this->preloadEagerLinkage($server, $entities, $type, $relation, $request, $linkages);
             }
         }
     }
@@ -325,8 +328,8 @@ final class RelatedIncludeBatcher
      * off each parent as the candidates and narrowed per member type through each scoped type's
      * provider, in one lookup per type for the whole level ({@see ScopedPolymorphicMembers}).
      *
-     * @param list<object>                                   $entities
-     * @param array<int, array<string, RelationshipLinkage>> $linkages
+     * @param list<object>                                                            $entities
+     * @param array<int, array<string, RelationshipLinkage|ToOneRelationshipLinkage>> $linkages
      *
      * @return array<string, list<object>> the loaded members of an included relation, by type
      */
@@ -464,7 +467,7 @@ final class RelatedIncludeBatcher
      * Batch-preloads a relation that renders linkage `data` on every read but is NOT part of
      * the ?include tree — an eager monomorphic to-one — so an Eloquent page emits its
      * identifiers without a per-parent lazy load. It reuses the include fast path's batched
-     * load + `setRelation` write-back and DISCARDS the loaded targets (an eager linkage
+     * load + `setRelation` and DISCARDS the loaded targets (an eager linkage
      * preload never recurses — its targets render as identifiers, not as included resources).
      *
      * Inert unless every condition holds, so it changes only HOW an Eloquent page's eager
@@ -479,7 +482,8 @@ final class RelatedIncludeBatcher
      *  - the relation is **monomorphic** — a polymorphic to-one (`MorphTo`) has no single
      *    batching provider, so the orchestrator leaves it lazy exactly as the include path does.
      *
-     * @param list<object> $entities
+     * @param list<object>                                                            $entities
+     * @param array<int, array<string, RelationshipLinkage|ToOneRelationshipLinkage>> $linkages
      */
     private function preloadEagerLinkage(
         Server $server,
@@ -487,6 +491,7 @@ final class RelatedIncludeBatcher
         string $type,
         RelationInterface $relation,
         JsonApiRequestInterface $request,
+        array &$linkages,
     ): void {
         if (!$entities[0] instanceof Model
             || $relation->emitsDataOnlyWhenLoaded()
@@ -494,7 +499,7 @@ final class RelatedIncludeBatcher
             return;
         }
 
-        $this->executeLoad($server, $entities, $type, $relation, $request);
+        $this->executeLoad($server, $entities, $type, $relation, $request, $linkages);
     }
 
     /**
@@ -504,11 +509,11 @@ final class RelatedIncludeBatcher
      * only read off the parents here when a scoped relation is reachable below them, so that
      * level is still scoped; a polymorphic relation's targets are grouped by their own type.
      *
-     * @param list<object>                                   $entities
-     * @param ?int                                           $maxDepth     the effective include-depth cap (null = unlimited)
-     * @param list<string>|null                              $allowedPaths the root resource's allowed-include-paths whitelist (null = unrestricted)
-     * @param array<int, array<string, RelationshipLinkage>> $linkages
-     * @param array<string, bool>                            $reach
+     * @param list<object>                                                            $entities
+     * @param ?int                                                                    $maxDepth     the effective include-depth cap (null = unlimited)
+     * @param list<string>|null                                                       $allowedPaths the root resource's allowed-include-paths whitelist (null = unrestricted)
+     * @param array<int, array<string, RelationshipLinkage|ToOneRelationshipLinkage>> $linkages
+     * @param array<string, bool>                                                     $reach
      */
     private function loadRelation(
         Server $server,
@@ -526,7 +531,7 @@ final class RelatedIncludeBatcher
         $relatedTypes = $relation->relatedTypes();
         $monomorphic = \count($relatedTypes) === 1;
 
-        $targets = $batch && $monomorphic ? $this->executeLoad($server, $entities, $type, $relation, $request) : null;
+        $targets = $batch && $monomorphic ? $this->executeLoad($server, $entities, $type, $relation, $request, $linkages) : null;
         if ($targets !== null) {
             // Thread the root-scoped safeguards into the next level unchanged.
             $this->preloadLevel($server, $targets, $relatedTypes[0], $request, $childPath, $maxDepth, $allowedPaths, true, $batch, $linkages, $reach);
@@ -583,15 +588,21 @@ final class RelatedIncludeBatcher
     /**
      * Batch-loads `$relation` across `$entities` through the PRIMARY type's provider in
      * PLAIN-INCLUDE (fast-path) mode — an empty filter/sort criteria with a NULL window
-     * loads the WHOLE related set per parent — and writes each parent's result back onto
-     * its relation column, returning the flat list of loaded targets (to seed a nested
-     * include level). Returns `null` when the relation cannot be batched (a polymorphic
-     * relation, or a related type with no batching provider), so the column is left
-     * untouched and the relation renders lazily.
+     * loads the WHOLE related set per parent — and returns the flat list of targets every
+     * parent renders (to seed a nested include level). Returns `null` when the relation cannot
+     * be batched (a polymorphic relation, or a related type with no batching provider), so the
+     * relation renders lazily.
      *
-     * @param list<object> $entities
+     * A parent the batch loaded renders the batched value: an Eloquent model takes it as its
+     * loaded relation, any other object gets it as linkage for this request in `$linkages`,
+     * never written onto the object, which may be a record every request shares. A parent the
+     * batch did not load, every parent of a provider that does not batch, renders its own
+     * relation, and that is what seeds the next level for it.
      *
-     * @return list<object>|null the loaded targets, or `null` when the relation cannot be batched
+     * @param list<object>                                                            $entities
+     * @param array<int, array<string, RelationshipLinkage|ToOneRelationshipLinkage>> $linkages
+     *
+     * @return list<object>|null the targets, or `null` when the relation cannot be batched
      */
     private function executeLoad(
         Server $server,
@@ -599,6 +610,7 @@ final class RelatedIncludeBatcher
         string $type,
         RelationInterface $relation,
         JsonApiRequestInterface $request,
+        array &$linkages,
     ): ?array {
         $relatedTypes = $relation->relatedTypes();
         if (\count($relatedTypes) !== 1
@@ -609,10 +621,9 @@ final class RelatedIncludeBatcher
 
         $column = $relation->column() ?? $relation->name();
 
-        // The write-back needs somewhere to land — an Eloquent relation (via setRelation),
-        // a declared property, a setter, or dynamic-property support. Otherwise the
-        // relation renders lazily instead of creating a deprecated dynamic property.
-        if (!$this->columnTakesWriteBack($entities[0], $column)) {
+        // A relation over a column a plain object does not carry (a computed `extractUsing`
+        // view) renders lazily.
+        if (!$this->carriesColumn($entities[0], $column)) {
             return null;
         }
 
@@ -623,9 +634,17 @@ final class RelatedIncludeBatcher
 
         $targets = [];
         foreach ($entities as $entity) {
-            $result = $batch->for($serializer->getId($entity));
-            $items = $this->itemsOf($result);
-            $this->writeBack($entity, $relation, $column, $items);
+            $wireId = $serializer->getId($entity);
+            if (!$batch->has($wireId)) {
+                foreach ($this->readTargets($entity, $relation, $request) as $target) {
+                    $targets[] = $target;
+                }
+
+                continue;
+            }
+
+            $items = $this->itemsOf($batch->for($wireId));
+            $this->hold($entity, $relation, $column, $items, $linkages);
             foreach ($items as $target) {
                 $targets[] = $target;
             }
@@ -635,22 +654,19 @@ final class RelatedIncludeBatcher
     }
 
     /**
-     * Writes a parent's batched-loaded related value back onto its relation column. An
-     * Eloquent model takes {@see Model::setRelation()} (a to-many wrapped in an
-     * {@see EloquentCollection}, a to-one the single model or `null`) — which makes
-     * `relationLoaded()` true so the load-state seam reports loaded (PLAN decision 8); any
-     * other object (an in-memory POPO) takes {@see Accessor::set}. A to-one always writes
-     * `items[0] ?? null`, never an array/CollectionResult.
+     * Makes a parent render its batched related value. An Eloquent model takes
+     * {@see Model::setRelation()} (a to-many wrapped in an {@see EloquentCollection}, a to-one
+     * the single model or `null`), the same write its own lazy load makes, so `relationLoaded()`
+     * is true and the load-state seam reports loaded (PLAN decision 8). Any other object gets the
+     * value as out-of-band linkage in `$linkages` and is left as it is.
      *
-     * @param list<object> $loaded
+     * @param list<object>                                                            $loaded
+     * @param array<int, array<string, RelationshipLinkage|ToOneRelationshipLinkage>> $linkages
      */
-    private function writeBack(object $entity, RelationInterface $relation, string $column, array $loaded): void
+    private function hold(object $entity, RelationInterface $relation, string $column, array $loaded, array &$linkages): void
     {
         if ($entity instanceof Model) {
             if ($relation->isToMany()) {
-                // A batched related set is Models for an Eloquent parent (the provider
-                // returns them); wrap in an EloquentCollection so `relationLoaded()` and
-                // the render read an idiomatic to-many relation value.
                 /** @var list<Model> $models */
                 $models = $loaded;
                 $entity->setRelation($column, new EloquentCollection($models));
@@ -661,17 +677,18 @@ final class RelatedIncludeBatcher
             return;
         }
 
-        Accessor::set($entity, $column, $relation->isToMany() ? $loaded : ($loaded[0] ?? null));
+        $linkages[\spl_object_id($entity)][$relation->name()] = $relation->isToMany()
+            ? new RelationshipLinkage($loaded)
+            : ($loaded === [] ? ToOneRelationshipLinkage::none() : ToOneRelationshipLinkage::to($loaded[0]));
     }
 
     /**
-     * Whether the write-back can land `$column` on `$entity`: an Eloquent model (via
-     * `setRelation`, always), a declared property, a `setX()` method, explicit
-     * dynamic-property support, or an {@see \ArrayAccess}. False for a relation exposed
-     * over a column a plain object does not carry (a computed `extractUsing` view), so it
-     * renders lazily instead of gaining a deprecated dynamic property.
+     * Whether `$entity` carries `$column` as a relation: an Eloquent model (always), a
+     * declared property, a `setX()` method, explicit dynamic-property support, or an
+     * {@see \ArrayAccess}. False for a relation exposed over a column a plain object does not
+     * carry (a computed `extractUsing` view), which renders lazily.
      */
-    private function columnTakesWriteBack(object $entity, string $column): bool
+    private function carriesColumn(object $entity, string $column): bool
     {
         return $entity instanceof Model
             || \property_exists($entity, $column)

@@ -70,6 +70,23 @@ The example's `CountryProvider` is the same shape over `symfony/intl` `Countries
 its own `filter[name]`, `sort=name`, and offset-window pagination — a reference-data witness
 with no database.
 
+### Batching related reads
+
+`fetchRelatedCollectionBatch()` loads one relation for a whole page of parents and returns a
+`RelatedBatch` keyed by each parent's wire id. Give it an entry for every parent you loaded,
+an empty `CollectionResult` for one with nothing related. A parent you leave out counts as not
+loaded, never as empty. An `?include` then renders that parent's relation as the parent holds
+it, and the Relationship Queries window and `?withCount` read it with
+`fetchRelatedCollection()`. So the inherited default, an empty batch, is safe: your relations
+render in full, one parent at a time. Override it only to save the queries.
+
+The batcher never writes what it loads onto a parent object. An Eloquent model takes the
+batched value as its loaded relation, exactly as its own lazy load would. Any other object is
+left as it is, and the batched value renders from the request's own linkage. A filter in
+`relatedQuery` that excludes a to-one target works the same way, so a record your provider
+shares between requests is never changed by a read
+([ADR 0069](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0069-a-batched-read-never-writes-onto-the-parent.md)).
+
 ## The in-memory provider
 
 `InMemoryDataProvider` is a full SPI implementation over an in-memory object store. It ships as

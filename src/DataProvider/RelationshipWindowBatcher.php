@@ -15,20 +15,19 @@ use haddowg\JsonApi\Pagination\CursorPaginator;
 use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Request\RelatedQuery;
-use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
 use haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile;
 use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
 use haddowg\JsonApi\Schema\Relationship\RelationshipPagination;
+use haddowg\JsonApi\Schema\Relationship\ToOneRelationshipLinkage;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipPagination;
 use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipResult;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\FilterValueValidator;
-use Illuminate\Database\Eloquent\Model;
 
 /**
  * Windows every to-many relation whose linkage DATA renders for the request — a relation
@@ -126,11 +125,11 @@ final class RelationshipWindowBatcher
             return null;
         }
 
-        // Null each filter-excluded to-one's linkage across the page in ONE batched match per
-        // relation (no N+1) — runs whether or not any to-many is windowed, and after
-        // preloadIncludes() at the call site so it overwrites a preloaded to-one target with
-        // null. It produces no pagination entry (a to-one has none).
-        $this->nullExcludedToOnes($server, $type, $parents, $toOneFiltered, $request);
+        // Render each filter-excluded to-one as empty across the page in ONE batched match per
+        // relation (no N+1), whether or not any to-many is windowed. It produces no pagination
+        // entry (a to-one has none).
+        $linkages = [];
+        $this->excludeFilteredToOnes($server, $type, $parents, $toOneFiltered, $request, $linkages);
 
         // The to-many relations to window — restricted to those whose linkage DATA renders for
         // THIS request: a relation included at the primary level (honouring default-includes) or
@@ -152,30 +151,14 @@ final class RelationshipWindowBatcher
         // gated remainder.
         $this->validateUnwindowedRelatedQueryKeys($server, $type, $allRelations, $relations, $request);
 
-        if ($relations === []) {
-            return null;
-        }
-
-        // Snapshot every windowable column for every parent ONCE up front, so each relation
-        // windows from the parent's ORIGINAL related set rather than a value a sibling relation
-        // already trimmed in place. Two relations may share one column; each windows from the
-        // same original set. Keyed by object id then column so a relation restores its own
-        // column before its batch reads it.
-        $snapshots = [];
-        foreach ($parents as $parent) {
-            $snapshots[\spl_object_id($parent)] = $this->snapshotColumns($parent, $relations);
-        }
-
         // ONE batch fetch per windowed relation over the WHOLE page (O(N), not O(M*N)). For each
-        // relation, restore the page's snapshot for its column (so the in-memory witness reads
-        // each parent's original set), fetch the page-1 windowed batch once, then record each
-        // parent's page-1 linkage + relationship-object pagination — WITHOUT writing the page
-        // onto the parent property: the page is supplied to core OUT-OF-BAND through the
-        // relationship-linkage seam, so a relation sharing the column renders its OWN membership.
+        // relation, fetch the page-1 windowed batch once, then record each parent's page-1
+        // linkage + relationship-object pagination — WITHOUT writing the page onto the parent
+        // property: the page is supplied to core OUT-OF-BAND through the relationship-linkage
+        // seam, so a relation sharing the column renders its OWN membership.
         $pages = [];
-        $linkages = [];
         foreach ($relations as $relation) {
-            foreach ($this->windowRelationOverPage($server, $type, $parents, $relation, $request, $snapshots) as $objectId => $window) {
+            foreach ($this->windowRelationOverPage($server, $type, $parents, $relation, $request) as $objectId => $window) {
                 if ($window['page'] !== null) {
                     $pages[$objectId][$relation->name()] = $window['page'];
                 }
@@ -205,8 +188,7 @@ final class RelationshipWindowBatcher
      * relation (they do not depend on the parent), so only the per-parent linkage/pagination
      * assembly runs in the loop.
      *
-     * @param list<object>                     $parents
-     * @param array<int, array<string, mixed>> $snapshots `spl_object_id(parent) => [column => original value]`
+     * @param list<object> $parents
      *
      * @return array<int, array{page: ?RelationshipPagination, linkage: RelationshipLinkage}>
      */
@@ -216,7 +198,6 @@ final class RelationshipWindowBatcher
         array $parents,
         RelationInterface $relation,
         JsonApiRequestInterface $request,
-        array $snapshots,
     ): array {
         $relatedType = $relation->relatedTypes()[0] ?? null;
         if ($relatedType === null || !$this->providers->supportsType($relatedType)) {
@@ -233,22 +214,6 @@ final class RelationshipWindowBatcher
         // before the profile (and core emits no pagination links).
         if ($paginator === null && $relatedQuery->isEmpty()) {
             return [];
-        }
-
-        $column = $relation->column() ?? $relation->name();
-
-        // Restore each parent's ORIGINAL related set onto the column before the batch reads it
-        // (the in-memory witness reads the related set off the property), so a sibling relation
-        // sharing the column has not already trimmed it. An Eloquent parent is SKIPPED — the
-        // reference provider scopes its own query and never reads the property, so there is
-        // nothing to restore, and an `Accessor::set` there would route Model::offsetSet ->
-        // setAttribute, writing an EloquentCollection into `$attributes` under the relation name
-        // (a phantom, non-column dirty attribute a later save() would compile to invalid SQL).
-        foreach ($parents as $parent) {
-            if ($parent instanceof Model) {
-                continue;
-            }
-            Accessor::set($parent, $column, $snapshots[\spl_object_id($parent)][$column] ?? null);
         }
 
         // The page-1 synthetic request and the merged criteria are resolved once for the
@@ -323,10 +288,6 @@ final class RelationshipWindowBatcher
      * {@see RelationshipPagination} — or a `null` page when the relation is not sliced (a
      * relatedQuery present but no paginator), in which case the linkage is re-ordered/filtered
      * but carries no pagination links.
-     *
-     * The page is wrapped to match the column's container (an {@see EloquentCollection}
-     * property renders the same shape as its property; `$snapshot` carries the container type),
-     * so the linkage the serializer reads is the same shape as the property it replaces.
      *
      * @param CollectionResult<object> $result
      *
@@ -577,24 +538,26 @@ final class RelationshipWindowBatcher
     }
 
     /**
-     * Nulls each filter-excluded to-one's linkage across the whole page in ONE batched match per
+     * Renders each filter-excluded to-one as empty across the whole page in ONE batched match per
      * relation: for each filtered to-one it resolves the merged filter criteria (related
      * resource ⊕ relation filters, the same vocabulary the related endpoint uses), drives the
      * provider's {@see DataProviderInterface::relatedToOneMatchesBatch()} ONCE over the page (no
-     * N+1), and writes `null` onto the to-one property of each parent whose target does not match
-     * — so the rendered linkage is `null` and, because the include preloader already wrote the
-     * target onto the property, the include is omitted. A GET read, so nothing flushes. The
-     * to-one nulling produces no pagination entry (a to-one has no pagination).
+     * N+1), and records {@see ToOneRelationshipLinkage::none()} in `$linkages` for each parent
+     * whose target does not match, so its linkage renders `null` and the include is omitted. The
+     * parent itself is left as it is: it may be a record every request shares. The to-one
+     * exclusion produces no pagination entry (a to-one has no pagination).
      *
-     * @param list<object>            $parents
-     * @param list<RelationInterface> $toOneFiltered
+     * @param list<object>                                                            $parents
+     * @param list<RelationInterface>                                                 $toOneFiltered
+     * @param array<int, array<string, RelationshipLinkage|ToOneRelationshipLinkage>> $linkages
      */
-    private function nullExcludedToOnes(
+    private function excludeFilteredToOnes(
         Server $server,
         string $type,
         array $parents,
         array $toOneFiltered,
         JsonApiRequestInterface $request,
+        array &$linkages,
     ): void {
         foreach ($toOneFiltered as $relation) {
             $relatedType = $relation->relatedTypes()[0] ?? null;
@@ -625,32 +588,12 @@ final class RelationshipWindowBatcher
                 ->relatedToOneMatchesBatch($type, $parents, $relation, $criteria, $request);
 
             $serializer = $server->serializerFor($type);
-            $column = $relation->column() ?? $relation->name();
             foreach ($parents as $parent) {
                 if (($matches[$serializer->getId($parent)] ?? false) === false) {
-                    $this->clearToOne($parent, $column);
+                    $linkages[\spl_object_id($parent)][$relation->name()] = ToOneRelationshipLinkage::none();
                 }
             }
         }
-    }
-
-    /**
-     * Nulls a filter-excluded to-one so its linkage renders `null` and the include is omitted,
-     * WITHOUT poisoning an Eloquent model's attribute bag: an Eloquent parent nulls the relation
-     * through the RELATIONS cache ({@see \Illuminate\Database\Eloquent\Model::setRelation()} —
-     * `getAttribute()` reads a to-one off `$relations`, so `null` there renders empty linkage),
-     * never `setAttribute` (which would write a phantom relation-named column into `$attributes`).
-     * A POPO nulls the property through the framework-neutral {@see Accessor}.
-     */
-    private function clearToOne(object $parent, string $column): void
-    {
-        if ($parent instanceof Model) {
-            $parent->setRelation($column, null);
-
-            return;
-        }
-
-        Accessor::set($parent, $column, null);
     }
 
     /**
@@ -784,38 +727,6 @@ final class RelationshipWindowBatcher
         }
 
         return $result;
-    }
-
-    /**
-     * Snapshots each windowable relation's backing column value on `$parent` once, keyed by
-     * column, so a relation can window from the original related set even after a sibling
-     * relation sharing the column trimmed it in place. A column read once is reused for every
-     * relation that shares it.
-     *
-     * @param list<RelationInterface> $relations
-     *
-     * @return array<string, mixed> `column => original value`
-     */
-    private function snapshotColumns(object $parent, array $relations): array
-    {
-        // An Eloquent parent needs NO snapshot: the reference provider scopes its OWN batch query
-        // (`fetchWindowedBatch`/`fetchRelatedCollectionBatch`) and never reads the related set off
-        // the property, so there is nothing to restore — and reading the property through the core
-        // `Accessor` would route Model::offsetExists -> getAttribute and LAZY-LOAD the full related
-        // set per parent (the O(M) full-set load the group-limit push-down exists to avoid).
-        if ($parent instanceof Model) {
-            return [];
-        }
-
-        $snapshot = [];
-        foreach ($relations as $relation) {
-            $column = $relation->column() ?? $relation->name();
-            if (!\array_key_exists($column, $snapshot)) {
-                $snapshot[$column] = Accessor::get($parent, $column);
-            }
-        }
-
-        return $snapshot;
     }
 
     /**
