@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.1](https://github.com/haddowg/json-api-laravel/compare/v1.19.0...v1.19.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* stop a batched read from emptying a relation it did not load ([#172](https://github.com/haddowg/json-api-laravel/issues/172)) ([99e3515](https://github.com/haddowg/json-api-laravel/commit/99e351562f7c7e0dd4f507ecd5d8ad8348e92200))
+
 ## [1.19.0](https://github.com/haddowg/json-api-laravel/compare/v1.18.2...v1.19.0) (2026-10-28)
 
 
