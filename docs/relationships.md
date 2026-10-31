@@ -385,8 +385,14 @@ hide rows. A `view` check doesn't count here, since it never filters a list.
 - `?withCount=companies` counts the admitted pairs.
 - `?include=companies` loads every member's row, one query per type, and leaves out a row that
   doesn't come back.
-- `GET /users/{id}/relationships/companies` renders the admitted pairs, and like any polymorphic
-  to-many relationship endpoint answers a query with a `400`.
+- `GET /users/{id}/relationships/companies` pages the admitted pairs exactly as the related
+  endpoint does, with the same paginator, `page` parameters and `?withCount=_self_`, but loads no
+  rows. `?filter` and `?sort` are a `400`. Other polymorphic to-many relationship endpoints still
+  answer any query with a `400`.
+
+The pairs must point at rows that exist. A scoped type checks every pair, so a pair whose row is
+gone drops out and pages and totals stay exact. An unscoped type costs no query, so a dangling pair
+of one still shows in the linkage, and a related page that reaches it comes back one member short.
 
 Each member renders under its pair's type, so one model or record class can back several of the
 types. A stored type the relation doesn't declare is a `500`. Writes go through `fillUsing()`, and

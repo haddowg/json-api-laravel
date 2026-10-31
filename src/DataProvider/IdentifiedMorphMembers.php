@@ -148,27 +148,20 @@ final class IdentifiedMorphMembers
     }
 
     /**
-     * The related page: `$parent`'s admitted pairs windowed in pair order per `$criteria`, then
-     * only the page's rows loaded, one read per type. `$types` receives the type each row renders
-     * as, keyed by object id, since one class may serve several.
+     * The page of `$parent`'s admitted pairs, windowed in pair order per `$criteria`, as
+     * {@see IdentifiedMember} values with no row loaded. The admitted pairs are the whole set, so
+     * the total is exact and a count-free page knows whether more follow without loading anything
+     * past it.
      *
-     * @param array<int, string> $types
-     *
-     * @return CollectionResult<object>
+     * @return CollectionResult<IdentifiedMember>
      */
-    public function page(Server $server, object $parent, MorphToMany $relation, CollectionCriteria $criteria, JsonApiRequestInterface $request, array &$types): CollectionResult
+    public function pageMembers(Server $server, object $parent, MorphToMany $relation, CollectionCriteria $criteria, JsonApiRequestInterface $request): CollectionResult
     {
         $members = $this->members($server, [$parent], $relation, $request, false)[0];
-        $rows = function (array $page) use ($server, &$types): array {
-            /** @var list<IdentifiedMember> $page */
-            return $this->rows($server, $page, $types);
-        };
 
-        // The admitted pairs are the whole set, so a count-free page knows whether more follow
-        // without loading a row past it.
         $window = $criteria->window;
         if ($window instanceof OffsetWindow) {
-            $page = $rows(\array_slice($members, $window->offset, $window->limit));
+            $page = \array_slice($members, $window->offset, $window->limit);
 
             return $criteria->wantsCount
                 ? new CollectionResult($page, \count($members), windowed: true)
@@ -178,11 +171,33 @@ final class IdentifiedMorphMembers
         return (new WindowExecutor())->run(
             $window,
             countable: $criteria->wantsCount,
-            all: static fn(): array => $rows($members),
+            all: static fn(): array => $members,
             count: static fn(): int => \count($members),
-            page: static fn(int $offset, int $limit): array => $rows(\array_slice($members, $offset, $limit)),
-            probe: static fn(int $offset, int $limit): array => $rows(\array_slice($members, $offset, $limit)),
+            page: static fn(int $offset, int $limit): array => \array_slice($members, $offset, $limit),
+            probe: static fn(int $offset, int $limit): array => \array_slice($members, $offset, $limit),
         );
+    }
+
+    /**
+     * The related page: the {@see pageMembers()} page with only its rows loaded, one read per
+     * type. `$types` receives the type each row renders as, keyed by object id, since one class
+     * may serve several.
+     *
+     * @param array<int, string> $types
+     *
+     * @return CollectionResult<object>
+     */
+    public function page(Server $server, object $parent, MorphToMany $relation, CollectionCriteria $criteria, JsonApiRequestInterface $request, array &$types): CollectionResult
+    {
+        $page = $this->pageMembers($server, $parent, $relation, $criteria, $request);
+        $members = [];
+        foreach ($page->items as $member) {
+            if ($member instanceof IdentifiedMember) {
+                $members[] = $member;
+            }
+        }
+
+        return new CollectionResult($this->rows($server, $members, $types), $page->total, $page->windowed, $page->hasMore);
     }
 
     /**

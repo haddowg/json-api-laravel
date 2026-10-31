@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresAlwaysCounted;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresIdentifiedMembers;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresPolymorphicRelation;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresRelationExampleId;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresRelationUriFieldName;
@@ -13,6 +14,7 @@ use haddowg\JsonApi\OpenApi\Schema;
 use haddowg\JsonApi\Resource\Field\AbstractRelationValue;
 use haddowg\JsonApi\Resource\Field\ExemplifiedRelationInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphMembers;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\OpenApi\PivotFields;
 
@@ -27,7 +29,7 @@ use haddowg\JsonApiLaravel\OpenApi\PivotFields;
  * {@see \haddowg\JsonApi\Server\Server} fallback chain + the relation graph) and
  * passed in.
  */
-final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, DeclaresRelationUriFieldName, DeclaresRelationExampleId, DeclaresAlwaysCounted, DeclaresPolymorphicRelation
+final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, DeclaresRelationUriFieldName, DeclaresRelationExampleId, DeclaresAlwaysCounted, DeclaresPolymorphicRelation, DeclaresIdentifiedMembers
 {
     /**
      * @param list<string> $relatedIncludablePaths the related type's includable paths (resolved by the source)
@@ -67,6 +69,11 @@ final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, Decl
     /**
      * A `MorphTo` or `MorphToMany` over one type is projected as a union, as it is served.
      */
+    public function storesIdentifiers(): bool
+    {
+        return IdentifiedMorphMembers::identifies($this->relation);
+    }
+
     public function isPolymorphic(): bool
     {
         return Polymorphism::of($this->relation);

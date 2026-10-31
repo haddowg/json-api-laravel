@@ -67,6 +67,17 @@ class EloquentIdentifiedMorphToManyTest extends IdentifiedMorphToManyTestCase
         self::assertSame($this->hides(), !\str_contains($agencies[0], '*'), $agencies[0]);
     }
 
+    #[Test]
+    public function theRelationshipPageLoadsNoMemberRows(): void
+    {
+        $queries = $this->queries(fn() => $this->read('/users/1/relationships/companies?page[number]=2&page[size]=2'));
+
+        self::assertSame([], $this->reads($queries, 'mtm_advertisers'), \implode("\n", $queries));
+        self::assertSame([], $this->reads($queries, 'mtm_publishers'), \implode("\n", $queries));
+        // Only the key-only admit query, once agencies are scoped.
+        self::assertCount($this->hides() ? 1 : 0, $this->reads($queries, 'mtm_agencies'), \implode("\n", $queries));
+    }
+
     /**
      * @param \Illuminate\Foundation\Application $app
      */

@@ -47,6 +47,7 @@ use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\HasOne;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\MorphTo;
+use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\SupportsSingular;
@@ -883,7 +884,21 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $queried = $this->relationshipEndpointQueried($operation->queryParameters(), $request);
         $relatedTypes = $relation->relatedTypes();
 
-        if ($relation->isToMany() && Polymorphism::isMonomorphic($relation)
+        if (IdentifiedMorphMembers::identifies($relation)) {
+            // An identified MorphToMany pages its admitted pairs in pair order, exactly as its
+            // related endpoint does, and renders them without loading a row. Its members share
+            // no filter or sort vocabulary, so those stay a 400.
+            $refused = $this->refusePolymorphicQuery($operation->queryParameters());
+            if ($refused !== null) {
+                return $refused;
+            }
+
+            $windowed = $this->windowIdentifiedRelationshipEndpoint($server, $parent, $relation, $operation->queryParameters(), $request);
+            if ($windowed instanceof ErrorResponse) {
+                return $windowed;
+            }
+            $page = $windowed;
+        } elseif ($relation->isToMany() && Polymorphism::isMonomorphic($relation)
             && ($queried || $this->providers->supportsType($relatedTypes[0]))) {
             // A monomorphic to-many (pivot or not) is paginated by default, queried or not, so
             // the plain read serves the page the OpenAPI document advertises. A miss (unknown
@@ -900,9 +915,6 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // sort/page/count, and a polymorphic to-many has no single related provider or
             // shared sort/filter vocabulary. See ADR 0006.
             return $this->rejectRelationshipEndpointQuery($operation->queryParameters(), $request);
-        } elseif (IdentifiedMorphMembers::identifies($relation)) {
-            // The whole association renders from the stored pairs, each scoped type admitted
-            // through the linkage seam.
         } elseif ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation)) {
             // The whole association, but loaded through the related type's own scoping provider
             // rather than read off the parent, so it lists exactly what the related endpoint does.
@@ -992,6 +1004,35 @@ final class CrudOperationHandler implements OperationHandlerInterface
             'page' => $this->supplyWindowedRelationship($parent, $relation->name(), $items, $paginator, $result, $wantsCount, $request, $queryParameters),
             'pivotMap' => $this->pivotMap($server, $type, $parent, $relation, $items),
         ];
+    }
+
+    /**
+     * Windows an identified MorphToMany's relationship endpoint: its admitted pairs paged by the
+     * relation's paginator, supplied out-of-band as the linkage, with the page for the links.
+     *
+     * @return ErrorResponse|PageInterface<mixed>|null
+     */
+    private function windowIdentifiedRelationshipEndpoint(
+        Server $server,
+        object $parent,
+        MorphToMany $relation,
+        QueryParameters $queryParameters,
+        JsonApiRequestInterface $request,
+    ): ErrorResponse|PageInterface|null {
+        $paginator = $this->relationCriteria->paginatorFor($relation, null, $server)?->resolve($request);
+
+        if ($request->countsRelationship('_self_') && !$relation->isCountable()) {
+            return ErrorResponse::fromException(new RelationshipCountNotAllowed(['_self_']));
+        }
+
+        $wantsCount = $paginator !== null
+            && !($paginator instanceof CursorPaginator)
+            && ($paginator->wantsCount() || $request->countsRelationship('_self_'));
+
+        $criteria = $this->relationCriteria->criteriaFor($queryParameters, null, $relation, $paginator?->window($request), wantsCount: $wantsCount);
+        $result = $this->relationshipLinkage->members()->pageMembers($server, $parent, $relation, $criteria, $request);
+
+        return $this->supplyWindowedRelationship($parent, $relation->name(), $this->materialize($result), $paginator, $result, $wantsCount, $request, $queryParameters);
     }
 
     /**

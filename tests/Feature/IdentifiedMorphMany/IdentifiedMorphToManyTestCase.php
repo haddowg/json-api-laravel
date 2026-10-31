@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature\IdentifiedMorphMany;
 
 use haddowg\JsonApi\Schema\Profile\CountableProfile;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
 use haddowg\JsonApiLaravel\Tests\Fixtures\IdentifiedMorphMany\IdentifiedMorphManyServiceProvider;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -44,6 +45,8 @@ abstract class IdentifiedMorphToManyTestCase extends Orchestra
         'related-page' => ['/users/1/companies?page[number]=2&page[size]=2&withCount=_self_', self::COUNTS_ACCEPT, 200],
         'related-sparse' => ['/users/1/companies?fields[advertisers]=code', null, 200],
         'relationship' => ['/users/1/relationships/companies', null, 200],
+        'relationship-page' => ['/users/1/relationships/companies?page[number]=2&page[size]=2&withCount=_self_', self::COUNTS_ACCEPT, 200],
+        'relationship-sort' => ['/users/1/relationships/companies?sort=name', null, 400],
         'related-sort' => ['/users/1/companies?sort=name', null, 400],
         'related-filter' => ['/users/1/companies?filter[name]=Agency', null, 400],
     ];
@@ -145,9 +148,45 @@ abstract class IdentifiedMorphToManyTestCase extends Orchestra
     }
 
     #[Test]
-    public function theRelationshipEndpointRefusesAPage(): void
+    public function theRelationshipEndpointPagesInPairOrderWithExactTotals(): void
     {
-        $this->get('/users/1/relationships/companies?page[size]=2', ['Accept' => self::MEDIA_TYPE])->assertStatus(400);
+        $visible = $this->visible(self::USER_ONE);
+
+        foreach ([1, 2, 3] as $number) {
+            $document = $this->read('/users/1/relationships/companies?withCount=_self_&page[size]=2&page[number]=' . $number, self::COUNTS_ACCEPT);
+            self::assertSame(\array_slice($visible, ($number - 1) * 2, 2), $this->keys($document->json('data')), 'page ' . $number);
+            self::assertSame($number < 3, $document->json('links.next') !== null, 'page ' . $number);
+        }
+    }
+
+    #[Test]
+    public function aCountFreeRelationshipPageKnowsWhetherMoreFollow(): void
+    {
+        self::assertNull($this->read('/users/1/relationships/companies?page[size]=2&page[number]=3')->json('links.next'));
+        self::assertNotNull($this->read('/users/1/relationships/companies?page[size]=2&page[number]=1')->json('links.next'));
+    }
+
+    #[Test]
+    public function theRelationshipEndpointRefusesAFilter(): void
+    {
+        $this->get('/users/1/relationships/companies?filter[name]=Agency', ['Accept' => self::MEDIA_TYPE])->assertStatus(400);
+    }
+
+    #[Test]
+    public function theProjectedRelationshipEndpointTakesTheRelatedEndpointsPageParameters(): void
+    {
+        $factory = $this->app?->make(DocumentFactory::class);
+        self::assertInstanceOf(DocumentFactory::class, $factory);
+        $document = \json_decode((string) \json_encode($factory->forServer()->toArray()), true);
+        $names = static fn(mixed $parameters): array => \array_map(
+            static fn(mixed $parameter): mixed => \is_array($parameter) ? $parameter['name'] ?? null : null,
+            \is_array($parameters) ? $parameters : [],
+        );
+
+        $relationship = $names($this->dig($document, 'paths', '/users/{id}/relationships/companies', 'get', 'parameters'));
+        $related = $names($this->dig($document, 'paths', '/users/{id}/companies', 'get', 'parameters'));
+        self::assertSame(['page', 'withCount'], $relationship);
+        self::assertSame(\array_values(\array_intersect($related, ['page', 'withCount'])), $relationship);
     }
 
     #[Test]
@@ -201,6 +240,15 @@ abstract class IdentifiedMorphToManyTestCase extends Orchestra
         self::assertSame(200, $response->getStatusCode(), $path . ': ' . $response->getContent());
 
         return $response;
+    }
+
+    private function dig(mixed $value, string ...$keys): mixed
+    {
+        foreach ($keys as $key) {
+            $value = \is_array($value) ? $value[$key] ?? null : null;
+        }
+
+        return $value;
     }
 
     /**
