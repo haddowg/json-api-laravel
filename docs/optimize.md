@@ -1,8 +1,8 @@
 # Optimize (production warm-up)
 
 For production, warm the package's caches and validate deployability with the `optimize`
-pipeline — the Laravel-idiomatic replacement for the Symfony bundle's cache warmers (PLAN
-decision 11). It hooks into `php artisan optimize`, so it runs as part of your normal deploy.
+pipeline — the Laravel-idiomatic replacement for the Symfony bundle's cache warmers.
+It hooks into `php artisan optimize`, so it runs as part of your normal deploy.
 
 ## The commands
 

@@ -111,7 +111,7 @@ server a clone of it, so one server's zone or action links never leak into anoth
 
 ## Testing
 
-The kit reshapes the bundle's `JsonApiBrowser` into Laravel testing grammar (PLAN decision 12):
+The kit reshapes the bundle's `JsonApiBrowser` into Laravel testing grammar:
 an `InteractsWithJsonApi` trait for building requests, and `TestResponse` macros for asserting
 responses. `actingAs()` is native Laravel.
 

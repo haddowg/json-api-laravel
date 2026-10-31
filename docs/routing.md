@@ -3,7 +3,7 @@
 Routes register **themselves** from `config/jsonapi.php` — one route per discovered type ×
 allowed operation, per server. This is the opposite of the Symfony bundle (where you import a
 route type by hand). This page covers the auto-registration, the manual-placement macro, route
-names, and `route:cache` safety (PLAN decision 4).
+names, and `route:cache` safety.
 
 ## Auto-registration
 

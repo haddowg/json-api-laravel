@@ -317,8 +317,8 @@ fetch.
 
 Per-parent relationship paging (the Relationship Queries profile, `?withCount`, a related
 collection with its own `page[]`) is a **SQL push-down only** — no toggle, no PHP fallback
-([ADR 0006](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0006-windowed-relation-batches-are-sql-push-down-only.md),
-PLAN decision 9). It uses Eloquent's relation `limit()` → `Builder::groupLimit()` →
+([ADR 0006](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0006-windowed-relation-batches-are-sql-push-down-only.md)).
+It uses Eloquent's relation `limit()` → `Builder::groupLimit()` →
 `ROW_NUMBER() OVER (PARTITION BY …)` with the relation's order plus a deterministic id
 tie-breaker; `hasMore` is an N+1 probe on the same query; countable totals are a grouped
 `COUNT`. Every first-party Laravel driver has window functions, so the Doctrine toggle's

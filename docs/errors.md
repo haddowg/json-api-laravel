@@ -6,7 +6,7 @@ errors only on JSON:API routes, the ones where
 [`$request->isJsonApi()`](routing.md#is-this-a-json-api-route) is true. Your app's own error
 handling elsewhere is untouched. The error model, the status catalogue, and the pointer
 conventions are core's (see core
-[errors](https://github.com/haddowg/json-api/blob/main/docs/errors.md)); this page covers the
+[errors](https://github.com/haddowg/json-api/blob/main/docs/errors-and-exceptions.md)); this page covers the
 Laravel mapping.
 
 ## The mapping pipeline

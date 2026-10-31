@@ -2,7 +2,7 @@
 
 The package supports the JSON:API **Atomic Operations** extension: a batch of create / update
 / delete / relationship operations submitted to one endpoint and applied in a single database
-transaction — all succeed or all roll back (PLAN decision 12).
+transaction — all succeed or all roll back.
 
 ## Enabling it
 

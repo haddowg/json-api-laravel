@@ -3,7 +3,7 @@
 The package projects an **OpenAPI 3.1** document from your discovered resources — no
 hand-written spec. It serves a Swagger UI / ReDoc viewer, exposes the document + JSON Schema
 over HTTP, and exports them from the CLI. Crucially, for an identical domain the document is
-**byte-identical to the Symfony bundle's** (PLAN decision 11), so a `json-api-ts` client
+**byte-identical to the Symfony bundle's**, so a `json-api-ts` client
 generator consumes either backend unchanged.
 
 ## What is projected

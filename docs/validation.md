@@ -3,7 +3,7 @@
 Validation is **always on**. Unlike the Symfony bundle (where the validator bridge is an
 opt-in `suggest`), `illuminate/validation` ships with Laravel, so this package translates
 core's declared constraint vocabulary into **real Laravel rules with real, localizable
-messages** on every write — no configuration (PLAN decision 6,
+messages** on every write — no configuration (see
 [ADR 0004](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0004-write-authorization-is-pristine-subject-and-timed-before-hydration.md)
 for the ordering). Core declares the constraints on the fields; this package executes them.
 
@@ -145,7 +145,7 @@ date-aware filters), and a value that fails coercion is rejected before it reach
 ## Custom constraints
 
 Register a class-keyed translator for your own `ConstraintInterface` value objects — the
-extension point (PLAN decision 6). It is consulted after the built-in vocabulary, first
+extension point. It is consulted after the built-in vocabulary, first
 `supports()` match wins:
 
 ```php

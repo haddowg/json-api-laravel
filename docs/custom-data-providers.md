@@ -21,7 +21,7 @@ interface DataProviderInterface
 
     // Relationship reads (defaulted in AbstractDataProvider — override only what you need):
     public function fetchRelatedCollection(/* … */): CollectionResult;
-    public function fetchRelatedCollectionBatch(/* … */): array;   // ?include batching
+    public function fetchRelatedCollectionBatch(/* … */): RelatedBatch; // ?include batching
     public function countRelated(/* … */): array;                  // ?withCount
     public function relatedToOneMatches(/* … */): bool;
     public function relatedToOneMatchesBatch(/* … */): array;

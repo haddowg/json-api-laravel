@@ -34,9 +34,10 @@ pagination, OpenAPI, and the discovery paths:
 php artisan vendor:publish --tag=jsonapi-config
 ```
 
-This writes `config/jsonapi.php`. The full tree — `base_uri`, `version`,
-`strict_query_parameters`, `max_include_depth`, `pagination`, `defaults` (response
-headers), `discovery`, `servers`, `atomic_operations`, and `openapi` — is documented on
+This writes `config/jsonapi.php`. The full tree — `base_uri`, `output_timezone`,
+`link_objects`, `reject_read_only_attributes`, `version`, `strict_query_parameters`,
+`max_include_depth`, `pagination`, `profiles`, `defaults` (response headers), `discovery`,
+`eloquent`, `servers`, `atomic_operations`, `scopes`, and `openapi` — is documented on
 [configuration](configuration.md).
 
 ## Where resources live

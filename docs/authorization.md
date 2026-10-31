@@ -1,6 +1,6 @@
 # Authorization
 
-Authorization is **policy-first** and Laravel-native (PLAN decision 7). The package resolves
+Authorization is **policy-first** and Laravel-native. The package resolves
 the model's Gate-registered policy and checks it at each lifecycle point **with the loaded
 model in hand, before persistence** — the entity-level check the Symfony firewall cannot
 express. Where the Symfony bundle uses ExpressionLanguage `security:` strings, this package

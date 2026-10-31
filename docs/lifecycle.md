@@ -3,7 +3,7 @@
 Every JSON:API request flows through one invokable controller: **negotiate → parse →
 `Server::dispatch()` → render**. The Illuminate request is bridged to PSR-7 to drive core,
 then core's response value object is rendered back to an Illuminate response. Around the
-operation, the package dispatches **real Laravel events** (PLAN decision 10) — so
+operation, the package dispatches **real Laravel events**, so
 `Event::listen`, `Event::fake`, queued listeners, and event auto-discovery all work.
 
 Core reads the query parameters as the client sent them, re-parsed from the raw query string.

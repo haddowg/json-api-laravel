@@ -129,10 +129,19 @@ each row's own restore URL, while a live resource never offers a link it does no
     "type": "documents",
     "id": "1",
     "meta": { "trashed": true },
-    "links": { "restore": "https://api.example.com/documents/1/-actions/restore" }
+    "links": {
+      "restore": {
+        "href": "https://api.example.com/documents/1/-actions/restore",
+        "describedby": "/docs.json#/paths/~1documents~1%7Bid%7D~1-actions~1restore/post"
+      }
+    }
   }
 }
 ```
+
+Like every link the package builds, it renders as a link object, with a `describedby` only
+while a route serves the [OpenAPI document](openapi.md#links-and-describedby); a server with
+[`link_objects`](configuration.md#link_objects) set to `false` renders the bare URL instead.
 
 The state condition comes from the action handler implementing
 `haddowg\JsonApiLaravel\Action\ConditionallyLinked` — the general seam for a state-scoped link
