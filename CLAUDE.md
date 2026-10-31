@@ -8,6 +8,9 @@ bundle: both build on the framework-agnostic core and project a **byte-identical
 document** for an identical domain. Core (`../json-api`) is the authority on the library's
 internals — its own `CLAUDE.md` covers them.
 
+[`CONTEXT.md`](CONTEXT.md) is the glossary of this package's own terms (core's defines the rest),
+and [`docs/adr/`](docs/adr/) records the decisions that would surprise a reader of the code.
+
 ## Gates (all green before anything lands)
 
 ```bash
