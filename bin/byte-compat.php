@@ -3,7 +3,8 @@
 declare(strict_types=1);
 
 /*
- * Drives the byte-compatibility check: it exports the music-catalog
+ * Drives the byte-compatibility check. It diffs the response documents the two conformance
+ * suites share, and it exports the music-catalog
  * documents from BOTH this package's testbench workbench and the sibling Symfony bundle's
  * example app, normalizes each, and diffs them per server. Two document families are
  * covered, each exercising a DISTINCT projector path:
@@ -105,11 +106,25 @@ $failures = [];
 diffFamily('OpenAPI', __DIR__ . '/normalize-openapi.php', $buildDir, '', $servers, $failures);
 diffFamily('JSON-Schema', __DIR__ . '/normalize-json-schema.php', $buildDir, 'schemas-', $servers, $failures);
 
+// --- The shared response documents both conformance suites assert against -------------
+// Each suite compares its responses to its own copy byte for byte, so the copies must match.
+foreach ([['IdentifiedMorphMany', 'tests/Fixtures/IdentifiedMorphMany/documents', 'tests/Functional/App/IdentifiedMorphMany/documents']] as [$label, $laravelDir, $bundleDir]) {
+    step("diffing the shared {$label} response documents");
+    $diff = shellDiff("{$repoRoot}/{$laravelDir}", "{$bundlePath}/{$bundleDir}", true);
+    if ($diff === '') {
+        step("  {$label} documents: EMPTY DIFF — byte-compatible.");
+        continue;
+    }
+
+    $failures[] = "{$label} documents";
+    \fwrite(\STDERR, "\n[byte-compat] {$label} response documents DIFFER (< laravel, > symfony):\n" . $diff . "\n");
+}
+
 if ($failures !== []) {
     fail('byte-incompatible document(s): ' . \implode(', ', $failures) . '.');
 }
 
-step('OK — every OpenAPI and JSON-Schema document is byte-compatible with the bundle.');
+step('OK — every OpenAPI, JSON-Schema and shared response document is byte-compatible with the bundle.');
 exit(0);
 
 /**
@@ -221,10 +236,10 @@ function normalize(string $normalizer, string $input, string $output): string
  * and keys on its exit code: `0` = identical (empty string), `1` = differ (the diff text),
  * anything else (or a spawn failure) is a hard {@see fail()}.
  */
-function shellDiff(string $a, string $b): string
+function shellDiff(string $a, string $b, bool $recursive = false): string
 {
     $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-    $process = \proc_open(['diff', '-u', $a, $b], $descriptors, $pipes);
+    $process = \proc_open($recursive ? ['diff', '-ru', $a, $b] : ['diff', '-u', $a, $b], $descriptors, $pipes);
     if (!\is_resource($process)) {
         fail('could not start diff.');
     }

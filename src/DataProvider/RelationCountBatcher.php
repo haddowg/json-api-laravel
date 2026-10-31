@@ -45,6 +45,7 @@ final class RelationCountBatcher
         private readonly TypeMetadataResolver $types,
         private readonly RelationCriteriaFactory $relationCriteria,
         private readonly ?ScopedPolymorphicMembers $polymorphicMembers = null,
+        private readonly ?IdentifiedMorphMembers $identifiedMembers = null,
     ) {}
 
     /**
@@ -84,6 +85,15 @@ final class RelationCountBatcher
         $counts = [];
         foreach ($relations as $relation) {
             $criteria = $this->countCriteria($server, $relation, $request);
+
+            // An identified MorphToMany counts its pairs, with each scoped type admitted first.
+            if ($this->identifiedMembers !== null && IdentifiedMorphMembers::identifies($relation)) {
+                foreach ($this->identifiedMembers->counts($server, $parents, $relation, $request) as $index => $count) {
+                    $counts[\spl_object_id($parents[$index])][$relation->name()] = $count;
+                }
+
+                continue;
+            }
 
             $relationCounts = $this->providers->relatesToScopedType($type, $relation)
                 ? $this->countScoped($server, $type, $parents, $relation, $criteria, $request, $serializer)

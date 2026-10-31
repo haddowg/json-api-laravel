@@ -23,6 +23,7 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\InMemory\ArrayFilterHandler;
 use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortHandler;
 use haddowg\JsonApiLaravel\DataProvider\AbstractDataProvider;
+use haddowg\JsonApiLaravel\DataProvider\AdmitsIdsInterface;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\CriteriaApplier;
 use haddowg\JsonApiLaravel\DataProvider\FetchesManyInterface;
@@ -94,7 +95,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
  *
  * @extends AbstractDataProvider<object>
  */
-final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface
+final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface
 {
     private readonly CriteriaApplier $applier;
 
@@ -211,6 +212,36 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         }
 
         return $keys === [] ? [] : \array_values($this->newQuery($type)->whereKey($keys)->get()->all());
+    }
+
+    /**
+     * One key-only query under the model's global scopes.
+     */
+    public function admitIds(string $type, array $ids): array
+    {
+        $encoder = $this->encoderFor($type);
+        $byKey = [];
+        foreach ($ids as $id) {
+            /** @var mixed $key */
+            $key = $encoder !== null ? $encoder->decode($id) : $id;
+            if (\is_int($key) || \is_string($key)) {
+                $byKey[(string) $key][] = $id;
+            }
+        }
+
+        if ($byKey === []) {
+            return [];
+        }
+
+        $query = $this->newQuery($type);
+        $admitted = [];
+        foreach ($query->whereKey(\array_map('strval', \array_keys($byKey)))->pluck($query->getModel()->getKeyName()) as $key) {
+            if (\is_int($key) || \is_string($key)) {
+                \array_push($admitted, ...($byKey[(string) $key] ?? []));
+            }
+        }
+
+        return $admitted;
     }
 
     /**

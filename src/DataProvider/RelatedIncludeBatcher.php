@@ -102,6 +102,7 @@ final class RelatedIncludeBatcher
         private readonly TypeMetadataResolver $types,
         private readonly ScopedPolymorphicMembers $polymorphicMembers,
         private readonly IdentifiedMorphTargets $identified,
+        private readonly ?IdentifiedMorphMembers $members = null,
     ) {}
 
     /**
@@ -285,6 +286,18 @@ final class RelatedIncludeBatcher
                 continue;
             }
 
+            // An identified MorphToMany admits each scoped type's pairs for its linkage, and loads
+            // every member's row, one read per type, when it is included.
+            if ($this->members !== null && IdentifiedMorphMembers::identifies($relation)) {
+                foreach ($this->members->load($entities, $relation, $request, $included) as $targetType => $targets) {
+                    if ($included) {
+                        $this->preloadLevel($server, $targets, $targetType, $request, $childPath, $maxDepth, $allowedPaths, true, $batch, $linkages, $reach);
+                    }
+                }
+
+                continue;
+            }
+
             if ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation)) {
                 $targets = $this->loadScoped($server, $entities, $type, $relation, $request, $included, $linkages);
                 if ($included) {
@@ -428,7 +441,8 @@ final class RelatedIncludeBatcher
             foreach ($this->types->readableRelationsFor($server, $type, $request) as $relation) {
                 $seed = $seed
                     || ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation))
-                    || IdentifiedMorphTargets::identifies($relation);
+                    || IdentifiedMorphTargets::identifies($relation)
+                    || IdentifiedMorphMembers::identifies($relation);
                 foreach ($relation->relatedTypes() as $relatedType) {
                     $edges[$type][] = $relatedType;
                     $queue[] = $relatedType;
