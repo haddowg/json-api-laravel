@@ -259,7 +259,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // fetches the windowed page only when the handler resolved a COUNT for this
         // fetch (the paginator's withCount() author opt-in, or ?withCount=_self_
         // under a countable() resource); otherwise it fetches count-free via the
-        // window+1 probe (no COUNT) and reports `hasMore` (bundle ADR 0075).
+        // window+1 probe (no COUNT) and reports `hasMore` (bundle ADR 0052).
         return $this->windowExecutor->run(
             $criteria->window,
             countable: $criteria->wantsCount,

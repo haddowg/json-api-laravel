@@ -1486,7 +1486,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // would assign a scalar linkage id to a typed association property (a TypeError /
         // NOT-NULL 500), so the relationships are stripped from the body before hydration
         // and set through the persister's relationship seam instead — a full replacement,
-        // the flush deferred to the single create() commit (bundle ADR 0018). Each embedded
+        // the flush deferred to the single create() commit (bundle ADR 0017). Each embedded
         // linkage is validated with the same pass the dedicated endpoint uses (a `409`
         // resource-type conflict / `422` malformed linkage or pivot meta), before persist.
         // A to-one (owner-side FK) applies inline before the create; a to-many (join /
@@ -2246,7 +2246,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * A copy of the write body with `data.relationships` removed, so core's hydrator
      * hydrates only the id + attributes and never assigns a scalar linkage id to a typed
      * association property — the associations apply through the persister seam instead
-     * (bundle ADR 0018).
+     * (bundle ADR 0017).
      */
     private function withoutRelationships(JsonApiRequestInterface $body): JsonApiRequestInterface
     {

@@ -570,7 +570,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
      * closures — the same tail the Eloquent reference provider runs (its closures
      * push down LIMIT/OFFSET/COUNT).
      *
-     * When `$countable` is false (the count-free default, bundle ADR 0075) the
+     * When `$countable` is false (the count-free default, bundle ADR 0052) the
      * executor builds the window **count-free**: the result carries no total, only
      * a `hasMore` flag derived from a limit+1 probe — so the handler renders a
      * count-free page (no `total`/`last`). A counted fetch passes `$countable` true

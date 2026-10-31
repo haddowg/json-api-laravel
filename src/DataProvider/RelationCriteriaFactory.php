@@ -24,7 +24,7 @@ use haddowg\JsonApiLaravel\OpenApi\PivotFields;
  * ({@see \haddowg\JsonApiLaravel\Operation\CrudOperationHandler}) and the `?withCount`
  * count batcher ({@see RelationCountBatcher}) both need: the per-relation paginator chain
  * and the related-resource ⊕ relation-scoped filter/sort vocabulary merge that rides a
- * {@see CollectionCriteria} (bundle ADR 0057, re-idiomized).
+ * {@see CollectionCriteria} (bundle ADR 0030, re-idiomized).
  *
  * A stateless collaborator — it holds no state and reads everything off its arguments, so
  * a single shared instance serves every relation of every request. It does not execute

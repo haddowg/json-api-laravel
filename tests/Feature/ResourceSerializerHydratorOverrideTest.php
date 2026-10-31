@@ -16,7 +16,7 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 
 /**
  * The per-resource serializer/hydrator override, end-to-end over HTTP (ADR 0014, the
- * Laravel twin of bundle ADR 0023). `notes` declares
+ * Laravel twin of bundle ADR 0024). `notes` declares
  * `#[AsJsonApiResource(serializer: NoteSerializer::class)]`: a read renders through the
  * hand-written serializer — whose constructor takes a **contextually-bound scalar**
  * (`$stamp`), so the injected value appearing on the wire proves the override was
