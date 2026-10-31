@@ -20,7 +20,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
  *    subject, and the inverse of {@see AuthorResource}'s `posts` HasMany);
  *  - `sponsor` — a to-one whose replacement and removal are BOTH prohibited (the
  *    `FullReplacementProhibited` / `RemovalProhibited` 403s);
- *  - `moderator` — a to-one whose mutation ability is overridden to `curate` (PLAN decision 7
+ *  - `moderator` — a to-one whose mutation ability is overridden to `curate` (a
  *    per-relation ability override, gated by a Gate::define in the test);
  *  - `feature` — a polymorphic to-one (MorphTo → an author OR a tag);
  *  - `tags` — a plain join-table to-many (PATCH replace / POST add / DELETE remove);

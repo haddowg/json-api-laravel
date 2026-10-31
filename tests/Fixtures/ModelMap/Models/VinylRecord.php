@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
  * The model behind the `recordings` fixture type — its name deliberately diverges from
  * the type (convention would guess `Recording`, which does not exist), so the type is
  * only servable through the `#[AsJsonApiResource(model: VinylRecord::class)]`
- * declaration (the attribute tier, ADR 0019).
+ * declaration (the attribute tier).
  *
  * @property int    $id
  * @property string $title

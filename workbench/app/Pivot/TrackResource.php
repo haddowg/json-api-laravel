@@ -12,7 +12,7 @@ use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
 /**
- * The `tracks` resource type (Phase 3b) — the far side of the playlist pivot relation,
+ * The `tracks` resource type — the far side of the playlist pivot relation,
  * shared by BOTH provider suites. Read-only: tracks are rendered as the related members of a
  * playlist's `orderedTracks`/`tracks` and (via {@see PlaylistResource}) written only through
  * the playlist's relationship endpoints. `releasedAt` is a sortable column (its `storedAs`

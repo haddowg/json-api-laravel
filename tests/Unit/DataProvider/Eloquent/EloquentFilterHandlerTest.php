@@ -37,8 +37,8 @@ use Workbench\App\Models\Artist;
 /**
  * The Eloquent filter handler's SQL push-down: every core filter type is asserted
  * against the compiled SQLite SQL (`toSql()`) and its parameter bindings
- * (`getBindings()`), proving the `match(true)` maps each VO to the Builder calls the
- * blueprint's coverage table specifies — the Eloquent mirror of the in-memory witness.
+ * (`getBindings()`), proving the `match(true)` maps each VO to the expected Builder
+ * calls — the Eloquent mirror of the in-memory witness.
  *
  * @internal
  */

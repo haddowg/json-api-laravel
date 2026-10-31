@@ -1,0 +1,3 @@
+# An atomic endpoint error declares the atomic ext only when the request named it
+
+Errors raised before or outside negotiation on the Atomic Operations route (an empty batch, a `405`, an auth `401`) need a `Content-Type`, and claiming the extension for a client that never asked for it is wrong. The renderer declares `ext="https://jsonapi.org/ext/atomic"` only when the request's `Content-Type` or any `Accept` range named it, read through core's request parsing because negotiation may not have run, and never on a `415` or `406`, where negotiation over the ext failed. The bundle follows the same rule, so both adapters send the same `Content-Type` for the same request.

@@ -18,7 +18,7 @@ use Workbench\Database\Seeders\CursorWidgetSeeder;
  * seeds the SAME {@see \Workbench\App\Support\ConformanceFixtures::cursorBoards()}
  * partition the in-memory witness carries ({@see CursorWidgetSeeder} then
  * {@see CursorBoardSeeder}), so every inherited assertion must produce the IDENTICAL
- * pivot-scoped keyset page — `meta.pivot` included (docs/adr/0017).
+ * pivot-scoped keyset page — `meta.pivot` included.
  *
  * @internal
  */

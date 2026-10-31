@@ -49,7 +49,7 @@ final class WorkbenchServiceProvider extends ServiceProvider
 
         JsonApi::provider(new InMemoryDataProvider('artists', $artists));
 
-        // The album's `artist` to-one is relationship-mutable (Phase 3b): the persister
+        // The album's `artist` to-one is relationship-mutable: the persister
         // resolves an incoming `artists` linkage id back to the stored Artist through this
         // resolver — the in-memory analogue of the Eloquent persister's `modelByType` lookup,
         // making `…/albums/{id}/relationships/artist` writable on the in-memory witness too.

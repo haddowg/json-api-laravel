@@ -13,7 +13,7 @@ use Workbench\App\Providers\ConformanceInMemoryServiceProvider;
  * plain association list on the stored object graph (immediately readable, no database), and
  * the witness stores NO pivot meta (the documented boundary — a pivot column needs an
  * association entity it cannot model), so a pivot write still changes the membership but
- * renders NO `meta.pivot` (ADR 0008), asserted through {@see providerRendersPivotMeta()}.
+ * renders NO `meta.pivot`, asserted through {@see providerRendersPivotMeta()}.
  *
  * @internal
  */

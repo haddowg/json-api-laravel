@@ -34,9 +34,9 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
  * BOTH provider suites (in-memory and Eloquent), so its field columns are declared via
  * `storedAs()` where the wire name is camelCase but the storage column is snake_case
  * (`createdAt` → `created_at`) — the one declaration resolves off an in-memory POPO's
- * property AND an Eloquent model's cast attribute (blueprint §3.4).
+ * property AND an Eloquent model's cast attribute.
  *
- * Phase 1 enriches it with the read query surface: a singular `filter[slug]` (a unique
+ * It carries the read query surface: a singular `filter[slug]` (a unique
  * match collapses to a single resource), substring/prefix name filters, an id-set
  * filter, and a deterministic default sort by `created_at` (so an unsorted, paginated
  * collection is stable). `readOnly: true` restricts it to the two fetch operations.
@@ -66,7 +66,7 @@ final class ArtistResource extends AbstractResource
                     return \is_numeric($value) ? (int) $value : 0;
                 }),
             DateTime::make('createdAt')->storedAs('created_at')->readOnlyOnUpdate()->sortable(),
-            // The artist's albums (Phase 3a): a lazy to-many rendering linkage + convention
+            // The artist's albums: a lazy to-many rendering linkage + convention
             // self/related links, `countable()` so `?withCount=albums` emits `meta.total` and
             // the related-collection endpoint carries a page total. The relation name IS the
             // Eloquent relation method / in-memory POPO property (`albums`).
@@ -102,14 +102,14 @@ final class ArtistResource extends AbstractResource
             // witness coerces null→0, SQL excludes NULLs — mirrors the bundle ranging
             // only its non-null `id`).
             Range::make('trackRange', 'track_count'),
-            // Relationship-existence over the `albums` HasMany (Phase 3a conformance): a
+            // Relationship-existence over the `albums` HasMany (conformance): a
             // presence-only semi-join — `filter[withAlbums]` keeps artists owning ≥1 album,
             // `filter[withoutAlbums]` those owning none. The Eloquent provider compiles an
             // EXISTS / NOT EXISTS subquery; the in-memory witness runs the reference
             // predicate over the object graph — identical result sets on both.
             WhereHas::make('withAlbums', 'albums'),
             WhereDoesntHave::make('withoutAlbums', 'albums'),
-            // Dotted-path traversal (Phase 3a conformance): `filter[albumTitled]=<title>`
+            // Dotted-path traversal (conformance): `filter[albumTitled]=<title>`
             // keeps an artist who has SOME album with that title (an EXISTS-ANY semi-join —
             // a multi-album artist is returned once, never row-multiplied). Eloquent nests
             // the leaf predicate inside the relationship EXISTS; the witness traverses

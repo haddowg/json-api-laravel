@@ -26,7 +26,7 @@ use Illuminate\Database\Eloquent\Model;
  * Asserts at `artisan optimize` (a deploy step) that every registered type is actually
  * **servable** — that the capabilities its exposed routes require are present — so a
  * configuration mistake fails the BUILD instead of a runtime 500 (or, worse, a silently
- * malformed response) on the first request (PLAN decision 11).
+ * malformed response) on the first request.
  *
  * Unlike the {@see \haddowg\JsonApiLaravel\OpenApi\DocumentWarmer} (optional, non-fatal),
  * this warmer is **mandatory**: {@see warm()} collects every problem and the
@@ -57,7 +57,7 @@ use Illuminate\Database\Eloquent\Model;
  *  - **(Eloquent-backed types) every sortable field / column-backed filter resolves to a
  *    real table column.** A `->sortable()` field (or a column-backed filter) whose column
  *    was renamed in a migration would otherwise pass `php artisan optimize` cleanly and
- *    then `QueryException`-500 on the first `?sort=`/`?filter=` request (PLAN decision 11).
+ *    then `QueryException`-500 on the first `?sort=`/`?filter=` request.
  *    Columns are resolved against the model's table (accepting cast keys); a qualified
  *    (dotted) path targets another table and is not validated. Skipped when schema
  *    introspection is unavailable (no migrated DB at build time — a different concern that
@@ -73,11 +73,11 @@ use Illuminate\Database\Eloquent\Model;
  *    {@see \haddowg\JsonApi\Resource\Link\ActionLink} in `links()` links a resource-scope
  *    custom action of the type. A server without it leaves the link out, but a path no
  *    server serving the type has would never render, so it is reported, naming the
- *    resource class (ADR 0064). Building the
+ *    resource class. Building the
  *    links also throws core's own declaration errors: two action links for one path, or a
  *    declared link named like an action link.
  *
- * Standalone-serializer types (PLAN decision 3, bundle ADR 0024) are validated too — a
+ * Standalone-serializer types are validated too — a
  * fetch-opened standalone type without a provider is exactly the deploy-time
  * misconfiguration this warmer exists to catch. Gating is on the per-type operation
  * allow-list, so an embedded-only standalone serializer (no operations) and a
@@ -125,7 +125,7 @@ final class ServableResourceWarmer
                 $this->guardActionLinks($serverName, $type, $problems);
             }
 
-            // The standalone-serializer types (PLAN decision 3, bundle ADR 0024) run the
+            // The standalone-serializer types run the
             // same guards: servability bites (a fetch-opened standalone type needs a
             // provider), while the resource-shaped guards no-op — a resource-less type has
             // no field inventory, so resourceFor() is null and relationsFor() is empty.

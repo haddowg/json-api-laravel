@@ -10,15 +10,15 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The Phase-3b Relationship Queries profile acceptance suite (the Laravel analogue of the
- * bundle's relationship-queries + windowed-include conformance, core ADR 0058 / PLAN
- * decision 9): a windowed relationship-linkage endpoint, a windowed related endpoint, and an
+ * The Relationship Queries profile acceptance suite (the Laravel analogue of the
+ * bundle's relationship-queries + windowed-include conformance): a windowed relationship-linkage
+ * endpoint, a windowed related endpoint, and an
  * included relationship windowed from the PRIMARY request via `relatedQuery`/`rQ` under the
  * negotiated profile — every assertion run identically against the in-memory witness
  * ({@see InMemoryRelationshipQueriesConformanceTest}, which windows through core's
  * `WindowExecutor` + the PK tiebreak) and the reference Eloquent provider
  * ({@see EloquentRelationshipQueriesConformanceTest}, the `groupLimit`/`ROW_NUMBER() OVER
- * (PARTITION BY … ORDER BY …, pk)` SQL push-down that ADR 0006 left throwing in 3a).
+ * (PARTITION BY … ORDER BY …, pk)` SQL push-down).
  *
  * The two implementations referee each other on the same seeded
  * {@see \Workbench\App\Support\ConformanceFixtures} graph: Radiohead (1) owns four albums
@@ -26,7 +26,7 @@ use PHPUnit\Framework\Attributes\Test;
  * owns four ordered tracks (1/2/3/4) three of which (1/2/3) TIE on `released_at` (1997-05-21).
  * So a divergence in tie ordering, NULL placement, per-parent windowing, or count parity
  * surfaces as a between-provider difference on the shared assertions — the referee premise
- * the SQL push-down is held to. This is the suite that makes the PLAN's tie-break watch item
+ * the SQL push-down is held to. This is the suite that makes tie-break determinism
  * a test (byte-identical pages on tied keys).
  */
 abstract class RelationshipQueriesConformanceTestCase extends Orchestra
@@ -153,8 +153,8 @@ abstract class RelationshipQueriesConformanceTestCase extends Orchestra
         // sort column); track 4 is 2000-10-02. A releasedAt-ASC window of page size 2 must
         // resolve the tie by the appended PK tiebreak — id ASC — so page 1 is [1, 2] and page 2
         // is [3, 4] BYTE-IDENTICALLY on both providers (the SQL `ORDER BY released_at, id`
-        // group-limit and the witness `withPkTiebreak` produce the same page — the ADR 0006
-        // referee, the PLAN tie-break watch item as a test).
+        // group-limit and the witness `withPkTiebreak` produce the same page — the determinism
+        // referee as a test).
         $page1 = $this->fetch('/api/playlists/1/tracks?sort=releasedAt&page[size]=2');
         $page1->assertOk();
         self::assertSame(['1', '2'], $this->ids($page1));
@@ -230,7 +230,7 @@ abstract class RelationshipQueriesConformanceTestCase extends Orchestra
     {
         // Album 1's artist is Radiohead (1, track_count 3). A MATCHING relatedQuery[artist][filter]
         // (minTracks 1 <= 3) keeps the linkage + the include; a non-matching one (minTracks 5 > 3)
-        // nulls the to-one linkage AND omits the include (core ADR 0068). Refereed on both
+        // nulls the to-one linkage AND omits the include. Refereed on both
         // providers — the Eloquent batcher nulls the relation through setRelation (never the
         // attribute bag), so the render is null without poisoning the model.
         //
@@ -257,7 +257,7 @@ abstract class RelationshipQueriesConformanceTestCase extends Orchestra
         // The tie-break referee on the include path: playlist 1's ordered tracks 1/2/3 tie on
         // released_at (1997), track 4 is 2000. Windowed by -releasedAt, track 4 leads and the
         // tied trio follows resolved by id ASC → [4,1,2,3]; the ASC window is [1,2,3,4]. Both
-        // orders are BYTE-IDENTICAL on the SQL push-down and the witness (ADR 0006).
+        // orders are BYTE-IDENTICAL on the SQL push-down and the witness.
         $desc = $this->profileDocument('/api/playlists/1?include=orderedTracks&relatedQuery[orderedTracks][sort]=-releasedAt');
         self::assertSame(['4', '1', '2', '3'], $this->linkageIds($this->primaryResource($desc), 'orderedTracks'));
 
@@ -365,7 +365,7 @@ abstract class RelationshipQueriesConformanceTestCase extends Orchestra
     {
         // `artist` is a to-one (BelongsTo): addressing it with a [sort] op is a 400 (a single
         // member has nothing to order), with the offending canonical profile param in
-        // source.parameter (core ADR 0068).
+        // source.parameter.
         $response = $this->fetchWithProfile('/api/albums/1?relatedQuery[artist][sort]=name');
 
         $response->assertStatus(400);
@@ -394,7 +394,7 @@ abstract class RelationshipQueriesConformanceTestCase extends Orchestra
     public function aQueriedPivotRelationshipEndpointHonoursTheRelatedSort(): void
     {
         // `orderedTracks` is a pivot belongsToMany; its linkage endpoint windows like any
-        // monomorphic to-many (docs/adr/0039), so a related-resource `?sort` orders the
+        // monomorphic to-many, so a related-resource `?sort` orders the
         // linkage on both providers. Tracks 1/2/3 tie on released_at, so the appended
         // primary-key tiebreak decides their order.
         $response = $this->fetch('/api/playlists/1/relationships/orderedTracks?sort=-releasedAt');
@@ -409,7 +409,7 @@ abstract class RelationshipQueriesConformanceTestCase extends Orchestra
     public function aQueriedToOneRelationshipEndpointIsRejectedRatherThanSilentlyIgnored(): void
     {
         // A to-one (`artist`) relationship endpoint has no collection to sort/page and its
-        // filter-nulling on this surface is deferred (docs/adr/0010), so a query parameter is a
+        // filter-nulling on this surface is deferred, so a query parameter is a
         // 400 rather than silently ignored.
         $this->fetch('/api/albums/1/relationships/artist?filter[nameContains]=Radiohead')->assertStatus(400);
     }

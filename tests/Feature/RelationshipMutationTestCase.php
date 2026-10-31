@@ -14,14 +14,14 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 use Workbench\App\Models\User;
 
 /**
- * The dual-provider relationship-MUTATION contract (Phase 3b): `PATCH`/`POST`/`DELETE` on
+ * The dual-provider relationship-MUTATION contract: `PATCH`/`POST`/`DELETE` on
  * `/{type}/{id}/relationships/{rel}`, asserted identically against the Eloquent reference and
  * the in-memory witness (the concrete subclasses supply the wiring + like-linked seed data).
  * It covers every verb × cardinality (to-one incl. null-clear, to-many replace/add/remove, a
  * polymorphic to-one, and an inverse-FK HasMany), the `cannotReplace/cannotAdd/cannotRemove`
  * 403 family, the 404s (unknown relation / missing parent), the 409 linkage-type conflict,
  * the 400 cardinality error, and the policy gate (default update-on-parent + the per-relation
- * ability override, PLAN decision 7) — reading persistence back through the relationship
+ * ability override) — reading persistence back through the relationship
  * endpoints so load-state after a mutation is consistent on both providers.
  *
  * The seed graph (identical on both providers): authors `1` Ada / `2` Grace; tags `1` php /
@@ -362,15 +362,15 @@ abstract class RelationshipMutationTestCase extends Orchestra
             ->assertStatus(400);
     }
 
-    // --- relationships embedded in a whole-resource create (ADR 0009) ---------
+    // --- relationships embedded in a whole-resource create ---------
 
     public function test_create_with_embedded_to_one_and_to_many_sets_both_through_the_seam(): void
     {
         // POST /api/posts embedding an owner-side to-one (`author`, a BelongsTo applied inline
         // before the insert — its FK on the parent row) AND a join to-many (`tags`, a
         // belongsToMany DEFERRED to after the parent is keyed — the Eloquent join insert needs
-        // the parent PK; ADR 0009). The create + the deferred apply commit as ONE transaction, so
-        // both associations read back on both providers — the headline ADR-0009 path the suite
+        // the parent PK). The create + the deferred apply commit as ONE transaction, so
+        // both associations read back on both providers — the headline path the suite
         // previously exercised only for the embedded to-one.
         $response = $this->writeJsonApi('POST', '/api/posts', [
             'data' => [
@@ -409,7 +409,7 @@ abstract class RelationshipMutationTestCase extends Orchestra
         self::assertSame('/data/relationships/author/data/type', $response->json('errors.0.source.pointer'));
     }
 
-    // --- authorization (PLAN decision 7) --------------------------------------
+    // --- authorization --------------------------------------
 
     public function test_the_default_update_policy_gates_a_mutation(): void
     {

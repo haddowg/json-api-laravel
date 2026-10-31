@@ -15,7 +15,7 @@ use PHPUnit\Framework\Attributes\Test;
 use Workbench\App\Models\User;
 
 /**
- * Action links a resource declares (ADR 0064), against both data layers. Records 1, 2 and
+ * Action links a resource declares, against both data layers. Records 1, 2 and
  * 4 are released and 3 and 5 withdrawn. `review` links released records, `feature` links
  * released records for admins, and `archive`, an `asLink` action, links withdrawn ones.
  */

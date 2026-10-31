@@ -8,7 +8,7 @@ use haddowg\JsonApiLaravel\Tests\Eloquent\EloquentTestCase;
 use PHPUnit\Framework\Attributes\CoversNothing;
 
 /**
- * End-to-end coverage of the Phase 1 read surface backed by the reference
+ * End-to-end coverage of the read surface backed by the reference
  * {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider}: the whole
  * path — route → controller → negotiate → dispatch → Eloquent provider (real SQLite) →
  * render — proves filters, sorts, the counted and count-free pagination arms, the
@@ -147,8 +147,8 @@ final class EloquentReadEndpointsTest extends EloquentTestCase
         // The structured range over the `released_at` (releasedRange) on the counted
         // albums arm: 1997+ keeps only OK Computer (1997), and meta.page.total reflects the
         // FILTERED collection, not the full count. (A null-bearing range now lives
-        // alongside it, filter[rating], since core ADR 0116 aligned the witness with SQL
-        // null-exclusion — see docs/adr/0003.)
+        // alongside it, filter[rating], since core aligned the witness with SQL
+        // null-exclusion.)
         $response = $this->get('/api/albums?filter[releasedRange][min]=1997-01-01', ['Accept' => self::MEDIA_TYPE]);
 
         $response->assertOk();

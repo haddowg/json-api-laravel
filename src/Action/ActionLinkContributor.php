@@ -18,7 +18,7 @@ use haddowg\JsonApiLaravel\Authorization\Authorizer;
  * Contributes a custom action's URL as an out-of-band `links` member on every rendered
  * resource of its mount type — core's {@see ResourceLinkContributorInterface} seam — when
  * the action declared `asLink: true`, or when the type's resource declares an
- * {@see ActionLink} for the action's path in its `links()` (ADR 0064). The Laravel twin of
+ * {@see ActionLink} for the action's path in its `links()`. The Laravel twin of
  * the bundle's `Action\ActionLinkContributor`.
  *
  * It is **per server**: each declared server's memoized {@see \haddowg\JsonApi\Server\Server}
@@ -45,7 +45,7 @@ use haddowg\JsonApiLaravel\Authorization\Authorizer;
  *
  * The href is the action route's path relative to the server, `/{uriType}/{id}/-actions/{path}`,
  * and core prefixes it with the same base as the resource's `self` link: the configured
- * `base_uri`, or the request origin plus the route prefix when that is empty (ADR 0028).
+ * `base_uri`, or the request origin plus the route prefix when that is empty.
  * Generating it through the URL generator instead would base it on the request host and
  * ignore a configured `base_uri`. The serializer is resolved LAZILY at render time (via the injected resolver closure) so
  * building the Server — which is threaded this contributor — does not recurse.

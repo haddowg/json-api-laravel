@@ -12,7 +12,7 @@ use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
 /**
  * Whether a type's single rows are guarded on a server: something other than the row's existence
  * decides whether a read may show it. That is an Eloquent global scope on its model, a provider
- * of its own that may scope or hide rows, or a `view` check that can refuse a row (ADR 0068).
+ * of its own that may scope or hide rows, or a `view` check that can refuse a row (ADR 0021).
  * Answers are kept per server and type for the life of the process.
  */
 final class GuardedTypes

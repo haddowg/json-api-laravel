@@ -15,7 +15,7 @@ use Workbench\App\Support\ConformanceFixtures;
  * isolated {@see \Workbench\App\Cursor\CursorWidgetResource} (NOT the artists/albums/
  * genres `app/JsonApi` dir) and registers one {@see InMemoryDataProvider} seeded from
  * the shared {@see ConformanceFixtures::cursorWidgets()} — the ground-truth witness the
- * Eloquent keyset push-down must match byte-for-byte (bundle ADR 0063).
+ * Eloquent keyset push-down must match byte-for-byte.
  */
 final class CursorConformanceInMemoryServiceProvider extends ServiceProvider
 {

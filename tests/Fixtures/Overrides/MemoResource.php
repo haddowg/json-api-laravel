@@ -10,7 +10,7 @@ use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
 /**
- * The `memos` resource — the hydrator-override witness (ADR 0014). Writes hydrate
+ * The `memos` resource — the hydrator-override witness. Writes hydrate
  * through the hand-written {@see MemoHydrator} (which takes a container-bound
  * constructor argument and fans one `title` member out to `title` + a derived `slug`),
  * while reads stay field-driven: this resource's fields render the hydrated result.

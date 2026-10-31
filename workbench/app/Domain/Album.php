@@ -8,7 +8,7 @@ namespace Workbench\App\Domain;
  * An album — a plain mutable domain object seeded into the in-memory provider.
  * Property names are the storage **columns** the {@see \Workbench\App\JsonApi\AlbumResource}
  * fields resolve to (snake_case), shared with the Eloquent {@see \Workbench\App\Models\Album}
- * model so one resource declaration serves both providers (blueprint §3.4/§5).
+ * model so one resource declaration serves both providers.
  */
 final class Album
 {

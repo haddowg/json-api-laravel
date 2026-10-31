@@ -52,7 +52,7 @@ use Illuminate\Validation\Rule;
 /**
  * Translates a core {@see ConstraintInterface} value object into the
  * `illuminate/validation` rule(s) that enforce it. Core declares constraints as
- * metadata and never executes them; this is the always-on adapter (PLAN decision 6)
+ * metadata and never executes them; this is the always-on adapter
  * that gives the vocabulary teeth under Laravel's validator, producing real Laravel
  * rules whose messages are Laravel's localizable strings.
  *
@@ -102,7 +102,7 @@ final class ConstraintTranslator
      * The `illuminate/validation` rules enforcing one core constraint.
      *
      * The optional `$request` is threaded only into the closure-carrying {@see When}
-     * (its condition is widened to `($value, ?$request)`, core ADR 0080); every other
+     * (its condition is widened to `($value, ?$request)`, core's docs/constraints.md); every other
      * constraint is request-independent. A `null` request — the filter-side validator
      * and the id-format check pass none — invokes the condition with `null` as its
      * second argument, so an existing `fn($value)` closure keeps binding unchanged.
@@ -210,7 +210,7 @@ final class ConstraintTranslator
      * ({@see \haddowg\JsonApi\Resource\Constraint\Required} /
      * {@see \haddowg\JsonApi\Resource\Constraint\Nullable}) carry no value rule — they
      * are resolved by the {@see ResourceValidator} during presence resolution (a
-     * conditionally-required field, ADR 0084) — so they are filtered out before
+     * conditionally-required field) — so they are filtered out before
      * translating the rest, which would otherwise fail loud (they have no value-rule
      * translation).
      *

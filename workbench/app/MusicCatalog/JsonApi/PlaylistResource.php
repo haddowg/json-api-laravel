@@ -34,10 +34,10 @@ use Workbench\App\MusicCatalog\Security\PlaylistApiPolicy;
  *    {@see beforeUpdate()} hooks (the Laravel hook seam standing in for the Symfony
  *    example's hydrator override, which the `AsJsonApiResource` attribute does not yet
  *    carry; deriving on both writes keeps a retitled playlist's slug fresh);
- *  - **per-type lifecycle hooks** (decision 10): {@see beforeCreate()} stamps an
+ *  - **per-type lifecycle hooks**: {@see beforeCreate()} stamps an
  *    `externalId` + slug; {@see beforeDelete()} guards against deleting a non-empty playlist
  *    (a `409`);
- *  - **API-distinct ability names** (decision 7) — `update` → `curate` (an owner gate) and
+ *  - **API-distinct ability names** — `update` → `curate` (an owner gate) and
  *    `delete` → `deletePlaylist` (admin-only), Gate-resolved to the {@see PlaylistApiPolicy}
  *    methods registered in the wiring provider's `boot()`. Only the mutating operations
  *    declare an ability, so — like the Symfony example's `securityUpdate`/`securityDelete`

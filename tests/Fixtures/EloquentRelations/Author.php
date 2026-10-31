@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
  * `feature` / `related` relations and the target of its monomorphic `author` belongsTo. Its
  * morph alias (`blog_author`, registered in {@see EloquentBlogRelationsServiceProvider}) is
  * deliberately distinct from its JSON:API type (`authors`), proving the morph-alias ↔
- * JSON:API-type decoupling (blueprint §3g).
+ * JSON:API-type decoupling.
  *
  * @property int    $id
  * @property string $name

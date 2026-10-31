@@ -7,8 +7,8 @@ namespace haddowg\JsonApiLaravel\Http;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 
 /**
- * The server- and type-keyed registry of declarative response-header config (PLAN decision 12,
- * bundle ADR 0054): each JSON:API type's {@see CacheHeaders} (resource-level +
+ * The server- and type-keyed registry of declarative response-header config: each JSON:API type's
+ * {@see CacheHeaders} (resource-level +
  * per-operation overrides) and {@see DeprecationHeaders}, layered over the global
  * defaults from `jsonapi.defaults.cache_headers` / `jsonapi.defaults.deprecation` /
  * `…sunset`.
@@ -19,11 +19,11 @@ use haddowg\JsonApiLaravel\Server\ServerRegistry;
  * global defaults arrive as the same scalar shape from config.
  *
  * Resolution layers the resource-level value over the server's own
- * `jsonapi.servers.<name>.defaults` (ADR 0053) over the global default, field by field,
+ * `jsonapi.servers.<name>.defaults` over the global default, field by field,
  * then a per-operation cache override over that, so a type tunes only what it declares and
  * a server replaces only the global values it sets. Each server reads only what its own
  * resource class declares for a type, so a server whose class declares nothing gets the
- * defaults (ADR 0052).
+ * defaults.
  * The {@see \haddowg\JsonApiLaravel\Http\ResponseHeadersMiddleware} queries it per
  * request.
  */

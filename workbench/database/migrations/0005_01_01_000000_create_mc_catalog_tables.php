@@ -7,9 +7,9 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * The full music-catalog schema (decision 14) backing the unified 12-type domain under
+ * The full music-catalog schema backing the unified 12-type domain under
  * {@see \Workbench\App\MusicCatalog}. Every table is `mc_`-prefixed so it never collides
- * with the per-phase suites' own `albums`/`artists`/… tables (which the same
+ * with the per-feature suites' own `albums`/`artists`/… tables (which the same
  * `loadMigrationsFrom(workbench/database/migrations)` also creates for the existing
  * Eloquent suites); the resource `$type` strings stay the parity wire names, only the
  * storage tables are isolated (the Eloquent models set `$table = 'mc_…'`).

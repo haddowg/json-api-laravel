@@ -16,8 +16,7 @@ use Workbench\Database\Seeders\CursorWidgetSeeder;
  * over the isolated cursorWidgets resource) and seeds the SAME
  * {@see \Workbench\App\Support\ConformanceFixtures::cursorWidgets()} rows the in-memory
  * witness carries via {@see CursorWidgetSeeder} — so every inherited assertion must
- * produce the IDENTICAL keyset page, refereeing the SQL push-down against the witness
- * (PLAN decision 9, bundle ADR 0063).
+ * produce the IDENTICAL keyset page, refereeing the SQL push-down against the witness.
  *
  * @internal
  */

@@ -17,8 +17,7 @@ use PHPUnit\Framework\Attributes\Test;
  * witness ({@see InMemoryCursorConformanceTest}) and the reference Eloquent provider
  * ({@see EloquentCursorConformanceTest}) over the SAME
  * {@see \Workbench\App\Support\ConformanceFixtures::cursorWidgets()} seed. The
- * in-memory witness is the ground truth; the Eloquent keyset push-down must match it
- * (PLAN decision 9, bundle ADR 0063).
+ * in-memory witness is the ground truth; the Eloquent keyset push-down must match it.
  *
  * This is the HTTP arm the provider-level {@see \haddowg\JsonApiLaravel\Tests\Unit\DataProvider\Eloquent\EloquentDataProviderCursorTest}
  * / {@see \haddowg\JsonApiLaravel\Tests\Unit\DataProvider\InMemoryDataProviderCursorTest}
@@ -38,8 +37,7 @@ abstract class CursorConformanceTestCase extends Orchestra
 
     /**
      * A cursor page advertises the cursor-pagination profile on its Content-Type,
-     * because the server registers that profile by default (Laravel ADR 0025, core ADR
-     * 0131); a count-based page selected from the same menu does not.
+     * because the server registers that profile by default; a count-based page selected from the same menu does not.
      */
     public const string CURSOR_CONTENT_TYPE = self::MEDIA_TYPE . '; profile="' . CursorPaginationProfile::URI . '"';
 
@@ -517,8 +515,8 @@ abstract class CursorConformanceTestCase extends Orchestra
 
     /**
      * Fetches a page and returns `[ids, links]` (null links dropped). A cursor page
-     * advertises the cursor-pagination profile on its Content-Type (Laravel ADR 0025,
-     * core ADR 0131); a count-based page selected from the same menu does not, so
+     * advertises the cursor-pagination profile on its Content-Type; a count-based page selected
+     * from the same menu does not, so
      * `$expectCursorProfile` is passed `false` for the page-strategy cases.
      *
      * @return array{0: list<string>, 1: array<string, mixed>}

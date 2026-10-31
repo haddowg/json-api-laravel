@@ -19,8 +19,8 @@ use haddowg\JsonApi\Resource\Constraint\ConstraintInterface;
  * against the entity's attribute — so an application's own entity-level rule hooks into
  * the same seam by implementing this interface and registering a translator for it.
  *
- * The built-in {@see Constraint\UniqueEntity} is the one exception: PLAN decision 6
- * folds uniqueness into the document pass as a pre-hydration `Rule::unique`, so the
+ * The built-in {@see Constraint\UniqueEntity} is the one exception: uniqueness is
+ * folded into the document pass as a pre-hydration `Rule::unique`, so the
  * {@see ResourceValidator} intercepts it there and this post-hydration seam is retained
  * purely for genuinely-post-hydration custom checks.
  */

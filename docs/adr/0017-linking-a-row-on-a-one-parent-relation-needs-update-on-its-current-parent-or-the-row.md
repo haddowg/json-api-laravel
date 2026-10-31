@@ -1,0 +1,3 @@
+# Linking a row on a one-parent relation needs update on its current parent or the row
+
+On a relation whose foreign key is on the related row (`HasMany`, `HasOne` and their morph variants), adding a row to a parent also takes it from whoever holds it, so checking only the URL parent's `update` let a client take rows from parents it couldn't touch. An add or replace that moves a row needs `update` on its current parent or on the row itself; one that links a row no parent holds needs `update` on the row, since setting that foreign key through the row would need the same. With no policy every check passes, and the bundle applies the same rule.

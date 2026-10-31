@@ -39,8 +39,7 @@ final class Artist extends Model
 
     /**
      * The artist's albums — declared for the relationship-existence filters
-     * (`WhereHas`/`WhereDoesntHave`/`WhereThrough`); the resource-level relation
-     * declaration is Phase 3.
+     * (`WhereHas`/`WhereDoesntHave`/`WhereThrough`).
      *
      * @return HasMany<Album, $this>
      */

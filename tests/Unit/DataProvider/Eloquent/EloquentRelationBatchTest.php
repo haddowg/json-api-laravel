@@ -27,12 +27,12 @@ use Workbench\Database\Seeders\ConformanceSeeder;
 
 /**
  * The reference Eloquent provider's batched relation seams, executed as real SQL over
- * SQLite (PLAN decision 8). Seeds the shared {@see \Workbench\App\Support\ConformanceFixtures}
+ * SQLite. Seeds the shared {@see \Workbench\App\Support\ConformanceFixtures}
  * (Radiohead owns four albums, Portishead one, Massive Attack two, three artists none — the
  * 0/1/many batch edge cases), then drives {@see EloquentDataProvider}'s relation methods
  * directly: the eager-pipeline fast path (dictionary partition + `setRelation` write-back),
  * the to-one FK projection, the grouped zero-filled count, the to-one filter probe, the
- * load-state seam, and the Phase-3b windowed-batch guard.
+ * load-state seam, and the windowed-batch guard.
  *
  * @internal
  */
@@ -266,7 +266,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
     #[Test]
     public function aWindowedBatchOfARealRelationThrowsRatherThanWindowingInPhp(): void
     {
-        // A real relation's windowed batch is a SQL push-down ONLY (PLAN decision 9 / ADR 0006).
+        // A real relation's windowed batch is a SQL push-down ONLY.
         // A polymorphic one has no single query to group-limit, so the batch THROWS rather than
         // windowing in PHP. The pushable case is exercised in EloquentWindowedRelationBatchTest.
         $this->expectException(\LogicException::class);
@@ -285,7 +285,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
     public function aWindowedBatchOfAComputedRelationWindowsItsMembersInPhp(): void
     {
         // A computed relation has no Eloquent method, so there is no query to push down; each
-        // parent's computed members are windowed in PHP, as its related endpoint does (ADR 0006).
+        // parent's computed members are windowed in PHP, as its related endpoint does.
         $relation = HasMany::make('latestAlbums', 'albums')
             ->extractUsing(static fn(mixed $artist): array => $artist instanceof Artist
                 ? Album::query()->where('artist_id', $artist->getKey())->orderBy('id')->get()->all()

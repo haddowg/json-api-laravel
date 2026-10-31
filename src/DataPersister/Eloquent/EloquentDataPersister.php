@@ -34,7 +34,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /**
- * The reference Eloquent write persister (PLAN decision 2): the storage twin of the
+ * The reference Eloquent write persister: the storage twin of the
  * {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider} and the
  * Laravel analogue of the bundle's `DoctrineDataPersister`. One instance serves every
  * Eloquent-mapped type — constructed with the SAME `type → model class-string` map the
@@ -60,14 +60,14 @@ use Illuminate\Support\Facades\DB;
  * reference.
  *
  * The segregated {@see TransactionalDataPersisterInterface} drives an Atomic Operations
- * batch (Phase 4): {@see beginTransaction()}/{@see commit()}/{@see rollback()} open, commit
+ * batch: {@see beginTransaction()}/{@see commit()}/{@see rollback()} open, commit
  * and (guarded) roll back one transaction on the configured connection, inside which the
  * per-op writes above buffer as savepoints — non-durable until {@see commit()} yet
  * materialising each store-generated id immediately (`save()` sets it before its savepoint
  * releases), so a later batch operation can reference a just-created resource.
  *
  * An application may extend it to override {@see instantiate()} or {@see delete()} for the
- * types it registers the subclass for, keeping every other write and capability (ADR 0056).
+ * types it registers the subclass for, keeping every other write and capability.
  */
 class EloquentDataPersister extends AbstractDataPersister implements TransactionalDataPersisterInterface, SoftDeleteCapable, ReportsCurrentOwners
 {
@@ -83,7 +83,7 @@ class EloquentDataPersister extends AbstractDataPersister implements Transaction
     private bool $connectionsVerified = false;
 
     /**
-     * The id-encoder resolver linkage wire ids decode through (ADR 0014) — injected, or
+     * The id-encoder resolver linkage wire ids decode through — injected, or
      * resolved lazily from the container on first use so the hand-constructed reference
      * wiring (`new EloquentDataPersister($modelByType)`) keeps working.
      */
@@ -94,7 +94,7 @@ class EloquentDataPersister extends AbstractDataPersister implements Transaction
     /**
      * @param array<string, class-string<Model>> $modelByType a `type → Eloquent model FQCN` map (the SAME map the read provider uses)
      * @param string|null                        $connection  the connection name the batch transaction controls run on (null = the default connection); the per-op writes use each model's own connection
-     * @param IdEncoderResolver|null             $idEncoders  resolves a related type's id encoder (linkage decode, ADR 0014); null resolves it lazily from the container
+     * @param IdEncoderResolver|null             $idEncoders  resolves a related type's id encoder (linkage decode); null resolves it lazily from the container
      */
     public function __construct(array $modelByType, private readonly ?string $connection = null, ?IdEncoderResolver $idEncoders = null)
     {
@@ -499,7 +499,7 @@ class EloquentDataPersister extends AbstractDataPersister implements Transaction
         }
 
         // Linkage ids arrive as WIRE ids; decode each to its storage key (by the member's
-        // own related type) before it becomes a join-row key (ADR 0014) — an undecodable
+        // own related type) before it becomes a join-row key — an undecodable
         // token raises the same 404 a missing target would. A type with no encoder decodes
         // to itself, so the path is byte-identical to today for the common case.
         $ids = [];
@@ -683,7 +683,7 @@ class EloquentDataPersister extends AbstractDataPersister implements Transaction
      * no row matches the id. The related type is the identifier's own `type` (polymorphic
      * safe), falling back to the relation's single declared related type. The identifier's
      * `id` is a WIRE id, decoded to its storage key before the find when the related type
-     * declares an id encoder (ADR 0014).
+     * declares an id encoder.
      */
     private function findRelated(RelationInterface $relation, ResourceIdentifier $identifier): ?Model
     {
@@ -721,7 +721,7 @@ class EloquentDataPersister extends AbstractDataPersister implements Transaction
 
         $blank = new $class();
         if ($identifier->id !== null) {
-            // The FK holds the STORAGE key, so the wire id decodes first (ADR 0014) —
+            // The FK holds the STORAGE key, so the wire id decodes first —
             // never a raw wire token keyed into an integer column.
             $blank->setAttribute(
                 $blank->getKeyName(),
@@ -783,7 +783,7 @@ class EloquentDataPersister extends AbstractDataPersister implements Transaction
     /**
      * Decodes a linkage member's wire id to its storage key when the RELATED type declares
      * an id encoder; otherwise (no encoder, wire == storage) returns it unchanged — the
-     * write twin of the provider's route-`{id}` decode (ADR 0014, mirroring the bundle's
+     * write twin of the provider's route-`{id}` decode (mirroring the bundle's
      * `DoctrineDataPersister::decodeLinkageId()`). An undecodable id can key no row, so it
      * surfaces as the same `404` a missing target raises — never a raw wire token written
      * into an integer FK/join column.
@@ -800,7 +800,7 @@ class EloquentDataPersister extends AbstractDataPersister implements Transaction
 
     /**
      * The id encoder declared by `$type`'s resource, or `null` when wire == storage (no
-     * resource / no Id field / no encoder — today's behaviour, ADR 0014). The resolver is
+     * resource / no Id field / no encoder — today's behaviour). The resolver is
      * injected, or resolved lazily from the container once so the hand-constructed
      * reference wiring keeps working; outside a container (a bare unit test) every type
      * resolves encoder-less.
@@ -840,7 +840,7 @@ class EloquentDataPersister extends AbstractDataPersister implements Transaction
      * `$this->connection`, but each per-op write runs `$model->save()` on the MODEL's own
      * connection: if they differ, the write commits durably outside the batch and
      * {@see rollback()} could not undo it, silently breaking the transactional contract.
-     * Enforcing equality up front turns that latent Phase-4 atomic-operations hazard into a
+     * Enforcing equality up front turns that latent atomic-operations hazard into a
      * clear wiring error.
      */
     private function assertModelsShareTheBatchConnection(): void

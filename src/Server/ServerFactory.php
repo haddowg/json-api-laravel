@@ -42,15 +42,15 @@ use Psr\Http\Message\StreamFactoryInterface;
  * shared.
  *
  * The relationship seams, profiles, the serving/events bridge (a
- * `Server::withServing()` handler dispatching a {@see ServingEvent}, PLAN decision 10)
+ * `Server::withServing()` handler dispatching a {@see ServingEvent})
  * and the OAuth scope enforcer are all threaded here.
  */
 final class ServerFactory
 {
     /**
-     * The JSON:API profiles registered by default (ADR 0025): the three built-ins in
-     * the canonical order the OpenAPI `jsonapi.profile` enum advertises them (core ADR
-     * 0131). The order is significant — it is the byte-order the `jsonapi.profile` enum
+     * The JSON:API profiles registered by default: the three built-ins in
+     * the canonical order the OpenAPI `jsonapi.profile` enum advertises them. The order is
+     * significant — it is the byte-order the `jsonapi.profile` enum
      * is generated in — and MUST match the Symfony bundle's default for cross-adapter
      * byte-parity (`composer byte-compat`). `jsonapi.profiles` overrides or trims it.
      *
@@ -67,10 +67,10 @@ final class ServerFactory
     /**
      * @param \Closure(class-string): object                                                        $resolver              the container resolver core builds registered resources through
      * @param list<class-string<AbstractResource>>                                                  $resourceClasses       this server's resource class-strings
-     * @param array<string, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $standaloneSerializers this server's standalone serializers, keyed by JSON:API type (no resource; PLAN decision 3, bundle ADR 0024)
-     * @param array<string, class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>>     $standaloneHydrators   this server's standalone hydrators, keyed by JSON:API type (the decoupled write half, bundle ADR 0024)
-     * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $serializerOverrides per-resource serializer overrides keyed by resource class (ADR 0014)
-     * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>>     $hydratorOverrides   per-resource hydrator overrides keyed by resource class (ADR 0014)
+     * @param array<string, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $standaloneSerializers this server's standalone serializers, keyed by JSON:API type (no resource)
+     * @param array<string, class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>>     $standaloneHydrators   this server's standalone hydrators, keyed by JSON:API type (the decoupled write half)
+     * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $serializerOverrides per-resource serializer overrides keyed by resource class
+     * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>>     $hydratorOverrides   per-resource hydrator overrides keyed by resource class
      * @param list<ProfileInterface>                                                                                $profiles            the JSON:API profiles this server registers, in order (`jsonapi.profiles`; default {@see self::DEFAULT_PROFILES})
      */
     public function __construct(
@@ -99,20 +99,20 @@ final class ServerFactory
         // model — the profile-not-negotiated default).
         private readonly ?RelationshipPaginationInterface $relationshipPagination = null,
         private readonly ?RelationshipLinkageInterface $relationshipLinkage = null,
-        // The out-of-band resource-link contributor (Phase 4): a per-server
+        // The out-of-band resource-link contributor: a per-server
         // ActionLinkContributor merges each `asLink` custom action's URL onto its mount
         // type's resources. Null leaves resource links exactly as the author's getLinks()
         // + the convention self link produce (the no-asLink-actions default).
         private readonly ?ResourceLinkContributorInterface $resourceLinkContributor = null,
         // The lifecycle-event dispatcher + this server's name, threaded so `create()`
         // installs a `Server::withServing()` handler that turns core's request-wide
-        // `serving` seam into a package {@see ServingEvent} (PLAN decision 10). Null
+        // `serving` seam into a package {@see ServingEvent}. Null
         // dispatcher leaves the serving seam unwired.
         private readonly ?Dispatcher $dispatcher = null,
         private readonly string $serverName = 'default',
         // Standalone serializers (no resource), keyed by JSON:API type — registered
-        // through core's registerSerializerHydrator() after the resources (PLAN decision
-        // 3, the Laravel twin of bundle ADR 0024). Serialize-only unless the type's
+        // through core's registerSerializerHydrator() after the resources, as
+        // the bundle registers them. Serialize-only unless the type's
         // operation allow-list opens read endpoints (charts/countries do).
         private readonly array $standaloneSerializers = [],
         // Standalone hydrators (no resource), keyed by JSON:API type — the decoupled
@@ -121,19 +121,19 @@ final class ServerFactory
         // hydrator rides the same registerSerializerHydrator() call as its serializer
         // (or registers alone for a hydrator-only type).
         private readonly array $standaloneHydrators = [],
-        // Per-resource serializer/hydrator overrides (ADR 0014), keyed by resource
+        // Per-resource serializer/hydrator overrides, keyed by resource
         // class-string — threaded into core's register() so the overridden concern wins
         // while the other stays field-driven; core resolves the override class through
         // the same container resolver the resource itself is built with.
         private readonly array $serializerOverrides = [],
         private readonly array $hydratorOverrides = [],
-        // The JSON:API profiles this server registers, in registration order (ADR 0025),
+        // The JSON:API profiles this server registers, in registration order,
         // data-driven from `jsonapi.profiles` (default {@see self::DEFAULT_PROFILES} — the
         // three built-ins in canonical order). Registration makes the server recognize a
         // profile (advertises its URI when negotiated, parses its opt-in query family only
-        // under negotiation) and, core ADR 0131, gates the profile's OpenAPI output.
+        // under negotiation) and gates the profile's OpenAPI output.
         private readonly array $profiles = [],
-        // The error-message resolver (ADR 0023): localizes/overrides every error's
+        // The error-message resolver: localizes/overrides every error's
         // title/detail per its stable code through the Laravel translator. Null renders
         // core's inline English copy, byte-identical to today.
         private readonly ?ErrorMessageResolverInterface $errorMessageResolver = null,
@@ -144,7 +144,7 @@ final class ServerFactory
         // (`link_objects`, a server's own or the global one); false renders strings.
         private readonly bool $linkObjects = true,
         // Decides per parent whether a rendered relationship carries its data, and whether a
-        // flattened `on()` write may land on its related row (ADR 0044). Null asks nothing.
+        // flattened `on()` write may land on its related row. Null asks nothing.
         private readonly ?RelationAuthorizerInterface $relationAuthorizer = null,
         // Records the built server under its name, so a dispatch that carries no request
         // server still authorizes against this server's resources.
@@ -184,21 +184,21 @@ final class ServerFactory
             ->withResourceLinkContributor($this->resourceLinkContributor)
             ->withRelationAuthorizer($this->relationAuthorizer)
             // Localizes/overrides each error's title/detail per its stable code through
-            // the Laravel translator (ADR 0023); null renders core's inline English copy.
+            // the Laravel translator; null renders core's inline English copy.
             ->withErrorMessageResolver($this->errorMessageResolver)
             ->withContainer($this->resolver);
 
         // Register the server's JSON:API profiles, data-driven from `jsonapi.profiles`
-        // (ADR 0025; default {@see self::DEFAULT_PROFILES} — the three built-ins in
+        // (default {@see self::DEFAULT_PROFILES} — the three built-ins in
         // canonical order). Registration order is the order the OpenAPI `jsonapi.profile`
-        // enum advertises them (core ADR 0131), so it is stable across framework adapters;
+        // enum advertises them, so it is stable across framework adapters;
         // a profile's opt-in query family is parsed only when a client negotiates its URI.
         foreach ($this->profiles as $profile) {
             $server = $server->withProfile($profile);
         }
 
-        // A resource registers with its optional serializer/hydrator overrides (ADR
-        // 0014): the overridden concern is served through the hand-written class while
+        // A resource registers with its optional serializer/hydrator overrides: the overridden
+        // concern is served through the hand-written class while
         // the other stays field-driven — core's registry resolves both the resource and
         // the override through the container resolver above.
         foreach ($this->resourceClasses as $resourceClass) {
@@ -209,7 +209,7 @@ final class ServerFactory
             );
         }
 
-        // Standalone serializer/hydrator capabilities (PLAN decision 3, bundle ADR 0024):
+        // Standalone serializer/hydrator capabilities:
         // a type registered with no resource. Core stores the pair; serializerFor() /
         // hydratorFor() resolve the services through the same container resolver, so the
         // read AND write pipelines drive it exactly as a resource-backed type. Registered
@@ -226,9 +226,9 @@ final class ServerFactory
             );
         }
 
-        // The serving bridge (PLAN decision 10): one core `serving` handler that turns
+        // The serving bridge: one core `serving` handler that turns
         // core's server-level seam (fired once per request inside `Server::dispatch()`,
-        // core ADR 0050) into a package {@see ServingEvent}. A ServingEvent listener that
+        // core's docs/server.md) into a package {@see ServingEvent}. A ServingEvent listener that
         // throws a JsonApiException aborts — the throw propagates out of the closure →
         // out of `dispatch()` → the route-scoped exception renderer. Wired only when a
         // dispatcher is present.

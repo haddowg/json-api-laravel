@@ -11,7 +11,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * Registers the annotated {@see \haddowg\JsonApi\Serializer\SerializerInterface} as
  * the serializer for a JSON:API `type`, **without** an
  * {@see \haddowg\JsonApi\Resource\AbstractResource} (the Laravel twin of the bundle's
- * ADR 0024). A type registered this way is **serialize-only** by default: it renders as
+ * standalone serializer). A type registered this way is **serialize-only** by default: it renders as
  * primary data, linkage and `included`, but exposes no endpoints of its own — the
  * classic embedded / reference type that only ever appears inside another resource.
  *

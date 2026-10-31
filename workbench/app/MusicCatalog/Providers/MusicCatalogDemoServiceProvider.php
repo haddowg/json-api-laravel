@@ -9,7 +9,7 @@ use Illuminate\Support\ServiceProvider;
 use Workbench\App\MusicCatalog\Support\CatalogConfig;
 
 /**
- * The `docker compose up` demo wiring (PLAN Phase 5 docker item). It applies the shared
+ * The `docker compose up` demo wiring. It applies the shared
  * {@see CatalogConfig} — the exact Laravel translation of the Symfony example's
  * `config/packages/json_api.yaml` (base URI, the default + admin servers, OpenAPI
  * info/tags/security, the include-depth + page-size bounds, the atomic endpoint) — so the
@@ -18,7 +18,7 @@ use Workbench\App\MusicCatalog\Support\CatalogConfig;
  *
  * It is listed only by `testbench.docker.yaml` (never the main `testbench.yaml` nor any
  * test), paired with {@see MusicCatalogEloquentServiceProvider} for the resource/model
- * wiring — so it can never co-register with, or disturb, the per-phase suites. Config is
+ * wiring — so it can never co-register with, or disturb, the per-feature suites. Config is
  * set in `register()` so it lands before the package provider's `boot()` reads the servers.
  */
 final class MusicCatalogDemoServiceProvider extends ServiceProvider

@@ -34,14 +34,14 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
  * `storedAs()` (`averageRating` → `average_rating`, `availableFrom` → `available_from`,
  * `releasedAt` → `released_at`).
  *
- * Phase 1 enriches it with the full filter vocabulary (substring title, date range,
+ * It carries the full filter vocabulary (substring title, date range,
  * boolean, id-set on status, null presence on the nullable rating), a
  * `releasedAt`-descending default sort, and a
  * **counting** page paginator (`withCount()`) — so every album collection renders
  * `meta.page.total` + a `last` link (the counted pagination arm), the counterpart to
  * the count-free `artists` collection.
  *
- * Phase 2 makes it the **writable** reference type on both providers: the default
+ * It is the **writable** reference type on both providers: the default
  * `#[AsJsonApiResource]` exposes all five operations, so `POST`/`PATCH`/`DELETE` route
  * to the CRUD handler. Its `Id` keeps the default policy — a client-supplied `data.id` is
  * forbidden (`403`) and the store assigns the id — the server-generated-id counterpart to
@@ -62,7 +62,7 @@ final class AlbumResource extends AbstractResource
             Boolean::make('explicit'),
             Date::make('availableFrom')->storedAs('available_from')->nullable()->sortable(),
             DateTime::make('releasedAt')->storedAs('released_at')->sortable(),
-            // The album's artist (Phase 3a): an owner-side to-one — eager (renders linkage
+            // The album's artist: an owner-side to-one — eager (renders linkage
             // data by default), `data: null` for an unowned album. The relation name IS the
             // Eloquent relation method / in-memory POPO property (`artist`).
             BelongsTo::make('artist', 'artists'),
@@ -79,12 +79,11 @@ final class AlbumResource extends AbstractResource
             // Structured date-time range over the `released_at` column (ISO-8601 bounds).
             DateRange::make('releasedRange', 'released_at'),
             // Structured numeric range over the NULLABLE `average_rating` column (matching
-            // the bundle's `filter[rating]` for OpenAPI byte-compat, PLAN decision 11). Now
-            // that core ADR 0116 makes an ordered comparison / Range bound against `null`
+            // the bundle's `filter[rating]` for OpenAPI byte-compat). Now
+            // that core makes an ordered comparison / Range bound against `null`
             // never match — the in-memory witness converged with SQL three-valued logic —
             // a null-bearing range returns the SAME set on both providers, the null rows
-            // (albums 4, 7) excluded rather than coerced in. This is the fixture ADR 0003
-            // deferred until the core fix landed; see
+            // (albums 4, 7) excluded rather than coerced in; see
             // orderedComparisonAndRangeOverANullableColumnExcludeNullsIdentically.
             Range::make('rating', 'average_rating'),
             // Coerced boolean equality on `explicit`.

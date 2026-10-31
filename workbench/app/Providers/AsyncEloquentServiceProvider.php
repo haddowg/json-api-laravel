@@ -17,7 +17,7 @@ use Workbench\App\Surface\AlbumResource;
 use Workbench\App\Surface\ArtistResource;
 
 /**
- * The **Eloquent** half of the async-write wiring (ADR 0020): the SAME resources, job
+ * The **Eloquent** half of the async-write wiring: the SAME resources, job
  * serializer and completion action as {@see AsyncInMemoryServiceProvider}, over the
  * reference {@see EloquentDataProvider}/{@see EloquentDataPersister} pair at `-128` —
  * with the {@see AsyncAlbumsPersister} registered at the default priority `0`, so it

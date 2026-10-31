@@ -11,7 +11,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The Phase-3b relationship-WRITE acceptance suite (the Laravel analogue of the bundle's
+ * The relationship-WRITE acceptance suite (the Laravel analogue of the bundle's
  * relationship-mutation + pivot-write conformance): the relationship-mutation endpoints
  * (`PATCH`/`POST`/`DELETE /{type}/{id}/relationships/{rel}`), the relationships embedded in
  * whole-resource writes (`data.relationships`), pivot upserts with `meta.pivot`
@@ -28,7 +28,7 @@ use PHPUnit\Framework\Attributes\Test;
  * Two surfaces are provider-asymmetric by design and asserted through the
  * {@see providerRendersPivotMeta()} hook rather than here: the reference Eloquent provider
  * renders + stores the pivot `position`/`weight`/`addedAt` as each member's `meta.pivot`
- * (ADR 0008), while the in-memory witness stores none (the documented boundary — a pivot
+ *, while the in-memory witness stores none (the documented boundary — a pivot
  * column needs an association entity it cannot model), so a pivot write still changes the
  * membership on both but only Eloquent renders `meta.pivot`. Everything else — the membership
  * round-trips, the merge-before-validate 422s, the mutability 403s, the error families — is
@@ -48,7 +48,7 @@ abstract class RelationshipWriteConformanceTestCase extends Orchestra
 
     /**
      * Whether the concrete's provider stores + renders the pivot `meta.pivot` (Eloquent
-     * true, the in-memory witness false — the documented boundary, ADR 0008).
+     * true, the in-memory witness false — the documented boundary).
      */
     abstract protected function providerRendersPivotMeta(): bool;
 
@@ -187,7 +187,7 @@ abstract class RelationshipWriteConformanceTestCase extends Orchestra
     {
         // A pivot mutation's 200 linkage echo carries the just-written pivot values on the
         // reference provider; the in-memory witness stores none, so its echo carries no
-        // `meta.pivot` (ADR 0008 — the dual-provider assertion is Eloquent-present /
+        // `meta.pivot` (the dual-provider assertion is Eloquent-present /
         // in-memory-absent).
         $response = $this->writeManyRel('PATCH', '/api/playlists/2/relationships/orderedTracks', [
             ['type' => 'tracks', 'id' => '2', 'meta' => ['pivot' => ['position' => 5, 'weight' => 6]]],

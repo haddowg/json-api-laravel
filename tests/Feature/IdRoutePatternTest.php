@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * A type whose Id declares a route pattern (PLAN decision 4, core ADR 0038) has that pattern
+ * A type whose Id declares a route pattern has that pattern
  * composed into the `{id}` route requirement, so a malformed id 404s at routing rather than
  * reaching the handler — keeping the runtime consistent with the `idPattern` the projected
  * OpenAPI document advertises.

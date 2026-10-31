@@ -20,11 +20,11 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * The in-memory witness's WINDOWED batched relation fetch — the PK-tiebreak half of the
- * SQL-vs-`WindowExecutor` determinism referee named by the PLAN watch item. When a page of
+ * SQL-vs-`WindowExecutor` determinism referee. When a page of
  * children ties on every requested sort key, the witness appends a synthetic PK sort
  * ({@see InMemoryDataProvider::withPkTiebreak()}), so the windowed partition resolves ties by
  * id ascending — the SAME final `id ASC` level the Eloquent native ROW_NUMBER batch appends
- * to its ORDER BY (PLAN decision 9). This exercises that arm directly (the Eloquent windowed
+ * to its ORDER BY. This exercises that arm directly (the Eloquent windowed
  * batch deliberately throws until its 3b consumer exists), so a regression in the tiebreak
  * surfaces here rather than only when 3b builds its sole consumer.
  *

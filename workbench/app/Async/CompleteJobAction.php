@@ -16,7 +16,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
  * stands in for the job-status endpoint a client polls, returning a `303 See Other`
  * ({@see ActionContext::seeOther()}) that redirects to the resource the finished
  * operation produced. The witness that a custom action can drive the `303` leg of the
- * async story (ADR 0020, the twin of the bundle's `CompleteJobAction`).
+ * async story (the twin of the bundle's `CompleteJobAction`).
  */
 #[AsJsonApiAction(type: 'jobs', path: 'complete', scope: ActionScope::Collection, responds: [new SeeOther()])]
 final readonly class CompleteJobAction implements ActionHandlerInterface

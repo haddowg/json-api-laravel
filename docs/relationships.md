@@ -125,8 +125,7 @@ GET /api/albums/1?relatedQuery[tracks][sort]=duration&relatedQuery[tracks][filte
 
 Windowing per parent uses the SQL push-down described in
 [eloquent](eloquent.md#windowed-relationship-queries--sql-push-down-only). A relationship
-endpoint query it cannot honour is a `400`, never silently ignored
-([ADR 0010](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0010-relationship-endpoint-query-params-reject-not-ignore.md)).
+endpoint query it cannot honour is a `400`, never silently ignored.
 
 ## Pivot (`belongsToMany`) data
 
@@ -151,6 +150,10 @@ BelongsToMany::make('orderedTracks', 'tracks')
 `position` is required-on-create, `weight` is a second writable pivot field constrained
 `weight >= position`, and `addedAt` is server-owned (`readOnly`). Pivot fields are merged into
 the payload **before validation**, so cross-field rules see them.
+
+`meta.pivot` renders on the related endpoint, the relationship endpoint and the `200` linkage a
+relationship mutation answers with. Only a provider that reads pivot rows supplies it, so the
+in-memory provider renders none.
 
 Each member's `meta.pivot` carries every pivot field a response may show for that member:
 core's `BelongsToMany::readablePivotFieldsFor($request, $member)`, which leaves out a field that
@@ -182,9 +185,7 @@ unconstrained filter's OpenAPI value from the single column it targets, and `piv
 nothing to it — the prefix is this package's Eloquent convention — so a pivot filter without
 one documents as the plain `string` every query parameter is on the wire, not as the integer
 or date its column really holds. The constraint buys both a `400` on a mistyped value and
-the narrower OpenAPI type. (Pivot-meta *read* rendering
-is described in
-[ADR 0008](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0008-pivot-meta-read-render-is-deferred-to-phase-3b.md).)
+the narrower OpenAPI type.
 
 ## Relationship mutations and prohibitions
 
@@ -199,8 +200,7 @@ BelongsToMany::make('playlists', 'playlists')->cannotReplace()->countable()->wit
 relation refuses all three the same way, since a relationship mutation is an update of the
 parent, and the OpenAPI document lists no mutation operations for it. `readOnly(fn …)` is
 judged per request, so the document keeps them. Embedded
-belongs-to-many writes in a whole-resource `POST` are applied after the parent is created
-([ADR 0009](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0009-embedded-relationship-writes-defer-belongs-to-many-to-after-create.md)).
+belongs-to-many writes in a whole-resource `POST` are applied after the parent is created, since the join row needs the parent's key.
 
 A related id is resolved through the same scope its type's own endpoint reads through: an
 Eloquent global scope on the related model (soft deletes included), or a
@@ -211,10 +211,8 @@ providers, resolves ids as it always has.
 
 On a `HasMany`/`HasOne` (the foreign key is on the related row, so a row has one parent),
 adding a row that another parent holds moves it. That needs the `update` ability on the parent
-that holds it now, or on the row itself, or the write is a `403`
-([ADR 0042](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0042-moving-a-related-row-needs-update-on-its-current-parent.md)).
-Adding a row that no parent holds needs the `update` ability on the row
-([ADR 0047](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0047-adding-a-row-no-parent-holds-needs-update-on-the-row.md)).
+that holds it now, or on the row itself, or the write is a `403`.
+Adding a row that no parent holds needs the `update` ability on the row.
 Removing a row the parent doesn't hold changes nothing. Removing one whose foreign key column
 is `NOT NULL` is a `403` (`REMOVAL_PROHIBITED`, or `FULL_REPLACEMENT_PROHIBITED` for a
 replacement that would drop it), since the row can't be left without a parent.
@@ -240,8 +238,7 @@ MorphTo::make('target', ['boards', 'cards'])
 
 The hook gets wire ids, so a type with an id encoder decodes them itself. Validation, the
 `cannot*` prohibitions, the policy gates and related-id scoping still run first. A hooked
-relation in a `POST` applies before the insert, like an attribute
-([ADR 0055](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0055-a-relation-fill-hook-replaces-the-persisters-relationship-write.md)).
+relation in a `POST` applies before the insert, like an attribute.
 
 ## Hidden relations
 
@@ -280,8 +277,7 @@ as readable, since it is on other requests.
 
 ## Polymorphic relations
 
-- **`MorphTo` (to-one)** — the member's type is resolved from the related object
-  ([ADR 0007](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0007-morph-alias-is-decoupled-from-the-json-api-type.md)).
+- **`MorphTo` (to-one)** — the member's type is resolved from the related object.
   On Eloquent it is a native `morphTo`; the example's `favorites.favoritable` points at a
   track, album, or artist.
 - **`MorphToMany` (to-many)** — a mixed collection where each member renders through its own
@@ -354,7 +350,7 @@ The target renders with the serializer of the pair's type, so its resource needs
 object-aware `getType()`.
 Writes are unchanged, so `fillUsing()` owns them, and the OpenAPI document is the same as for
 any `MorphTo`. Core's [relations guide](https://github.com/haddowg/json-api/blob/main/docs/relations.md#identifying-the-target-without-loading-it)
-covers the declaration ([ADR 0068](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0068-an-identified-morph-to-loads-a-guarded-types-targets-whenever-its-linkage-renders.md)).
+covers the declaration.
 
 When a member type is served by its own scoping provider, the members are narrowed per member
 type to the rows that provider admits, before the page is cut, so pages stay full and every

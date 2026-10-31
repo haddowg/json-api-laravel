@@ -31,7 +31,7 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  * - {@see $aliasOf} — a routing hint mapping a filter/sort directive KEY to a non-root
  *   query alias the criteria should be applied on, so a single criteria can carry
  *   vocabulary spanning more than one alias of the same query (populated only on the
- *   Eloquent pivot related-collection path in a later phase). A key absent from the map
+ *   Eloquent pivot related-collection path). A key absent from the map
  *   resolves to the root alias, so the default `[]` keeps every directive on the root —
  *   the behaviour every non-pivot path and the entire in-memory provider have;
  * - {@see $wantsCount} — whether the handler resolved a `COUNT` for this windowed fetch.

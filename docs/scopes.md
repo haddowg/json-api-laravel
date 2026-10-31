@@ -158,8 +158,7 @@ catalogue:
 ```
 
 A document in which no operation needs a scope is unchanged. One with scopes lists
-`INSUFFICIENT_SCOPE` in its error catalogue. Scopes arrived in contract 16, but every
-document now carries 18, the baseline since the links components were shared. `jsonapi:openapi:export` warns about
+`INSUFFICIENT_SCOPE` in its error catalogue. `jsonapi:openapi:export` warns about
 each required scope neither the catalogue nor the scheme's flows declare, and fails on them
 with `--strict`. A scope scheme that is not `oauth2` is a warning only.
 
@@ -194,6 +193,3 @@ The evaluator inspects the ability through `Gate::forUser($user)->inspect()`. It
 well as the user, or when the policy has a `before()` method, since the answer then depends on
 the resource. A public or unguarded operation is `Allowed`. `ScopeChecker` uses the same
 matcher as enforcement.
-
-See [ADR 0061](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0061-scope-tables-live-in-the-snapshot-and-the-catalogue-reads-the-gate.md)
-for why the tables are kept where they are and how the evaluator decides.

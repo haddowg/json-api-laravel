@@ -18,7 +18,7 @@ use Workbench\App\Domain\CursorBoard;
  * read delegates to a wrapped {@see InMemoryDataProvider} (the ground-truth keyset
  * execution over the POPO graph), while {@see fetchRelationshipPivot()} — the one seam
  * the built-in witness deliberately leaves empty (`meta.pivot` needs an association
- * store, ADR 0008) — serves the pivot map straight off the {@see CursorBoard} POPO's
+ * store) — serves the pivot map straight off the {@see CursorBoard} POPO's
  * `positions`. The suite's `meta.pivot` assertions are then IDENTICAL on both
  * providers: the Eloquent half reads the join table, this half reads the fixture map,
  * and the handler's pivot wrap composes with the cursor page the same way on each.

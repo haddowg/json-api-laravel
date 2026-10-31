@@ -7,15 +7,15 @@ namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 use Illuminate\Support\Str;
 
 /**
- * Resolves the **default** OpenAPI tag name for a JSON:API type when none is declared
- * (PLAN decision 11): a humanized, title-cased, pluralized form of the type —
+ * Resolves the **default** OpenAPI tag name for a JSON:API type when none is declared:
+ * a humanized, title-cased, pluralized form of the type —
  * `blog-post` → `'Blog Posts'`, `genre` → `'Genres'`.
  *
  * It is a heuristic, always overridable by an explicit tag ref on the resource /
  * serializer / action. The type is split on `-`/`_`/camelCase boundaries into words,
  * each word title-cased; the **last** word is pluralized (a noun phrase pluralizes its
  * head noun). This mirrors the Symfony bundle's `TagNameResolver` algorithm so both
- * integrations project the same default tag for an identical type (the Phase-5
+ * integrations project the same default tag for an identical type (the
  * byte-compat mandate); it uses Laravel's {@see Str} inflector (backed by
  * doctrine/inflector) rather than a Symfony string dependency.
  *

@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The servability guard's failure path (PLAN decision 11): a routed type with no data
+ * The servability guard's failure path: a routed type with no data
  * provider/persister is an unservable configuration that must fail the BUILD
  * (`jsonapi:optimize`, a deploy step) rather than surface as a runtime 500. The
  * provider-less {@see \haddowg\JsonApiLaravel\Tests\Fixtures\OrphanResource} is the

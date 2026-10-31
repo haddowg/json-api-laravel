@@ -7,7 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * The `users` table backing the authorization showcase (PLAN decision 7). The
+ * The `users` table backing the authorization showcase. The
  * `is_admin`/`can_write` capability flags decide the policy outcomes; the security
  * suites drive users through `actingAs()`, so the table exists for realism +
  * `testbench serve` rather than as a hard test dependency.

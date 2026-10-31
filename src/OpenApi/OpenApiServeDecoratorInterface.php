@@ -8,7 +8,7 @@ use haddowg\JsonApi\OpenApi\OpenApi;
 use Illuminate\Http\Request;
 
 /**
- * Adjusts the served OpenAPI document for one request (ADR 0036).
+ * Adjusts the served OpenAPI document for one request.
  *
  * {@see OpenApiFactoryInterface} runs when the document is built, once per
  * `artisan optimize`. This interface runs when `docs.json` is served, with the request in

@@ -17,7 +17,7 @@ use Workbench\App\MusicCatalog\Support\CatalogConfig;
 
 /**
  * Pins the fieldless OpenAPI projection of the standalone-serializer types
- * (charts + countries) — the resource-less capability (PLAN decision 3, bundle ADR 0024).
+ * (charts + countries) — the resource-less capability.
  * The byte-for-byte diff against the bundle lives in `composer byte-compat`; this focused
  * suite asserts the shape the diff depends on: the two types are projected (paths +
  * component schemas), their operation allow-list is read-only, and — the crux — a

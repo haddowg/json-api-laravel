@@ -7,7 +7,7 @@ namespace Workbench\App\Security\Policies;
 use Workbench\App\Models\User;
 
 /**
- * The **dedicated API policy** (PLAN decision 7 showcase) invoked directly by the
+ * The **dedicated API policy** invoked directly by the
  * {@see \haddowg\JsonApiLaravel\Authorization\Authorizer} because the secured
  * {@see \Workbench\App\Security\AlbumResource} declares `policy: self::class`. It is
  * provider-agnostic: its subject is typed `object`, so the SAME policy authorizes the
@@ -15,7 +15,7 @@ use Workbench\App\Models\User;
  * {@see \Workbench\App\Models\Album} model — the natural fit for the dual-provider
  * authorization conformance suite.
  *
- * It demonstrates the two decision-7 showcase requirements:
+ * It demonstrates the two dedicated-policy requirements:
  *  - the {@see before()} bypass — an admin is authorized for every ability regardless
  *    of the per-ability rule (proving `before()` is honoured);
  *  - the **API-distinct ability rename** — the resource maps `create` to `publish`, so

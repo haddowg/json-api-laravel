@@ -9,7 +9,7 @@ use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use Illuminate\Contracts\Auth\Access\Gate;
 
 /**
- * The policy-first authorization gate (PLAN decision 7), invoked by the
+ * The policy-first authorization gate, invoked by the
  * {@see \haddowg\JsonApiLaravel\Operation\CrudOperationHandler} at each write/read
  * lifecycle point with the loaded model in hand, before persistence:
  * list→`viewAny`, read→`view`, create→`create`, update→`update`, delete→`delete`.
@@ -148,7 +148,7 @@ final class Authorizer
     private const array STANDARD_ABILITIES = ['viewAny', 'view', 'create', 'update', 'delete', 'restore', 'forceDelete'];
 
     /**
-     * The read permission `$relation` declares on `$parent` (ADR 0049): `true` or `false` when it
+     * The read permission `$relation` declares on `$parent`: `true` or `false` when it
      * declares one, `null` when it declares none and the related type's own gates apply. A
      * string `security(read:)` is checked against the parent; a bool one documents the
      * relation and allows it; otherwise a `view{Relation}` ability the parent type's policy or
@@ -236,7 +236,7 @@ final class Authorizer
     }
 
     /**
-     * Authorizes a custom action's declared `ability` (PLAN decision 12) against its
+     * Authorizes a custom action's declared `ability` against its
      * subject — the resolved entity for a resource-scope action, or `null` for a
      * collection-scope action (then the ability authorizes the resource-class token, so
      * a `publishAny($user)`-style method / `Gate::define()` closure is called). Honours
@@ -324,7 +324,7 @@ final class Authorizer
     /**
      * The model's Gate-registered policy path for a convention ability nobody declared.
      * It only enforces when the model has a policy or the ability is a defined Gate
-     * closure; a type with neither is inert (PLAN decision 7), so the package adds no
+     * closure; a type with neither is inert, so the package adds no
      * authorization an application did not ask for. A null subject (a read-only
      * collection with no instance) is inert too: no policy can be resolved without one.
      */
@@ -369,7 +369,7 @@ final class Authorizer
     }
 
     /**
-     * The dedicated `policy:` class path (PLAN decision 7): map the declared policy onto
+     * The dedicated `policy:` class path: map the declared policy onto
      * a throwaway Gate scoped to the current request, then authorize through it. This
      * reuses the Gate's `before()` handling, guest (nullable-first-parameter) resolution
      * and class-string argument shifting, while leaving the application's own

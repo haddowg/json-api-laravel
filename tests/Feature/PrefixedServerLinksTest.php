@@ -15,7 +15,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * How a server's route prefix and `base_uri` combine into its links (ADR 0028): an empty
+ * How a server's route prefix and `base_uri` combine into its links: an empty
  * base follows the prefix the route matched under, including a parameterised one and an
  * app served below the web root; a configured base, global or per server, is used as it
  * is; and an unprefixed server links from the origin alone, as before.

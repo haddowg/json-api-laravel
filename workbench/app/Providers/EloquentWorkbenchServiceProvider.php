@@ -22,7 +22,7 @@ use Workbench\App\Pivot\TrackResource;
  * The Eloquent workbench wiring: it points discovery at the SAME `app/JsonApi`
  * resources the in-memory {@see WorkbenchServiceProvider} uses, and registers the
  * reference {@see EloquentDataProvider} + {@see EloquentDataPersister} pair at the lowest
- * priority (`-128`, PLAN decision 2) over ONE `type → model` map.
+ * priority (`-128`) over ONE `type → model` map.
  *
  * Because this provider is registered WITHOUT the in-memory one (a conformance concrete
  * or the Eloquent feature test installs exactly one wiring), the Eloquent pair is the
@@ -43,7 +43,7 @@ final class EloquentWorkbenchServiceProvider extends ServiceProvider
     {
         JsonApi::discover([\dirname(__DIR__) . '/JsonApi']);
 
-        // The Phase-3b pivot resources live OUTSIDE the scanned `app/JsonApi` dir (so the
+        // The pivot resources live OUTSIDE the scanned `app/JsonApi` dir (so the
         // shared feature/scanner fixtures stay a stable inventory) and are registered
         // explicitly on the conformance wirings that serve them.
         JsonApi::register([PlaylistResource::class, TrackResource::class]);
@@ -52,7 +52,7 @@ final class EloquentWorkbenchServiceProvider extends ServiceProvider
             'artists' => Artist::class,
             'albums' => Album::class,
             'genres' => Genre::class,
-            // Phase 3b: the pivot + relationship-mutation surface. `playlists` is writable
+            // The pivot + relationship-mutation surface. `playlists` is writable
             // (its relationship-mutation routes upsert the `orderedTracks` pivot); `tracks`
             // is the far side, read as the related members.
             'playlists' => Playlist::class,
@@ -62,7 +62,7 @@ final class EloquentWorkbenchServiceProvider extends ServiceProvider
         JsonApi::provider(new EloquentDataProvider($modelByType), priority: -128);
         JsonApi::persister(new EloquentDataPersister($modelByType), priority: -128);
 
-        // The storage-aware load-state predicate (PLAN decision 8): core consults it for a
+        // The storage-aware load-state predicate: core consults it for a
         // lazy relation so a preloaded (setRelation) relation renders without a re-fetch and
         // an unloaded one renders links-only without a query. The package's ServerFactory
         // wires whatever is bound to RelationshipLoadStateInterface into every Server.

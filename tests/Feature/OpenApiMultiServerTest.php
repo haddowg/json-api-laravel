@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Test;
 use Workbench\App\Providers\SecurityInMemoryServiceProvider;
 
 /**
- * Multi-server OpenAPI tests (PLAN decision 11 / §7): each server projects its own
+ * Multi-server OpenAPI tests: each server projects its own
  * document scoped to the types assigned to it, and combined mode unions every server's
  * types into a single document. Reuses the two-server (default + secure) authorization
  * wiring — `genres` on `default`, `albums`/`artists` on `secure`.

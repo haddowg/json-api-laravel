@@ -11,7 +11,7 @@ use Illuminate\Routing\Exceptions\UrlGenerationException;
 use Symfony\Component\Routing\Exception\RouteNotFoundException;
 
 /**
- * The URL a server's `describedby` links point into: its OpenAPI document (ADR 0037).
+ * The URL a server's `describedby` links point into: its OpenAPI document.
  *
  * A configured `jsonapi.openapi.document_url` is used as given, with `{server}` replaced by
  * the server name (`combined` in combined mode), so a document published elsewhere can be

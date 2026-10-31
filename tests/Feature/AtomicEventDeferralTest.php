@@ -17,7 +17,7 @@ use PHPUnit\Framework\Attributes\Test;
 use Workbench\App\Providers\SurfaceInMemoryServiceProvider;
 
 /**
- * Atomic Operations post-commit deferral (PLAN decisions 10/12): under an active batch the
+ * Atomic Operations post-commit deferral: under an active batch the
  * handler enqueues each After* dispatch on the {@see \haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext}
  * instead of firing it inline; the backend drains the queue only after the batch's
  * transaction commits, and discards it on rollback. So After* events fire once per

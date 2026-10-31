@@ -41,7 +41,7 @@ use Illuminate\Validation\Rule;
 /**
  * Runs a resource's declared constraints against an incoming create/update document and
  * raises a {@see ValidationFailed} (`422`) carrying one pointer-bearing {@see Error} per
- * violation. This is the always-on bridge (PLAN decision 6) core never had: core stores
+ * violation. This is the always-on bridge core never had: core stores
  * constraints as metadata but never executes them.
  *
  * Validation is **document-first**: the resource's `attributes` are validated as the
@@ -62,12 +62,12 @@ use Illuminate\Validation\Rule;
  * **recursion**: each present child is registered under a dot-notation key
  * (`address.postcode`) that mirrors the top-level resolution (same create/update context
  * per child), so a child violation maps to `/data/attributes/<map>/<child>` — the
- * implicit one-level cascade (ADR 0020).
+ * implicit one-level cascade.
  *
  * {@see CompareField} (a cross-field rule) is evaluated at the **document** level, after
  * the per-field pass, because the comparison needs the sibling field's value. The
  * built-in {@see UniqueEntity} folds into a pre-hydration `Rule::unique` on the owning
- * Eloquent table (PLAN decision 6), and any other {@see EntityConstraintInterface} is
+ * Eloquent table, and any other {@see EntityConstraintInterface} is
  * deferred to the post-hydration {@see validateEntity()} seam.
  */
 final class ResourceValidator
@@ -77,7 +77,7 @@ final class ResourceValidator
         private readonly ConstraintTranslator $translator,
         private readonly JsonPointerBuilder $pointers,
         // Null when opis/json-schema is not installed — a Shape then documents its
-        // OpenAPI shape but is not value-validated (ADR 0013).
+        // OpenAPI shape but is not value-validated.
         private readonly ?SchemaValueValidator $schemaValues = null,
         // Resolves the provider registry a scoped uniqueness check reads, lazily, since the
         // registry is built after this validator.
@@ -96,14 +96,14 @@ final class ResourceValidator
      * present in stored state no longer spuriously fails. A stored value resolving to
      * `null` is dropped before the merge (folding it would flip an absent optional into a
      * present-null); an incoming explicit `null` still overrides (the partial merges
-     * last). On create there is no existing object (ADR 0049).
+     * last). On create there is no existing object.
      *
      * @param object|null $existingObject the already-loaded domain object on update (null on create),
      *                                    whose stored attribute values are folded under the incoming partial
      * @param object|null $subject        a domain instance of this type used only to resolve the Eloquent
      *                                    table/key for a {@see UniqueEntity} `Rule::unique` (the freshly
      *                                    instantiated blank on create, the loaded model on update); a
-     *                                    non-Eloquent subject leaves uniqueness inert (Eloquent-only, PLAN §6)
+     *                                    non-Eloquent subject leaves uniqueness inert (Eloquent-only)
      *
      * @throws ValidationFailed when the document violates the resource's constraints
      */
@@ -146,7 +146,7 @@ final class ResourceValidator
             if ($field instanceof Id || $field instanceof RelationInterface) {
                 continue;
             }
-            // The read-only gate is request-aware (core ADR 0079): a field marked
+            // The read-only gate is request-aware: a field marked
             // readOnly(fn) is validated for a caller it is writable for and skipped for
             // one it is read-only for, so validation and hydration stay consistent.
             if ($field->isReadOnlyFor($creating, $request)) {
@@ -566,8 +566,8 @@ final class ResourceValidator
      * persisted object, not the request document). The write handler calls this after
      * hydration and before commit; it is a no-op for a resource that declares none.
      *
-     * The built-in {@see UniqueEntity} is deliberately excluded — PLAN decision 6 folds
-     * it into a pre-hydration `Rule::unique` in {@see validate()} — so this seam serves
+     * The built-in {@see UniqueEntity} is deliberately excluded — it is folded
+     * into a pre-hydration `Rule::unique` in {@see validate()} — so this seam serves
      * genuinely-post-hydration custom checks, each translated to invokable rules run
      * against the entity.
      *
@@ -750,7 +750,7 @@ final class ResourceValidator
      * and a violation maps to `/data/attributes/<field>/<child>`. The two structured
      * types cascade identically — they differ only in storage (flat columns vs one
      * value), which validation never sees. Registered only when the value is a present
-     * array, so an omitted optional field never fires its required children (ADR 0020).
+     * array, so an omitted optional field never fires its required children.
      * The recursion is one level deep by design — a child that is itself structured is
      * not descended into.
      *
@@ -763,7 +763,7 @@ final class ResourceValidator
         $rules = [];
         foreach ($map->children() as $child) {
             // A Map child's visibility (read-only) stays static — request-aware child
-            // predicates are an explicit non-goal (ADR 0020) — but its when() condition
+            // predicates are an explicit non-goal — but its when() condition
             // still sees the request via fieldRules().
             if ($child->isReadOnly($creating)) {
                 continue;
@@ -786,7 +786,7 @@ final class ResourceValidator
      * variant yields one error at `/data/attributes/<field>/<discriminator>`; the main
      * pass's `array` rule already rejects a non-array value. Absent or explicit-null
      * values are the main pass's concern (presence / nullability), so they are skipped
-     * here. (ADR 0012.)
+     * here.
      *
      * @param array<string, mixed> $attributes the merged incoming attribute map
      *
@@ -821,7 +821,7 @@ final class ResourceValidator
 
             $rules = [];
             foreach ($variant->children() as $child) {
-                // Static visibility, mirroring the Map/Obj cascade (ADR 0020).
+                // Static visibility, mirroring the Map/Obj cascade.
                 if ($child->isReadOnly($creating)) {
                     continue;
                 }
@@ -857,7 +857,7 @@ final class ResourceValidator
      * A no-op when opis is not installed (`$this->schemaValues === null`), so a Shape
      * still documents its OpenAPI shape but is not value-validated. Absent or
      * explicit-null values are the main pass's concern (presence / nullability), so
-     * they are skipped here. (ADR 0013.)
+     * they are skipped here.
      *
      * An incoming value is read from the body's object-decoded view, so a client's `{}`
      * reaches opis as an object rather than the `[]` the associative decode made of it.
@@ -917,7 +917,7 @@ final class ResourceValidator
     /**
      * The `Rule::unique` for the built-in {@see UniqueEntity} constraints a field
      * declares in this context, or `null` when the field carries none or the backing is
-     * not an Eloquent model (in-memory/POPO → uniqueness inert, PLAN §6). On update the
+     * not an Eloquent model (in-memory/POPO → uniqueness inert). On update the
      * current record is excluded via `->ignore($model)`; a composite unique adds a
      * `where` per sibling field over the merged attributes.
      *
@@ -1179,7 +1179,7 @@ final class ResourceValidator
      * Whether a presence rule of `$ruleClass` ({@see Required}/{@see Nullable}) applies in
      * this context, looking at the field's own constraints and inside any {@see When}
      * whose (widened) condition holds for the caller/value — the seam that lets a
-     * `when()`-wrapped presence rule be request-aware (ADR 0084).
+     * `when()`-wrapped presence rule be request-aware.
      *
      * @param class-string<ConstraintInterface> $ruleClass
      */

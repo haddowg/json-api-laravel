@@ -16,7 +16,7 @@ use Workbench\App\Security\GenreResource;
 use Workbench\App\Security\Policies\AlbumApiPolicy;
 
 /**
- * The authorization metadata plumbing (PLAN decision 7): the `policy`/`abilities`
+ * The authorization metadata plumbing: the `policy`/`abilities`
  * overrides declared on {@see AsJsonApiResource} flow through discovery onto the
  * {@see ResourceDescriptor} (and its cache round-trip) so the
  * {@see \haddowg\JsonApiLaravel\Authorization\Authorizer} can read them per type.
@@ -86,7 +86,7 @@ final class AuthorizationMetadataTest extends TestCase
 
     public function test_from_array_tolerates_a_legacy_snapshot_without_authorization_keys(): void
     {
-        // A pre-decision-7 discovery cache lacks the policy/abilities keys; it must
+        // A legacy discovery cache lacks the policy/abilities keys; it must
         // degrade to the inert default rather than erroring.
         $descriptor = ResourceDescriptor::fromArray([
             'class' => AlbumResource::class,

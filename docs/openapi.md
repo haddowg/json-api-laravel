@@ -3,7 +3,7 @@
 The package projects an **OpenAPI 3.1** document from your discovered resources — no
 hand-written spec. It serves a Swagger UI / ReDoc viewer, exposes the document + JSON Schema
 over HTTP, and exports them from the CLI. Crucially, for an identical domain the document is
-**byte-identical to the Symfony bundle's** (PLAN decision 11), so a `json-api-ts` client
+**byte-identical to the Symfony bundle's**, so a `json-api-ts` client
 generator consumes either backend unchanged.
 
 ## What is projected
@@ -105,10 +105,9 @@ gets an `x-safety` object on its operation holding exactly the flags it declared
 ```
 
 CRUD operations never carry it, since their HTTP method already says how safe they are.
-Generator contract 15 introduced `x-safety`, an action's own extensions, and one operation
-id per method for an action with more than one. Contract 18 then raised the baseline past
-it, so every document's `info.x-generator.contract` is 18. [Custom actions](actions.md#operation-ids-safety-and-extensions) covers the ids and
-the declarations discovery rejects.
+An action can also carry its own vendor extensions, and an action with more than one method
+gets one operation id per method. [Custom actions](actions.md#operation-ids-safety-and-extensions)
+covers the ids and the declarations discovery rejects.
 
 ## The singular noun in generated prose {#singular-noun}
 

@@ -40,7 +40,7 @@ use PHPUnit\Framework\Attributes\Test;
  * mark 1, so those hidden to-one targets render as empty.
  *
  * A polymorphic relation spanning types with their own providers is narrowed per member type,
- * so it shows the same visible members on every path (ADR 0051).
+ * so it shows the same visible members on every path.
  *
  * @internal
  */

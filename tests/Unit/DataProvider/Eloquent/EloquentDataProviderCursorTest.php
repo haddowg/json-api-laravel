@@ -21,7 +21,7 @@ use Workbench\App\Models\Artist;
 
 /**
  * The Eloquent provider's cursor (keyset) arm executed against real SQLite — the twin
- * of the in-memory witness (bundle ADR 0063). Covers forward/backward navigation with
+ * of the in-memory witness. Covers forward/backward navigation with
  * minted tokens, the appended primary-key tiebreak that keeps a tied ordering total,
  * the datetime-cast boundary coercion (R2 — a wire ISO string must compare
  * chronologically, not lexically), the forced NULL=largest ordering (R-null parity),

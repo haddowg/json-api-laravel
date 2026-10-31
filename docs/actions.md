@@ -3,7 +3,7 @@
 Not everything is CRUD. A **custom action** is a non-CRUD endpoint hanging off a JSON:API type
 under the reserved `-actions` segment — "reissue this album", "summarize the catalogue",
 "upload artwork". Declare a handler with `#[AsJsonApiAction]`; discovery finds it and
-registers its route (PLAN decision 12). The three examples below are the music-catalog
+registers its route. The three examples below are the music-catalog
 workbench's `albums` actions.
 
 ## A resource-scoped action
@@ -130,10 +130,8 @@ accepts: [
 Core projects each entry under the operation's `requestBody.content`, in declared order, and
 adds the `415` response. A JSON:API document entry carries the input type's request schema; an
 entry with a `schema` carries it inline, or as a component when it names a `DescribesRawBody`
-class; any other entry is a binary string, or an open object for `multipart/form-data`. A
-document that used `accepts` was stamped contract 11, and every document now carries the
-baseline of 18
-([core ADR 0175](https://github.com/haddowg/json-api/blob/main/docs/adr/0175-an-action-may-declare-the-request-bodies-it-accepts.md)).
+class; any other entry is a binary string, or an open object for `multipart/form-data`
+(see [core's OpenAPI docs](https://github.com/haddowg/json-api/blob/main/docs/openapi.md#accepted-request-bodies)).
 
 ### Which requests must name their media type
 
@@ -158,7 +156,7 @@ that has a body must still match `accepts`.
 | `methods` | HTTP verb allow-list (default `['POST']`) |
 | `input` | `None` (default) / `Document` (parse + validate + hydrate) / `Raw` (relaxed negotiation) |
 | `inputType` | decouple the **request** document type from the mount type |
-| `responds` | the advertised success response(s): a single object or a list of `new ActionResource('type')` (`200` document — default is the mount type), `new MetaResult()` (`200` meta), `new NoContent()` (`204`), `new Accepted('job-type')` (`202`), `new SeeOther()` (`303`, or a URL with a `mediaType`, [below](#a-download-action-answering-with-a-url)), from `haddowg\JsonApi\OpenApi\Metadata` |
+| `responds` | the advertised success response(s): a single object or a list of `new ActionResource('type')` (`200` document — default is the mount type), `new MetaResult()` (`200` meta), `new NoContent()` (`204`), `new Accepted('job-type')` (`202`), `new SeeOther()` (`303`, or a URL with a `mediaType`, [below](#a-download-action-answering-with-a-url)), `new RawResult('text/csv')` (a non-JSON:API body, [below](#a-raw-response-csv-pdf-and-other-bodies)), from `haddowg\JsonApi\OpenApi\Metadata` |
 | `ability` | the Gate ability checked before the handler ([authorization](authorization.md)) |
 | `server` / `name` / `tags` | server exposure, route-name override, OpenAPI tags |
 | `asLink` | expose the action as an ability-aware `links` member on the mount type's resources (resource scope only); a resource's [`ActionLink`](#showing-an-action-link-only-in-some-states) does the same with a condition |
@@ -207,7 +205,8 @@ final class AlbumResource extends AbstractResource
 
 `ActionLink::for()` names a resource-scope action of the resource's own type. The package
 still builds the href, the method and the `describedby` from the action, on the server's
-link base. It checks the action's `ability` first, then a `ConditionallyLinked` handler's
+link base. It checks the action's `ability` first, then a
+[`ConditionallyLinked`](soft-deletes.md#discoverable-restore-link) handler's
 `shouldLink()`, then `when()` with the rendered model and the request, and renders the link
 only when all of them pass. `when()` is optional. Prefer it to `ConditionallyLinked` when
 the condition belongs to the resource, or needs the request.
@@ -315,17 +314,39 @@ JSON:API documents.
 The `mediaType` is the opt-in. A bare `new SeeOther()`, such as an async completion, stays a
 plain `303` for every client, and an `Accept` it can't answer is still a `406`. The OpenAPI
 document describes both responses of a download action: the `200` location document and the
-`303` with its `Location` header. Generator contract 17 introduced this, and every document
-now carries the baseline of 18. Core's
+`303` with its `Location` header. Core's
 [location responses](https://github.com/haddowg/json-api/blob/main/docs/responses.md#location-responses)
 covers the rest, including `withType()` for a file whose type varies.
 
 ## `ActionContext`
 
-The handler's single argument gives you the resolved entity (resource scope), the hydrated
-input (Document mode), the request, and the response builders — `$context->data($entity)`,
-`$context->meta([...])`, `$context->noContent()`. Its shape drives the OpenAPI projection so
-the generated document matches what the handler returns.
+The handler's single argument carries everything resolved for the call. Its shape drives the
+OpenAPI projection so the generated document matches what the handler returns.
+
+| Method | Returns |
+| --- | --- |
+| `entity()` | the resolved entity at resource scope, `null` at collection scope |
+| `input()` | the hydrated input object for a `Document` body, otherwise `null` |
+| `request()` | the PSR-7 `JsonApiRequestInterface`; a `Raw` body and uploaded files are read off it with `getBody()` / `getUploadedFiles()` |
+| `requestMediaType()` | the media type the body was sent as, lowercased and without parameters, or `null` when the request declared none |
+| `responseMediaType()` | the media type negotiated from `Accept` for the response ([raw responses](#a-raw-response-csv-pdf-and-other-bodies)) |
+| `queryParameters()` | core's parsed `QueryParameters` for the request |
+| `server()` | the resolving core server the request was dispatched to |
+| `descriptor()` | the action's resolved declaration |
+| `serializer()` | the serializer for the action's response type (the mount type unless `responds` names another) |
+
+And the response builders:
+
+| Builder | Response |
+| --- | --- |
+| `data($entityOrList)` | a `200` resource or collection document, rendered through `serializer()` |
+| `meta([...])` | a `200` meta-only document |
+| `noContent()` | a bodyless `204` |
+| `accepted($pollUrl, $job = null)` | a `202` with `Content-Location`, optionally rendering the job ([async writes](async.md)) |
+| `seeOther($url, $expiresAt = null)` | a `303`, or a location document for a `SeeOther` declared with a `mediaType` ([above](#a-download-action-answering-with-a-url)) |
+| `raw($body, $contentType = null, $status = 200, $headers = [])` | a non-JSON:API body ([above](#a-raw-response-csv-pdf-and-other-bodies)) |
+
+A handler may also return core's `ErrorResponse` to render a JSON:API error document.
 
 ## Actions in the OpenAPI document
 

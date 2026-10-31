@@ -181,7 +181,7 @@ excluded), and is orthogonal to `hidden()` / `writeOnly()` (never rendered even 
 Applies to relations too.
 
 Witnessed on both providers by
-`tests/Conformance/SparseByDefaultConformanceTestCase` (core ADR 0117).
+`tests/Conformance/SparseByDefaultConformanceTestCase` (see [core's fields](https://github.com/haddowg/json-api/blob/main/docs/fields.md)).
 
 ## Response headers
 

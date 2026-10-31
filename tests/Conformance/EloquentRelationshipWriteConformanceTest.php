@@ -13,7 +13,7 @@ use Workbench\Database\Seeders\ConformanceSeeder;
  * provider/persister pair** over real SQL (in-memory SQLite): the mutation arms drive
  * `associate`/`dissociate` (BelongsTo), `sync`/`syncWithoutDetaching`/`detach`
  * (belongsToMany, incl. the pivot upsert) inside a transaction, and the stored
- * `position`/`weight`/`addedAt` render as each member's `meta.pivot` (ADR 0008), refereed
+ * `position`/`weight`/`addedAt` render as each member's `meta.pivot`, refereed
  * against the witness by the identical assertions.
  *
  * @internal

@@ -11,7 +11,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ModelMap\Models\VinylRecord;
 
 /**
- * The attribute-tier witness (ADR 0019): the `recordings` type's model name diverges
+ * The attribute-tier witness: the `recordings` type's model name diverges
  * from the convention guess (`Recording` does not exist), so
  * `#[AsJsonApiResource(model: VinylRecord::class)]` is what maps it — the Laravel twin
  * of the bundle's `#[AsJsonApiResource(entity: …)]`.

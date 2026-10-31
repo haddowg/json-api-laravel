@@ -129,7 +129,7 @@ final class DiscoveryScannerTest extends TestCase
     public function test_it_classifies_a_standalone_serializer_from_its_attribute(): void
     {
         // A SerializerInterface carrying #[AsJsonApiSerializer] and no AbstractResource is a
-        // standalone (resource-less) capability (decision 3, bundle ADR 0024): it lands in the
+        // standalone (resource-less) capability: it lands in the
         // serializers bucket, never among the resources.
         $result = (new DiscoveryScanner())->scan([], [ChartSerializer::class, CountrySerializer::class]);
 
@@ -154,7 +154,7 @@ final class DiscoveryScannerTest extends TestCase
     public function test_it_carries_the_serializer_and_hydrator_overrides_off_the_attribute(): void
     {
         // #[AsJsonApiResource(serializer:/hydrator:)] overrides land on the descriptor as
-        // plain class-strings (ADR 0014), each concern independently — the descriptor for
+        // plain class-strings, each concern independently — the descriptor for
         // a serializer-only override keeps a null hydrator, and vice versa.
         $result = (new DiscoveryScanner())->scan([], [NoteResource::class, MemoResource::class]);
 

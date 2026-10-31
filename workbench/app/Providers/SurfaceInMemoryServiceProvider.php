@@ -20,7 +20,7 @@ use Workbench\App\Surface\PublishAlbumAction;
 use Workbench\App\Surface\PurgeAlbumsAction;
 
 /**
- * The **in-memory** half of the Phase-4 surface wiring (custom actions + Atomic Operations):
+ * The **in-memory** half of the surface wiring (custom actions + Atomic Operations):
  * it registers the writable {@see AlbumResource} / {@see ArtistResource} and the
  * {@see PublishAlbumAction}, over in-memory providers/persisters sharing one cross-store
  * {@see InMemorySnapshotCoordinator} so an atomic batch spanning both types rolls back
@@ -61,7 +61,7 @@ final class SurfaceInMemoryServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // The `publish` ability the PublishAlbumAction gates on (PLAN decision 12): a
+        // The `publish` ability the PublishAlbumAction gates on: a
         // write-capable user may publish; a read-only user is denied (a 403). A null user
         // (guest) is denied. Provider-agnostic — the album argument is the in-memory POPO here.
         Gate::define('publish', static fn(?User $user, object $album): bool => $user?->can_write === true);

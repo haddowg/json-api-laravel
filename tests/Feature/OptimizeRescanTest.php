@@ -20,7 +20,7 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 /**
  * `jsonapi:optimize` run again over an existing discovery snapshot rescans the app
  * instead of writing the old snapshot back, so a resource added since the last run
- * reaches the snapshot and its model map (ADR 0053).
+ * reaches the snapshot and its model map.
  *
  * @internal
  */

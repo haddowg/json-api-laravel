@@ -13,7 +13,7 @@ use haddowg\JsonApi\Schema\Error\Error;
  * all-or-nothing synchronous commit — a `202` deferred write cannot participate in
  * a transaction the batch commits or rolls back at the end — so the offending
  * sub-operation fails and the whole batch rolls back (the Laravel twin of the
- * Symfony bundle's guard, bundle ADR 0110 / ADR 0020).
+ * Symfony bundle's guard).
  */
 final class AsyncWriteNotAllowedInAtomicOperation extends \RuntimeException implements JsonApiExceptionInterface
 {

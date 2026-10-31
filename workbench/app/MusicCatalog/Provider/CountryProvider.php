@@ -23,7 +23,7 @@ use Workbench\App\MusicCatalog\Domain\Country;
  * attribute = the localized name) and still serves **filter / sort / pagination over the
  * in-memory list** by reusing the shared {@see CriteriaApplier} and core's reference
  * in-memory filter/sort handlers — so an external/static source is a first-class JSON:API
- * collection, not a special case (PLAN decision 3, bundle ADR 0024).
+ * collection, not a special case.
  *
  * Because a resource-less type declares no field inventory, the
  * {@see \haddowg\JsonApiLaravel\Operation\CrudOperationHandler} cannot hand this provider

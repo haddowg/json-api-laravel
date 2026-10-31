@@ -9,7 +9,7 @@ namespace Workbench\App\Support;
  * ({@see \Workbench\App\Providers\WorkbenchServiceProvider}) and Eloquent
  * ({@see \Workbench\App\Providers\EloquentWorkbenchServiceProvider}) provider wirings
  * so the two suites read identical rows/ids — the premise that lets a dual-provider
- * conformance failure localize to one provider's execution (blueprint §5.2).
+ * conformance failure localize to one provider's execution.
  *
  * Keys are the storage **columns** (snake_case), matching the resource field
  * `storedAs()` map: the same column name resolves off an in-memory POPO's property

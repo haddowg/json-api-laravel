@@ -19,7 +19,7 @@ use Workbench\App\Surface\AlbumResource;
 use Workbench\App\Surface\ArtistResource;
 
 /**
- * The **in-memory** half of the async-write wiring (ADR 0020): `albums` writes route to
+ * The **in-memory** half of the async-write wiring: `albums` writes route to
  * the {@see AsyncAlbumsPersister}, which accepts every create/update for asynchronous
  * processing instead of committing — so `POST`/`PATCH /albums` render a `202 Accepted`.
  * Reads still run over the seeded {@see InMemoryDataProvider} (the async `PATCH` loads

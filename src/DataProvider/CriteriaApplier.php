@@ -34,15 +34,15 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  * the filters reach a handler, they also narrow the pre-window `COUNT` of a
  * paginated fetch, so totals describe the defaulted collection.
  *
- * **Phase scope.** The bundle's applier is additionally *alias-aware* — it can
+ * **Scope.** The bundle's applier is additionally *alias-aware* — it can
  * push a directive down onto a non-root query alias (the {@see CollectionCriteria::$aliasOf}
  * map, populated only on the pivot related-collection path). That push-down is a
- * Phase 3 (relationships/pivot) concern and lands with the Eloquent alias-aware
- * handlers; for Phase 1 every directive routes to the query root, exactly as the
+ * relationships/pivot concern handled by the Eloquent alias-aware
+ * handlers; here every directive routes to the query root, exactly as the
  * bundle's applier does on every non-pivot fetch path and the entire in-memory
- * provider (bundle ADR 0059). Sorts do not compose commutatively, so the whole
+ * provider. Sorts do not compose commutatively, so the whole
  * ordered directive list is handed to the sort handler in ONE composite call,
- * most-significant first (core ADR 0016).
+ * most-significant first.
  */
 final class CriteriaApplier
 {
@@ -120,7 +120,7 @@ final class CriteriaApplier
 
         // No `?sort`: fall back to the resource's default order (if any). An
         // explicit `?sort=` overrides the default entirely — the default is never
-        // appended to a requested sort (core ADR 0044). The defaults are still
+        // appended to a requested sort (core's docs/sorts.md). The defaults are still
         // matched against the declared sort vocabulary (same as a requested sort),
         // so a default naming an undeclared sort is a server-config error rather
         // than a silently dropped directive.
@@ -138,7 +138,7 @@ final class CriteriaApplier
         }
 
         // Resolve the requested directives in request order; the handler owns the
-        // combination (sorts do not compose commutatively, core ADR 0016), so the
+        // combination (sorts do not compose commutatively), so the
         // whole list is applied in ONE composite call, most significant first.
         $directives = [];
         foreach ($requested as $field) {

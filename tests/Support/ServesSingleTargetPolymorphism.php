@@ -11,7 +11,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 /**
  * A `MorphTo` and a `MorphToMany` over the single type `tags` (the blog fixtures' `pin` and
  * `pinned`) are served like the two-type `feature` and `related`, not like the monomorphic
- * `tags` relation, and the document describes them as unions (core ADR 0184). Shared by the
+ * `tags` relation, and the document describes them as unions. Shared by the
  * Eloquent and in-memory polymorphic tests so both providers answer the same requests.
  */
 trait ServesSingleTargetPolymorphism

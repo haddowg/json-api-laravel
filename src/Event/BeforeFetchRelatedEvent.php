@@ -17,7 +17,7 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
  *
  * Read authorization itself is enforced by the policy-first
  * {@see \haddowg\JsonApiLaravel\Authorization\Authorizer} (the parent's `view`
- * policy, or the relation's own `securityRead` ability override — PLAN decision 7),
+ * policy, or the relation's own `securityRead` ability override),
  * so this event is a pure lifecycle seam and is **not** routed to the resource hook
  * trait.
  */

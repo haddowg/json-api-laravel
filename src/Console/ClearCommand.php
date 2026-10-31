@@ -10,7 +10,7 @@ use haddowg\JsonApiLaravel\Scope\ScopeTables;
 use Illuminate\Console\Command;
 
 /**
- * Removes the warmed JSON:API OpenAPI artifacts (PLAN decision 11) — the `optimize:clear`
+ * Removes the warmed JSON:API OpenAPI artifacts — the `optimize:clear`
  * pipeline hook, the twin of {@see OptimizeCommand}. After clearing, the controllers fall
  * back to lazy-building the document on the next request.
  */

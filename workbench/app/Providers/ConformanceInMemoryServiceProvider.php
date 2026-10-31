@@ -25,9 +25,9 @@ use Workbench\App\Support\ConformanceFixtures;
  * {@see InMemoryDataProvider} per type seeded from the richer
  * {@see ConformanceFixtures} — the identical rows the {@see \Workbench\Database\Seeders\ConformanceSeeder}
  * loads into SQLite, so the two conformance suites assert against like data and a
- * divergence localizes to one provider's execution (blueprint §5.4).
+ * divergence localizes to one provider's execution.
  *
- * Distinct from the Phase-0 {@see WorkbenchServiceProvider} (which seeds the minimal
+ * Distinct from the minimal {@see WorkbenchServiceProvider} (which seeds the minimal
  * 2-row {@see \Workbench\App\Support\Fixtures} the feature suite asserts against) so
  * enriching the conformance dataset never perturbs the existing tests. Everything
  * runs in `register()` so it lands before the package provider's `boot()` reads the
@@ -39,7 +39,7 @@ final class ConformanceInMemoryServiceProvider extends ServiceProvider
     {
         JsonApi::discover([\dirname(__DIR__) . '/JsonApi']);
 
-        // The Phase-3b pivot resources live OUTSIDE the scanned `app/JsonApi` dir (so the
+        // The pivot resources live OUTSIDE the scanned `app/JsonApi` dir (so the
         // shared feature/scanner fixtures stay a stable inventory) and are registered
         // explicitly on the conformance wirings that serve them.
         JsonApi::register([PlaylistResource::class, TrackResource::class]);
@@ -53,7 +53,7 @@ final class ConformanceInMemoryServiceProvider extends ServiceProvider
         JsonApi::provider(new InMemoryDataProvider('artists', $artists));
         JsonApi::provider(new InMemoryDataProvider('genres', $this->genres()));
 
-        // `albums` is writable on the conformance wiring (Phase 3b relationship-write
+        // `albums` is writable on the conformance wiring (relationship-write
         // conformance): its store is shared into a persister whose relatedResolver turns an
         // incoming `artists` linkage id back into the stored Artist, so a whole-resource
         // create/update embedding `data.relationships.artist` and a
@@ -65,7 +65,7 @@ final class ConformanceInMemoryServiceProvider extends ServiceProvider
         $albumResolver = static fn(string $type, string $id): ?object => $type === 'artists' ? ($artists[$id] ?? null) : null;
         JsonApi::persister(new InMemoryDataPersister('albums', $albumProvider->store(), static fn(): Album => new Album(), $albumResolver));
 
-        // The Phase-3b pivot surface: playlists ⇄ tracks. The in-memory witness stores no
+        // The pivot surface: playlists ⇄ tracks. The in-memory witness stores no
         // pivot meta (the documented boundary — `meta.pivot` is Eloquent-only), so it wires
         // the plain member lists the `orderedTracks`/`tracks` relations resolve off, and a
         // writable `playlists` persister whose relatedResolver turns an incoming `tracks`

@@ -16,7 +16,7 @@ use Workbench\App\Security\GenreResource;
 use Workbench\App\Security\SecureArtistResource;
 
 /**
- * The **Eloquent** half of the authorization conformance wiring (PLAN decision 7): it
+ * The **Eloquent** half of the authorization conformance wiring: it
  * registers the SAME secured {@see AlbumResource} (dedicated `AlbumApiPolicy`) and
  * policy-less {@see GenreResource} the in-memory half serves, over the reference
  * {@see EloquentDataProvider} / {@see EloquentDataPersister} pair at `-128`. The

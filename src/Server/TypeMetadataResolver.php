@@ -12,7 +12,7 @@ use haddowg\JsonApi\Server\Server;
 /**
  * Resolves a registered type's declarative relation metadata (its resource, its
  * declared relations) off a {@see Server} — the thin Laravel twin of the Symfony
- * bundle's `TypeMetadataResolver` (bundle ADR 0021), the single seam the relationship
+ * bundle's `TypeMetadataResolver`, the single seam the relationship
  * batchers and the operation handler's related/relationship arms read relation metadata
  * through.
  *
@@ -25,8 +25,8 @@ use haddowg\JsonApi\Server\Server;
  *
  * The {@see Server} is passed per call (it flows from the operation context, and the
  * architecture is multi-server-capable) rather than held. The standalone
- * `#[AsJsonApiRelations]` registry the bundle folds in is a later-phase capstone feature
- * (PLAN decision 3) not yet present here, so relations resolve resource-only.
+ * `#[AsJsonApiRelations]` registry the bundle folds in is
+ * not present here, so relations resolve resource-only.
  */
 final class TypeMetadataResolver
 {
@@ -57,7 +57,7 @@ final class TypeMetadataResolver
      * unless `withUriFieldName()` set another). When no relation is served under it, the
      * segment is tried as a relation name, so a client still calling a renamed relation's
      * old URL keeps working; the links and the OpenAPI document only name the URI field
-     * name (ADR 0035).
+     * name.
      */
     public function relationAtUriSegment(Server $server, string $type, string $segment): ?RelationInterface
     {

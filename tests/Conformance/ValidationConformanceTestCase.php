@@ -12,7 +12,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The always-on validation bridge (PLAN decision 6) end to end: a resource's declared
+ * The always-on validation bridge end to end: a resource's declared
  * constraints (see {@see \Workbench\App\Validation\ArticleResource}) are translated to
  * `illuminate/validation` rules, run against the create/update document BEFORE
  * hydration, and rendered as `422`s with `source.pointer`s. The identical assertions run

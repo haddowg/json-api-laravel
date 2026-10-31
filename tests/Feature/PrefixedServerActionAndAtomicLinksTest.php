@@ -16,7 +16,7 @@ use Workbench\App\Providers\SurfaceInMemoryServiceProvider;
 
 /**
  * A custom action and an Atomic Operations batch on a server under the `api` prefix with
- * an empty `base_uri` render their resource links under the prefix too (ADR 0028).
+ * an empty `base_uri` render their resource links under the prefix too.
  *
  * @internal
  */

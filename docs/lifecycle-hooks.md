@@ -3,7 +3,7 @@
 The hook trait is per-resource sugar over the [lifecycle events](lifecycle.md): implement
 `ResourceLifecycleHooksInterface`, `use ResourceLifecycleHooksTrait`, and override just the
 methods you need. The trait routes the dispatched events to your resource, so the logic lives
-next to the fields it concerns — no listener wiring (PLAN decision 10).
+next to the fields it concerns — no listener wiring.
 
 ## Declaring hooks
 

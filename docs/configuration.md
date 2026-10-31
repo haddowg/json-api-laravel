@@ -147,14 +147,25 @@ declares its own). See [pagination](pagination.md).
 ## `profiles`
 
 ```php
-'profiles' => [\haddowg\JsonApi\Pagination\CursorPaginationProfile::class],
+'profiles' => [
+    \haddowg\JsonApi\Pagination\CursorPaginationProfile::class,
+    \haddowg\JsonApi\Schema\Profile\CountableProfile::class,
+    \haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile::class,
+],
 ```
 
-Additional JSON:API profiles registered on every server (class-strings, resolved through the
-container), on top of the built-in Countable and Relationship Queries registrations. The
-canonical use is core's `CursorPaginationProfile`, so cursor-paginated responses advertise
-the published cursor-pagination profile — see
-[pagination](pagination.md#advertising-the-cursor-pagination-profile). Defaults to `[]`.
+The JSON:API profiles every server recognizes, as class-strings resolved through the
+container. The default is core's three built-ins: cursor pagination, Countable (`?withCount`)
+and Relationship Queries (`relatedQuery`). A registered profile is advertised in
+`jsonapi.profile` and the `Content-Type` `profile` parameter when a client negotiates it, its
+query family is parsed only under that negotiation, and its OpenAPI parameters are generated
+only while it is registered.
+
+Trim an entry to stop recognizing and advertising that profile; its OpenAPI parameters go
+with it. Append your own `ProfileInterface` class to recognize a custom profile. Keep the
+built-ins in the order above, which is the order the OpenAPI `jsonapi.profile` enum lists them
+and part of the document's byte-compatibility with the Symfony bundle. See
+[pagination](pagination.md#advertising-the-cursor-pagination-profile).
 
 ## `defaults` (response headers)
 
@@ -187,7 +198,10 @@ string `max_age` or an integer `sunset`, fails the boot. See
 ```
 
 `paths` are the directories scanned for capability classes (resources, serializers, actions,
-providers, persisters). Append more with `JsonApi::discover([...])`. `cache` is an optional
+providers, persisters) and for your own described error classes, which the OpenAPI error
+catalogue lists beside core's; add `app_path('Exceptions')` to have those found (see
+[documenting your own error codes](errors.md#documenting-your-own-error-codes)). Append more
+with `JsonApi::discover([...])`. `cache` is an optional
 path to a pre-built discovery snapshot; when the file exists it is loaded instead of scanning
 (`route:cache`-safe). The [`optimize`](optimize.md) pipeline writes it for production.
 
@@ -276,7 +290,7 @@ its own `sunset` keeps it, and still inherits the server's `sunset_link` unless 
 The `default` server takes a block too, since it is configured under `servers` like any
 other. A server block fails the boot on the same bad values as the global one. The OpenAPI
 document describes none of these headers on any server, so a server block doesn't change
-it. See [ADR 0053](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0053-a-server-may-declare-its-own-response-header-defaults.md).
+it.
 
 ### Prefixes and the base
 
@@ -349,6 +363,8 @@ The OpenAPI 3.1 generation + exposure block. Highlights:
 | `multi_server` | `separate` (one document per server) or `combined` (one union document) |
 | `enum_value_descriptions` | how backed-enum values render — `both` / `extensions` / `description` |
 | `public_path` | when set, `optimize` also writes static `.json`/`.yaml` for a CDN |
+| `cache_path` | the directory the warmed OpenAPI artifacts are stored in (null = `storage/framework/cache/jsonapi-openapi`) |
+| `json.path` / `json_schema.enabled` / `json_schema.path` | the document route (default `/docs.json`), and whether and where the JSON Schema route is served (default `/schemas.json`) |
 | `describedby` | give each built link object and each document a `describedby` naming its operation in the served document (only when a route serves the document, or `document_url` is set); see [links and `describedby`](openapi.md#links-and-describedby) |
 | `document_url` | the URL `describedby` points into, used as given with `{server}` replaced by the server name; null uses the path of the route serving the document |
 | `cache_control` | the `Cache-Control` header for `/docs.json` and `/schemas.json` (null = none of its own, so the response stays private); see [caching at the edge](openapi.md#caching-at-the-edge) |
@@ -358,7 +374,7 @@ The OpenAPI 3.1 generation + exposure block. Highlights:
 | `ui.redoc_telemetry` | let ReDoc 3.x send its usage telemetry (default `false`, which renders `disable-telemetry="true"` on the `<redoc>` tag) |
 | `serve_allowed_classes` | classes, beyond core's OpenAPI value objects, that a document's example, default or extension values may hold and still be served from the serialized copy (default `[]`); see [per-request customisation](openapi.md#per-request-customisation) |
 | `examples` | give each operation's request and success responses, and each shared error response, an example built from the declared field and error-code examples (default `true`); a server's own `openapi_examples` overrides it; see [operation examples](openapi.md#operation-examples) |
-| `info` / `servers` / `tags` / `security` | the document `info`, advertised OAS servers, tag definitions, and security schemes + default requirement |
+| `info` / `servers` / `tags` / `security` / `externalDocs` | the document `info`, advertised OAS servers, tag definitions, security schemes + default requirement, and the document-level external docs link |
 | `security.scope_scheme` | the security scheme each operation's [OAuth scopes](scopes.md#the-openapi-document) are listed under (default `oauth2`) |
 
 The docs routes are gated behind `app.debug || openapi.expose_in_prod`; the CLI exporters

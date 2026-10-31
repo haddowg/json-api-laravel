@@ -16,7 +16,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * A document whose values hold an application object (ADR 0036): without the class in
+ * A document whose values hold an application object: without the class in
  * `serve_allowed_classes` the warmer skips the serve artifact with a warning and a
  * decorated request builds the document; with it the artifact is written and used.
  *

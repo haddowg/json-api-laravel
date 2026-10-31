@@ -43,8 +43,7 @@ final class Album extends Model
     ];
 
     /**
-     * The album's artist — declared for relationship-existence filters; the
-     * resource-level relation declaration is Phase 3.
+     * The album's artist — declared for relationship-existence filters.
      *
      * @return BelongsTo<Artist, $this>
      */

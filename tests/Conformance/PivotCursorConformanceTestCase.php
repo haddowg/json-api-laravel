@@ -18,7 +18,7 @@ use PHPUnit\Framework\Attributes\Test;
  * ({@see InMemoryPivotCursorConformanceTest}) and the reference Eloquent provider
  * ({@see EloquentPivotCursorConformanceTest}) over the SAME
  * {@see \Workbench\App\Support\ConformanceFixtures::cursorBoards()} partition of the
- * shared cursor-widget rows (docs/adr/0017).
+ * shared cursor-widget rows.
  *
  * The `cursorBoards.widgets` relation is a pivot-carrying `belongsToMany` (a declared
  * read-only `position` pivot field) declaring its OWN

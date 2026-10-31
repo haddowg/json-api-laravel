@@ -17,7 +17,7 @@ use Workbench\App\Security\SecureArtistResource;
 use Workbench\App\Support\Fixtures;
 
 /**
- * The **in-memory** half of the authorization conformance wiring (PLAN decision 7): it
+ * The **in-memory** half of the authorization conformance wiring: it
  * registers the secured {@see AlbumResource} (dedicated `AlbumApiPolicy`) and the
  * policy-less {@see GenreResource}, both explicitly (they live outside the scanned
  * `app/JsonApi` so they never perturb the music suites), over writable, seeded

@@ -27,7 +27,7 @@ use PHPUnit\Framework\Attributes\Test;
  * wirings seed, so a created `albums` row is store-provided id `3` on BOTH providers (the
  * in-memory sequence and the SQLite auto-increment both continue past the two seeds). The
  * base URI is pinned to the request origin + the `api` route prefix, so the `Location`
- * (and the created resource's equal `links.self`, core ADR 0054) resolves to the route a
+ * (and the created resource's equal `links.self`, core's docs/links-and-meta.md) resolves to the route a
  * client GETs.
  *
  * Coverage: create (server- and client-generated ids per strategy, `201` + `Location`
@@ -36,7 +36,7 @@ use PHPUnit\Framework\Attributes\Test;
  * core owns (`409` body-type mismatch, forbidden-vs-allowed client id `403`/round-trip,
  * standalone `lid` `400`, `415`/`406` write content negotiation), and unknown type/id
  * `404`s. Document-semantic `422`s live in {@see ValidationConformanceTestCase}; the
- * relationship writes are Phase 3 and stay VISIBLE here as explicit skip markers.
+ * relationship writes stay VISIBLE here.
  *
  * A **duplicate client-generated id** is now a `409` on both providers (the persisters
  * enforce core's `ClientGeneratedIdAlreadyExists`, closing the earlier
@@ -83,7 +83,7 @@ abstract class WriteConformanceTestCase extends Orchestra
         $config = $app['config'];
         // Pin the base URI to the request origin + the `api` prefix so the created
         // resource's Location resolves to the route a client GETs (and equals its
-        // links.self, core ADR 0054) rather than the prefix-less request origin.
+        // links.self, core's docs/links-and-meta.md) rather than the prefix-less request origin.
         $config->set('jsonapi.base_uri', 'http://localhost/api');
     }
 
@@ -127,7 +127,7 @@ abstract class WriteConformanceTestCase extends Orchestra
         $location = 'http://localhost/api/albums/3';
         $response->assertHeader('Location', $location);
         // The created resource carries its convention self link, equal to the Location
-        // (the persister has assigned the id by render time — core ADR 0054).
+        // (the persister has assigned the id by render time — core's docs/links-and-meta.md).
         $response->assertJsonPath('data.links.self.href', $location);
 
         $response->assertJsonPath('data.attributes.title', 'A Brand New Album');
@@ -394,7 +394,7 @@ abstract class WriteConformanceTestCase extends Orchestra
         ])->assertStatus(404);
     }
 
-    // --- relationships in writes (Phase 3b — un-skipped as relations landed) ---
+    // --- relationships in writes (un-skipped as relations landed) ---
 
     #[Test]
     #[Group('spec:crud')]
@@ -586,7 +586,7 @@ abstract class WriteConformanceTestCase extends Orchestra
     #[Group('spec:crud')]
     public function anUnparseableDateReachingCoreHydrationIsATyped422(): void
     {
-        // The core-owned change the earlier GAP flagged has LANDED (core ADR: an
+        // The core-owned change the earlier GAP flagged has LANDED (in core: an
         // uncoercible attribute value is a typed AttributeValueInvalid): core's DateTime
         // cast (haddowg\JsonApi\Resource\Field\DateTime::deserializeValue) now raises a
         // `422` ATTRIBUTE_VALUE_INVALID at /data/attributes/<name> on a calendar-garbage
@@ -594,7 +594,7 @@ abstract class WriteConformanceTestCase extends Orchestra
         // escape as an uncaught 500.
         //
         // The routed HTTP write surface never reaches this cast with garbage — the
-        // always-on validation bridge (PLAN decision 6) guards every writable DateTime
+        // always-on validation bridge guards every writable DateTime
         // field with a ParsableDate rule, a clean 422 BEFORE hydration (asserted
         // dual-provider over HTTP in ValidationConformanceTestCase). And the only path that
         // skips the bridge, a bare serializer/hydrator pair with no AbstractResource, is
@@ -643,7 +643,7 @@ abstract class WriteConformanceTestCase extends Orchestra
     /**
      * POST/PATCH/DELETE a JSON:API document through the shipped {@see InteractsWithJsonApi}
      * kit, which negotiates the JSON:API media type on both the request `Content-Type` and
-     * the `Accept` header. (Dogfoods the testing kit — PLAN decision 12.)
+     * the `Accept` header. (Dogfoods the testing kit.)
      *
      * @param array<string, mixed> $document
      *

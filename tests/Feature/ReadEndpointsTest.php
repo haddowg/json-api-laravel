@@ -10,15 +10,15 @@ use haddowg\JsonApiLaravel\Testing\InteractsWithJsonApi;
 use PHPUnit\Framework\Attributes\CoversNothing;
 
 /**
- * End-to-end coverage of the Phase 0 read surface: the two fetch endpoints render
+ * End-to-end coverage of the read surface: the two fetch endpoints render
  * spec-valid JSON:API documents with the correct media type, a missing resource and an
  * unknown type both 404, and content negotiation rejects a non-JSON:API `Accept` (406)
  * or a parametrized `Content-Type` (415). The whole path — route → controller →
  * negotiate → dispatch → in-memory provider → render — is exercised through a real
  * Testbench kernel.
  *
- * Requests and assertions run through the shipped {@see InteractsWithJsonApi} kit (PLAN
- * decision 12), dogfooding the request builder + the JSON:API {@see JsonApiDocument} /
+ * Requests and assertions run through the shipped {@see InteractsWithJsonApi} kit,
+ * dogfooding the request builder + the JSON:API {@see JsonApiDocument} /
  * {@see JsonApiErrors} response macros alongside the native Laravel assertions.
  *
  * @internal

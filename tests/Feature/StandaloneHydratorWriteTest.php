@@ -15,8 +15,8 @@ use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The write-capable standalone pair end to end (the Laravel twin of the bundle's ADR
- * 0024 write half): the `beacons` type — a standalone `#[AsJsonApiSerializer]` +
+ * The write-capable standalone pair end to end (the Laravel twin of the bundle's
+ * write half): the `beacons` type — a standalone `#[AsJsonApiSerializer]` +
  * `#[AsJsonApiHydrator]`, zero `AbstractResource` — creates, updates and deletes
  * through the generic write pipeline over the in-memory provider/persister pair, and
  * the hydrator-only `ingest-commands` type registers its write shape with core while

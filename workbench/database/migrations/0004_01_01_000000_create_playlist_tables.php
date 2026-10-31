@@ -7,7 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * The playlist ⇄ track schema backing the Phase-3b pivot + relationship-mutation surface
+ * The playlist ⇄ track schema backing the pivot + relationship-mutation surface
  * on the Eloquent workbench provider. Two SEPARATE join tables keep the pivot-bearing and
  * the bare-join relations independent — as the in-memory witness's two independent member
  * lists (`$orderedTracks`/`$tracks`) are, so a mutation of one never changes the other on

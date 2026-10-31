@@ -14,7 +14,7 @@ use Workbench\App\Models\Article;
 use Workbench\App\Providers\ValidationEloquentServiceProvider;
 
 /**
- * The `UniqueEntity` → pre-hydration `Rule::unique` witness (PLAN decision 6): the
+ * The `UniqueEntity` → pre-hydration `Rule::unique` witness: the
  * `articles` resource declares `->constrain(new UniqueEntity(['slug']))` on `slug`, which
  * the {@see \haddowg\JsonApiLaravel\Validation\ResourceValidator} realises as a
  * `Rule::unique` on the Eloquent table BEFORE hydration — a duplicate is a `422` at

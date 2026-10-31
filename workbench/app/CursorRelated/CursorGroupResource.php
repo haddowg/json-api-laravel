@@ -16,7 +16,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
  * conformance suite: its to-many `widgets` relation declares its OWN
  * {@see CursorPaginator} (default size 2), so `GET /cursorGroups/{id}/widgets`
  * resolves a keyset window and both providers run the parent-scoped keyset
- * execution (docs/adr/0015). The related keyset vocabulary is the widget
+ * execution. The related keyset vocabulary is the widget
  * resource's own sortable fields ({@see \Workbench\App\Cursor\CursorWidgetResource}
  * — `category` ties, a NULLABLE `priority`, a NULLABLE `releasedAt` datetime), so
  * the parent-scoped walk exercises the same branches the primary suite does.

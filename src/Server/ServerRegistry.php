@@ -56,10 +56,10 @@ final class ServerRegistry
      * every link on the request origin alone, dropping the prefix the server's routes are
      * registered under; so when the route has a prefix (or the app is served below the
      * web root) the Server is given the effective base `origin + base path + prefix` for
-     * this request instead (ADR 0028).
+     * this request instead.
      *
      * The `describedby` resolver is set here rather than on the memoized Server because
-     * the default document URL is generated against this request (ADR 0037).
+     * the default document URL is generated against this request.
      *
      * @throws \LogicException when the route names an unknown server
      */

@@ -13,7 +13,7 @@ use Workbench\Database\Seeders\ConformanceSeeder;
  * {@see PivotWriteTestCase} against the **reference Eloquent provider/persister pair** over
  * real SQL (in-memory SQLite), plus the Eloquent-only pivot proofs: the stored
  * `position`/`weight`/`addedAt` render as each member's `meta.pivot` on the related endpoint,
- * the relationship-linkage endpoint and the mutation echo (ADR 0008); and the
+ * the relationship-linkage endpoint and the mutation echo; and the
  * merge-before-validate pass lets a partial update of an existing member reorder it without
  * re-sending the required `position` (the stored value is merged in).
  *

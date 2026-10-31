@@ -14,11 +14,11 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The round-trip conformance guarantee ported from the bundle (PLAN decision 12):
+ * The round-trip conformance guarantee ported from the bundle:
  * real workbench responses validate against the OpenAPI component schemas the package's
  * {@see \haddowg\JsonApiLaravel\OpenApi\DocumentFactory} generates — proving the projected
  * document actually describes the responses served (the byte-compatible contract has
- * teeth in a test suite, blueprint §6). Uses the {@see SchemaConformanceTrait} together
+ * teeth in a test suite). Uses the {@see SchemaConformanceTrait} together
  * with {@see InteractsWithJsonApi} over the in-memory workbench.
  *
  * Validation runs over `opis/json-schema`; the trait skips (never fails) when it is

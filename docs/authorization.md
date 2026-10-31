@@ -1,14 +1,12 @@
 # Authorization
 
-Authorization is **policy-first** and Laravel-native (PLAN decision 7). The package resolves
+Authorization is **policy-first** and Laravel-native. The package resolves
 the model's Gate-registered policy and checks it at each lifecycle point **with the loaded
 model in hand, before persistence** — the entity-level check the Symfony firewall cannot
 express. Where the Symfony bundle uses ExpressionLanguage `security:` strings, this package
 uses policies, ability names, and a dedicated API-policy class. Timing is on the pristine
-subject, before hydration
-([ADR 0004](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0004-write-authorization-is-pristine-subject-and-timed-before-hydration.md)),
-and an update is checked again on the changed resource before it is saved
-([ADR 0046](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0046-the-update-gate-checks-the-stored-and-the-changed-resource.md)).
+subject, before hydration,
+and an update is checked again on the changed resource before it is saved.
 
 ## The default: the model's policy
 
@@ -113,7 +111,7 @@ final class PlaylistApiPolicy
 This is the "policies replace the Voter" demonstrator: the subject is typed `object`, so the
 same policy authorizes both the Eloquent model and an in-memory POPO. The example's
 `PlaylistApiPolicy` carries an **API-distinct method** (`curate` for update, `deletePlaylist`
-for delete) — the point of decision 7.
+for delete).
 
 A server only enforces the `policy:` and `abilities` of the resource class it exposes the
 type through, so two servers can secure one type differently. See

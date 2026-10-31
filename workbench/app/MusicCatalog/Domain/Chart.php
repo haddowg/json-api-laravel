@@ -11,7 +11,7 @@ namespace Workbench\App\MusicCatalog\Domain;
  * `#[\haddowg\JsonApiLaravel\Attribute\AsJsonApiSerializer]`) plus a small custom
  * {@see \Workbench\App\MusicCatalog\Provider\ChartProvider} that returns a fixed list —
  * the capability-composition witness for a resource-less, read-only, serialize-plus-fetch
- * type (PLAN decision 3, bundle ADR 0024).
+ * type.
  */
 final class Chart
 {

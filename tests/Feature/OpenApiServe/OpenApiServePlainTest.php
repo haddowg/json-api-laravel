@@ -9,7 +9,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * No serve decorators (ADR 0036): the warmed bytes are served unchanged, tagged with the
+ * No serve decorators: the warmed bytes are served unchanged, tagged with the
  * hash the warmer stored beside them.
  *
  * @internal

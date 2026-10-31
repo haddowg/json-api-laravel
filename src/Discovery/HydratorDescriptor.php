@@ -6,7 +6,7 @@ namespace haddowg\JsonApiLaravel\Discovery;
 
 /**
  * A plain, cacheable snapshot of a standalone-hydrator capability (the write twin of
- * {@see SerializerDescriptor}, the Laravel twin of the bundle's ADR 0024): a
+ * {@see SerializerDescriptor}, the Laravel twin of the bundle's descriptor): a
  * {@see \haddowg\JsonApi\Hydrator\HydratorInterface} registered for a JSON:API `type`
  * via `#[\haddowg\JsonApiLaravel\Attribute\AsJsonApiHydrator]` with **no**
  * {@see \haddowg\JsonApi\Resource\AbstractResource}.

@@ -21,7 +21,7 @@ use Workbench\App\Models\User;
 
 /**
  * Each check reads the declarations of the server it names, and a missing name is the
- * `default` server (ADR 0052).
+ * `default` server.
  *
  * @internal
  */

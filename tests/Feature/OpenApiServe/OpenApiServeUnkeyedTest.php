@@ -14,7 +14,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * One serve decorator without a cache key (ADR 0036): the ETag falls back to the hash of
+ * One serve decorator without a cache key: the ETag falls back to the hash of
  * the final body, so a conditional request still decorates before it can answer 304.
  *
  * @internal

@@ -9,7 +9,7 @@ use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
 
 /**
- * The dual-provider **pivot-WRITE** contract (Phase 3b): a `belongsToMany` with declared
+ * The dual-provider **pivot-WRITE** contract: a `belongsToMany` with declared
  * writable pivot fields (`orderedTracks` on `playlists`, carrying `position`/`weight` +
  * the server-owned `addedAt`) mutated through the relationship endpoints, asserted
  * identically against the Eloquent reference and the in-memory witness.

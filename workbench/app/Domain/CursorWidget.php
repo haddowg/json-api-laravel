@@ -9,7 +9,7 @@ namespace Workbench\App\Domain;
  * for the cursor (keyset) conformance suite. Property names are the storage **columns**
  * the {@see \Workbench\App\Cursor\CursorWidgetResource} fields resolve to, shared with
  * the Eloquent {@see \Workbench\App\Models\CursorWidget} model so one resource
- * declaration serves both providers (blueprint §3.4/§5).
+ * declaration serves both providers.
  */
 final class CursorWidget
 {

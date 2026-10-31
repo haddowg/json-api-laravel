@@ -23,7 +23,7 @@ use PHPUnit\Framework\Attributes\Test;
  * included page to page 1), so a cursor-resolved include is always a FIRST cursor
  * page per parent: `EloquentDataProvider::fetchWindowedBatch` mints each parent's
  * forward cursor from its boundary row through the same per-parent keyset fetch the
- * related endpoint runs (docs/adr/0006 lifted), and the batcher renders a
+ * related endpoint runs, and the batcher renders a
  * {@see \haddowg\JsonApi\Pagination\CursorBasedPage} — the relationship object emits
  * `first`/`next` (the minted `page[after]`) and never `prev`/`last`. Group 1 owns
  * widgets `1,2,3,4,5,7`, so its first PK-only keyset page is `1,2` and its `next`

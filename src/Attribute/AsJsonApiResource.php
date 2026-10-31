@@ -32,7 +32,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * `model` names the Eloquent model this type maps to for the reference
  * [Eloquent data layer]{@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider}
  * — the twin of the Symfony bundle's `entity:` (read by its `DoctrineEntityMapPass`).
- * It is the middle tier of the three-tier model resolution (ADR 0019): an explicit
+ * It is the middle tier of the three-tier model resolution: an explicit
  * `JsonApi::provider()`/`persister()` registration shadows it, and a type declaring
  * neither falls back to the convention guess (`albums` → `App\Models\Album` under the
  * configurable `jsonapi.eloquent.model_namespace`). Declare it when the type and model
@@ -45,8 +45,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * so it may have constructor dependencies) when the field DSL cannot express the wire
  * shape. The generic CRUD engine then drives reads/writes for the type through the
  * override instead of the resource's field inventory, while the *other* concern stays
- * field-driven — the twin of the Symfony bundle's escape hatch (its ADR 0023; ADR 0015
- * here).
+ * field-driven — the twin of the Symfony bundle's escape hatch.
  *
  * `operations` is the exposed operation allow-list: the {@see Operation} cases this
  * type serves, one route emitted per case. An empty array means the default — all
@@ -58,7 +57,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * importing the enum. It is mutually exclusive with a non-empty `operations` list;
  * declaring both is a constructor {@see \LogicException}.
  *
- * **Authorization** (PLAN decision 7, policy-first). By default a type is authorized
+ * **Authorization** (policy-first). By default a type is authorized
  * through the model's Gate-registered policy at each lifecycle point
  * (list→`viewAny`, read→`view`, create→`create`, update→`update`, delete→`delete`);
  * a type with no policy is inert (no check). Two additive overrides tune this:
@@ -73,7 +72,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  *    into the OpenAPI document as secured + `401`, the byte-compat twin of the bundle's
  *    documentation-only security marker.
  *
- * **Response headers** (PLAN decision 12, declarative cache + RFC 8594
+ * **Response headers** (declarative cache + RFC 8594
  * deprecation/sunset). `cacheHeaders` declares HTTP cache directives for the type's
  * safe (`GET`) reads — `max_age`/`s_maxage`/`public`/`private`/`no_cache`/
  * `must_revalidate`/`vary` — with an optional nested `operations` map keying a
@@ -86,7 +85,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * emits a bare `Deprecation: true`, `deprecation: '<date>'` the date; `sunset` the
  * `Sunset` HTTP-date; `sunsetLink` the companion sunset `Link`.
  *
- * **OpenAPI tags** (PLAN decision 11). `tags` declares the OpenAPI tag names the type's
+ * **OpenAPI tags**. `tags` declares the OpenAPI tag names the type's
  * operations are grouped under; an empty list falls back to the humanized-type default
  * ({@see \haddowg\JsonApiLaravel\OpenApi\Metadata\TagNameResolver}). A custom action that
  * declares no tags of its own inherits the mount type's explicit tags (then the humanized

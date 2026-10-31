@@ -16,7 +16,7 @@ use Workbench\App\MusicCatalog\Support\ProductIdCodec;
 use Workbench\Database\Seeders\McCatalogSeeder;
 
 /**
- * The custom resource-id encoding witness on the reference Eloquent layer (ADR 0014) —
+ * The custom resource-id encoding witness on the reference Eloquent layer —
  * the Laravel twin of the bundle's `DoctrineEncodedIdTest` / the Symfony example's
  * `EncodedIdTest`: the `products` type keys its row by a database-generated integer that
  * never reaches the wire — the JSON:API `id` (and the URL) is an opaque `prod-…` token the
@@ -39,7 +39,7 @@ use Workbench\Database\Seeders\McCatalogSeeder;
  *
  * Eloquent-only by design: encoding is a reference-layer concern and the in-memory
  * witness has no decode (wire == storage there), mirroring the bundle's posture where
- * the encoded type is exercised on the Doctrine kernel only (ADR 0014).
+ * the encoded type is exercised on the Doctrine kernel only.
  *
  * @internal
  */

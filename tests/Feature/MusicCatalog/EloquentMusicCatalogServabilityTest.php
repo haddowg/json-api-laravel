@@ -14,8 +14,8 @@ use PHPUnit\Framework\Attributes\Test;
 use Workbench\App\MusicCatalog\Providers\MusicCatalogEloquentServiceProvider;
 
 /**
- * The servability warmer's success path over the FULL music-catalog Eloquent surface
- * (PLAN decision 11): every type of the twelve-type domain — including the relations whose
+ * The servability warmer's success path over the FULL music-catalog Eloquent surface:
+ * every type of the twelve-type domain — including the relations whose
  * read path bypasses the Eloquent relation method, `libraries.items` (`extractUsing` over
  * three `morphedByMany` arms) and `playlists.publicOwner` (`storedAs('owner')` onto the
  * model's `owner()` method) — must warm CLEAN. A warmer that demands a model method named

@@ -12,8 +12,8 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 /**
  * A `notes` resource whose `title` carries a custom {@see UniqueNoteTitle} entity
  * constraint — the fixture exercising the retained post-hydration
- * {@see \haddowg\JsonApiLaravel\Validation\EntityConstraintInterface} seam (PLAN decision
- * 6) end to end.
+ * {@see \haddowg\JsonApiLaravel\Validation\EntityConstraintInterface} seam
+ * end to end.
  */
 #[AsJsonApiResource]
 final class NoteResource extends AbstractResource

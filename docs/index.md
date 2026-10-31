@@ -109,17 +109,22 @@ Eloquent `Album` model, with no controller and no handler. The step-by-step buil
 - **Relationships** — related + relationship read and mutation endpoints, compound
   `?include` via an SPI batcher, `?withCount`, pivots, and the Relationship Queries profile.
   See [relationships](relationships.md).
-- **Custom actions & atomic operations** — non-CRUD `-actions/{name}` endpoints and the
+- **Custom actions & atomic operations** — non-CRUD `-actions/{name}` endpoints that can
+  take and answer with non-JSON:API bodies (a CSV import, a PDF, a download URL), and the
   Atomic Operations extension. See [actions](actions.md) and
   [atomic-operations](atomic-operations.md).
+- **OAuth scopes** — per-operation scope requirements, enforced as `403 INSUFFICIENT_SCOPE`
+  and listed in the OpenAPI document, turned on by binding a granted-scopes provider. See
+  [OAuth scopes](scopes.md).
 - **Lifecycle events & hooks** — 18 real Laravel events plus a per-resource hook trait. See
   [lifecycle](lifecycle.md) and [lifecycle-hooks](lifecycle-hooks.md).
 - **Asynchronous writes** — a persister can accept a long-running write for queued
   processing, rendering `202 Accepted` + a pollable job resource and `303 See Other` on
   completion. See [async writes](async.md).
-- **OpenAPI 3.1** — an auto-generated, byte-compatible document, a Swagger UI / ReDoc
-  viewer, JSON Schema exports, and an `optimize` pipeline. See [openapi](openapi.md) and
-  [optimize](optimize.md).
+- **OpenAPI 3.1** — an auto-generated, byte-compatible document with worked operation
+  examples, built links whose `describedby` points at their operation in it, a Swagger UI /
+  ReDoc viewer, JSON Schema exports, and an `optimize` pipeline. See [openapi](openapi.md)
+  and [optimize](optimize.md).
 - **A testing kit** — the `InteractsWithJsonApi` trait, JSON:API-aware `TestResponse`
   macros, and optional schema conformance. See [multi-server-and-testing](multi-server-and-testing.md).
 

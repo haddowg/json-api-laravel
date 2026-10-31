@@ -1,8 +1,8 @@
 # Optimize (production warm-up)
 
 For production, warm the package's caches and validate deployability with the `optimize`
-pipeline — the Laravel-idiomatic replacement for the Symfony bundle's cache warmers (PLAN
-decision 11). It hooks into `php artisan optimize`, so it runs as part of your normal deploy.
+pipeline — the Laravel-idiomatic replacement for the Symfony bundle's cache warmers.
+It hooks into `php artisan optimize`, so it runs as part of your normal deploy.
 
 ## The commands
 
@@ -44,8 +44,7 @@ warmers plus a deploy-time safety check:
    on disk, so running it again over an old file picks up every resource added or changed
    since. The snapshot carries each server's scope table too, so a request loads the scopes
    rather than asking your resolver. `php artisan optimize` and `jsonapi:optimize` also boot from a live scan, so the
-   routes they register and validate match the code. See
-   [ADR 0053](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0053-the-discovery-snapshot-carries-the-resolved-model-map.md).
+   routes they register and validate match the code.
 3. **Artifact warming (optional, non-fatal).** Pre-builds the OpenAPI document + JSON Schema
    artifacts so the `/docs.json` / `/schemas.json` controllers serve a warmed document, and
    stores which route serves each document when the app routes the controller itself (see

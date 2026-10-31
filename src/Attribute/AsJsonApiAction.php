@@ -15,8 +15,8 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
 /**
  * Registers the annotated {@see \haddowg\JsonApiLaravel\Action\ActionHandlerInterface}
  * as a **custom, non-CRUD action** hanging off a JSON:API `type` under the reserved
- * `-actions` segment (the Laravel twin of the Symfony bundle's `#[AsJsonApiAction]`,
- * PLAN decision 12). Discovery is by the same filesystem scan that finds resources: any
+ * `-actions` segment (the Laravel twin of the Symfony bundle's `#[AsJsonApiAction]`).
+ * Discovery is by the same filesystem scan that finds resources: any
  * class carrying this attribute under a scanned path is registered as an action, no
  * `AbstractResource` sugar.
  *
@@ -64,7 +64,7 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
  * the resource-class token (collection scope) via the package
  * {@see \haddowg\JsonApiLaravel\Authorization\Authorizer} before the handler runs — the
  * Laravel-native replacement for the bundle's Symfony ExpressionLanguage `security`
- * string (PLAN decision 12). A `null` ability is an unsecured action (no gate). It rides
+ * string. A `null` ability is an unsecured action (no gate). It rides
  * on the action, not the type.
  *
  * `name` is an optional route-name override.

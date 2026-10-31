@@ -17,7 +17,7 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
  * read.
  *
  * Read authorization is enforced by the policy-first
- * {@see \haddowg\JsonApiLaravel\Authorization\Authorizer} (PLAN decision 7), so this
+ * {@see \haddowg\JsonApiLaravel\Authorization\Authorizer}, so this
  * event is a pure lifecycle seam and is **not** routed to the resource hook trait.
  */
 final class BeforeFetchRelationshipEvent

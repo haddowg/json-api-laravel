@@ -10,7 +10,7 @@ use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
 /**
- * A read-only type whose Id declares the `numeric()` route pattern (core ADR 0038): the
+ * A read-only type whose Id declares the `numeric()` route pattern: the
  * `{id}` route requirement must be composed to accept only digits, so a non-numeric id 404s
  * at routing — matching the `idPattern` the projected OpenAPI document advertises.
  */

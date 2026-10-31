@@ -12,7 +12,7 @@ use PHPUnit\Framework\Attributes\Test;
 use Workbench\App\Models\User;
 
 /**
- * The authorization half of the dual-provider conformance contract (PLAN decision 7):
+ * The authorization half of the dual-provider conformance contract:
  * identical policy assertions run against the in-memory witness
  * ({@see InMemorySecurityConformanceTest}) and the reference Eloquent provider over
  * SQLite ({@see EloquentSecurityConformanceTest}). Because the secured `albums` type

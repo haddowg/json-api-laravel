@@ -11,7 +11,7 @@ use Illuminate\Http\Response;
 
 /**
  * The ETag, `If-None-Match` and `Cache-Control` handling shared by the `docs.json` and
- * `schemas.json` controllers (ADR 0036). The tags themselves and the match come from
+ * `schemas.json` controllers. The tags themselves and the match come from
  * core's {@see EntityTag}; this maps them onto Laravel's request and response.
  *
  * @internal

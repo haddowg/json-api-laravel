@@ -115,7 +115,7 @@ jobs:
     env:
       # The music-catalog example documents (OpenAPI + standalone JSON Schema) exported
       # from the sibling bundle are diffed against this package's; each MUST be
-      # byte-identical (PLAN decision 11).
+      # byte-identical.
       JSON_API_SYMFONY_PATH: ${{ github.workspace }}/../json-api-symfony
     steps:
       - name: Checkout

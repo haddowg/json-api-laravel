@@ -20,8 +20,8 @@ final readonly class DiscoveryResult
      * @param list<class-string>                                                  $persisters  the discovered data-persister class-strings
      * @param list<class-string>                                                  $translators the discovered constraint-translator class-strings
      * @param list<\haddowg\JsonApiLaravel\Action\ActionDescriptor>                $actions     the discovered custom-action descriptors
-     * @param list<SerializerDescriptor>                                          $serializers the discovered standalone-serializer descriptors (PLAN decision 3, bundle ADR 0024)
-     * @param list<HydratorDescriptor>                                            $hydrators   the discovered standalone-hydrator descriptors (the decoupled write half, bundle ADR 0024)
+     * @param list<SerializerDescriptor>                                          $serializers the discovered standalone-serializer descriptors
+     * @param list<HydratorDescriptor>                                            $hydrators   the discovered standalone-hydrator descriptors (the decoupled write half)
      * @param list<class-string<\haddowg\JsonApi\Exception\DescribedErrorInterface>> $errors      the discovered described-error class-strings, whose codes join core's in the projected error catalogue
      */
     public function __construct(

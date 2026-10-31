@@ -8,7 +8,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
 
 /**
  * A plain, cacheable snapshot of a standalone-serializer capability (the Laravel twin of
- * the bundle's ADR 0024): a {@see \haddowg\JsonApi\Serializer\SerializerInterface}
+ * the bundle's descriptor): a {@see \haddowg\JsonApi\Serializer\SerializerInterface}
  * registered for a JSON:API `type` via `#[\haddowg\JsonApiLaravel\Attribute\AsJsonApiSerializer]`
  * with **no** {@see \haddowg\JsonApi\Resource\AbstractResource}.
  *

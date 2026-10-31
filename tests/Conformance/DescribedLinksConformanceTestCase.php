@@ -16,7 +16,7 @@ use Workbench\App\Models\User;
 use Workbench\App\MusicCatalog\Support\CatalogConfig;
 
 /**
- * Built links as link objects with a `describedby` (ADR 0037), against both data layers
+ * Built links as link objects with a `describedby`, against both data layers
  * over the music catalog, whose links are based at `https://music.example/api` and whose
  * document is served at `/docs.json`.
  *

@@ -16,7 +16,7 @@ use Workbench\App\Models\User;
 
 /**
  * The response headers and OpenAPI tags a type declares apply only on the server whose
- * resource class declares them (ADR 0052). On `default`, documents cache publicly and are
+ * resource class declares them. On `default`, documents cache publicly and are
  * tagged "Public documents", and notes declare nothing. On `admin`, documents cache privately,
  * are deprecated and tagged "Admin documents", and notes carry their own caching and sunset.
  *

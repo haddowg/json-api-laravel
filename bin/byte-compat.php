@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /*
- * Drives the byte-compatibility check (PLAN decision 11): it exports the music-catalog
+ * Drives the byte-compatibility check: it exports the music-catalog
  * documents from BOTH this package's testbench workbench and the sibling Symfony bundle's
  * example app, normalizes each, and diffs them per server. Two document families are
  * covered, each exercising a DISTINCT projector path:

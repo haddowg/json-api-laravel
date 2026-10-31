@@ -9,7 +9,7 @@ use haddowg\JsonApi\OpenApi\SpecDescribedByResolver;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 
 /**
- * Builds the `describedby` resolver a server renders its links with (ADR 0037): the
+ * Builds the `describedby` resolver a server renders its links with: the
  * server's document URL ({@see DocumentUrlProvider}) paired with the operations its
  * document carries, so a link never points at an operation the document doesn't have.
  *

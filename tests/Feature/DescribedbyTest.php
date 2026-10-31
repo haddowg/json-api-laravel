@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Test;
 use Workbench\App\Providers\WorkbenchServiceProvider;
 
 /**
- * `links.describedby` (PLAN decision 11, bundle ADR 0105): when the OpenAPI document routes
+ * `links.describedby`: when the OpenAPI document routes
  * are reachable, every JSON:API response advertises a top-level `describedby` link to the
  * served document — gated on the same expose rule as the routes, and switchable off via
  * `jsonapi.openapi.describedby`.

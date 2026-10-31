@@ -9,9 +9,9 @@ namespace Workbench\App\Support;
  * ({@see \Workbench\App\Providers\ConformanceInMemoryServiceProvider}) and Eloquent
  * ({@see \Workbench\Database\Seeders\ConformanceSeeder}) wirings so the two
  * conformance suites read byte-identical rows and a divergent result localizes to
- * one provider's execution (the dual-provider referee premise, blueprint §5.2).
+ * one provider's execution (the dual-provider referee premise).
  *
- * Distinct from the minimal {@see Fixtures} (2 rows/type) the Phase-0 feature suite
+ * Distinct from the minimal {@see Fixtures} (2 rows/type) the feature suite
  * asserts against — this set is deliberately larger and edge-heavy so the shared
  * assertions exercise:
  *  - **null attributes** (artists 2/4/6 have a null `website`/`bio`; albums 4/7 a
@@ -109,7 +109,7 @@ final class ConformanceFixtures
      * (WhereNull + null-attribute rendering); `explicit` carries both booleans;
      * `available_from` is null on one; titles mix case (`in rainbows`, `amnesiac`).
      *
-     * `artist_id` links each album to its {@see artists()} owner, shaped for the Phase-3a
+     * `artist_id` links each album to its {@see artists()} owner, shaped for the
      * relationship-read batch edge cases: Radiohead (1) owns FOUR albums (1/3/6/7 — the
      * many/window case), Portishead (2) owns ONE (2 — the singleton), Massive Attack (3)
      * owns TWO (4/5), and artists 4/5/6 own NONE (the empty to-many). It is the FK the
@@ -195,7 +195,7 @@ final class ConformanceFixtures
 
     /**
      * Eight cursor widgets, shared by BOTH cursor (keyset) conformance concretes so the
-     * SQL push-down and the in-memory witness referee the SAME rows (bundle ADR 0063).
+     * SQL push-down and the in-memory witness referee the SAME rows.
      * Deliberately shaped to exercise every keyset branch:
      *  - `category` carries ties (guide ×4, news ×4), so the appended PK tiebreak is the
      *    ONLY thing keeping tied rows totally ordered;
@@ -264,7 +264,7 @@ final class ConformanceFixtures
     }
 
     /**
-     * Five tracks — the far side of the Phase-3b playlist pivot relation. Titles are
+     * Five tracks — the far side of the playlist pivot relation. Titles are
      * distinct (the `orderedTrackTitled` WhereThrough leaf) and `released_at` is a sortable
      * key for windowed related fetches.
      *

@@ -41,7 +41,7 @@ use haddowg\JsonApiLaravel\Scope\ScopeTables;
  *
  * It also implements core's {@see DeclaresLinkObjects}, so the links components describe
  * the form the server renders its built links in, and each example `describedby` points
- * into the same document URL the server's links do (ADR 0037), and
+ * into the same document URL the server's links do, and
  * {@see DeclaresReadOnlyAttributeRejection}, so the error catalogue lists the `403` a server
  * that refuses read-only attributes can answer. Through {@see DeclaresExampleGeneration} it
  * carries the `openapi.examples` switch, so a server can turn generated examples off.
@@ -53,7 +53,7 @@ use haddowg\JsonApiLaravel\Scope\ScopeTables;
  *
  * Through {@see DeclaresMethodNotAllowed} it says the exception renderer answers a method
  * a JSON:API path does not accept with a `405` error document, so the catalogue lists
- * `METHOD_NOT_ALLOWED` (ADR 0065).
+ * `METHOD_NOT_ALLOWED`.
  */
 final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLinkObjects, DeclaresReadOnlyAttributeRejection, DeclaresExampleGeneration, DeclaresOperationScopeTable, DeclaresMethodNotAllowed
 {

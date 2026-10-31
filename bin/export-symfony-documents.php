@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 /*
- * Exports the Symfony bundle's music-catalog documents for the byte-compat check (PLAN
- * decision 11): the OpenAPI document AND the standalone JSON-Schema document, per server.
+ * Exports the Symfony bundle's music-catalog documents for the byte-compat check:
+ * the OpenAPI document AND the standalone JSON-Schema document, per server.
  * It boots the bundle example's `MusicCatalogKernel` from the sibling checkout once and
  * runs the bundle's own console commands for each server, writing `build/symfony-<server>.json`
  * (OpenAPI) and `build/symfony-schemas-<server>.json` (JSON-Schema).

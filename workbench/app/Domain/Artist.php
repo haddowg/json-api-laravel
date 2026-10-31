@@ -13,7 +13,7 @@ namespace Workbench\App\Domain;
  * fields resolve to (snake_case, matching each field's `storedAs()` / `column`), so the
  * SAME resource declaration reads correctly off this POPO (via `Accessor` property
  * access) and off the Eloquent {@see \Workbench\App\Models\Artist} model (via cast
- * attributes) — the shared-resource, dual-provider seam (blueprint §3.4/§5).
+ * attributes) — the shared-resource, dual-provider seam.
  */
 final class Artist
 {

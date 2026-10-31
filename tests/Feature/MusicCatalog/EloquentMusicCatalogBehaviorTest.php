@@ -16,7 +16,7 @@ use Workbench\Database\Seeders\McCatalogSeeder;
 
 /**
  * The music-catalog workbench's own runtime behaviour, driven end-to-end over HTTP against the
- * reference Eloquent provider (decision 14): the three `albums` actions (reissue / summary /
+ * reference Eloquent provider: the three `albums` actions (reissue / summary /
  * artwork), the `PlaylistApiPolicy` abilities (curate / deletePlaylist / inspectOwner) wired
  * through the Gate, and the playlist `beforeDelete` 409 guard. The dual-provider smoke suite
  * ({@see MusicCatalogSmokeTestCase}) proves both providers serve identical *reads*; this suite
@@ -176,7 +176,7 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
             ->assertJsonPath('meta.albums.unpublished', 0);
     }
 
-    // --- the PlaylistApiPolicy abilities (decision 7) --------------------------------------
+    // --- the PlaylistApiPolicy abilities --------------------------------------
 
     public function test_the_owner_may_curate_the_playlist_and_the_retitle_refreshes_the_slug(): void
     {

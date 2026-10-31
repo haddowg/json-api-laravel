@@ -27,7 +27,7 @@ use Workbench\Database\Seeders\CursorWidgetSeeder;
 
 /**
  * The Eloquent provider's WINDOWED multi-parent relation batch for a CURSOR (keyset)
- * included relation — the N→1 collapse (ADR 0026). A cursor-resolved include is a
+ * included relation — the N→1 collapse. A cursor-resolved include is a
  * boundaryless FIRST cursor page per parent, and it now pushes down to the SAME single
  * `Builder::groupLimit` query the offset include uses (`ROW_NUMBER() OVER (PARTITION BY
  * <parent FK> ORDER BY <keyset>)` capped at `limit + 1` per partition), only ordered by
@@ -146,7 +146,7 @@ final class EloquentWindowedCursorRelationBatchTest extends EloquentTestCase
 
         // The group-limit partitions by the qualified foreign PIVOT key; the keyset order
         // still qualifies off the RELATED table (never the pivot), so the cursor walks the
-        // widget columns while the partition rides the join (ADR 0017).
+        // widget columns while the partition rides the join.
         self::assertStringContainsString('row_number() over (partition by "cursor_board_widget"."board_id"', $sql);
         self::assertStringContainsString('case when cursor_widgets.priority is null then 1 else 0 end asc', $sql);
         self::assertStringContainsString('as "laravel_table" where "laravel_row" <= 3', $sql);

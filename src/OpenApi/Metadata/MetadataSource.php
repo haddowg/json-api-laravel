@@ -29,7 +29,7 @@ use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 
 /**
- * The package's implementation of core's OpenAPI metadata contract (PLAN decision 11)
+ * The package's implementation of core's OpenAPI metadata contract
  * — it builds, for one server, the {@see ServerMetadataInterface} (with its
  * {@see TypeMetadataInterface} family) the core
  * {@see \haddowg\JsonApi\OpenApi\OpenApiProjector} projects into an OpenAPI document.
@@ -42,7 +42,7 @@ use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
  * subsystem) — and folds in the config-shaped {@see ServerDocumentConfig} (info /
  * advertised servers / tag definitions / security schemes, from `jsonapi.openapi.*`).
  *
- * This is the byte-compat seam (PLAN decision 11): it must feed the projector the SAME
+ * This is the byte-compat seam: it must feed the projector the SAME
  * facts the Symfony bundle's `MetadataSource` does, so `json-api-ts` codegen consumes
  * either backend unchanged. Field decisions mirror the bundle exactly:
  *
@@ -58,7 +58,7 @@ use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
  *    `security: []`); an unsecured, policy-less operation inherits the document-level default.
  *    This is the Laravel translation of the bundle's Symfony security-expression projection:
  *    the *document* carries the same security/401 shape, projected from policy/ability config
- *    instead of expressions (PLAN decision 7 — OpenAPI security stays config/attribute-declared;
+ *    instead of expressions (OpenAPI security stays config/attribute-declared;
  *    a Gate/policy registered without an attribute declaration is deliberately not projected).
  *  - **`idPattern`** is the un-anchored `{id}` regex the resource's {@see Id} declares;
  *    core's `OperationProjector` anchors it as `^(?:…)$`.
@@ -163,7 +163,7 @@ final class MetadataSource
 
     /**
      * The **combined** OpenAPI metadata spanning every declared server in one document
-     * (PLAN decision 11 / §7) — the source for `multi_server: combined`. It unions every
+     * — the source for `multi_server: combined`. It unions every
      * server's types (asserting non-colliding JSON:API types across servers, since one
      * document cannot carry two components for the same type), concatenates the
      * advertised base URIs, and dedupes the tag definitions and security schemes.
@@ -275,8 +275,8 @@ final class MetadataSource
 
     /**
      * Builds the type metadata list for one server, in descriptor (discovery) order:
-     * the resources first, then the standalone-serializer types (PLAN decision 3, bundle
-     * ADR 0024) — the same resources-then-standalone ordering the bundle's descriptor map
+     * the resources first, then the standalone-serializer types — the same
+     * resources-then-standalone ordering the bundle's descriptor map
      * carries, so the projected OpenAPI `paths` stay byte-compatible.
      *
      * @return list<TypeMetadataInterface>
@@ -305,7 +305,7 @@ final class MetadataSource
 
     /**
      * Assembles a standalone-serializer type's metadata (no resource, no field inventory)
-     * — the fieldless projection path (PLAN decision 3, bundle ADR 0024). `hasFields` is
+     * — the fieldless projection path. `hasFields` is
      * `false`, so core's projector emits a permissive resource object with an inline
      * `attributes: {type: object}` (no `{Type}Attributes` `$ref`), byte-identical to the
      * bundle. It carries no authorization config of its own, so it declares no
@@ -396,8 +396,8 @@ final class MetadataSource
             sorts: $resource !== null ? \array_values($resource->allSorts()) : [],
             actions: $actions,
             tags: $this->typeTags($descriptor->tags, $type),
-            // The resource's own description method hooks (attribute-level overrides land
-            // in a later slice); the projector supplies the generated default when null.
+            // The resource's own description method hooks (no attribute-level
+            // override); the projector supplies the generated default when null.
             description: $resource?->getDescription(),
             operationDescriptions: $this->operationDescriptions($resource),
             includablePaths: $resource !== null ? $this->includePaths->pathsFor($server, $type) : [],
@@ -555,7 +555,7 @@ final class MetadataSource
      * operation is secured when it declares a Gate ability (`string`), is marked
      * documentation-only secured (`true`, external enforcement), OR the type declares a
      * dedicated `policy:` class (every exposed operation, minus any explicitly disabled with
-     * `false`) — so a policy-secured type (the primary Phase-2 idiom) no longer projects as
+     * `false`) — so a policy-secured type (the primary idiom) no longer projects as
      * unsecured.
      *
      * @param list<OperationType> $operations

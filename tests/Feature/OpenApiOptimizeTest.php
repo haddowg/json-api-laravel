@@ -12,7 +12,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * Tests the `optimizes()` pipeline (PLAN decision 11): `jsonapi:optimize` validates
+ * Tests the `optimizes()` pipeline: `jsonapi:optimize` validates
  * servability then warms the OpenAPI + JSON Schema artifacts into the {@see ArtifactStore}
  * (which the controllers then serve `O(file read)`), and `jsonapi:clear` removes them.
  *

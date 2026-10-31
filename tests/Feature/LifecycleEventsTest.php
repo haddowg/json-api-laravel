@@ -32,7 +32,7 @@ use Workbench\App\Models\User;
 use Workbench\App\Providers\SurfaceInMemoryServiceProvider;
 
 /**
- * The 18 lifecycle events (PLAN decision 10) fire at the bundle's exact points with the
+ * The 18 lifecycle events fire at the bundle's exact points with the
  * right payload, dispatched through Laravel's event Dispatcher. Driven over HTTP on the
  * in-memory surface wiring (albums + artists + the `artist` relation + the `publish`
  * action), with `Event::fake` recording the dispatches — so a listener that would otherwise

@@ -8,7 +8,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
 
 /**
  * The per-type authorization overrides read off a resource's
- * {@see \haddowg\JsonApiLaravel\Attribute\AsJsonApiResource} attribute (PLAN decision 7):
+ * {@see \haddowg\JsonApiLaravel\Attribute\AsJsonApiResource} attribute:
  * an optional dedicated API policy class invoked directly, and a per-operation ability
  * map that renames (a `string`) or disables (`false`) the Gate ability checked for an
  * operation. A resource that declares neither carries the inert default — the model's

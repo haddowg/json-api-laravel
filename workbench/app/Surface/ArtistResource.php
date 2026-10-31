@@ -10,7 +10,7 @@ use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
 /**
- * The writable `artists` type for the Phase-4 surface suites — the target an atomic batch
+ * The writable `artists` type for the surface suites — the target an atomic batch
  * creates first (assigning it a local id) so a following album `add` can reference it by
  * `lid`. Provider-agnostic (its columns resolve off both the in-memory
  * {@see \Workbench\App\Domain\Artist} POPO and the Eloquent {@see \Workbench\App\Models\Artist}

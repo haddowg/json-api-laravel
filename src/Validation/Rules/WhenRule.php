@@ -13,13 +13,13 @@ use Illuminate\Support\Facades\Validator;
  * — an arbitrary PHP condition gating a set of inner constraints. Laravel's own
  * conditional validation lives at the validator level (`$validator->sometimes()`), but
  * a composable single rule keeps `When` nestable and translatable in isolation: it
- * evaluates the condition against the value (and the inbound request, core ADR 0080)
+ * evaluates the condition against the value (and the inbound request, core's docs/constraints.md)
  * and, only when it holds, validates the value against the translated inner rules.
  *
  * Presence rules ({@see \haddowg\JsonApi\Resource\Constraint\Required} /
  * {@see \haddowg\JsonApi\Resource\Constraint\Nullable}) nested in a `When` are resolved
  * by the {@see \haddowg\JsonApiLaravel\Validation\ResourceValidator} during presence
- * resolution (a conditionally-required field, ADR 0084), not here — this rule validates
+ * resolution (a conditionally-required field), not here — this rule validates
  * only the inner *value* rules.
  */
 final class WhenRule implements ValidationRule

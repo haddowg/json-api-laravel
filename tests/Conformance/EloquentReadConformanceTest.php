@@ -17,7 +17,7 @@ use Workbench\Database\Seeders\ConformanceSeeder;
  * {@see \Workbench\App\Support\ConformanceFixtures} rows the in-memory witness carries
  * via {@see ConformanceSeeder} — so every assertion inherited from the abstract must
  * produce the IDENTICAL result, refereeing the Eloquent SQL semantics against the
- * witness (PLAN decision 9).
+ * witness.
  *
  * SQLite's `LOWER()`/`LIKE` fold ASCII and its BINARY text collation is byte order,
  * which is exactly the in-memory `stripos` / `<=>` contract, so the case-insensitive

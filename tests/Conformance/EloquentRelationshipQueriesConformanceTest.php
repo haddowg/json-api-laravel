@@ -15,7 +15,7 @@ use Workbench\Database\Seeders\ConformanceSeeder;
 
 /**
  * {@see RelationshipQueriesConformanceTestCase} against the **reference Eloquent provider** —
- * the SQL push-down (PLAN decision 9, ADR 0006): a windowed relationship batch is a
+ * the SQL push-down: a windowed relationship batch is a
  * `groupLimit`/`ROW_NUMBER() OVER (PARTITION BY <parent FK> ORDER BY <relation order>, <pk>)`
  * derived-table query, with NO PHP-window fallback. The shared assertions referee it against
  * the in-memory witness on identical data.

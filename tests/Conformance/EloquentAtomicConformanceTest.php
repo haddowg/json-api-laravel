@@ -12,7 +12,7 @@ use Workbench\App\Providers\SurfaceEloquentServiceProvider;
 /**
  * {@see AtomicConformanceTestCase} against the **reference Eloquent provider/persister pair**
  * over an in-memory SQLite database. The batch opens one outer transaction on the shared
- * persister; each sub-op's own write nests as a savepoint (ADR 0009 addendum), so the
+ * persister; each sub-op's own write nests as a savepoint, so the
  * all-or-nothing commit/rollback holds on real SQL exactly as the in-memory witness refs it.
  *
  * @internal

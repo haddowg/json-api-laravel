@@ -21,7 +21,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * A polymorphic relation's members are narrowed per member type, with one lookup per scoped
- * type across every parent (ADR 0051).
+ * type across every parent.
  *
  * @internal
  */

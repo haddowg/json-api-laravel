@@ -41,7 +41,7 @@ use Illuminate\Contracts\Events\Dispatcher;
  * (a `404` when absent); for a {@see ActionInput::Document} action it resolves, validates
  * (through the always-on validation bridge) and hydrates the request document into an
  * `inputType` instance; it then enforces the action's declared Gate `ability`
- * (PLAN decision 12) against the subject — validate-then-authorize, so a `422` precedes a
+ * against the subject — validate-then-authorize, so a `422` precedes a
  * `403` exactly as the CRUD arms — builds the {@see ActionContext}, calls the handler, and
  * returns the handler's response value object.
  *
@@ -58,7 +58,7 @@ final readonly class ActionInvoker
         private TypeMetadataResolver $types,
         private ResourceValidator $validator,
         private Authorizer $authorizer,
-        // The lifecycle-event dispatcher (PLAN decision 10): a custom action fires a
+        // The lifecycle-event dispatcher: a custom action fires a
         // Before/AfterActionEvent around its handler. Null on a stripped-down
         // programmatic wiring → the dispatches are no-ops.
         private ?Dispatcher $dispatcher = null,
@@ -113,13 +113,13 @@ final readonly class ActionInvoker
             $input = $this->resolveAndHydrateInput($server, $descriptor, $handler, $body);
         }
 
-        // The before-action lifecycle event (PLAN decision 10): fired after entity
+        // The before-action lifecycle event: fired after entity
         // resolution + input validation and before the ability gate + handler. A listener
         // that throws a JsonApiException aborts. The subject is the resolved entity
         // (resource scope) or null (collection scope); the declared ability rides along.
         $this->dispatcher?->dispatch(new BeforeActionEvent($type, $operation->action(), $entity, $descriptor->ability));
 
-        // The per-action ability gate (PLAN decision 12): enforced AFTER input validation so
+        // The per-action ability gate: enforced AFTER input validation so
         // a 422 precedes a 403 (the CRUD ordering). The subject is the resolved entity
         // (resource scope) or null (collection scope → the resource-class token). A null
         // ability is an unsecured action.

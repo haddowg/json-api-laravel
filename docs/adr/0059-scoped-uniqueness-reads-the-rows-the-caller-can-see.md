@@ -1,3 +1,0 @@
-# Scoped uniqueness reads the rows the caller can see
-
-`UniqueEntity` became `Rule::unique`, which queries the table directly, so a value held only by a row the caller cannot see still failed, and a `Rule::unique` built in `LaravelRules` could not ignore the row being updated. With `scoped: true`, or any of `using`, `errorPath`, `ignoreNull: false` and `model`, the check runs as a rule that queries the model with its global scopes, keeps only the rows the type's scoping provider returns (the ADR 0034 rule), excludes the row being updated, and reads the provider when the type has no model. A plain `UniqueEntity` keeps `Rule::unique`, so existing declarations behave as before.

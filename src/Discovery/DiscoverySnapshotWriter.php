@@ -8,8 +8,8 @@ use haddowg\JsonApiLaravel\Eloquent\ModelMapResolver;
 
 /**
  * Writes (and clears) the discovery snapshot the {@see Discovery} loader consumes —
- * the WRITE side of the Phase-0 snapshot cache, driven by the optimize pipeline (PLAN
- * decision 11). The loader already reads a `require`-able PHP file at
+ * the WRITE side of the discovery snapshot cache, driven by the optimize pipeline.
+ * The loader already reads a `require`-able PHP file at
  * `jsonapi.discovery.cache`; this warmer produces it, so a `route:cache`d production app
  * registers routes + assembles servers from the cached snapshot with no filesystem walk.
  *
@@ -18,7 +18,7 @@ use haddowg\JsonApiLaravel\Eloquent\ModelMapResolver;
  * described-error class-strings — so a cached configuration is behaviourally identical to
  * a live scan. It also writes the resolved Eloquent `type → model` map with the namespace
  * it was resolved under, so a request served from the snapshot runs no inflection
- * (ADR 0053), and each server's resolved scope table, so the scope enforcer loads it
+ *, and each server's resolved scope table, so the scope enforcer loads it
  * rather than asking the resolver again.
  *
  * The snapshot is **opt-in**: it is written only when `jsonapi.discovery.cache` names a

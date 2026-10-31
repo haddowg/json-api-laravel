@@ -66,13 +66,12 @@ final class InMemoryDataProviderFilterTest extends TestCase
     #[Test]
     public function itMatchesGreaterThanOrEqualAndLessThanOrEqualComparisons(): void
     {
-        // An ordered comparison against a NULL column never matches (core ADR 0116: an
+        // An ordered comparison against a NULL column never matches (an
         // ordered `<`/`<=`/`>`/`>=` — and therefore a Range bound — where either operand
         // is null yields false, mirroring SQL three-valued logic rather than PHP's silent
         // coercion of null toward 0). Row 3's rating is null, so it is excluded from BOTH
         // the `>=` set (`null >= 9.0` is false) and the `<=` set (`null <= 5.5` is false):
-        // the in-memory witness now CONVERGES with the Eloquent/SQL reference (this pins
-        // the resolved side of the divergence docs/adr/0003 deferred to core).
+        // the in-memory witness CONVERGES with the Eloquent/SQL reference.
         self::assertSame([1], $this->filter([Where::make('ratingGte', 'rating', '>=')], ['ratingGte' => 9.0]));
         self::assertSame([2], $this->filter([Where::make('ratingLte', 'rating', '<=')], ['ratingLte' => 5.5]));
     }
@@ -217,7 +216,7 @@ final class InMemoryDataProviderFilterTest extends TestCase
     {
         // filter[hotHits] present -> status = 'released' AND rating > 8, via fixed
         // children; the request value is ignored. Released = {1,3}; rating > 8 = {1}
-        // (song 3's rating is null, excluded under ADR 0116).
+        // (song 3's rating is null, so excluded).
         $group = [WhereAll::make(
             'hotHits',
             Where::make('status')->fixed('released'),

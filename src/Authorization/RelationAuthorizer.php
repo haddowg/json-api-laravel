@@ -14,13 +14,13 @@ use haddowg\JsonApiLaravel\Server\ServerRegistry;
 
 /**
  * Answers core's questions about the relation data it reaches outside the relation's own
- * endpoints (ADR 0044), with the same policy rules the handler applies at those endpoints.
+ * endpoints, with the same policy rules the handler applies at those endpoints.
  *
  * A rendered relationship carries its data only when the caller passes the relation's
  * `security(read:)` ability against the parent, the rule the related and relationship reads
  * apply; a relation without a string ability inherits the parent's read, which the caller
  * already passed to see the parent. A to-many whose related type the caller may not list
- * renders no data either (ADR 0045). A flattened `on()` write needs the
+ * renders no data either. A flattened `on()` write needs the
  * `update` ability (or its rename) of the related type on the row it writes onto.
  *
  * One instance serves one server. The server is resolved lazily, because the server is built
@@ -48,7 +48,7 @@ final class RelationAuthorizer implements RelationAuthorizerInterface
 
     public function canReadRelationship(mixed $model, RelationInterface $relation, JsonApiRequestInterface $request): bool
     {
-        // A permission the relation declares replaces the related type's own gates (ADR 0049).
+        // A permission the relation declares replaces the related type's own gates (ADR 0018).
         if ($this->rows !== null && \is_object($model)) {
             return $this->rows->relationPermission($model, $relation) ?? !$this->refusesList($relation);
         }
@@ -74,7 +74,7 @@ final class RelationAuthorizer implements RelationAuthorizerInterface
 
     /**
      * Whether `$relation` is a to-many listing a type the caller may not list, so its data is
-     * withheld whole (ADR 0045). A polymorphic to-many is withheld when any member type is.
+     * withheld whole. A polymorphic to-many is withheld when any member type is.
      */
     private function refusesList(RelationInterface $relation): bool
     {

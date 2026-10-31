@@ -554,8 +554,8 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         $id = $match['id'] ?? null;
         $relationship = $match['relationship'] ?? null;
         $relationship = \is_string($relationship) && $relationship !== '' ? $relationship : null;
-        // The href names the relation by its URI segment; the Target carries its name
-        // (ADR 0035). An unknown segment stays as it is and answers 404.
+        // The href names the relation by its URI segment; the Target carries its name.
+        // An unknown segment stays as it is and answers 404.
         if ($relationship !== null) {
             $relationship = $this->types->relationAtUriSegment($this->server, $type, $relationship)?->name() ?? $relationship;
         }

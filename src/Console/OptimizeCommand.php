@@ -14,7 +14,7 @@ use Illuminate\Console\Command;
 
 /**
  * Warms the JSON:API discovery + OpenAPI artifacts and eagerly validates servability
- * (PLAN decision 11) — the `optimizes()` pipeline hook (`php artisan optimize` runs it,
+ * — the `optimizes()` pipeline hook (`php artisan optimize` runs it,
  * `optimize:clear` clears it via {@see ClearCommand}).
  *
  * Every server's OAuth scope table is built first ({@see ScopeTables}), so a resolver error
@@ -33,7 +33,7 @@ use Illuminate\Console\Command;
  * fallback), so this command is a deploy-time optimisation, not a prerequisite.
  *
  * When `jsonapi.discovery.cache` names a path it also writes the discovery snapshot
- * (opt-in, the WRITE side of the Phase-0 cache) so a `route:cache`d app skips the scan.
+ * (opt-in, the WRITE side of the discovery cache) so a `route:cache`d app skips the scan.
  * It always scans the configured paths itself and never reads an existing snapshot.
  */
 final class OptimizeCommand extends Command

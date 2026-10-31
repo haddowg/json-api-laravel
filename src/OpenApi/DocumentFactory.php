@@ -14,7 +14,7 @@ use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 
 /**
- * Builds the OpenAPI 3.1 {@see OpenApi} document for one server (PLAN decision 11) —
+ * Builds the OpenAPI 3.1 {@see OpenApi} document for one server —
  * the package's pure-projection entry point: it composes the {@see MetadataSource}
  * (which reads the live registry into core's metadata contract) with the core
  * {@see OpenApiProjector} (which projects that contract into the document).
@@ -98,7 +98,7 @@ final class DocumentFactory
     }
 
     /**
-     * The single **combined** OpenAPI document spanning every declared server (PLAN §7)
+     * The single **combined** OpenAPI document spanning every declared server
      * — the `multi_server: combined` document, unioning every server's types, advertised
      * base URIs, tag definitions and security schemes into one document.
      *

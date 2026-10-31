@@ -9,7 +9,7 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Placeholder so the suite is non-empty until the Phase 0 units land; it doubles
+ * Placeholder that keeps the unit suite non-empty; it doubles
  * as a smoke test that the framework-agnostic core dependency autoloads.
  *
  * @internal

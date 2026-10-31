@@ -13,7 +13,7 @@ use Workbench\Database\Seeders\ConformanceSeeder;
  * The Relationship Queries profile end-to-end over the Eloquent reference (the SQL push-down):
  * the relationship (linkage) endpoint windowed by its own `?sort`/`?page`, and an included
  * to-many windowed from the PRIMARY request via `relatedQuery[<path>][sort]` under the
- * negotiated profile — both driven by the `groupLimit`/ROW_NUMBER batch (ADR 0006).
+ * negotiated profile — both driven by the `groupLimit`/ROW_NUMBER batch.
  *
  * @internal
  */

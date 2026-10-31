@@ -10,8 +10,8 @@ use Illuminate\Console\Command;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * Exports a server's OpenAPI 3.1 document to JSON or YAML — to a file, or to stdout
- * (PLAN decision 11). The CLI export is **always available** (independent of the HTTP
+ * Exports a server's OpenAPI 3.1 document to JSON or YAML — to a file, or to stdout.
+ * The CLI export is **always available** (independent of the HTTP
  * expose gate), so a CI pipeline can spec-diff or publish the document with no web
  * exposure.
  *

@@ -11,7 +11,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 
 /**
- * The related type's own read gates for rows another type renders (ADR 0045). A single related
+ * The related type's own read gates for rows another type renders. A single related
  * row passes its type's `view` gate, the check `GET /{type}/{id}` applies to it, or reads as
  * absent. A to-many passes its related type's collection gate, the check `GET /{type}` applies,
  * or is withheld whole; which rows it lists is left to the query.
@@ -78,7 +78,7 @@ final class ViewableRows
     }
 
     /**
-     * The read permission `$relation` declares on `$parent` (ADR 0049): `true` or `false`, or
+     * The read permission `$relation` declares on `$parent`: `true` or `false`, or
      * `null` when it declares none and the related type's own gates apply. Memoized per parent
      * and relation for the operation.
      */

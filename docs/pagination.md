@@ -142,7 +142,7 @@ A **queried** relationship GET (`GET /{type}/{id}/relationships/{rel}` with
 `?page`/`?sort`/`?filter`) over a cursor-paginated relation windows the identifier linkage to
 a keyset page: the document's pagination links carry the real `page[after]`/`page[before]`
 cursors (never a `last`), while the body stays links-only — identifier `data` members and no
-`meta.page` (core ADR 0124). A bare relationship GET serves the first keyset page at the
+`meta.page` (see [core's responses](https://github.com/haddowg/json-api/blob/main/docs/responses.md)). A bare relationship GET serves the first keyset page at the
 relation's default size. A pivot relation's cursor page filters on pivot columns but sorts only on
 the related resource's own sorts, because the keyset reads its columns off the related table.
 
@@ -150,15 +150,22 @@ the related resource's own sorts, because the keyset reads its columns off the r
 
 A `CursorBasedPage` carries the published
 [cursor-pagination profile](https://jsonapi.org/profiles/ethanresnick/cursor-pagination/),
-but core only advertises a page profile the server has **registered**. Register it via the
-`jsonapi.profiles` config (class-strings, resolved through the container) and every cursor
-page — primary, related, and windowed linkage — advertises the profile URI in
-`jsonapi.profile` and the `Content-Type` `profile` media-type parameter:
+but core only advertises a page profile the server has **registered**. Core's
+`CursorPaginationProfile` is in the default `jsonapi.profiles` list, so every cursor page
+(primary, related, and windowed linkage) advertises the profile URI in `jsonapi.profile` and
+the `Content-Type` `profile` media-type parameter out of the box. A published config that
+trims it from the list stops that:
 
 ```php
 // config/jsonapi.php
-'profiles' => [\haddowg\JsonApi\Pagination\CursorPaginationProfile::class],
+'profiles' => [
+    \haddowg\JsonApi\Pagination\CursorPaginationProfile::class,   // keep this one for cursor pages
+    \haddowg\JsonApi\Schema\Profile\CountableProfile::class,
+    \haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile::class,
+],
 ```
+
+See [configuration](configuration.md#profiles).
 
 ## Pagination links and meta
 

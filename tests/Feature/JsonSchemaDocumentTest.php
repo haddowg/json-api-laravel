@@ -12,7 +12,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * Tests the standalone per-type JSON Schema 2020-12 projection (PLAN decision 11): the
+ * Tests the standalone per-type JSON Schema 2020-12 projection: the
  * {@see JsonSchemaFactory} wraps core's resource-object schema with the dialect + `$id`
  * keywords, so the artifact is a valid addressable schema on its own. Its attribute
  * schema agrees byte-for-byte with the OpenAPI document's (the same

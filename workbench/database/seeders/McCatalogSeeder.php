@@ -19,7 +19,7 @@ use Workbench\App\MusicCatalog\Models\User;
 use Workbench\App\MusicCatalog\Support\Fixtures;
 
 /**
- * Seeds the full music-catalog domain (decision 14) into the `mc_`-prefixed Eloquent tables
+ * Seeds the full music-catalog domain into the `mc_`-prefixed Eloquent tables
  * — the same canonical {@see Fixtures} the in-memory wiring carries, so `testbench serve`
  * and the dual-provider feature suite serve identical data. Polymorphic members
  * (`favorites.favoritable`, `libraries.items`) are stamped with the morph aliases the

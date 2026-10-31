@@ -16,8 +16,8 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Validation\Constraint\UniqueEntity;
 
 /**
- * The `articles` resource that exercises the always-on validation bridge (PLAN decision
- * 6) on BOTH providers — the Laravel twin of the Symfony bundle's `BaseArticleResource`,
+ * The `articles` resource that exercises the always-on validation bridge
+ * on BOTH providers — the Laravel twin of the Symfony bundle's `BaseArticleResource`,
  * shared by the in-memory and Eloquent validation-conformance wirings so identical
  * assertions referee the bridge provider-agnostically.
  *
@@ -34,7 +34,7 @@ use haddowg\JsonApiLaravel\Validation\Constraint\UniqueEntity;
  *  - `address` is a nested `Map` whose constrained children surface `422`s at
  *    `/data/attributes/address/<child>` (the one-level cascade);
  *  - `slug` carries a {@see UniqueEntity} realised pre-hydration as `Rule::unique` on the
- *    Eloquent table (inert on the in-memory provider — PLAN decision 6).
+ *    Eloquent table (inert on the in-memory provider).
  */
 #[AsJsonApiResource]
 final class ArticleResource extends AbstractResource
@@ -93,7 +93,7 @@ final class ArticleResource extends AbstractResource
 
                 return $model;
             }),
-            // Uniqueness (PLAN decision 6): a nullable slug that must be unique across the
+            // Uniqueness: a nullable slug that must be unique across the
             // Eloquent table. Realised as a pre-hydration Rule::unique (self-excluded on
             // update); inert on the in-memory provider.
             Str::make('slug')->nullable()->constrain(new UniqueEntity(['slug'])),

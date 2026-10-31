@@ -59,7 +59,7 @@ use Workbench\App\MusicCatalog\Support\CatalogConfig;
 use Workbench\App\MusicCatalog\Support\Fixtures;
 
 /**
- * The in-memory half of the unified music-catalog wiring (decision 14): it registers the
+ * The in-memory half of the unified music-catalog wiring: it registers the
  * SAME full-domain resources the Eloquent half serves, but over seeded
  * {@see InMemoryDataProvider}s carrying the {@see Fixtures} as a linked POPO object graph —
  * so the dual-provider feature suite reads identical data through both arms. The polymorphic
@@ -89,7 +89,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
 
         // Ascending type order — see MusicCatalogEloquentServiceProvider: the projected
         // OpenAPI `paths` follow discovery order, and the byte-compat contract requires them
-        // to match the bundle's alphabetical-by-type descriptor order (decision 11).
+        // to match the bundle's alphabetical-by-type descriptor order.
         JsonApi::register([
             AlbumResource::class,
             ArtistResource::class,
@@ -113,7 +113,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
             SummarizeAlbums::class,
             UploadAlbumArtwork::class,
             // The two standalone-serializer types (no resource), registered last so their
-            // paths follow the resources — the byte-compat contract (decision 3, bundle ADR 0024).
+            // paths follow the resources — the byte-compat contract.
             ChartSerializer::class,
             CountrySerializer::class,
         ]);
@@ -171,7 +171,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
 
         // The two standalone-serializer types are served by the SAME custom providers the
         // Eloquent wiring uses — charts/countries are storage-orthogonal reference data, so
-        // both provider arms read them identically (decision 3, bundle ADR 0024).
+        // both provider arms read them identically.
         JsonApi::provider(new ChartProvider());
         JsonApi::provider(new CountryProvider());
 
@@ -194,7 +194,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
 
         Gate::define('reissueAlbum', static fn(?AuthUser $user, object $album): bool => $user?->can_write === true);
 
-        // The API-distinct playlist abilities (decision 7) — see the Eloquent provider.
+        // The API-distinct playlist abilities — see the Eloquent provider.
         Gate::define('curate', [PlaylistApiPolicy::class, 'curate']);
         Gate::define('deletePlaylist', [PlaylistApiPolicy::class, 'deletePlaylist']);
         Gate::define('inspectOwner', [PlaylistApiPolicy::class, 'inspectOwner']);

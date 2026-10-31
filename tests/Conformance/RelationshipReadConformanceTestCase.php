@@ -11,7 +11,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The Phase-3a relationship-READ acceptance suite (the Laravel analogue of the bundle's
+ * The relationship-READ acceptance suite (the Laravel analogue of the bundle's
  * relationship-read conformance): the related (`GET /{type}/{id}/{rel}`) and
  * relationship-linkage (`GET …/relationships/{rel}`) endpoints, compound `?include`
  * (single, collection, nested/deep with dedup), `?withCount` (single + across a
@@ -23,7 +23,7 @@ use PHPUnit\Framework\Attributes\Test;
  * both over the SAME {@see \Workbench\App\Support\ConformanceFixtures} object graph
  * (Radiohead owns four albums, Portishead one, Massive Attack two, three artists none):
  * a divergent result localizes to one provider's execution — the referee premise the
- * SQL push-down is held to (PLAN decision 9). The witness runs core's `WindowExecutor`
+ * SQL push-down is held to. The witness runs core's `WindowExecutor`
  * with the same PK tiebreak the SQL path pins, so this suite referees the window on
  * every run.
  *

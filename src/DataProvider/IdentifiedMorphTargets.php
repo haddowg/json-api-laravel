@@ -16,7 +16,7 @@ use haddowg\JsonApiLaravel\Server\ServerRegistry;
 
 /**
  * Loads the targets of a `MorphTo` declared with `identifiedBy()` from the `[type, id]` pairs
- * its parents store (ADR 0068). Core renders such a relation's linkage straight from the pair,
+ * its parents store. Core renders such a relation's linkage straight from the pair,
  * which is right for a target type nothing guards. A guarded type's targets are loaded whenever
  * the linkage renders, so a hidden one renders as none, and every type's targets are loaded when
  * they render as resources: included, or on the related endpoint.

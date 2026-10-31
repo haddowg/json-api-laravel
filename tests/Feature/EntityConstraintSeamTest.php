@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Test;
 
 /**
  * Proves the retained post-hydration {@see \haddowg\JsonApiLaravel\Validation\EntityConstraintInterface}
- * seam (PLAN decision 6) end to end, together with the class-keyed extension-translator
+ * seam end to end, together with the class-keyed extension-translator
  * path: the `notes` resource declares a custom {@see \haddowg\JsonApiLaravel\Tests\Fixtures\EntitySeam\UniqueNoteTitle}
  * constraint whose translator produces a store-scanning rule run against the HYDRATED
  * ENTITY (not the request document). A create/update whose resulting note collides on

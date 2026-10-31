@@ -4,8 +4,7 @@ A JSON:API type is assembled from **independent, optional capabilities** — a s
 (read), a hydrator (write), relations, a data provider (fetch), and a data persister (write).
 `AbstractResource` is convenient sugar that bundles serializer + hydrator + relations + the
 fields DSL into one declaration, but nothing is coupled to it. This page shows the seams; the
-underlying model is core's (bundle ADR 0024, ported here as
-[ADR 0011](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0011-standalone-serializer-capability.md)).
+underlying model is core's.
 
 ## The default: one resource, everything
 

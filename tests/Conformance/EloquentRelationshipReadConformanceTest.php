@@ -22,8 +22,7 @@ use Workbench\Database\Seeders\ConformanceSeeder;
  * at `-128` over the SAME `app/JsonApi` resources) and seeds the SAME
  * {@see \Workbench\App\Support\ConformanceFixtures} object graph the witness carries via
  * {@see ConformanceSeeder} — so every assertion inherited from the abstract must produce
- * the IDENTICAL result, refereeing the SQL push-down against the witness (PLAN
- * decision 9).
+ * the IDENTICAL result, refereeing the SQL push-down against the witness.
  *
  * It adds the two provider-asymmetric proofs that are Eloquent-only by design: the
  * load-state links-only render (the {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentRelationshipLoadState}
@@ -179,7 +178,7 @@ final class EloquentRelationshipReadConformanceTest extends RelationshipReadConf
 
         // The rendered document is byte-identical with and without batching: batching only
         // changes HOW the includes are loaded (batched vs lazy), never WHAT is rendered — the
-        // pure-optimization contract (PLAN decision 8, blueprint risk 1).
+        // pure-optimization contract.
         self::assertSame($enabled['response']->json(), $disabled['response']->json());
 
         // ...but turning it off reveals the N+1: the lazy path issues strictly more queries

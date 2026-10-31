@@ -8,7 +8,7 @@ use haddowg\JsonApi\OpenApi\EnumDescriptionMode;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\ServerDocumentConfig;
 
 /**
- * The resolved `jsonapi.openapi.*` configuration (PLAN decision 11), built by
+ * The resolved `jsonapi.openapi.*` configuration, built by
  * {@see OpenApiConfigResolver} from the runtime config array and threaded through the
  * package's OpenAPI wiring.
  *

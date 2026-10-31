@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
- * The `playlists` Eloquent model — the parent of the Phase-3b pivot + relationship-mutation
+ * The `playlists` Eloquent model — the parent of the pivot + relationship-mutation
  * surface. Two `belongsToMany` relations over SEPARATE join tables, so a mutation of one never
  * changes the other (matching the in-memory witness's two independent member lists):
  *  - {@see orderedTracks()} joins through `playlist_track`, carrying the writable

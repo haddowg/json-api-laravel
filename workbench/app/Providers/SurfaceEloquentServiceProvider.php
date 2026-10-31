@@ -17,11 +17,11 @@ use Workbench\App\Surface\ArtistResource;
 use Workbench\App\Surface\PublishAlbumAction;
 
 /**
- * The **Eloquent** half of the Phase-4 surface wiring: it registers the SAME writable
+ * The **Eloquent** half of the surface wiring: it registers the SAME writable
  * {@see AlbumResource} / {@see ArtistResource} and {@see PublishAlbumAction} the in-memory
  * half serves, over the reference {@see EloquentDataProvider} / {@see EloquentDataPersister}
  * pair at `-128`. The Eloquent persister nests each atomic sub-op as a savepoint under the
- * batch's outer transaction (ADR 0009 addendum), so the all-or-nothing guarantee holds on
+ * batch's outer transaction, so the all-or-nothing guarantee holds on
  * real SQL exactly as it does on the in-memory witness.
  */
 final class SurfaceEloquentServiceProvider extends ServiceProvider

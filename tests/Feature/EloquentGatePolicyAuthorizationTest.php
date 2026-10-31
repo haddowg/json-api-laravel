@@ -14,7 +14,7 @@ use Workbench\App\Providers\GatePolicyServiceProvider;
 use Workbench\Database\Seeders\MusicCatalogSeeder;
 
 /**
- * The Eloquent-only authorization paths (PLAN decision 7) a POPO cannot exercise (it
+ * The Eloquent-only authorization paths a POPO cannot exercise (it
  * carries no Gate policy): the secured `artists` type declares NO `policy:` attribute, so
  * the {@see \haddowg\JsonApiLaravel\Authorization\Authorizer} resolves through the
  * application Gate.

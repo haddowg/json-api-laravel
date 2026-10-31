@@ -9,7 +9,7 @@ use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiUiRenderer;
 use Illuminate\Http\Response;
 
 /**
- * Serves the documentation viewer page (PLAN decision 11) — a single config-driven
+ * Serves the documentation viewer page — a single config-driven
  * route at `jsonapi.openapi.ui.path` (default `/docs`) that renders **Swagger UI _or_
  * ReDoc** (per `jsonapi.openapi.ui.renderer`, one not both) pointed at the OpenAPI
  * document the {@see OpenApiController} serves.

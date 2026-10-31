@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Test;
 use Workbench\App\Models\User;
 
 /**
- * Pins the persister-less authorization path (PLAN decision 7): a read-only type has no
+ * Pins the persister-less authorization path: a read-only type has no
  * persister to mint a list/read subject, but a DECLARED `policy:` must STILL be enforced
  * on `viewAny`/`view` (never fail-open), while a type with no policy stays inert.
  *

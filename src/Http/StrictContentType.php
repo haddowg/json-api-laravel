@@ -8,7 +8,7 @@ use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Request\MediaType;
 
 /**
- * Decides which requests must declare their body's media type (core ADR 0172): every `POST`,
+ * Decides which requests must declare their body's media type: every `POST`,
  * even one with no body, and any other unsafe method only when it carries a body.
  *
  * @internal

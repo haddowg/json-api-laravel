@@ -8,8 +8,7 @@ use Illuminate\Http\Request;
 
 /**
  * Lets a serve decorator ({@see OpenApiServeDecoratorInterface} or
- * {@see JsonSchemaServeDecoratorInterface}) describe its output without producing it
- * (ADR 0036).
+ * {@see JsonSchemaServeDecoratorInterface}) describe its output without producing it.
  *
  * The key must change whenever `decorate()` would return something different for the
  * same warmed document: the request host, the tenant's enabled features, and a version

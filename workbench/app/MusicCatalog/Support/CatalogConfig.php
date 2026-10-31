@@ -13,10 +13,10 @@ use Workbench\App\MusicCatalog\Security\BearerTokenScopes;
 use Workbench\App\MusicCatalog\Security\CatalogScopes;
 
 /**
- * The single source of truth for the music-catalog `jsonapi.*` configuration (decision 14)
+ * The single source of truth for the music-catalog `jsonapi.*` configuration
  * — the exact Laravel translation of the Symfony example's
  * `config/packages/json_api.yaml`, so the projected OpenAPI document is byte-compatible
- * with the bundle's (decision 11). Both the byte-compat export and any `testbench serve`
+ * with the bundle's. Both the byte-compat export and any `testbench serve`
  * wiring apply it, so the demo, the diff and the docs share one config.
  *
  * The `info` block and advertised base URIs are normalized away by the byte-compat diff,

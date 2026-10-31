@@ -10,7 +10,7 @@ use haddowg\JsonApiLaravel\Tests\Fixtures\FixedClock;
 use PHPUnit\Framework\Attributes\CoversNothing;
 
 /**
- * Verifies blueprint risk item 2 / PLAN decision 3: a resource with a real constructor
+ * Verifies that a resource with a real constructor
  * dependency is constructed through the application container on first use, not
  * plain-`new`ed. {@see \haddowg\JsonApiLaravel\Tests\Fixtures\ClockStampResource} takes an
  * interface-typed {@see \haddowg\JsonApiLaravel\Tests\Fixtures\Clock}; its `stamp`

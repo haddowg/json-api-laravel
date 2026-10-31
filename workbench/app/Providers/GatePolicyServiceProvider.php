@@ -15,8 +15,8 @@ use Workbench\App\Security\ArtistResource;
 use Workbench\App\Security\Policies\ArtistApiPolicy;
 
 /**
- * The Eloquent-only wiring for the two **Gate-driven** authorization resolution paths
- * (PLAN decision 7), demonstrated on the secured {@see ArtistResource} which declares no
+ * The Eloquent-only wiring for the two **Gate-driven** authorization resolution paths,
+ * demonstrated on the secured {@see ArtistResource} which declares no
  * `policy:` attribute:
  *  - {@see Gate::policy()} maps the {@see Artist} model to {@see ArtistApiPolicy}, so the
  *    authorizer resolves `view`/`create`/`update`/`delete` through the **model-registered

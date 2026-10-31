@@ -56,7 +56,7 @@ final class InMemorySnapshotCoordinator
      * The open-transaction nesting depth. The atomic executor opens the OUTER batch
      * transaction on every participating persister, and each sub-operation's own
      * `writeTransactionally` opens an INNER one — exactly as the Eloquent persister nests a
-     * savepoint under its outer transaction (ADR 0009 addendum). Only the outermost
+     * savepoint under its outer transaction. Only the outermost
      * open/commit captures/discards the pre-image; the inner commits are savepoint releases
      * that must NOT discard the captured graph (else the batch's rollback would find nothing
      * to restore). A {@see restore()} unwinds all nesting levels at once (a rollback of the

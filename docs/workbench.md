@@ -45,7 +45,7 @@ The domain is wired twice, over the same resources and fixtures:
 
 Both read the identical [`Fixtures`](https://github.com/haddowg/json-api-laravel/blob/main/workbench/app/MusicCatalog/Support/Fixtures.php),
 so the dual-provider suite proves every type is served identically by both arms. It lives in
-its own namespace with its own wiring, so it never collides with the per-phase test suites
+its own namespace with its own wiring, so it never collides with the per-feature test suites
 under `workbench/app/{JsonApi,Surface,Security,Pivot,Validation,Cursor}`.
 
 Both arms also register the cross-cutting
@@ -64,7 +64,7 @@ export, the `docker compose up` demo, and these docs all apply it, so they share
 
 ## Byte-compatibility
 
-The workbench exists to prove decision 11: for this identical domain, the projected OpenAPI
+The workbench exists to prove byte-compatibility: for this identical domain, the projected OpenAPI
 document is byte-identical to the Symfony bundle's. Run the diff locally:
 
 ```bash

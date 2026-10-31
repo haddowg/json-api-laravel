@@ -20,7 +20,7 @@ final class DiscoveryTest extends TestCase
 {
     public function test_a_snapshot_cache_restores_resources_providers_and_persisters(): void
     {
-        // A snapshot built exactly as the Phase 4 optimize pipeline will write one:
+        // A snapshot built exactly as the optimize pipeline writes one:
         // resource array forms + plain provider/persister class-strings, var_export'ed
         // to a requirable PHP file. The read side must round-trip ALL THREE, not just
         // the resources — otherwise a cached (production) config silently drops every

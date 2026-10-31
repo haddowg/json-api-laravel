@@ -12,7 +12,7 @@ use Illuminate\Console\Command;
 /**
  * Exports a server's standalone per-type JSON Schema 2020-12 documents — the resource
  * object (`type` const, `id`, `attributes`, …) for one type to a file / stdout, or every
- * type to a directory (PLAN decision 11).
+ * type to a directory.
  *
  * `--type` exports one type (stdout, or `--output=FILE`); omitting it exports every type
  * to `--output=DIR` (one `<type>.json` per type). The schema is the **same** core

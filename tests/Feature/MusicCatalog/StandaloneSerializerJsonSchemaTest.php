@@ -18,7 +18,7 @@ use Workbench\App\MusicCatalog\Support\CatalogConfig;
 
 /**
  * Pins the standalone-serializer types (charts + countries) into the two sibling paths of
- * the OpenAPI document (PLAN decision 3, bundle ADR 0024): the standalone JSON Schema
+ * the OpenAPI document: the standalone JSON Schema
  * export ({@see JsonSchemaFactory} — `jsonapi:jsonschema:export` / `/schemas.json`) and
  * the servability warmer ({@see ServableResourceWarmer} — `jsonapi:optimize`). Both
  * previously enumerated the resource channel only, so a serializer-only type appeared in

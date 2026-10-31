@@ -15,7 +15,7 @@ use Opis\JsonSchema\Validator;
 use PHPUnit\Framework\Assert;
 
 /**
- * The round-trip conformance guarantee (PLAN decision 12, ported from the bundle's
+ * The round-trip conformance guarantee (ported from the bundle's
  * `SchemaConformanceTrait`): assert a **real** API response validates against the
  * **generated** OpenAPI component schema for its type — proving the document this
  * package produces actually describes the responses it serves, so the byte-compatible
@@ -53,8 +53,8 @@ use PHPUnit\Framework\Assert;
  * pass `$fieldsets` to supply (or override) them, which a raw body string needs.
  *
  * When opis is
- * **absent** the assertions **skip** (never fail), matching the kit's opis-gated posture
- * (blueprint §6): a suite without opis stays green, a suite with it gets the check.
+ * **absent** the assertions **skip** (never fail), matching the kit's opis-gated posture:
+ * a suite without opis stays green, a suite with it gets the check.
  *
  * @mixin \Illuminate\Foundation\Testing\TestCase
  */

@@ -11,7 +11,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The Phase-1 read acceptance suite (the Laravel port of the bundle's
+ * The read acceptance suite (the Laravel port of the bundle's
  * `ReadQueryConformanceTestCase` + `ConvenienceFilterConformanceTestCase`):
  * filtering, sorting, pagination, sparse fieldsets, single-resource reads and the
  * query-parameter 400s, asserted as spec-compliant JSON:API documents over HTTP.
@@ -21,7 +21,7 @@ use PHPUnit\Framework\Attributes\Test;
  * provider ({@see EloquentReadConformanceTest}); both serve the SAME `app/JsonApi`
  * resource declarations over the SAME {@see \Workbench\App\Support\ConformanceFixtures}
  * rows, so a test failing on one provider and not the other localizes the bug to that
- * provider's execution — the point of the referee (PLAN decision 9).
+ * provider's execution — the point of the referee.
  *
  * The two collections cover the two pagination arms: `artists` is **count-free**
  * (the server-default paginator) so its page assertions prove `hasMore`-driven `next`
@@ -32,12 +32,12 @@ use PHPUnit\Framework\Attributes\Test;
  *
  * Relationship-scope behaviour (`?include` compound documents, related/relationship
  * endpoints, relationship-existence filters `WhereHas`/`WhereDoesntHave`/`WhereThrough`)
- * landed in Phase 3a and is asserted here dual-provider; the fuller relationship-read
+ * is asserted here dual-provider; the fuller relationship-read
  * matrix (batch-window edges, load-state, `?withCount`, linkage shapes) lives in the
  * dedicated {@see RelationshipReadConformanceTestCase}. The client-driven `?withCount=_self_`
  * opt-in is now recognized (the Countable profile is wired) and asserted here as core's `400`
  * safe-default until a resource opts in via CountableSelfInterface. The null-in-comparison
- * divergence ADR 0003 once deferred is now RESOLVED (core ADR 0116) and asserted directly in
+ * semantics are asserted directly in
  * {@see orderedComparisonAndRangeOverANullableColumnExcludeNullsIdentically}.
  */
 abstract class ReadConformanceTestCase extends Orchestra
@@ -653,10 +653,10 @@ abstract class ReadConformanceTestCase extends Orchestra
 
     // --- explicitly deferred (kept visible, not deleted) ---------------------
 
-    // --- Phase 3a: relationship reads land (formerly deferred, now asserted) -------
+    // --- relationship reads (formerly deferred, now asserted) -------
     //
-    // These four blocks were the Phase-1/2 placeholders for the relationship-read
-    // surface. Phase 3a wires the `albums`/`artist` relations on BOTH providers over the
+    // These four blocks cover the relationship-read
+    // surface. The suite wires the `albums`/`artist` relations on BOTH providers over the
     // SAME object graph (the FK the Eloquent hasMany/belongsTo keys on; the wired POPO
     // properties the witness reads), so the SAME assertion runs against SQL and the
     // witness — a divergence localizes to one provider (the referee premise). The fuller
@@ -777,7 +777,7 @@ abstract class ReadConformanceTestCase extends Orchestra
     #[Group('spec:errors')]
     public function aMalformedFilterValueRendersA400(): void
     {
-        // Phase 2 (always-on validator bridge): a malformed filter value is validated
+        // The always-on validator bridge: a malformed filter value is validated
         // against the filter's declared value constraints BEFORE the provider runs, so it
         // is a clean `400` FILTER_VALUE_INVALID (located by source.parameter) — identical
         // on BOTH providers, never a silent non-match in memory or a driver error on SQL.
@@ -803,16 +803,15 @@ abstract class ReadConformanceTestCase extends Orchestra
     #[Group('spec:fetching-pagination')]
     public function clientDrivenWithCountSelfIsRejectedUntilTheResourceOptsIn(): void
     {
-        // Phase 3a registers core's Countable profile on every Server (ServerFactory), so the
+        // The package registers core's Countable profile on every Server (ServerFactory), so the
         // CLIENT-driven `?withCount=_self_` opt-in IS now recognized once the client
-        // negotiates the profile — the capability the old Phase-1 marker said was unwired is
-        // live (this un-skips it). But `_self_` counts the primary collection ITSELF, which
+        // negotiates the profile. But `_self_` counts the primary collection ITSELF, which
         // core gates on the resource opting in via CountableSelfInterface; the workbench
         // `artists` resource does not, so core's safe default rejects it with a `400`
         // (RELATIONSHIP_COUNT_NOT_ALLOWED) BEFORE the provider runs — identical on both
         // providers. The AUTHOR-side counted total (PagePaginator::withCount()) is fully
         // refereed by the counted `albums` arm; a resource-level `_self_` opt-in is a
-        // Phase-4 surface concern.
+        // surface concern.
         $response = $this->get('/api/artists?withCount=_self_', [
             'Accept' => self::MEDIA_TYPE . ';profile="' . self::COUNTABLE_PROFILE . '"',
         ]);
@@ -826,8 +825,8 @@ abstract class ReadConformanceTestCase extends Orchestra
     #[Group('spec:fetching-filtering')]
     public function orderedComparisonAndRangeOverANullableColumnExcludeNullsIdentically(): void
     {
-        // Core ADR 0116 (an ordered comparison against `null` never matches) resolved the
-        // divergence docs/adr/0003 deferred to core: the in-memory witness now excludes
+        // Core's rule (an ordered comparison against `null` never matches) aligned the
+        // in-memory witness with SQL: it excludes
         // null rows from an ordered `<`/`<=`/`>`/`>=` — and therefore a Range bound —
         // exactly as Eloquent/SQL three-valued logic already did, instead of coercing
         // `null` toward 0. So the `rating` Range over the NULLABLE `average_rating` column
@@ -839,8 +838,8 @@ abstract class ReadConformanceTestCase extends Orchestra
         // A bounded range excludes 1 (9.8): 9.0–9.5 → 2 (9.1), 3 (9.5), 6 (9.0).
         self::assertSame(['2', '3', '6'], $this->sortedIds('/api/albums?filter[rating][min]=9.0&filter[rating][max]=9.5', 'albums'));
         // The crucial null case — a MAX-only bound (a `<=` arm): `null <= 9.0` was the
-        // coercion the OLD in-memory witness matched (the ADR 0003 divergence); under core
-        // ADR 0116 both providers now EXCLUDE the unrated rows (4, 7), keeping only 5 (8.7)
+        // coercion the OLD in-memory witness matched; under core's
+        // rule both providers now EXCLUDE the unrated rows (4, 7), keeping only 5 (8.7)
         // and 6 (9.0) — the null-comparison parity this suite could not prove before.
         self::assertSame(['5', '6'], $this->sortedIds('/api/albums?filter[rating][max]=9.0', 'albums'));
     }
@@ -851,7 +850,7 @@ abstract class ReadConformanceTestCase extends Orchestra
     {
         // The in-memory witness treats a `like`/`starts`/`ends` value literally
         // (stripos), and the Eloquent handler escapes the LIKE wildcards under an
-        // explicit ESCAPE '!' (blueprint R1), so a `%` or `_` in the search term
+        // explicit ESCAPE '!', so a `%` or `_` in the search term
         // matches a LITERAL `%`/`_` on BOTH providers — never every row. No fixture
         // name/title carries one, so both return the empty set; an UNESCAPED LIKE would
         // match every row on Eloquent (a maximal divergence the witness would catch).

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
- * The `tracks` Eloquent model — the far side of the playlist pivot relation (Phase 3b).
+ * The `tracks` Eloquent model — the far side of the playlist pivot relation.
  * A track belongs to many playlists through the shared `playlist_track` join.
  *
  * @property int                             $id

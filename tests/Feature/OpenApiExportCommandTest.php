@@ -9,7 +9,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * Tests the artisan export commands (PLAN decision 11): `jsonapi:openapi:export` and
+ * Tests the artisan export commands: `jsonapi:openapi:export` and
  * `jsonapi:jsonschema:export`. They are always available (independent of the HTTP expose
  * gate), so CI can spec-diff / publish with no web exposure.
  *

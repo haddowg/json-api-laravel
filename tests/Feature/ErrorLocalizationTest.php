@@ -14,7 +14,7 @@ use Workbench\App\Providers\ValidationInMemoryServiceProvider;
 
 /**
  * End-to-end witness that the package localizes core's error catalogue through the
- * Laravel translator (ADR 0023). Under a non-default app locale (`fr`) with
+ * Laravel translator. Under a non-default app locale (`fr`) with
  * `jsonapi-errors` lines, real HTTP requests render French error documents:
  *
  *  - a `404` localizes its `title` while its parameter-free `detail` falls back to

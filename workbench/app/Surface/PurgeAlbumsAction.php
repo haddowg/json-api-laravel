@@ -12,7 +12,7 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
 
 /**
- * A custom, **collection-scope** action `POST /albums/-actions/purge` (PLAN decision 12):
+ * A custom, **collection-scope** action `POST /albums/-actions/purge`:
  * it hangs off the `albums` collection with no `{id}`, so the invoker resolves no entity
  * and the declared `purge` ability is authorized against the resource-class token — not a
  * loaded instance. It exists to prove a collection-scope action's ability gate is

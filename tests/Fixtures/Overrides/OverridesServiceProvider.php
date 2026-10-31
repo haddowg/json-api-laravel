@@ -10,7 +10,7 @@ use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
 
 /**
- * Wires the serializer/hydrator-override fixture (ADR 0014): binds the scalar
+ * Wires the serializer/hydrator-override fixture: binds the scalar
  * constructor arguments the two override classes require (contextual bindings — the
  * DI-resolution proof), registers {@see NoteResource} (serializer override) and
  * {@see MemoResource} (hydrator override) explicitly, and seeds each type's in-memory

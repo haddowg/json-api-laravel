@@ -6,9 +6,7 @@ first-`supports()` match in descending priority order. The [Eloquent layer](eloq
 the reference implementation (auto-registered at `-256` from the
 [model-map tiers](eloquent.md#the-model-map-three-tiers), or hand-wired at `-128`); register
 your own at a higher priority to
-serve a type from anything — an external API, a fixed list, `symfony/intl`, a legacy store
-(bundle ADR 0002, ported here as
-[ADR 0002](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0002-port-the-provider-persister-spi.md)).
+serve a type from anything — an external API, a fixed list, `symfony/intl`, a legacy store.
 
 ## The read interface
 
@@ -21,7 +19,7 @@ interface DataProviderInterface
 
     // Relationship reads (defaulted in AbstractDataProvider — override only what you need):
     public function fetchRelatedCollection(/* … */): CollectionResult;
-    public function fetchRelatedCollectionBatch(/* … */): array;   // ?include batching
+    public function fetchRelatedCollectionBatch(/* … */): RelatedBatch; // ?include batching
     public function countRelated(/* … */): array;                  // ?withCount
     public function relatedToOneMatches(/* … */): bool;
     public function relatedToOneMatchesBatch(/* … */): array;
@@ -32,7 +30,7 @@ interface DataProviderInterface
 `fetchCollection()` receives a `CollectionCriteria` (the parsed filters, sorts, pagination
 window) and returns a `CollectionResult` (the page of objects + total/`hasMore`). The
 relationship seams power `?include` batching, `?withCount`, relationship-existence checks, and
-pivots — the batcher orchestrates them provider-agnostically ([ADR 0005](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0005-include-batching-orchestrates-via-the-spi-not-eloquent-with.md)).
+pivots — the batcher orchestrates them provider-agnostically.
 
 A provider that can filter and sort a `belongsToMany` on its join columns also implements
 `QueriesPivotColumnsInterface`. Its `fetchRelatedCollection()` then receives the relation's
@@ -84,8 +82,7 @@ The batcher never writes what it loads onto a parent object. An Eloquent model t
 batched value as its loaded relation, exactly as its own lazy load would. Any other object is
 left as it is, and the batched value renders from the request's own linkage. A filter in
 `relatedQuery` that excludes a to-one target works the same way, so a record your provider
-shares between requests is never changed by a read
-([ADR 0069](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0069-a-batched-read-never-writes-onto-the-parent.md)).
+shares between requests is never changed by a read.
 
 ## The in-memory provider
 
@@ -162,8 +159,7 @@ candidate set: when the related type has its own provider, the members load thro
 provider's `fetchRelatedCollection()`, which narrows them before any filter, sort or page, so
 linkage, `included`, both endpoints, `?withCount` and the window all show the same rows. On an
 Eloquent type the closure's own queries already run through the model's global scopes, so a
-closure that calls `withoutGlobalScopes()` gets exactly the rows it asked for
-([ADR 0050](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0050-a-computed-relation-is-scoped-by-the-related-types-provider.md)).
+closure that calls `withoutGlobalScopes()` gets exactly the rows it asked for.
 
 A to-one target of such a type is read off the parent and kept only while the provider's
 `fetchOne()` still returns it. Otherwise the relation renders as empty everywhere: linkage,
@@ -176,8 +172,7 @@ member type with its own scoping provider, the candidate ids of every parent are
 one read through that provider, before any page is cut or count taken. Members of other types
 are kept as loaded. Linkage, `included`, both endpoints and `?withCount` all show the narrowed
 members. A provider that implements `FetchesManyInterface` answers that read with
-`fetchMany($type, $ids)`; one that doesn't is asked `fetchOne()` once per id. See
-[ADR 0051](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0051-a-polymorphic-to-many-is-narrowed-per-member-type.md).
+`fetchMany($type, $ids)`; one that doesn't is asked `fetchOne()` once per id.
 
 Writes go through the same provider. A persister looks related ids up in its own storage, so
 before it applies a relationship write, each id the client names for such a type must come back
@@ -188,8 +183,7 @@ no row behind it, so a client can't tell the two apart. This covers create and u
 operation in an atomic batch, where the `404` rolls the whole batch back.
 A to-many replace changes only the members the client can see: the persister is handed the
 hidden current members as well, so they stay attached with their pivot rows untouched. The
-response to a relationship write lists the members the relationship endpoint would. See
-[ADR 0034](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0034-a-relationship-write-resolves-related-ids-through-the-related-types-scope.md).
+response to a relationship write lists the members the relationship endpoint would.
 
 ## Custom filters and sorts
 

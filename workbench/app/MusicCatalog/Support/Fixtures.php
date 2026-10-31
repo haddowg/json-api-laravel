@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Workbench\App\MusicCatalog\Support;
 
 /**
- * The canonical music-catalog seed data (decision 14), shared by BOTH the Eloquent
+ * The canonical music-catalog seed data, shared by BOTH the Eloquent
  * ({@see \Workbench\App\MusicCatalog\Providers\MusicCatalogEloquentServiceProvider}) and the
  * in-memory ({@see \Workbench\App\MusicCatalog\Providers\MusicCatalogInMemoryServiceProvider})
  * wirings so the two suites read identical rows/ids — the dual-provider conformance premise.
