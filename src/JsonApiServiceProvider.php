@@ -308,7 +308,7 @@ final class JsonApiServiceProvider extends ServiceProvider
      * cache + deprecation/sunset config projected off the discovered
      * {@see \haddowg\JsonApiLaravel\Discovery\ResourceDescriptor}s (a discovery-time
      * projection, like the Authorizer config), layered over each server's own
-     * `jsonapi.servers.<name>.defaults` and then the global `jsonapi.defaults.*` (ADR 0053). The {@see \haddowg\JsonApiLaravel\Http\ResponseHeadersMiddleware}
+     * `jsonapi.servers.<name>.defaults` and then the global `jsonapi.defaults.*` (ADR 0073). The {@see \haddowg\JsonApiLaravel\Http\ResponseHeadersMiddleware}
      * queries it per request.
      */
     private function registerResponseHeaders(): void

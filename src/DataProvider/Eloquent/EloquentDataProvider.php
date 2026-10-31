@@ -1120,7 +1120,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     /**
      * A pivot field's value off the pivot model. A date field's column the pivot model
      * doesn't cast comes back as the stored string, so it is cast the way a `datetime`
-     * cast would read it, and renders in the field's format like any other date (ADR 0036).
+     * cast would read it, and renders in the field's format like any other date (ADR 0072).
      */
     private function pivotValue(Model $pivot, FieldInterface $field): mixed
     {

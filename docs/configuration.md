@@ -291,7 +291,7 @@ its own `sunset` keeps it, and still inherits the server's `sunset_link` unless 
 The `default` server takes a block too, since it is configured under `servers` like any
 other. A server block fails the boot on the same bad values as the global one. The OpenAPI
 document describes none of these headers on any server, so a server block doesn't change
-it. See [ADR 0053](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0053-a-server-may-declare-its-own-response-header-defaults.md).
+it. See [ADR 0073](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0073-a-server-may-declare-its-own-response-header-defaults.md).
 
 ### Prefixes and the base
 

@@ -57,7 +57,7 @@ final class TypeMetadataResolver
      * unless `withUriFieldName()` set another). When no relation is served under it, the
      * segment is tried as a relation name, so a client still calling a renamed relation's
      * old URL keeps working; the links and the OpenAPI document only name the URI field
-     * name (ADR 0035).
+     * name (ADR 0071).
      */
     public function relationAtUriSegment(Server $server, string $type, string $segment): ?RelationInterface
     {

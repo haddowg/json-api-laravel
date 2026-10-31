@@ -19,7 +19,7 @@ use haddowg\JsonApiLaravel\Server\ServerRegistry;
  * global defaults arrive as the same scalar shape from config.
  *
  * Resolution layers the resource-level value over the server's own
- * `jsonapi.servers.<name>.defaults` (ADR 0053) over the global default, field by field,
+ * `jsonapi.servers.<name>.defaults` (ADR 0073) over the global default, field by field,
  * then a per-operation cache override over that, so a type tunes only what it declares and
  * a server replaces only the global values it sets. Each server reads only what its own
  * resource class declares for a type, so a server whose class declares nothing gets the

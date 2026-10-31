@@ -1364,7 +1364,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      *
      * A pivot value the provider returns as a `\DateTimeInterface` renders through its
      * `DateTime`, `Date` or `Time` field, in the field's format and, for a `DateTime`, in
-     * the field's own `outputTimezone()` or else the server's (ADR 0036). Every other value
+     * the field's own `outputTimezone()` or else the server's (ADR 0072). Every other value
      * renders as the provider returned it.
      *
      * @param list<object>|null $members

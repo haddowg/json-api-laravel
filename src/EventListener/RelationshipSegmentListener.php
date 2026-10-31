@@ -17,7 +17,7 @@ use Illuminate\Routing\Events\RouteMatched;
  * the controller) sees the name a relation is declared under.
  *
  * The segment is the relation's URI field name, or its name for a client still on the
- * old URL (ADR 0035). A segment no relation answers to is left as it is, and the handler
+ * old URL (ADR 0071). A segment no relation answers to is left as it is, and the handler
  * answers `404` for it as before.
  */
 final class RelationshipSegmentListener

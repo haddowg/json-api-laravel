@@ -9,7 +9,7 @@ operation, the package dispatches **real Laravel events**, so
 Core reads the query parameters as the client sent them, re-parsed from the raw query string.
 Laravel's `TrimStrings` and `ConvertEmptyStringsToNull` middleware still run, but their rewrite
 of the query bag doesn't reach a JSON:API route, so `fields[artists]=` stays an empty fieldset and
-`filter[name]=%20Radio` keeps its leading space ([ADR 0030](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0030-json-api-query-parameters-bypass-input-middleware.md)).
+`filter[name]=%20Radio` keeps its leading space ([ADR 0070](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0070-json-api-query-parameters-bypass-input-middleware.md)).
 
 The same goes for the request body. Core decodes a JSON:API document from the raw content, not
 from the input bag the middleware rewrote, so `"title": "  Spaced  "` is stored with its spaces

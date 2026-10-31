@@ -7,7 +7,7 @@ copied that bag in as the parsed body, so every write in a default app reached c
 validation with "The status field must have a value." The Symfony bundle stores both as sent.
 The PSR request the controller and the exception renderer hand to core now carries a fresh
 `json_decode()` of `$request->getContent()` as its parsed body whenever Laravel treats the body
-as JSON (`Http\WireBody`). This is the same reasoning as ADR 0030: a JSON:API document is a
+as JSON (`Http\WireBody`). This is the same reasoning as ADR 0070: a JSON:API document is a
 wire format core decodes and validates itself, and an empty string or a padded one is a value
 the client chose.
 
