@@ -37,6 +37,11 @@ POST   /api/albums/1/relationships/tracks      # add to a to-many
 DELETE /api/albums/1/relationships/tracks      # remove from a to-many
 ```
 
+A relationship write applies the change inside the persister's transaction and, before it
+commits, validates the changed parent against its
+[entity-level constraints](validation.md#after-a-relationship-write). A violation is a `422`
+that rolls the change back.
+
 ## The related endpoint's target must be registered on the server
 
 `GET /api/albums/1/artist` returns an `artists` resource object as primary data, so the

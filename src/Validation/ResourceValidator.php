@@ -564,7 +564,10 @@ final class ResourceValidator
      * The post-hydration entity pass: validates the hydrated entity against the
      * resource's custom {@see EntityConstraintInterface} constraints (rules that need the
      * persisted object, not the request document). The write handler calls this after
-     * hydration and before commit; it is a no-op for a resource that declares none.
+     * hydration, and after a relationship endpoint applies its change, in the update context
+     * and before commit; it is a no-op for a resource that declares none. A violation on a
+     * relation's constraint points at `/data/relationships/<name>`, any other at the
+     * attribute.
      *
      * The built-in {@see UniqueEntity} is deliberately excluded — it is folded
      * into a pre-hydration `Rule::unique` in {@see validate()} — so this seam serves
@@ -593,7 +596,9 @@ final class ResourceValidator
                 $name = $field->name();
                 $bag = $this->validatorFactory->make([$name => $entity], [$name => $rules])->errors();
                 foreach ($bag->get($name) as $message) {
-                    $errors[] = $this->error(\is_string($message) ? $message : '', $name);
+                    $errors[] = $field instanceof RelationInterface
+                        ? $this->relationshipError(\is_string($message) ? $message : '', $name)
+                        : $this->error(\is_string($message) ? $message : '', $name);
                 }
             }
         }
@@ -1060,6 +1065,17 @@ final class ResourceValidator
         }
 
         return null;
+    }
+
+    private function relationshipError(string $detail, string $relation): Error
+    {
+        return new Error(
+            status: '422',
+            code: 'VALIDATION_FAILED',
+            title: 'Unprocessable Entity',
+            detail: $detail,
+            source: ErrorSource::fromPointer($this->pointers->forRelationship($relation)),
+        );
     }
 
     private function error(string $detail, string $key): Error

@@ -135,6 +135,44 @@ For a check that needs the assembled entity (or that must run after hydration), 
 post-hydration seam still exists — the Laravel twin of the bundle's `EntityConstraintInterface`.
 Use it for domain invariants that a field-level rule cannot express.
 
+Implement `EntityConstraintInterface` on a constraint value object, attach it to a field
+with `constrain()`, and register a translator whose rule receives the hydrated entity as its
+value. A violation of a constraint on an attribute points at `/data/attributes/<name>`, one
+on a relation at `/data/relationships/<name>`:
+
+```php
+// IntegrationUserResource::fields()
+BelongsToMany::make('companies', 'companies')->constrain(new AtLeastOneCompany()),
+
+// the translator's rule
+public function validate(string $attribute, mixed $value, \Closure $fail): void
+{
+    if ($value instanceof IntegrationUser && $value->companies()->count() === 0) {
+        $fail('An integration user needs at least one company.');
+    }
+}
+```
+
+### After a relationship write
+
+The relationship endpoints run the entity pass too. A `PATCH`, `POST` or `DELETE` on
+`/{type}/{id}/relationships/{name}`, and an atomic `add`, `update` or `remove` whose `ref`
+names a relationship, applies the change inside the persister's transaction and then
+validates the changed entity, in the update context, before it commits. A violation is a
+`422` with the same pointer an update would give, and nothing is saved. Removing the last
+company above is a `422` at `/data/relationships/companies`, and the company stays. Inside
+an atomic batch the pointer gains the operation's prefix, such as
+`/atomic:operations/2/data/relationships/companies`, and the whole batch rolls back.
+
+Read the relation's current state through the query builder, `$value->companies()`, or the
+in-memory object's property. A relation loaded on the model before the write can be stale.
+
+Only the entity pass runs. The attribute rules are not checked again, so a stored value
+that a newer attribute rule would refuse doesn't block a relationship write. `UniqueEntity`
+is a pre-hydration rule, so it doesn't run here either, and a constraint limited to create
+doesn't run. A resource whose stored data already breaks one of its entity-level
+constraints gets that `422` on every relationship write until the data is fixed.
+
 ## Filter-value validation
 
 Filter values are validated too: a `filter[releasedAt][min]=banana` is a clean `400`, not a

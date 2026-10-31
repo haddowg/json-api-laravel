@@ -1822,7 +1822,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
      *  7. {@see gateMutate()} — the policy gate: the parent's `update`
      *     policy, or the relation's `securityMutate` ability override;
      *  8. apply through the persister's storage-owning relationship seam inside a transaction,
-     *     run the policy gate again on the changed parent before it commits, and
+     *     validate the changed parent against its entity-level constraints and run the
+     *     policy gate again on it before it commits, and
      *     render the resulting linkage ({@see IdentifierResponse::forRelationship()},
      *     `200` — the spec allows `200`/`204`; the bundle returns `200`, matched here).
      *
@@ -1904,13 +1905,18 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // hook which may replace the linkage response (post-commit).
         $this->dispatch(new BeforeRelationshipMutateEvent($type, $request, $parent, $relation, $linkage, $mode, $this->serverName($request)));
 
-        // The mutation gate runs again on the parent as changed, before the change commits, so a
-        // caller can't leave the parent in a state they couldn't update.
+        // The changed parent must still pass its entity-level constraints, and the mutation gate
+        // runs again on it, before the change commits, so a caller can't leave the parent in a
+        // state that is invalid or that they couldn't update. Either failure rolls it back.
         $persister = $this->persisters->forType($type);
-        $parent = $this->writeTransactionally($persister, function () use ($persister, $type, $parent, $relation, $applied, $mode, $serverName): object {
+        $resource = $server->hasResourceFor($type) ? $server->resourceFor($type) : null;
+        $parent = $this->writeTransactionally($persister, function () use ($persister, $type, $parent, $relation, $applied, $mode, $serverName, $resource): object {
             $changed = RelationFillHook::declaredBy($relation)
                 ? $persister->update($type, RelationFillHook::apply($relation, $parent, $applied, $mode))
                 : $persister->mutateRelationship($type, $parent, $relation, $applied, $mode);
+            if ($resource !== null) {
+                $this->validator->validateEntity($resource, $changed, false);
+            }
             $this->gateMutate($type, $changed, $relation, $serverName);
 
             return $changed;
