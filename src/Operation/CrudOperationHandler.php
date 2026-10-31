@@ -16,6 +16,7 @@ use haddowg\JsonApi\Exception\RelationshipNotExists;
 use haddowg\JsonApi\Exception\RelationshipTypeInappropriate;
 use haddowg\JsonApi\Exception\RemovalProhibited;
 use haddowg\JsonApi\Exception\ResourceNotFound;
+use haddowg\JsonApi\Exception\SortingUnsupported;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\Operation\AddToRelationshipOperation;
@@ -80,6 +81,7 @@ use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphMembers;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphTargets;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
@@ -649,13 +651,29 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // A relation over several types reaching a scoped type is read off the parent and
             // narrowed per member type before the page is cut, so the page stays full.
             // Over one type, that type's own provider reads it in one query.
-            $result = \count($relatedTypes) > 1 && $this->providers->relatesToScopedType($type, $relation)
-                ? $this->polymorphicMembers()->window($criteria, $this->narrowedMembers($server, $type, $parent, $relation, $request))
-                : $relatedProvider->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
+            // A MorphToMany declared with identifiedBy() pages its stored pairs, narrowed by each
+            // scoped type, and loads only the page's rows. Each row renders as its pair's type,
+            // which a class serving several types can't report.
+            $identifiedTypes = null;
+            if (IdentifiedMorphMembers::identifies($relation)) {
+                $refused = $this->refusePolymorphicQuery($operation->queryParameters());
+                if ($refused !== null) {
+                    return $refused;
+                }
 
-            $serializer = $polymorphic
-                ? $this->polymorphicSerializer($relation, $server)
-                : $server->serializerFor($relatedType);
+                $identifiedTypes = [];
+                $result = $this->relationshipLinkage->members()->page($server, $parent, $relation, $criteria, $request, $identifiedTypes);
+            } else {
+                $result = \count($relatedTypes) > 1 && $this->providers->relatesToScopedType($type, $relation)
+                    ? $this->polymorphicMembers()->window($criteria, $this->narrowedMembers($server, $type, $parent, $relation, $request))
+                    : $relatedProvider->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
+            }
+
+            $serializer = match (true) {
+                $identifiedTypes !== null => $this->identifiedSerializer($relation, $server, $identifiedTypes),
+                $polymorphic => $this->polymorphicSerializer($relation, $server),
+                default => $server->serializerFor($relatedType),
+            };
 
             $items = $this->materialize($result);
 
@@ -680,7 +698,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $this->applyRelationshipWindows($server, $relatedType, $items, $request);
                 $this->applyRelationshipCounts($server, $relatedType, $items, $request);
             } else {
-                $this->preloadPolymorphicIncludes($server, $relation, $items, $request);
+                $this->preloadPolymorphicIncludes($server, $relation, $items, $request, $identifiedTypes ?? []);
             }
 
             // A cursor (keyset) related page: the provider minted the boundary tokens
@@ -882,6 +900,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // sort/page/count, and a polymorphic to-many has no single related provider or
             // shared sort/filter vocabulary. See ADR 0006.
             return $this->rejectRelationshipEndpointQuery($operation->queryParameters(), $request);
+        } elseif (IdentifiedMorphMembers::identifies($relation)) {
+            // The whole association renders from the stored pairs, each scoped type admitted
+            // through the linkage seam.
         } elseif ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation)) {
             // The whole association, but loaded through the related type's own scoping provider
             // rather than read off the parent, so it lists exactly what the related endpoint does.
@@ -1133,14 +1154,16 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * preloaded as their own page, and every type's scoped linkage is kept.
      *
      * @param list<object> $items
+     * @param array<int, string> $types the type a member renders as, keyed by object id, when its
+     *                                  object can't say
      */
-    private function preloadPolymorphicIncludes(Server $server, RelationInterface $relation, array $items, JsonApiRequestInterface $request): void
+    private function preloadPolymorphicIncludes(Server $server, RelationInterface $relation, array $items, JsonApiRequestInterface $request, array $types = []): void
     {
         $this->relationshipLinkage->resetScope();
 
         $byType = [];
         foreach ($items as $item) {
-            $memberType = $relation->resolveSerializer($item, $server)?->getType($item);
+            $memberType = $types[\spl_object_id($item)] ?? $relation->resolveSerializer($item, $server)?->getType($item);
             if ($memberType !== null && $this->providers->supportsType($memberType)) {
                 $byType[$memberType][] = $item;
             }
@@ -1295,6 +1318,38 @@ final class CrudOperationHandler implements OperationHandlerInterface
         foreach ($relation->relatedTypes() as $relatedType) {
             $this->viewableRows->authorizeList($relatedType);
         }
+    }
+
+    /**
+     * A {@see PolymorphicSerializer} for the related page of a `MorphToMany` declared with
+     * `identifiedBy()`: each row renders with the serializer of the type its pair named.
+     *
+     * @param array<int, string> $types each row's type, keyed by object id
+     */
+    private function identifiedSerializer(RelationInterface $relation, Server $server, array $types): PolymorphicSerializer
+    {
+        return new PolymorphicSerializer(
+            static fn(mixed $object): SerializerInterface => \is_object($object) && isset($types[\spl_object_id($object)])
+                ? $server->serializerFor($types[\spl_object_id($object)])
+                : throw new \LogicException(\sprintf('No stored pair of the "%s" relationship names a related object.', $relation->name())),
+        );
+    }
+
+    /**
+     * A polymorphic to-many's members share no filter or sort vocabulary, so a requested
+     * `filter` or `sort` on its related endpoint is a `400`.
+     */
+    private function refusePolymorphicQuery(QueryParameters $queryParameters): ?ErrorResponse
+    {
+        if ($queryParameters->filter !== []) {
+            return ErrorResponse::fromException(new FilterParamUnrecognized((string) \array_key_first($queryParameters->filter)));
+        }
+
+        if ($queryParameters->sort !== []) {
+            return ErrorResponse::fromException(new SortingUnsupported());
+        }
+
+        return null;
     }
 
     /**
@@ -2158,7 +2213,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         JsonApiRequestInterface $request,
         bool $creating = false,
     ): ToOneRelationship|ToManyRelationship {
-        $this->scopedWrites ??= new ScopedRelationshipWrites($this->providers);
+        $this->scopedWrites ??= new ScopedRelationshipWrites($this->providers, $this->relationshipLinkage->members());
         $this->scopedWrites->assertVisible($relation, $linkage);
 
         if ($creating || $mode !== Mode::Replace || !$linkage instanceof ToManyRelationship) {

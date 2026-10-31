@@ -174,6 +174,12 @@ are kept as loaded. Linkage, `included`, both endpoints and `?withCount` all sho
 members. A provider that implements `FetchesManyInterface` answers that read with
 `fetchMany($type, $ids)`; one that doesn't is asked `fetchOne()` once per id.
 
+A `MorphToMany` declared with `identifiedBy()` only needs to know which of a parent's stored ids
+your provider serves before it cuts a page or takes a count. A provider that can answer that
+without loading the rows implements `AdmitsIdsInterface`, whose `admitIds($type, $ids)` returns
+the wire ids it serves. Without it the ids are looked up through `fetchMany()`, or `fetchOne()`
+once per id.
+
 Writes go through the same provider. A persister looks related ids up in its own storage, so
 before it applies a relationship write, each id the client names for such a type must come back
 from the provider's `fetchOne()`. One that doesn't is a `404`, the same response as an id with
