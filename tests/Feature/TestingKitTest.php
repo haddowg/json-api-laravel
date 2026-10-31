@@ -11,7 +11,7 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * End-to-end coverage of the testing kit (PLAN decision 12) over the real in-memory
+ * End-to-end coverage of the testing kit over the real in-memory
  * workbench kernel: the {@see InteractsWithJsonApi} request builder assembles correct
  * JSON:API requests (media-type negotiation, document + query + header sugar) and the
  * {@see \haddowg\JsonApiLaravel\Testing\JsonApiAssertions} macros assert real responses

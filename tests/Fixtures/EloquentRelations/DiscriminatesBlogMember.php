@@ -11,7 +11,7 @@ namespace haddowg\JsonApiLaravel\Tests\Fixtures\EloquentRelations;
  * `authors` for an {@see Author} model and `tags` for a {@see Tag} model — decoupled from
  * the storage-side morph alias (`blog_author`/`blog_tag`), which the provider uses only to
  * resolve the model class when loading a {@see \Illuminate\Database\Eloquent\Relations\MorphTo}
- * (the phase-3a morph-mapping design, blueprint §3g).
+ * (the morph-mapping design).
  */
 trait DiscriminatesBlogMember
 {

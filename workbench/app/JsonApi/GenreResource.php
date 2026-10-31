@@ -10,7 +10,7 @@ use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
 /**
- * The `genres` resource type — a **natural string-key** id (`trip-hop`). Phase 2 makes it
+ * The `genres` resource type — a **natural string-key** id (`trip-hop`). It is
  * writable on both providers with the **client-generated-id** strategy: because a genre's
  * id is its own natural key (no server sequence to fall back on), the `Id` field
  * `requireClientId()`s a `data.id` on create — so a `POST /genres` with an id round-trips

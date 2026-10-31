@@ -10,10 +10,10 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * Document-shape tests for the projected OpenAPI 3.1 document (PLAN decision 11): the
+ * Document-shape tests for the projected OpenAPI 3.1 document: the
  * {@see DocumentFactory} composes the package {@see \haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource}
  * with core's pure projector, so these assertions pin that the metadata source feeds the
- * projector the right facts — the same facts the Symfony bundle feeds, which Phase 5
+ * projector the right facts — the same facts the Symfony bundle feeds, which the byte-compat check
  * diffs byte-for-byte. They exercise the two new core seams transparently: a constraint
  * self-describing its JSON Schema (`ProvidesJsonSchema`) and a filter describing its own
  * query parameter (`DescribesQueryParameter`).

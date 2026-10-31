@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * The reference Eloquent load-state predicate — the storage twin of the bundle's
- * `DoctrineRelationshipLoadState` (PLAN decision 8). It answers, **without triggering a
+ * `DoctrineRelationshipLoadState`. It answers, **without triggering a
  * load**, whether a relation's linkage is already in memory for a model, so a lazy
  * relation ({@see RelationInterface::emitsDataOnlyWhenLoaded()} — the per-type default:
  * a to-many, or a `HasOne`) can render links-only rather than force a lazy round-trip
@@ -20,7 +20,7 @@ use Illuminate\Database\Eloquent\Model;
  * relation has been {@see Model::setRelation()} onto the model (an eager load, or the
  * include batcher's write-back). This is why the include batcher's `setRelation`
  * write-back makes the load-state seam report loaded: the two are the same mechanism read
- * from both ends (blueprint §3e). It answers honestly for **every** cardinality — core
+ * from both ends. It answers honestly for **every** cardinality — core
  * consults it only for a lazy relation (BelongsTo/MorphTo are eager and never asked), so a
  * uniform `relationLoaded()` is both correct and simpler than the Doctrine impl's
  * "to-one always loaded" special-case: an owner-side FK is already on the model, so its

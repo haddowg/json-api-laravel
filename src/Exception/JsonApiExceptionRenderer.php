@@ -34,8 +34,8 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 
 /**
- * The route-scoped renderable that owns every error on a JSON:API route (PLAN
- * decision 5) — the Laravel translation of the Symfony bundle's `ExceptionListener`.
+ * The route-scoped renderable that owns every error on a JSON:API route
+ * — the Laravel translation of the Symfony bundle's `ExceptionListener`.
  * Registered on Laravel's exception handler; it acts only when the matched route
  * carries the {@see JsonApiRoute::MARKER} default, so it never hijacks a non-JSON:API
  * route's error response.

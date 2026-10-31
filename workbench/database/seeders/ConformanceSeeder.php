@@ -18,7 +18,7 @@ use Workbench\App\Support\ConformanceFixtures;
  * SAME rows the in-memory {@see \Workbench\App\Providers\ConformanceInMemoryServiceProvider}
  * carries, so the Eloquent half of the read-conformance suite reads identical data.
  *
- * Distinct from the Phase-0 {@see MusicCatalogSeeder} (the minimal 2-row set the
+ * Distinct from the {@see MusicCatalogSeeder} (the minimal 2-row set the
  * feature suite asserts against), so the conformance dataset never perturbs the
  * existing tests.
  */

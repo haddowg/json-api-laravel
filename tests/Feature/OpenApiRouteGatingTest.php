@@ -10,7 +10,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * Route-gating tests for the OpenAPI documentation endpoints (PLAN decision 11): the
+ * Route-gating tests for the OpenAPI documentation endpoints: the
  * `/docs.json`, `/schemas.json` and `/docs` routes are registered only when `app.debug`
  * is true OR `jsonapi.openapi.expose_in_prod` is true, and each sub-route respects its own
  * `enabled` toggle. Registration happens at boot from config alone, so each scenario boots

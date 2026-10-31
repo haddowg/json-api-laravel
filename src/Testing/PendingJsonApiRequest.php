@@ -38,8 +38,8 @@ use Illuminate\Testing\TestResponse;
  *     ->patch('/api/albums/1/relationships/artist');
  * ```
  *
- * The builder never handles authentication: `actingAs()` is native Laravel (PLAN
- * decision 12) — call `$this->actingAs($user)` on the test case before issuing the
+ * The builder never handles authentication: `actingAs()` is native Laravel
+ * — call `$this->actingAs($user)` on the test case before issuing the
  * request.
  *
  * @phpstan-type JsonApiTestResponse \Illuminate\Testing\TestResponse<\Symfony\Component\HttpFoundation\Response>

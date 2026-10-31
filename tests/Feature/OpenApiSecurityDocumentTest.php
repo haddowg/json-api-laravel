@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Test;
 use Workbench\App\Providers\SecurityInMemoryServiceProvider;
 
 /**
- * Pins the security projection (PLAN decisions 7 + 11): the package projects
+ * Pins the security projection: the package projects
  * `securedOperations` / `publicOperations` from the per-operation ability config on
  * `#[AsJsonApiResource]` — the Laravel translation of the bundle's Symfony
  * security-expression projection. The *document* must carry the same security/401 shape:
@@ -120,7 +120,7 @@ final class OpenApiSecurityDocumentTest extends Orchestra
         // update carries NO per-operation ability, but the albums type declares a dedicated
         // `policy: AlbumApiPolicy::class`, so every exposed operation (minus the `false`
         // delete) is enforced at runtime — the document must mark it secured, not project it
-        // as unsecured (the Phase-2 policy idiom, and a Phase-5 byte-compat risk).
+        // as unsecured (the primary policy idiom, and a byte-compat risk).
         $patch = $this->arrayAt($this->secureDocument(), 'paths', '/albums/{id}', 'patch');
 
         $this->assertArrayHasKey('security', $patch);

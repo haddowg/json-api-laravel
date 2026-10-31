@@ -16,7 +16,7 @@ use Workbench\App\Models\User;
 use Workbench\App\Providers\SurfaceInMemoryServiceProvider;
 
 /**
- * The custom-action surface (PLAN decision 12): `POST /albums/{id}/-actions/publish`, a
+ * The custom-action surface: `POST /albums/{id}/-actions/publish`, a
  * resource-scope, Document-input action gated by the `publish` Gate ability and exposed as
  * an ability-aware `links` member (`asLink`). Driven end-to-end over HTTP on the in-memory
  * surface wiring — the action subsystem (routing, input parsing, entity resolution,
@@ -231,7 +231,7 @@ final class CustomActionTest extends Orchestra
      * POST an action document through the shipped {@see InteractsWithJsonApi} kit (which
      * negotiates the JSON:API media type). The `$this->actingAs()` set on the test case
      * before this call is honoured — the kit dispatches through the same native test
-     * client, so authentication composes natively (PLAN decision 12).
+     * client, so authentication composes natively.
      *
      * @param array<string, mixed> $document
      *

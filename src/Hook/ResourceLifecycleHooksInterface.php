@@ -48,7 +48,7 @@ use haddowg\JsonApi\Response\NoContentResponse;
  * `$creating` distinguishes which — so a concern that applies to every write (audit,
  * timestamps) lives in one place.
  *
- * **The division from Eloquent model events (PLAN decisions 10/12).** These hooks
+ * **The division from Eloquent model events.** These hooks
  * (and the events behind them) are the *JSON:API* lifecycle: they fire only on an
  * API-driven write, carry the operation context (request, server, relation/linkage),
  * and — under an Atomic Operations batch — defer their After* half to post-commit.

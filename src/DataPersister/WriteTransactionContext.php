@@ -8,7 +8,7 @@ namespace haddowg\JsonApiLaravel\DataPersister;
  * The per-request flag + post-commit-hook queue the Atomic Operations executor drives so
  * the lifecycle hooks of a batched write run AFTER the batch commits, not inline with each
  * operation — the Laravel twin of the bundle's `DataPersister\WriteTransactionContext`, and
- * the deferral seam PLAN decision 12 prescribes.
+ * the deferral seam for post-commit hooks.
  *
  * On the **single-operation** write path this context stays {@see isActive() inactive}: the
  * {@see \haddowg\JsonApiLaravel\Operation\CrudOperationHandler} fires each After* lifecycle

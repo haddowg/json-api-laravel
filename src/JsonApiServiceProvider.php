@@ -209,8 +209,8 @@ final class JsonApiServiceProvider extends ServiceProvider
             /** @var string $atomicPath */
             $atomicPath = config('jsonapi.atomic_operations.path', '/operations');
 
-            // Resolves a resource class to its Id field's declared route pattern (PLAN
-            // decision 4): the resource is constructed via the container (the same lazy
+            // Resolves a resource class to its Id field's declared route pattern:
+            // the resource is constructed via the container (the same lazy
             // resolver core uses) purely to read `fields()` — never the full Server, so route
             // registration stays cheap. Resilient: any construction failure degrades to the
             // single-segment default rather than breaking routing.
@@ -237,7 +237,7 @@ final class JsonApiServiceProvider extends ServiceProvider
     }
 
     /**
-     * Binds the custom-actions subsystem (PLAN decision 12): the {@see ActionRegistry}
+     * Binds the custom-actions subsystem: the {@see ActionRegistry}
      * (descriptors from the cacheable discovery snapshot + a container handler-resolver +
      * the tag resolver), aliased to the {@see ActionMetadataProviderInterface} the OpenAPI
      * {@see MetadataSource} reads a type's actions through, and the {@see ActionInvoker} the
@@ -281,7 +281,7 @@ final class JsonApiServiceProvider extends ServiceProvider
     }
 
     /**
-     * Binds the Atomic Operations collaborators (PLAN decision 12).
+     * Binds the Atomic Operations collaborators.
      *
      * The deferred-hook {@see WriteTransactionContext} is a **singleton**: its only consumer,
      * the singleton {@see CrudOperationHandler}, captures it at first construction, so a
@@ -304,7 +304,7 @@ final class JsonApiServiceProvider extends ServiceProvider
     }
 
     /**
-     * Binds the response-header registry (PLAN decision 12): the per-type declarative
+     * Binds the response-header registry: the per-type declarative
      * cache + deprecation/sunset config projected off the discovered
      * {@see \haddowg\JsonApiLaravel\Discovery\ResourceDescriptor}s (a discovery-time
      * projection, like the Authorizer config), layered over each server's own
@@ -359,8 +359,8 @@ final class JsonApiServiceProvider extends ServiceProvider
         // Skip auto-registration (and the discovery scan behind it) when the app is
         // serving from a compiled route cache — Laravel's own `loadRoutesFrom()` guards
         // registration the same way. Without this, every `route:cache`d request would
-        // re-run discovery and re-add every route into the runtime collection (PLAN
-        // decision 4: registration is route:cache-safe). Discovery stays lazy, so the
+        // re-run discovery and re-add every route into the runtime collection
+        // (registration is route:cache-safe). Discovery stays lazy, so the
         // dispatch + exception-render paths still resolve it on first use.
         $routesAreCached = $this->app instanceof CachesRoutes && $this->app->routesAreCached();
         if ($manager->shouldRegisterRoutes() && !$routesAreCached) {
@@ -574,7 +574,7 @@ final class JsonApiServiceProvider extends ServiceProvider
     }
 
     /**
-     * Binds the always-on validation bridge (PLAN decision 6): the pointer builder, the
+     * Binds the always-on validation bridge: the pointer builder, the
      * {@see ConstraintTranslator} (its class-keyed extension point assembled from the
      * explicit {@see JsonApiManager} registrations, the discovered translators, and the
      * tagged container bindings), and the {@see ResourceValidator} / {@see FilterValueValidator}
@@ -652,7 +652,7 @@ final class JsonApiServiceProvider extends ServiceProvider
     }
 
     /**
-     * Binds the policy-first {@see Authorizer} (PLAN decision 7): the per-server, per-type
+     * Binds the policy-first {@see Authorizer}: the per-server, per-type
      * authorization overrides (dedicated `policy:` class + ability renames/disables) are
      * projected off the discovered {@see \haddowg\JsonApiLaravel\Discovery\ResourceDescriptor}s
      * once, at first resolution (after discovery + application service providers have
@@ -691,7 +691,7 @@ final class JsonApiServiceProvider extends ServiceProvider
     }
 
     /**
-     * Binds the relationship-read machinery (PLAN decisions 8): the thin
+     * Binds the relationship-read machinery: the thin
      * {@see TypeMetadataResolver} (relation metadata off the Server), the provider-agnostic
      * {@see RelationCriteriaFactory}, the {@see RelatedIncludeBatcher} (the `?include`
      * eager-load orchestrator) and {@see RelationCountBatcher} (the `?withCount` count
@@ -1069,7 +1069,7 @@ final class JsonApiServiceProvider extends ServiceProvider
     }
 
     /**
-     * Binds the OpenAPI subtree (PLAN decision 11): the resolved {@see OpenApiConfig},
+     * Binds the OpenAPI subtree: the resolved {@see OpenApiConfig},
      * the metadata resolvers + {@see MetadataSource} (core's metadata contract, read from
      * discovery), the {@see DocumentFactory} (+ tagged {@see OpenApiFactoryInterface}
      * decorators) and {@see JsonSchemaFactory}, the {@see ArtifactStore}, and the two
@@ -1375,7 +1375,7 @@ final class JsonApiServiceProvider extends ServiceProvider
     }
 
     /**
-     * Registers the resource lifecycle-hook subscriber (PLAN decision 10) as lazy
+     * Registers the resource lifecycle-hook subscriber as lazy
      * class-string listeners on each hook-relevant event, so an
      * {@see ResourceLifecycleHooksInterface} resource's methods run off the dispatched
      * events. Registered by class-string (not `Event::subscribe`, which would

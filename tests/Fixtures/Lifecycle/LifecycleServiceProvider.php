@@ -11,7 +11,7 @@ use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
 
 /**
- * Wires the Phase-4 lifecycle fixtures over writable in-memory providers/persisters,
+ * Wires the lifecycle fixtures over writable in-memory providers/persisters,
  * seeded with a `gizmos` row (the hook / events subject) and a `relics` row (the
  * response-header subject). Registered explicitly (the fixtures live outside the scanned
  * `app/JsonApi` path), so this provider never perturbs the workbench music/security suites.

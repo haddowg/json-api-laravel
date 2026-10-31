@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Model;
  * Eloquent table. Declared on a field with `->constrain(new UniqueEntity(['email']))`.
  *
  * Unlike the Symfony bundle's post-hydration seam, the Laravel bridge realises this as
- * a **pre-hydration** `Rule::unique` (PLAN decision 6): the
+ * a **pre-hydration** `Rule::unique`: the
  * {@see \haddowg\JsonApiLaravel\Validation\ResourceValidator} resolves the resource's
  * type → Eloquent model → table/key and builds
  * `Rule::unique(table, column)->ignore(currentId)` (the current record excluded on

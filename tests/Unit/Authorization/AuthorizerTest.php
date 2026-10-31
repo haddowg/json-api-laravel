@@ -19,7 +19,7 @@ use Workbench\App\Models\User;
 use Workbench\App\Security\Policies\AlbumApiPolicy;
 
 /**
- * The {@see Authorizer} resolution branches (PLAN decision 7) exercised against a real
+ * The {@see Authorizer} resolution branches exercised against a real
  * Gate in isolation from the HTTP pipeline: inertness, the `false` disable, the dedicated
  * `policy:` class (with its `before()` bypass), and a renamed ability resolved through
  * `Gate::define()`. The end-to-end lifecycle wiring is covered by the security
@@ -103,8 +103,7 @@ final class AuthorizerTest extends Orchestra
         ])->authorize('albums', Operation::Create, new Album());
 
         // The dedicated policy is mapped only on a throwaway (cloned) Gate, so the
-        // application's own Gate never learns of the Album → AlbumApiPolicy binding
-        // (PLAN decision 7: "leaving the app's Gate::policy() mapping untouched").
+        // application's own Gate never learns of the Album → AlbumApiPolicy binding.
         self::assertNull(app(GateContract::class)->getPolicyFor(new Album()));
     }
 

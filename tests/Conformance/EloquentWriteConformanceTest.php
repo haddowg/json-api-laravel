@@ -15,7 +15,7 @@ use Workbench\Database\Seeders\MusicCatalogSeeder;
  * `app/JsonApi` resources; the minimal {@see \Workbench\App\Support\Fixtures} are seeded
  * via {@see MusicCatalogSeeder} — the SAME two albums the in-memory witness carries — so
  * a created row is the predictable auto-increment id `3` on both, refereeing the Eloquent
- * write + transaction semantics against the witness (PLAN decision 9).
+ * write + transaction semantics against the witness.
  *
  * @internal
  */

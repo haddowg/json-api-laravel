@@ -12,7 +12,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The declarative response headers (PLAN decision 12): a resource's `#[AsJsonApiResource]`
+ * The declarative response headers: a resource's `#[AsJsonApiResource]`
  * cache directives + RFC 8594 deprecation/sunset are projected onto the response by the
  * {@see \haddowg\JsonApiLaravel\Http\ResponseHeadersMiddleware} — cache on a successful GET
  * only (with a per-read-shape override), deprecation/sunset on every response for the type;

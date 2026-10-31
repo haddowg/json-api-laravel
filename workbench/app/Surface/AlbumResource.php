@@ -12,7 +12,7 @@ use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
 /**
- * The writable `albums` type for the Phase-4 surface suites (custom actions + Atomic
+ * The writable `albums` type for the surface suites (custom actions + Atomic
  * Operations), lightweight and provider-agnostic (its columns resolve off both the
  * in-memory {@see \Workbench\App\Domain\Album} POPO and the Eloquent
  * {@see \Workbench\App\Models\Album} model). It carries the `artist` to-one so an atomic

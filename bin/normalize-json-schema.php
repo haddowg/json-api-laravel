@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 /*
- * Normalizes an exported standalone JSON-Schema document for the byte-compatibility diff
- * (PLAN decision 11). This is the schema counterpart to bin/normalize-openapi.php: the
+ * Normalizes an exported standalone JSON-Schema document for the byte-compatibility diff.
+ * This is the schema counterpart to bin/normalize-openapi.php: the
  * `jsonapi:jsonschema:export` / `json-api:json-schema:export` commands emit a single
  * object keyed by JSON:API type, each value the type's self-contained JSON Schema
  * 2020-12 resource object. That document is required to be byte-identical between this

@@ -14,7 +14,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
 /**
  * A deliberately-broken read-only resource backed by the real `albums` Eloquent model, for
- * the servability failure-path suite (PLAN decision 11): it declares a sortable and a filter
+ * the servability failure-path suite: it declares a sortable and a filter
  * pointing at columns the `albums` table does not have, and a relation naming no model
  * method — each of which `jsonapi:optimize` must report so the deploy fails rather than a
  * runtime 500.

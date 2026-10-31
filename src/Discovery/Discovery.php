@@ -18,8 +18,8 @@ namespace haddowg\JsonApiLaravel\Discovery;
  * scanned SPI class-strings alongside the resource descriptors (all plain,
  * `var_export`-able strings), so a cached configuration registers exactly the same
  * providers/persisters a live scan would — the cache is a faithful drop-in for
- * scanning, not a resources-only subset. The optimize pipeline that WRITES the
- * snapshot is wired in a later phase; for now a null cache path simply scans live on
+ * scanning, not a resources-only subset. The optimize pipeline WRITES the
+ * snapshot; a null cache path simply scans live on
  * first use (which, in a freshly-booted app, is once).
  */
 final class Discovery
@@ -217,7 +217,7 @@ final class Discovery
 
     /**
      * The discovered, container-constructible constraint-translator class-strings — the
-     * class-keyed validation extension point (PLAN decision 6).
+     * class-keyed validation extension point.
      *
      * @return list<class-string>
      */

@@ -1,5 +1,5 @@
 # Serve the music-catalog workbench over `testbench serve` — a self-contained demo of the
-# package answering real JSON:API requests over HTTP (PLAN Phase 5 docker item; parity with
+# package answering real JSON:API requests over HTTP (parity with
 # the Symfony example's `docker compose up`).
 #
 # Build + run from the repository root:

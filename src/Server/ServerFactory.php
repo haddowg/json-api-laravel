@@ -42,7 +42,7 @@ use Psr\Http\Message\StreamFactoryInterface;
  * shared.
  *
  * The relationship seams, profiles, the serving/events bridge (a
- * `Server::withServing()` handler dispatching a {@see ServingEvent}, PLAN decision 10)
+ * `Server::withServing()` handler dispatching a {@see ServingEvent})
  * and the OAuth scope enforcer are all threaded here.
  */
 final class ServerFactory
@@ -67,7 +67,7 @@ final class ServerFactory
     /**
      * @param \Closure(class-string): object                                                        $resolver              the container resolver core builds registered resources through
      * @param list<class-string<AbstractResource>>                                                  $resourceClasses       this server's resource class-strings
-     * @param array<string, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $standaloneSerializers this server's standalone serializers, keyed by JSON:API type (no resource; PLAN decision 3)
+     * @param array<string, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $standaloneSerializers this server's standalone serializers, keyed by JSON:API type (no resource)
      * @param array<string, class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>>     $standaloneHydrators   this server's standalone hydrators, keyed by JSON:API type (the decoupled write half)
      * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $serializerOverrides per-resource serializer overrides keyed by resource class
      * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>>     $hydratorOverrides   per-resource hydrator overrides keyed by resource class
@@ -99,14 +99,14 @@ final class ServerFactory
         // model — the profile-not-negotiated default).
         private readonly ?RelationshipPaginationInterface $relationshipPagination = null,
         private readonly ?RelationshipLinkageInterface $relationshipLinkage = null,
-        // The out-of-band resource-link contributor (Phase 4): a per-server
+        // The out-of-band resource-link contributor: a per-server
         // ActionLinkContributor merges each `asLink` custom action's URL onto its mount
         // type's resources. Null leaves resource links exactly as the author's getLinks()
         // + the convention self link produce (the no-asLink-actions default).
         private readonly ?ResourceLinkContributorInterface $resourceLinkContributor = null,
         // The lifecycle-event dispatcher + this server's name, threaded so `create()`
         // installs a `Server::withServing()` handler that turns core's request-wide
-        // `serving` seam into a package {@see ServingEvent} (PLAN decision 10). Null
+        // `serving` seam into a package {@see ServingEvent}. Null
         // dispatcher leaves the serving seam unwired.
         private readonly ?Dispatcher $dispatcher = null,
         private readonly string $serverName = 'default',
@@ -226,7 +226,7 @@ final class ServerFactory
             );
         }
 
-        // The serving bridge (PLAN decision 10): one core `serving` handler that turns
+        // The serving bridge: one core `serving` handler that turns
         // core's server-level seam (fired once per request inside `Server::dispatch()`,
         // core's docs/server.md) into a package {@see ServingEvent}. A ServingEvent listener that
         // throws a JsonApiException aborts — the throw propagates out of the closure →

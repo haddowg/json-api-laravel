@@ -20,7 +20,7 @@ use Workbench\App\MusicCatalog\Models\Artist as ArtistModel;
 use Workbench\App\MusicCatalog\Query\FullTextSearch;
 
 /**
- * The `artists` resource type (music-catalog domain, decision 14). Store-provided
+ * The `artists` resource type (music-catalog domain). Store-provided
  * auto-increment id; a computed read-only `trackCount`; a create-vs-update read-only
  * `createdAt`; and the `albums` HasMany back-reference.
  *

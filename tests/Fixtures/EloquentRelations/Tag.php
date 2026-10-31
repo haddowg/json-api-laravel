@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * The Eloquent `blog_tags` model, the target of a {@see Post}'s `tags`
  * belongsToMany (with a `position` pivot column, the pivot-READ witness) and the other
  * member of its polymorphic `feature` / `related` relations. Morph alias `blog_tag`, again
- * distinct from the JSON:API type `tags` (blueprint §3g).
+ * distinct from the JSON:API type `tags`.
  *
  * Its `owner` gives an include path through a relation that targets tags.
  *

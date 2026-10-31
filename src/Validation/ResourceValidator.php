@@ -41,7 +41,7 @@ use Illuminate\Validation\Rule;
 /**
  * Runs a resource's declared constraints against an incoming create/update document and
  * raises a {@see ValidationFailed} (`422`) carrying one pointer-bearing {@see Error} per
- * violation. This is the always-on bridge (PLAN decision 6) core never had: core stores
+ * violation. This is the always-on bridge core never had: core stores
  * constraints as metadata but never executes them.
  *
  * Validation is **document-first**: the resource's `attributes` are validated as the
@@ -67,7 +67,7 @@ use Illuminate\Validation\Rule;
  * {@see CompareField} (a cross-field rule) is evaluated at the **document** level, after
  * the per-field pass, because the comparison needs the sibling field's value. The
  * built-in {@see UniqueEntity} folds into a pre-hydration `Rule::unique` on the owning
- * Eloquent table (PLAN decision 6), and any other {@see EntityConstraintInterface} is
+ * Eloquent table, and any other {@see EntityConstraintInterface} is
  * deferred to the post-hydration {@see validateEntity()} seam.
  */
 final class ResourceValidator
@@ -103,7 +103,7 @@ final class ResourceValidator
      * @param object|null $subject        a domain instance of this type used only to resolve the Eloquent
      *                                    table/key for a {@see UniqueEntity} `Rule::unique` (the freshly
      *                                    instantiated blank on create, the loaded model on update); a
-     *                                    non-Eloquent subject leaves uniqueness inert (Eloquent-only, PLAN §6)
+     *                                    non-Eloquent subject leaves uniqueness inert (Eloquent-only)
      *
      * @throws ValidationFailed when the document violates the resource's constraints
      */
@@ -566,8 +566,8 @@ final class ResourceValidator
      * persisted object, not the request document). The write handler calls this after
      * hydration and before commit; it is a no-op for a resource that declares none.
      *
-     * The built-in {@see UniqueEntity} is deliberately excluded — PLAN decision 6 folds
-     * it into a pre-hydration `Rule::unique` in {@see validate()} — so this seam serves
+     * The built-in {@see UniqueEntity} is deliberately excluded — it is folded
+     * into a pre-hydration `Rule::unique` in {@see validate()} — so this seam serves
      * genuinely-post-hydration custom checks, each translated to invokable rules run
      * against the entity.
      *
@@ -917,7 +917,7 @@ final class ResourceValidator
     /**
      * The `Rule::unique` for the built-in {@see UniqueEntity} constraints a field
      * declares in this context, or `null` when the field carries none or the backing is
-     * not an Eloquent model (in-memory/POPO → uniqueness inert, PLAN §6). On update the
+     * not an Eloquent model (in-memory/POPO → uniqueness inert). On update the
      * current record is excluded via `->ignore($model)`; a composite unique adds a
      * `where` per sibling field over the merged attributes.
      *

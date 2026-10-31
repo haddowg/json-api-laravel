@@ -15,8 +15,8 @@ use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 
 /**
- * Builds the **standalone per-type JSON Schema 2020-12** documents for a server (PLAN
- * decision 11) — the `jsonapi:jsonschema:export` command's + `/schemas.json`
+ * Builds the **standalone per-type JSON Schema 2020-12** documents for a server
+ * — the `jsonapi:jsonschema:export` command's + `/schemas.json`
  * controller's source.
  *
  * Distinct from the {@see DocumentFactory}: that builds the whole OpenAPI document

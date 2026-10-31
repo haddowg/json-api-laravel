@@ -12,7 +12,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * Tests the OpenAPI decorator seam (PLAN decision 11): a tagged
+ * Tests the OpenAPI decorator seam: a tagged
  * {@see \haddowg\JsonApiLaravel\OpenApi\OpenApiFactoryInterface} runs after the core
  * projection and gets the last word over the projected document. Because every build
  * path flows through the {@see DocumentFactory}, the decorator applies to the warmer,

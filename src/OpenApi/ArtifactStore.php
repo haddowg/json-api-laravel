@@ -12,7 +12,7 @@ use haddowg\JsonApi\OpenApi\Serve\UnserializableValue;
 /**
  * The shared filesystem contract between the {@see DocumentWarmer} (which writes the
  * pre-built OpenAPI documents at `artisan optimize`) and the OpenAPI controllers (which
- * serve them) — PLAN decision 11.
+ * serve them).
  *
  * It owns the **one** stable directory both sides agree on (resolved from the app's
  * cache path), so the controller serves the warmer's artifact with an `O(file read)`

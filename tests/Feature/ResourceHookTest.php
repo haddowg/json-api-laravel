@@ -16,7 +16,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The resource lifecycle-hook trait (PLAN decision 10) is sugar routed off the events by
+ * The resource lifecycle-hook trait is sugar routed off the events by
  * the {@see \haddowg\JsonApiLaravel\EventListener\ResourceHookSubscriber}: a before-hook
  * aborts by throwing, an after-hook may replace the response. Driven over HTTP on the
  * `gizmos` fixture ({@see GizmoResource}), which delegates each hook to a test-installed

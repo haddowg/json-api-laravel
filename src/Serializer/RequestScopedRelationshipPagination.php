@@ -31,8 +31,7 @@ use haddowg\JsonApi\Serializer\RelationshipPaginationInterface;
  * The handler clears it (with the linkage and count holders) at the very start of EVERY
  * dispatch, so a long-lived worker (Octane/queue) reusing the singleton never inherits a
  * prior message's windowed pages — the Laravel-side equivalent of the bundle's
- * `kernel.reset` (the Symfony `ResetInterface` is dropped, per PLAN decision 9's Octane
- * follow-up note).
+ * `kernel.reset` (the Symfony `ResetInterface` is dropped).
  */
 final class RequestScopedRelationshipPagination implements RelationshipPaginationInterface
 {

@@ -17,8 +17,8 @@ use haddowg\JsonApi\Resource\Constraint\ConstraintInterface;
  *
  * The {@see ConstraintTranslator} consults the registered translators — first
  * {@see supports()} match wins — for any constraint it does not translate itself, and
- * raises a clear error if none matches. This is the class-keyed extension point (PLAN
- * decision 6): a translator matches on the constraint's class, not a string id.
+ * raises a clear error if none matches. This is the class-keyed extension point:
+ * a translator matches on the constraint's class, not a string id.
  */
 interface ConstraintTranslatorInterface
 {

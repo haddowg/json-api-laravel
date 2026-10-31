@@ -33,7 +33,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * The single invokable controller every JSON:API route points at. It collapses the Symfony
- * bundle's request + view kernel listeners into one action (PLAN decision 5):
+ * bundle's request + view kernel listeners into one action:
  *  1. resolve the {@see \haddowg\JsonApi\Operation\Target} from the matched route via the
  *     {@see TargetResolver} (a batch/action route carries the marker defaults instead);
  *  2. pick the server by the `_jsonapi_server` route default, based on the route prefix

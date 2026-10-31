@@ -18,7 +18,7 @@ use haddowg\JsonApi\Request\JsonApiRequestInterface;
  * scope; this gate blanket-blocks the whole collection for a user or role.
  *
  * The Laravel package authorizes CRUD reads through the policy-first
- * {@see \haddowg\JsonApiLaravel\Authorization\Authorizer} (PLAN decision 7), so this
+ * {@see \haddowg\JsonApiLaravel\Authorization\Authorizer}, so this
  * event is a pure lifecycle seam — it is **not** routed to the resource hook trait.
  */
 final class BeforeFetchCollectionEvent

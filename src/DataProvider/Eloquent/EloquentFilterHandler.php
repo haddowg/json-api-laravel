@@ -455,7 +455,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface
      * The table-qualified column for a declared filter column, validated as an
      * identifier path (dots allowed for embedded fields) so a declaration typo fails
      * loudly rather than reaching the SQL parser interpolated, then qualified against
-     * the query's model table so it survives the joins that arrive in later phases.
+     * the query's model table so it survives joins.
      *
      * @param Builder<Model> $query
      */

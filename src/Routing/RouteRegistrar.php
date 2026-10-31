@@ -33,7 +33,7 @@ use Illuminate\Routing\Router;
  * first so its literal `relationships` segment is never captured as a `{relationship}`), and
  * a writable type the three relationship-mutation routes.
  *
- * **Custom actions + Atomic Operations (Phase 4).** Per server, the opt-in Atomic Operations
+ * **Custom actions + Atomic Operations.** Per server, the opt-in Atomic Operations
  * endpoint (`POST {atomic.path}`) and the discovered custom-action routes
  * (`POST /{uriType}[/{id}]/-actions/{path}`, the author's declared methods) are emitted
  * FIRST, before the generic routes, so their literal paths win their own verbs cleanly and
@@ -42,7 +42,7 @@ use Illuminate\Routing\Router;
  * configuration that would silently shadow a type's collection `POST` Create with the atomic
  * path is a build-time {@see \LogicException} ({@see guardAtomicPathCollision()}).
  *
- * **Id route pattern (PLAN decision 4).** When a type's {@see \haddowg\JsonApi\Resource\Field\Id} field declares a route
+ * **Id route pattern.** When a type's {@see \haddowg\JsonApi\Resource\Field\Id} field declares a route
  * pattern (`uuid()`/`ulid()`/`numeric()`/`pattern()`/`matchAs()`), that
  * pattern is composed INTO the `{id}` requirement — `(?!-actions(?:/|$))(?:<pattern>)` — so
  * a malformed id 404s at routing exactly as the projected OpenAPI document (which advertises
@@ -112,7 +112,7 @@ final class RouteRegistrar
             $this->addResourceRoutes($router, $server, $namePrefix, $descriptor);
         }
 
-        // Standalone-serializer types (no resource; PLAN decision 3) are
+        // Standalone-serializer types (no resource) are
         // emitted after the resources, matching the bundle's descriptor order (resources,
         // then standalone types) so the projected OpenAPI paths stay byte-compatible. A
         // standalone hydrator for the same type (the decoupled write half) makes the

@@ -39,7 +39,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * The Laravel-native replacement for the Symfony bundle's autoconfiguration +
- * compiler passes (PLAN decision 3): a filesystem scan of the configured paths for
+ * compiler passes: a filesystem scan of the configured paths for
  * JSON:API capability classes.
  *
  * For each discovered class it reads only what a route/server needs, **statically**:
@@ -164,7 +164,7 @@ final class DiscoveryScanner
 
             // A custom-action handler is a class carrying #[AsJsonApiAction] and
             // implementing ActionHandlerInterface — discovered by the same scan, no
-            // AbstractResource sugar (PLAN decision 12).
+            // AbstractResource sugar.
             if ($reflection->getAttributes(AsJsonApiAction::class) !== [] && $reflection->implementsInterface(ActionHandlerInterface::class)) {
                 $actions[] = $this->describeAction($reflection);
 

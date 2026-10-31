@@ -59,9 +59,9 @@ use Workbench\App\MusicCatalog\Support\AuditLog;
 use Workbench\App\MusicCatalog\Support\CatalogConfig;
 
 /**
- * The Eloquent half of the unified music-catalog wiring (decision 14): it registers the
+ * The Eloquent half of the unified music-catalog wiring: it registers the
  * full domain's resources + the `reissue` action explicitly (they live outside the scanned
- * `app/JsonApi` inventory, so they never disturb the per-phase suites), maps every JSON:API
+ * `app/JsonApi` inventory, so they never disturb the per-feature suites), maps every JSON:API
  * type to its `mc_`-prefixed Eloquent model, and serves them through the reference
  * {@see EloquentDataProvider} / {@see EloquentDataPersister} pair at `-128`.
  *
@@ -87,7 +87,7 @@ final class MusicCatalogEloquentServiceProvider extends ServiceProvider
 
         // Registered in ascending type order so the projected OpenAPI `paths` (emitted in
         // discovery order) match the bundle's alphabetical-by-type descriptor order — the
-        // byte-compat contract (decision 11). Actions attach to their mount type, so their
+        // byte-compat contract. Actions attach to their mount type, so their
         // position among the resources is immaterial; their order *among each other*
         // (reissue → summary → artwork) is what the document reflects.
         JsonApi::register([
@@ -141,7 +141,7 @@ final class MusicCatalogEloquentServiceProvider extends ServiceProvider
 
         // The two standalone-serializer types are served by custom providers (no DB), the
         // SAME providers the in-memory wiring uses — charts/countries are storage-orthogonal
-        // reference data, so both provider arms read them identically (decision 3).
+        // reference data, so both provider arms read them identically.
         JsonApi::provider(new ChartProvider());
         JsonApi::provider(new CountryProvider());
 
@@ -170,7 +170,7 @@ final class MusicCatalogEloquentServiceProvider extends ServiceProvider
         // write-capable user may reissue; a read-only user / guest is a 403.
         Gate::define('reissueAlbum', static fn(?AuthUser $user, object $album): bool => $user?->can_write === true);
 
-        // The API-distinct playlist abilities (decision 7), resolved to the PlaylistApiPolicy
+        // The API-distinct playlist abilities, resolved to the PlaylistApiPolicy
         // methods via Gate callbacks — the policy's logic without a type-wide policy mapping,
         // so create + the reads stay inert (and inherit the document security, byte-compat).
         Gate::define('curate', [PlaylistApiPolicy::class, 'curate']);

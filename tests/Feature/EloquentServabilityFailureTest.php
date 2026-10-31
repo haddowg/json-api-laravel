@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The Eloquent servability guards' failure paths (PLAN decision 11): against a real migrated
+ * The Eloquent servability guards' failure paths: against a real migrated
  * `albums` table, `jsonapi:optimize` must report a sortable / filter pointing at a
  * non-existent column and a relation naming no model method — failing the deploy rather than
  * 500-ing on the first request.

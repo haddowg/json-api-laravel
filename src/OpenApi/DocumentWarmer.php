@@ -15,8 +15,7 @@ use Symfony\Component\Yaml\Yaml;
  * Pre-builds the per-server OpenAPI documents (+ the per-type JSON Schemas and the
  * aggregate schema document the {@see \haddowg\JsonApiLaravel\Http\JsonSchemaController}
  * serves) at `artisan optimize` (every prod deploy) into the artifact store, so the
- * controllers serve an `O(file read)` artifact and never build per request (PLAN
- * decision 11).
+ * controllers serve an `O(file read)` artifact and never build per request.
  *
  * It is deliberately **optional / non-fatal**: a docs build failure (a misconfigured
  * resource, an exotic paginator) must never break a deploy, so {@see warm()} catches

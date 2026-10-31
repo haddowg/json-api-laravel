@@ -15,7 +15,7 @@ use Workbench\App\Models\CursorWidget;
  * {@see CursorConformanceInMemoryServiceProvider} uses and registers the reference
  * {@see EloquentDataProvider} at `-128` over a `type → model` map — so every assertion
  * inherited from the abstract cursor suite must produce the IDENTICAL keyset page,
- * refereeing the SQL push-down against the witness (PLAN decision 9).
+ * refereeing the SQL push-down against the witness.
  */
 final class CursorConformanceEloquentServiceProvider extends ServiceProvider
 {

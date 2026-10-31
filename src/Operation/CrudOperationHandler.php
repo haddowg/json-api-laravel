@@ -136,7 +136,7 @@ use Psr\Log\LoggerInterface;
  * to a JSON:API `404` (the handler RETURNS an {@see ErrorResponse}, it does not throw). A
  * collection fetch resolves the resource's declared filter/sort vocabularies, default sort
  * and pagination strategy into a {@see CollectionCriteria}, asks the provider to execute
- * it, and renders the G21 §6a matrix: a **singular** filter collapses to a zero-to-one
+ * it, and renders the pagination matrix: a **singular** filter collapses to a zero-to-one
  * resource; a **cursor** (keyset) page renders through the paginator's `fromBoundaries()`
  * path carrying the provider-minted tokens; a **counted** page renders `meta.page.total` +
  * `links.last` and echoes `meta.total`; a **count-free** page renders self/first/prev/
@@ -152,17 +152,16 @@ use Psr\Log\LoggerInterface;
  * `404`), hydrates the incoming partial onto it, commits, and renders `200`. Delete loads
  * the target (a miss is a `404`), removes it, and renders `204`.
  *
- * **Relationship reads** (Phase 3a): {@see fetchRelated()} (`GET /{type}/{id}/{rel}`) and
+ * **Relationship reads**: {@see fetchRelated()} (`GET /{type}/{id}/{rel}`) and
  * {@see fetchRelationship()} (`GET …/relationships/{rel}`) render the related resource(s) /
  * linkage per cardinality (monomorphic + polymorphic to-one AND to-many), gated by the
  * parent's read policy; the {@see fetch()} arms grow the `?include` batch-eager-load
  * ({@see RelatedIncludeBatcher}) and `?withCount` count ({@see RelationCountBatcher}) render
- * hooks. Relationship MUTATIONS, pivot writes, existence filters and the Relationship
- * Queries profile's windowed linkage are Phase 3b (their seams are left in place).
+ * hooks.
  *
  * The document-semantic validation (the always-on illuminate/validation bridge) and the
- * policy authorization gate hook into the create/update/delete arms; lifecycle events +
- * hooks are a later phase — every unhandled operation falls to the default arm, which
+ * policy authorization gate hook into the create/update/delete arms; every unhandled
+ * operation falls to the default arm, which
  * returns a `404` {@see ResourceNotFound} exactly like the bundle's `CrudOperationHandler`
  * default arm (never a `500`).
  */
@@ -186,7 +185,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         private readonly RequestScopedRelationshipCount $relationshipCount,
         private readonly RequestScopedRelationshipPagination $relationshipPagination,
         private readonly RequestScopedRelationshipLinkage $relationshipLinkage,
-        // Phase-4 surface collaborators, optional so a stripped-down programmatic wiring
+        // Surface collaborators, optional so a stripped-down programmatic wiring
         // still constructs the handler: the custom-action invoker (its `CustomActionOperation`
         // arm), and the Atomic Operations executor's collaborators (the request-scoped
         // deferred-hook context, Laravel's router for `href` resolution, and an optional
@@ -201,7 +200,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // touches the router). Null on a pre-surface wiring → the atomic backend gets an
         // empty allow-list and refuses every write, exactly as an unrouted type would.
         private readonly ?Discovery $discovery = null,
-        // The lifecycle-event dispatcher (PLAN decision 10): Laravel's event
+        // The lifecycle-event dispatcher: Laravel's event
         // Dispatcher, injected so every before/after lifecycle event fires through
         // `Event::listen`/`Event::fake`/the resource hook subscriber. Null on a
         // stripped-down programmatic wiring → every dispatch is a no-op (events are
@@ -403,7 +402,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         $filters = $resource?->allFilters() ?? [];
 
-        // The always-on filter-value gate (PLAN decision 6): a client-supplied
+        // The always-on filter-value gate: a client-supplied
         // `filter[<key>]` value is validated against the filter's declared value
         // constraints BEFORE the provider runs, so a mistyped value (e.g.
         // `filter[trackRange][min]=banana`, or a calendar-invalid DateRange bound) is a
@@ -425,7 +424,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // an array, and never paginated (core's docs/filters.md).
         $singular = $this->appliesSingularFilter($filters, $operation->queryParameters());
 
-        // The resource's pagination() return is the single source of truth (G21):
+        // The resource's pagination() return is the single source of truth:
         // used verbatim, with `null` meaning *no pagination* (fetch-all). The base
         // impl returns the resolved server default. A singular filter collapses to a
         // zero-to-one response, so it is never paginated.
@@ -438,7 +437,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
         $window = $paginator !== null && $request !== null ? $paginator->window($request) : null;
 
-        // The single COUNT decision (G21): a count-based paginator counts when its
+        // The single COUNT decision: a count-based paginator counts when its
         // own withCount() author opt-in flipped it, OR the client asked
         // `?withCount=_self_` (already 400-ed by core's document gate if the resource
         // is not countable(), so an accepted `_self_` here implies countable). The
@@ -506,7 +505,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             );
         }
 
-        // Fan the single resolved total to BOTH meta slots from one count (G21 §6a):
+        // Fan the single resolved total to BOTH meta slots from one count:
         // fetch-all renders meta.total unconditionally; a counted page carries
         // meta.page.total/links.last and echoes meta.total; a count-free page renders
         // self/first/prev/next (no total/last, next via hasMore) and NO meta.total.
@@ -565,8 +564,6 @@ final class CrudOperationHandler implements OperationHandlerInterface
      *    that object (so a polymorphic to-one renders the object's own type), and renders a
      *    single resource (`data:null` for an empty to-one); a `?filter` may null a monomorphic
      *    to-one via {@see \haddowg\JsonApiLaravel\DataProvider\DataProviderInterface::relatedToOneMatches()}.
-     *
-     * The Relationship Queries profile's windowed linkage + pivot `meta.pivot` are phase 3b.
      */
     private function fetchRelated(FetchRelatedOperation $operation): RelatedResponse|ErrorResponse
     {
@@ -712,7 +709,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             }
 
             // Counted page: the single total fans to BOTH meta.page.total (inside the
-            // count-based page) AND the universal top-level meta.total (G21 §6b).
+            // count-based page) AND the universal top-level meta.total.
             if ($paginator !== null && $result->total !== null) {
                 return RelatedResponse::fromPage($paginator->paginate($request, $items, $result->total), $serializer, $relation->isCountable())
                     ->withMeta(['total' => $result->total]);
@@ -725,7 +722,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             }
 
             // Fetch-all (no paginator): the whole related set is materialized, so its size is
-            // free — render meta.total unconditionally (G21 §5).
+            // free — render meta.total unconditionally.
             return RelatedResponse::fromCollection($items, $serializer, $relation->isCountable())
                 ->withMeta(['total' => \count($items)]);
         }
@@ -1256,7 +1253,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
     }
 
     /**
-     * Gates a related / relationship read (PLAN decision 7, re-idiomized from the bundle's
+     * Gates a related / relationship read (re-idiomized from the bundle's
      * event gate to a policy gate): the parent's `view` policy (the same gate the primary
      * single fetch applies) authorizes the loaded parent, UNLESS the relation declares its
      * own read security — a `false` opts the relation out of any read gate, a string
@@ -1442,9 +1439,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * `POST /{type}` — create a single resource. Order mirrors the bundle's `create()`
-     * arm (minus the Phase-3 embedded-relationship and Phase-4 event/hook lines): the
-     * document-validation and authorization seams sit before hydrate/persist so the
-     * follow-on Phase 2 work slots in without reordering.
+     * arm: the document-validation and authorization seams sit before hydrate/persist.
      */
     private function create(CreateResourceOperation $operation): DataResponse|AcceptedResponse
     {
@@ -1460,8 +1455,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $resource = $server->hasResourceFor($type) ? $server->resourceFor($type) : null;
 
         // The blank instance is minted first so the document validator can resolve the
-        // owning Eloquent table for a UniqueEntity `Rule::unique` (pre-hydration, PLAN
-        // decision 6); it stays the target the hydrator populates below.
+        // owning Eloquent table for a UniqueEntity `Rule::unique` (pre-hydration);
+        // it stays the target the hydrator populates below.
         $entity = $persister->instantiate($type);
 
         // Document-semantic validation (the always-on illuminate/validation bridge) runs
@@ -1482,7 +1477,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $serverName = $this->serverNameOf($operation->context());
         $this->authorizer->authorize($type, Operation::Create, $entity, $serverName);
 
-        // Whole-resource writes embedding `data.relationships` (Phase 3b): core's hydrator
+        // Whole-resource writes embedding `data.relationships`: core's hydrator
         // would assign a scalar linkage id to a typed association property (a TypeError /
         // NOT-NULL 500), so the relationships are stripped from the body before hydration
         // and set through the persister's relationship seam instead — a full replacement,
@@ -1648,7 +1643,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->validator->validate($resource, $request, false, existingObject: $entity, subject: $entity);
         }
 
-        // Whole-resource writes embedding `data.relationships` (Phase 3b): stripped from the
+        // Whole-resource writes embedding `data.relationships`: stripped from the
         // body before hydration and set through the persister's relationship seam, a full
         // replacement per named association (never an incremental
         // add/remove). Each is validated with the endpoint's pass — folding the loaded
@@ -1824,15 +1819,14 @@ final class CrudOperationHandler implements OperationHandlerInterface
      *     ({@see FullReplacementProhibited}/{@see AdditionProhibited}/{@see RemovalProhibited},
      *     `403`);
      *  6. validate the linkage — a `409` resource-type conflict / `422` malformed linkage;
-     *  7. {@see gateMutate()} — the policy gate (PLAN decision 7): the parent's `update`
+     *  7. {@see gateMutate()} — the policy gate: the parent's `update`
      *     policy, or the relation's `securityMutate` ability override;
      *  8. apply through the persister's storage-owning relationship seam inside a transaction,
      *     run the policy gate again on the changed parent before it commits, and
      *     render the resulting linkage ({@see IdentifierResponse::forRelationship()},
      *     `200` — the spec allows `200`/`204`; the bundle returns `200`, matched here).
      *
-     * Lifecycle events + the atomic post-commit hook are a later phase (the handler has no
-     * dispatcher yet); the windowed linkage + pivot `meta.pivot` echo ride the Relationship
+     * The windowed linkage + pivot `meta.pivot` echo ride the Relationship
      * Queries profile / pivot machinery.
      */
     private function mutateRelationship(
@@ -1887,7 +1881,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // enables the linkage-id-format pass.
         $this->validator->validateRelationshipLinkage($relation, $linkage, $mode, $existingPivot, $body, resolveResource: $this->resourceResolver($server));
 
-        // The policy gate (PLAN decision 7, NEW vs the bundle's event gate): a relationship
+        // The policy gate (NEW vs the bundle's event gate): a relationship
         // mutation authorizes the parent — `update` by default, or the relation's own
         // `securityMutate` ability override — after validation (422/409 before the policy 403).
         $serverName = $this->serverNameOf($operation->context());
@@ -1995,7 +1989,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
     }
 
     /**
-     * Gates a relationship mutation (PLAN decision 7): the parent's `update` policy
+     * Gates a relationship mutation: the parent's `update` policy
      * authorizes the loaded parent, UNLESS the relation declares its own mutate security —
      * a `false` opts the relation out of any mutate gate, a string overrides the ability the
      * parent is authorized against (the `securityMutate` twin of {@see gateRead()}'s

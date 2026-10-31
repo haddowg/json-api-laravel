@@ -171,7 +171,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | The filesystem paths scanned for JSON:API capability classes (resources,
-    | and — from later phases — providers/persisters and other SPI
+    | providers/persisters and other SPI
     | implementations). `JsonApi::discover([...])` appends more paths and
     | `JsonApi::register([...])` registers explicit classes without scanning.
     |
@@ -250,8 +250,8 @@ return [
     | Atomic Operations
     |--------------------------------------------------------------------------
     |
-    | The JSON:API Atomic Operations extension endpoint (opt-in; wired in a later
-    | phase). `path` is the batch endpoint path.
+    | The JSON:API Atomic Operations extension endpoint (opt-in).
+    | `path` is the batch endpoint path.
     |
     | `scopes` lists the OAuth scopes the endpoint itself needs, such as
     | ['batch']. Null asks your scope resolver, and [] declares none. Each

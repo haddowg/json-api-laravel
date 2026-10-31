@@ -9,7 +9,7 @@ use haddowg\JsonApiLaravel\DataProvider\InMemoryStore;
 use haddowg\JsonApiLaravel\Validation\ConstraintTranslatorInterface;
 
 /**
- * The class-keyed extension translator for {@see UniqueNoteTitle} (PLAN decision 6): the
+ * The class-keyed extension translator for {@see UniqueNoteTitle}: the
  * {@see \haddowg\JsonApiLaravel\Validation\ConstraintTranslator} delegates the unknown
  * constraint here and this returns the store-scanning {@see UniqueNoteTitleRule}. Proving
  * the extension-translator path AND the post-hydration entity seam end to end.

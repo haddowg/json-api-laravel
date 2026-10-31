@@ -7,7 +7,7 @@ namespace haddowg\JsonApiLaravel\Testing;
 use Illuminate\Testing\TestResponse;
 
 /**
- * The package's shipped JSON:API test-client sugar (PLAN decision 12) — a
+ * The package's shipped JSON:API test-client sugar — a
  * request-builder over Laravel's native test client plus a family of JSON:API
  * {@see TestResponse} macros. Mix it into a Testbench or Laravel `TestCase`:
  *

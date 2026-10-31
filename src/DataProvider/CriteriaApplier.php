@@ -34,11 +34,11 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  * the filters reach a handler, they also narrow the pre-window `COUNT` of a
  * paginated fetch, so totals describe the defaulted collection.
  *
- * **Phase scope.** The bundle's applier is additionally *alias-aware* — it can
+ * **Scope.** The bundle's applier is additionally *alias-aware* — it can
  * push a directive down onto a non-root query alias (the {@see CollectionCriteria::$aliasOf}
  * map, populated only on the pivot related-collection path). That push-down is a
- * Phase 3 (relationships/pivot) concern and lands with the Eloquent alias-aware
- * handlers; for Phase 1 every directive routes to the query root, exactly as the
+ * relationships/pivot concern handled by the Eloquent alias-aware
+ * handlers; here every directive routes to the query root, exactly as the
  * bundle's applier does on every non-pivot fetch path and the entire in-memory
  * provider. Sorts do not compose commutatively, so the whole
  * ordered directive list is handed to the sort handler in ONE composite call,

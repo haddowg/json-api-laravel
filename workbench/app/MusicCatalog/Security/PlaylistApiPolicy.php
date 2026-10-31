@@ -8,13 +8,13 @@ use haddowg\JsonApi\Resource\Field\Accessor;
 use Workbench\App\Models\User;
 
 /**
- * The dedicated API policy for `playlists` (PLAN decision 7 showcase) — the Laravel
+ * The dedicated API policy for `playlists` — the Laravel
  * replacement for the Symfony example's `PlaylistOwnerVoter` + `securityUpdate`/
  * `securityDelete` expressions. Invoked directly (the resource declares
  * `policy: self::class`), provider-agnostic (subject typed `object`, so it authorizes both
  * the Eloquent model and the in-memory POPO).
  *
- * It demonstrates the decision-7 requirements:
+ * It demonstrates the dedicated-policy requirements:
  *  - the {@see before()} admin bypass (honoured);
  *  - the **API-distinct ability renames** — `update` → {@see curate()} (an owner gate) and
  *    `delete` → {@see deletePlaylist()} (an admin-only gate);

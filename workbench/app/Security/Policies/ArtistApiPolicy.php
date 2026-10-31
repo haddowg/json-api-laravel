@@ -8,7 +8,7 @@ use Workbench\App\Models\Artist;
 use Workbench\App\Models\User;
 
 /**
- * The **model-registered** policy (PLAN decision 7, the default resolution path): it is
+ * The **model-registered** policy (the default resolution path): it is
  * NOT named on the resource attribute. Instead the {@see \Workbench\App\Providers\GatePolicyServiceProvider}
  * maps it to the Eloquent {@see Artist} model with `Gate::policy(Artist::class, self::class)`,
  * so the {@see \haddowg\JsonApiLaravel\Authorization\Authorizer} resolves it automatically

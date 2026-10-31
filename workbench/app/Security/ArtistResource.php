@@ -11,8 +11,8 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Operation\Operation;
 
 /**
- * The secured `artists` type demonstrating the two Gate-driven resolution paths (PLAN
- * decision 7), Eloquent-only (a POPO carries no Gate policy). It declares NO `policy:`
+ * The secured `artists` type demonstrating the two Gate-driven resolution paths,
+ * Eloquent-only (a POPO carries no Gate policy). It declares NO `policy:`
  * attribute, so the {@see \haddowg\JsonApiLaravel\Authorization\Authorizer} resolves
  * through the application Gate:
  *  - `view`/`create`/`update`/`delete` resolve to the **model-registered policy**

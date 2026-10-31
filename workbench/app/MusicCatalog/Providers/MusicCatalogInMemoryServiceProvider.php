@@ -59,7 +59,7 @@ use Workbench\App\MusicCatalog\Support\CatalogConfig;
 use Workbench\App\MusicCatalog\Support\Fixtures;
 
 /**
- * The in-memory half of the unified music-catalog wiring (decision 14): it registers the
+ * The in-memory half of the unified music-catalog wiring: it registers the
  * SAME full-domain resources the Eloquent half serves, but over seeded
  * {@see InMemoryDataProvider}s carrying the {@see Fixtures} as a linked POPO object graph —
  * so the dual-provider feature suite reads identical data through both arms. The polymorphic
@@ -89,7 +89,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
 
         // Ascending type order — see MusicCatalogEloquentServiceProvider: the projected
         // OpenAPI `paths` follow discovery order, and the byte-compat contract requires them
-        // to match the bundle's alphabetical-by-type descriptor order (decision 11).
+        // to match the bundle's alphabetical-by-type descriptor order.
         JsonApi::register([
             AlbumResource::class,
             ArtistResource::class,
@@ -194,7 +194,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
 
         Gate::define('reissueAlbum', static fn(?AuthUser $user, object $album): bool => $user?->can_write === true);
 
-        // The API-distinct playlist abilities (decision 7) — see the Eloquent provider.
+        // The API-distinct playlist abilities — see the Eloquent provider.
         Gate::define('curate', [PlaylistApiPolicy::class, 'curate']);
         Gate::define('deletePlaylist', [PlaylistApiPolicy::class, 'deletePlaylist']);
         Gate::define('inspectOwner', [PlaylistApiPolicy::class, 'inspectOwner']);

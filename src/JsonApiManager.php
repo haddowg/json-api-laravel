@@ -112,7 +112,7 @@ final class JsonApiManager
     /**
      * Registers a constraint translator (an instance, or a container-resolvable
      * class-string) for the always-on validation bridge — the class-keyed extension point
-     * (PLAN decision 6) for an application's own {@see ConstraintInterface} value objects.
+     * for an application's own {@see ConstraintInterface} value objects.
      * Consulted after the built-in vocabulary, first-`supports()` match wins.
      *
      * @param ConstraintTranslatorInterface|class-string<ConstraintTranslatorInterface> $translator

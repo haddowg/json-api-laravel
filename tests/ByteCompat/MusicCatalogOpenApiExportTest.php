@@ -14,8 +14,8 @@ use Workbench\App\MusicCatalog\Support\CatalogConfig;
 
 /**
  * Exports the music-catalog OpenAPI documents (the `default` + `admin` servers) to
- * `build/laravel-<server>.json` — the Laravel half of the byte-compatibility check
- * (PLAN decision 11). The document is a pure metadata projection (no database), so the
+ * `build/laravel-<server>.json` — the Laravel half of the byte-compatibility check.
+ * The document is a pure metadata projection (no database), so the
  * Eloquent wiring is registered purely for its resource/action/serializer declarations.
  *
  * This runs in the normal suite as a guarantee that the full-domain document always

@@ -15,8 +15,8 @@ use Illuminate\Support\ServiceProvider;
  * Wires the isolated Eloquent blog fixture: discovery finds the three read-only resources,
  * one reference {@see EloquentDataProvider} serves posts/authors/tags at `-128`, and a
  * **morph map** with aliases (`blog_author`/`blog_tag`) deliberately distinct from the
- * JSON:API types (`authors`/`tags`) proves the morph-alias ↔ type decoupling (blueprint
- * §3g): the provider uses the alias only to resolve the model class when loading a
+ * JSON:API types (`authors`/`tags`) proves the morph-alias ↔ type decoupling:
+ * the provider uses the alias only to resolve the model class when loading a
  * {@see \Illuminate\Database\Eloquent\Relations\MorphTo}, while core serialization resolves
  * the JSON:API type via the member object's `getType()`.
  *

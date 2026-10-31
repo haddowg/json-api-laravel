@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 /*
- * Normalizes an exported OpenAPI document for the byte-compatibility diff (PLAN
- * decision 11). The projected document is required to be byte-identical between this
+ * Normalizes an exported OpenAPI document for the byte-compatibility diff.
+ * The projected document is required to be byte-identical between this
  * package and the Symfony bundle for an identical domain, so a `json-api-ts` codegen
  * consumes either backend unchanged. Two differences are legitimately platform-specific
  * and MUST be normalized away before diffing — and NOTHING else:

@@ -39,7 +39,7 @@ use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 /**
- * The reference Eloquent read provider (PLAN decision 2): the storage twin of the
+ * The reference Eloquent read provider: the storage twin of the
  * in-memory witness, executing the SAME {@see CriteriaApplier} matching against a
  * real {@see Builder} so a spec test failing on one provider but not the other
  * localizes the bug to that provider's *execution*.
@@ -61,14 +61,14 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
  * resolving its columns from the ONE {@see KeysetResolver} the in-memory witness
  * uses, so SQL vs PHP windowing cannot drift.
  *
- * **Relationship reads (Phase 3a).** The six relation seams push the SAME core matching
- * down to Eloquent's relation machinery (PLAN decision 8):
+ * **Relationship reads.** The six relation seams push the SAME core matching
+ * down to Eloquent's relation machinery:
  *  - {@see fetchRelatedCollectionBatch()} — the `?include` fast path: Eloquent's own eager
  *    pipeline ({@see EloquentRelation::addEagerConstraints()} + `getEager()` + `match()`)
  *    over the whole page of parents in ONE query, then a wire-keyed read-back. The SAME
  *    path serves the monomorphic to-one arm (a `BelongsTo`'s built-in FK projection). A
- *    **windowed** batch is the Relationship Queries profile's SQL push-down (Phase 3b) —
- *    reaching this seam with a window throws (PLAN decision 9: no PHP-window fallback,
+ *    **windowed** batch is the Relationship Queries profile's SQL push-down —
+ *    reaching this seam with a window throws (no PHP-window fallback,
  *    ever);
  *  - {@see countRelated()} — `?withCount`: one grouped `withCount()` correlated-subquery
  *    count for the whole page, zero-filled for the empty parents;
@@ -254,7 +254,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
         $builder = $this->applier->apply($criteria, $builder, $this->filterHandler, $this->sortHandler);
 
-        // Count-free by default (G21): the executor counts the pre-window total and
+        // Count-free by default: the executor counts the pre-window total and
         // fetches the windowed page only when the handler resolved a COUNT for this
         // fetch (the paginator's withCount() author opt-in, or ?withCount=_self_
         // under a countable() resource); otherwise it fetches count-free via the
@@ -348,7 +348,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
         $builder = $this->applier->apply($criteria, $builder, $filterHandler, $sortHandler);
 
-        // Count-free by default (G21): count the pre-window total only when the handler
+        // Count-free by default: count the pre-window total only when the handler
         // resolved a COUNT (the relation paginator's withCount(), or ?withCount=_self_ under
         // a countable() relation); otherwise probe window+1 and report `hasMore`.
         return $this->windowExecutor->run(
@@ -366,7 +366,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     }
 
     /**
-     * The batched related fetch — the `?include` fast path (PLAN decision 8, the literal
+     * The batched related fetch — the `?include` fast path (the literal
      * "addEagerConstraints + getEager + dictionary matching"). It runs Eloquent's own eager
      * pipeline over the whole page of parents in ONE query per relation (no top-level
      * `with()` orchestrator), then reads each parent's matched relation back into a
@@ -463,7 +463,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * table re-exposes every inner column via its outer `SELECT *`, so both `match()` (reading
      * the FK) and the `belongsToMany` pivot hydration survive the wrap.
      *
-     * There is NO PHP-window fallback for a real relation (PLAN decision 9): a polymorphic
+     * There is NO PHP-window fallback for a real relation: a polymorphic
      * relation (which the batcher never windows) cannot push down and throws. A computed
      * relation with no Eloquent method has no query at all, so it is windowed in PHP over the
      * members it computes, like its related endpoint.
@@ -821,8 +821,8 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     }
 
     /**
-     * `?withCount`: ONE grouped, pushed-down count for the whole page of parents (PLAN
-     * decision 8, `loadCount`-shaped). Eloquent's `withCount()` compiles a correlated
+     * `?withCount`: ONE grouped, pushed-down count for the whole page of parents
+     * (`loadCount`-shaped). Eloquent's `withCount()` compiles a correlated
      * `COUNT` subquery column per relation, so a single `SELECT` over the parents yields
      * every parent's cardinality — `0` for the empty ones (auto zero-fill; every queried
      * parent yields a row). The relation's `relatedQuery[<rel>][filter]` pushes into the
@@ -935,7 +935,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
     /**
      * The batched to-one match over a page of parents — the include/primary path of the
-     * `relatedQuery[<toOneRel>][filter]` profile (Phase 3b), run without N+1: Eloquent's
+     * `relatedQuery[<toOneRel>][filter]` profile, run without N+1: Eloquent's
      * eager pipeline loads every parent's to-one target in ONE query, then a single
      * `WHERE id IN (…) AND <filters>` intersects the distinct targets against the filter. A
      * parent whose target is null, or whose target falls outside the matching set, maps to
@@ -1013,7 +1013,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     /**
      * The existing pivot meta for a `belongsToMany` relation's current members —
      * `relatedId => [pivotField => wire value]` — read straight off Eloquent's pivot
-     * accessor (PLAN decision 8). It loads the relation's members (which hydrates the pivot
+     * accessor. It loads the relation's members (which hydrates the pivot
      * onto each), then reads each declared pivot field off the pivot model by its
      * `column ?? name`. The one seam the in-memory witness cannot model (it returns `[]`),
      * so a stored pivot row folds under an incoming member's linkage `meta` on the Eloquent
@@ -1174,7 +1174,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
     /**
      * The Eloquent relation method backing a JSON:API relation: its `column()` override, else
-     * its name (blueprint §4). Default: the relationship name IS the Eloquent relation method.
+     * its name. Default: the relationship name IS the Eloquent relation method.
      */
     private function relationMethod(RelationInterface $relation): string
     {

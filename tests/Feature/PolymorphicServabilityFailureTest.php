@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The servability guard's polymorphic-discrimination failure path (PLAN decision 11): a
+ * The servability guard's polymorphic-discrimination failure path: a
  * polymorphic relation candidate that does not override `getType()` would silently claim
  * (and mis-serialize) members of its sibling type, so `jsonapi:optimize` must flag it and
  * fail the deploy.

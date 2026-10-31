@@ -10,7 +10,7 @@ use haddowg\JsonApi\Resource\Filter\DescribedFilter;
 use haddowg\JsonApi\Resource\Filter\DescribesQueryParameter;
 
 /**
- * A demonstrator **custom full-text filter** (the extensible-filter seam, decision 14):
+ * A demonstrator **custom full-text filter** (the extensible-filter seam):
  * `filter[<key>]=term` keeps a resource whose ANY declared text field contains `term`
  * (case-insensitive substring). It is neither a `Where` nor any built-in — the built-in
  * handlers do not recognise it, so it runs only because a registered arm teaches the

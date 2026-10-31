@@ -14,7 +14,7 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 use Workbench\App\MusicCatalog\Support\Fixtures;
 
 /**
- * The dual-provider smoke suite for the unified music-catalog domain (decision 14): one set
+ * The dual-provider smoke suite for the unified music-catalog domain: one set
  * of index + show (+ representative write) assertions run against BOTH the Eloquent and the
  * in-memory concretes, proving every type is served identically by both providers — the
  * parity premise. It exercises the id-strategy matrix (auto-increment, client natural key,

@@ -8,8 +8,8 @@ use haddowg\JsonApiLaravel\Eloquent\ModelMapResolver;
 
 /**
  * Writes (and clears) the discovery snapshot the {@see Discovery} loader consumes —
- * the WRITE side of the Phase-0 snapshot cache, driven by the optimize pipeline (PLAN
- * decision 11). The loader already reads a `require`-able PHP file at
+ * the WRITE side of the discovery snapshot cache, driven by the optimize pipeline.
+ * The loader already reads a `require`-able PHP file at
  * `jsonapi.discovery.cache`; this warmer produces it, so a `route:cache`d production app
  * registers routes + assembles servers from the cached snapshot with no filesystem walk.
  *

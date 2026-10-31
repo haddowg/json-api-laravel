@@ -26,8 +26,8 @@ parameters:
             message: '#^Parameter \#1 \$sql of method Illuminate\\Database\\Eloquent\\Builder<.*>::orderByRaw\(\) expects .*literal-string.*$#'
             path: src/DataProvider/Eloquent/EloquentKeyset.php
         # Laravel types whereRaw() $sql as `literal-string` for the same SQL-injection
-        # guard. The wildcard-LIKE fragment (`lower(col) LIKE ? ESCAPE '!'`, blueprint
-        # R1) interpolates only a regex-validated identifier qualified off the model's
+        # guard. The wildcard-LIKE fragment (`lower(col) LIKE ? ESCAPE '!'`)
+        # interpolates only a regex-validated identifier qualified off the model's
         # own table (never client input) and binds the search value — so the guard is a
         # false positive. Scoped to this one call so any other raw-SQL argument.type
         # error still surfaces.

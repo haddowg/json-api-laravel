@@ -7,7 +7,7 @@ namespace haddowg\JsonApiLaravel\Event;
 /**
  * Dispatched by the {@see \haddowg\JsonApiLaravel\Action\ActionInvoker} *after*
  * entity resolution and input validation, and *before* the action's ability gate +
- * handler run (PLAN decision 12). It carries the action's {@see $type} and
+ * handler run. It carries the action's {@see $type} and
  * {@see $action} name, the {@see $subject} — the resolved entity for a
  * resource-scope action, `null` for a collection-scope action — and the declared
  * Gate {@see $ability} (or `null` for an unsecured action).

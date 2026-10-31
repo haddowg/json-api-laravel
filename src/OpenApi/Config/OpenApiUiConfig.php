@@ -7,7 +7,7 @@ namespace haddowg\JsonApiLaravel\OpenApi\Config;
 use haddowg\JsonApiLaravel\Http\OpenApiUiController;
 
 /**
- * The resolved `jsonapi.openapi.ui.*` configuration (PLAN decision 11) — the single
+ * The resolved `jsonapi.openapi.ui.*` configuration — the single
  * config-driven documentation-viewer route's settings.
  *
  * A pure-scalar immutable carrier: whether the viewer route is registered, which

@@ -21,7 +21,7 @@ use Workbench\App\Validation\ChecklistResource;
  * {@see InMemoryDataPersister} pair sharing one store, so a write is immediately
  * readable and no database is touched — the witness half of the dual-provider bridge
  * contract. Uniqueness (`Rule::unique`) is inert on this provider (no table), the
- * documented Eloquent-only asymmetry (PLAN decision 6).
+ * documented Eloquent-only asymmetry.
  */
 final class ValidationInMemoryServiceProvider extends ServiceProvider
 {

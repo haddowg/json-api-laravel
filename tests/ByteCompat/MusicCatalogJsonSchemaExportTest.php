@@ -15,7 +15,7 @@ use Workbench\App\MusicCatalog\Support\CatalogConfig;
 /**
  * Exports the music-catalog standalone JSON-Schema documents (the `default` + `admin`
  * servers) to `build/laravel-schemas-<server>.json` — the Laravel half of the JSON-Schema
- * byte-compatibility check (PLAN decision 11), the sibling of
+ * byte-compatibility check, the sibling of
  * {@see MusicCatalogOpenApiExportTest}.
  *
  * The JSON-Schema export runs a DISTINCT projector path from the OpenAPI document (no

@@ -36,7 +36,7 @@ use PHPUnit\Framework\Attributes\Test;
  * core owns (`409` body-type mismatch, forbidden-vs-allowed client id `403`/round-trip,
  * standalone `lid` `400`, `415`/`406` write content negotiation), and unknown type/id
  * `404`s. Document-semantic `422`s live in {@see ValidationConformanceTestCase}; the
- * relationship writes are Phase 3 and stay VISIBLE here as explicit skip markers.
+ * relationship writes stay VISIBLE here.
  *
  * A **duplicate client-generated id** is now a `409` on both providers (the persisters
  * enforce core's `ClientGeneratedIdAlreadyExists`, closing the earlier
@@ -394,7 +394,7 @@ abstract class WriteConformanceTestCase extends Orchestra
         ])->assertStatus(404);
     }
 
-    // --- relationships in writes (Phase 3b — un-skipped as relations landed) ---
+    // --- relationships in writes (un-skipped as relations landed) ---
 
     #[Test]
     #[Group('spec:crud')]
@@ -594,7 +594,7 @@ abstract class WriteConformanceTestCase extends Orchestra
         // escape as an uncaught 500.
         //
         // The routed HTTP write surface never reaches this cast with garbage — the
-        // always-on validation bridge (PLAN decision 6) guards every writable DateTime
+        // always-on validation bridge guards every writable DateTime
         // field with a ParsableDate rule, a clean 422 BEFORE hydration (asserted
         // dual-provider over HTTP in ValidationConformanceTestCase). And the only path that
         // skips the bridge, a bare serializer/hydrator pair with no AbstractResource, is
@@ -643,7 +643,7 @@ abstract class WriteConformanceTestCase extends Orchestra
     /**
      * POST/PATCH/DELETE a JSON:API document through the shipped {@see InteractsWithJsonApi}
      * kit, which negotiates the JSON:API media type on both the request `Content-Type` and
-     * the `Accept` header. (Dogfoods the testing kit — PLAN decision 12.)
+     * the `Accept` header. (Dogfoods the testing kit.)
      *
      * @param array<string, mixed> $document
      *

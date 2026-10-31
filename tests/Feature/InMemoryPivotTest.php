@@ -13,7 +13,7 @@ use Workbench\App\Providers\ConformanceInMemoryServiceProvider;
  * dual-provider pivot-write contract, plus the boundary proof: the witness stores NO pivot
  * meta (a pivot column needs an association entity it cannot model), so a pivot write still
  * changes the membership but renders NO `meta.pivot` on the related or relationship endpoints
- * — `meta.pivot` is Eloquent-only (blueprint §3d). The data lives in the provider
+ * — `meta.pivot` is Eloquent-only. The data lives in the provider
  * registration, so no database is touched.
  *
  * @internal

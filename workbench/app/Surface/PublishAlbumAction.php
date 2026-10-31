@@ -13,8 +13,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 
 /**
- * A custom, resource-scope action `POST /albums/{id}/-actions/publish` (PLAN decision 12
- * showcase, mirroring the Symfony example's album-publish action). It demonstrates:
+ * A custom, resource-scope action `POST /albums/{id}/-actions/publish` (mirroring the Symfony example's album-publish action). It demonstrates:
  *  - **resource scope** — the `{id}` is resolved to the target album before the handler runs
  *    ({@see ActionContext::entity()});
  *  - **Document input** — the request body is validated + hydrated into a fresh `albums`

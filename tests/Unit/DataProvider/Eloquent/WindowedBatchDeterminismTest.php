@@ -22,7 +22,7 @@ use Workbench\App\Models\Album;
 use Workbench\App\Models\Artist;
 
 /**
- * The windowed-batch determinism REFEREE (PLAN's tie-break watch item): the Eloquent windowed batch's
+ * The windowed-batch determinism REFEREE: the Eloquent windowed batch's
  * SQL `groupLimit`/`ROW_NUMBER` push-down and the in-memory witness's `WindowExecutor` +
  * `withPkTiebreak` must return byte-identical pages when a relation ties on every requested sort
  * key. Both append the SAME final `id ASC` tiebreak — the SQL as the ROW_NUMBER `OVER (… ORDER

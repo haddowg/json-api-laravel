@@ -7,8 +7,8 @@ namespace Workbench\App\Models;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
 /**
- * The workbench `users` model — the authenticated principal the policies (PLAN
- * decision 7 showcase) authorize against. `is_admin` grants the policy `before()`
+ * The workbench `users` model — the authenticated principal the policies
+ * authorize against. `is_admin` grants the policy `before()`
  * bypass; `can_write` grants the create/update/`publish` abilities; `can_read` gates the
  * `viewAny`/`view` read abilities (so the suite can assert a DENIED read/list on the
  * dedicated-policy path). Kept minimal (no password reset / notifications); the security

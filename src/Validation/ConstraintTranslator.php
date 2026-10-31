@@ -52,7 +52,7 @@ use Illuminate\Validation\Rule;
 /**
  * Translates a core {@see ConstraintInterface} value object into the
  * `illuminate/validation` rule(s) that enforce it. Core declares constraints as
- * metadata and never executes them; this is the always-on adapter (PLAN decision 6)
+ * metadata and never executes them; this is the always-on adapter
  * that gives the vocabulary teeth under Laravel's validator, producing real Laravel
  * rules whose messages are Laravel's localizable strings.
  *

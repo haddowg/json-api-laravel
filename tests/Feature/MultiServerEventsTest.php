@@ -15,7 +15,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * Multi-server lifecycle events (PLAN §7): the `serverName` a lifecycle event carries is
+ * Multi-server lifecycle events: the `serverName` a lifecycle event carries is
  * the server the request dispatched on, so a listener resolves the right server in a
  * multi-server app. The `gizmos` fixture is exposed on both the `default` (prefix `api`)
  * and `admin` (prefix `admin-api`) servers; a read on each server's prefix dispatches the

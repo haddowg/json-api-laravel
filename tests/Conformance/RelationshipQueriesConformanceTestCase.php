@@ -10,7 +10,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The Phase-3b Relationship Queries profile acceptance suite (the Laravel analogue of the
+ * The Relationship Queries profile acceptance suite (the Laravel analogue of the
  * bundle's relationship-queries + windowed-include conformance): a windowed relationship-linkage
  * endpoint, a windowed related endpoint, and an
  * included relationship windowed from the PRIMARY request via `relatedQuery`/`rQ` under the
@@ -26,7 +26,7 @@ use PHPUnit\Framework\Attributes\Test;
  * owns four ordered tracks (1/2/3/4) three of which (1/2/3) TIE on `released_at` (1997-05-21).
  * So a divergence in tie ordering, NULL placement, per-parent windowing, or count parity
  * surfaces as a between-provider difference on the shared assertions — the referee premise
- * the SQL push-down is held to. This is the suite that makes the PLAN's tie-break watch item
+ * the SQL push-down is held to. This is the suite that makes tie-break determinism
  * a test (byte-identical pages on tied keys).
  */
 abstract class RelationshipQueriesConformanceTestCase extends Orchestra
@@ -154,7 +154,7 @@ abstract class RelationshipQueriesConformanceTestCase extends Orchestra
         // resolve the tie by the appended PK tiebreak — id ASC — so page 1 is [1, 2] and page 2
         // is [3, 4] BYTE-IDENTICALLY on both providers (the SQL `ORDER BY released_at, id`
         // group-limit and the witness `withPkTiebreak` produce the same page — the determinism
-        // referee, the PLAN tie-break watch item as a test).
+        // referee as a test).
         $page1 = $this->fetch('/api/playlists/1/tracks?sort=releasedAt&page[size]=2');
         $page1->assertOk();
         self::assertSame(['1', '2'], $this->ids($page1));

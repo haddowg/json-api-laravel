@@ -11,7 +11,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
 /**
  * A **read-only** type with NO `policy:` and no ability overrides, and no Gate policy
- * registered for it — the inertness witness (PLAN decision 7). Its persister-less list
+ * registered for it — the inertness witness. Its persister-less list
  * subject is null and no policy is declared, so the authorizer stays inert and the
  * collection is served ungated. Backed by the same {@see Chart} POPOs as {@see ChartResource}.
  */

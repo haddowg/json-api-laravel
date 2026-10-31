@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The JSON:API **Atomic Operations** acceptance suite (PLAN decision 12), asserted
+ * The JSON:API **Atomic Operations** acceptance suite, asserted
  * byte-identical over HTTP on the in-memory witness ({@see InMemoryAtomicConformanceTest})
  * and the reference Eloquent provider ({@see EloquentAtomicConformanceTest}) over a matching
  * baseline (artists 1/2, album 1). The whole loop — parse, ext negotiation, in-order

@@ -19,7 +19,7 @@ use haddowg\JsonApi\Resource\Sort\SortByField;
  * This is the OpenAPI-projection twin of the Symfony bundle's `DataProvider\PivotFields`
  * — the two methods the {@see \haddowg\JsonApiLaravel\OpenApi\Metadata\RelationMetadata}
  * reads so the projected document advertises exactly the pivot meta shape and pivot
- * sort keys the bundle projects for an identical relation (the Phase-5 byte-compat
+ * sort keys the bundle projects for an identical relation (the byte-compat
  * mandate). It is pure and self-contained (it only reads the relation's declared
  * fields), so it stays correct regardless of the reference layer's pivot query
  * push-down state.

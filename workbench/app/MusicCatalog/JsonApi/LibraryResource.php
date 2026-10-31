@@ -14,7 +14,7 @@ use Workbench\App\MusicCatalog\Models\Library as LibraryModel;
 
 /**
  * The `libraries` resource type (music-catalog domain) — the polymorphic to-many
- * (over-parity) headline (PLAN decision 14): where the Doctrine reference THROWS on a
+ * (over-parity) headline: where the Doctrine reference THROWS on a
  * `MorphToMany`, the Eloquent reference resolves the mixed `items` set (tracks + albums +
  * artists) natively via {@see LibraryModel::libraryItems()} (three `morphedByMany` relations
  * over one polymorphic pivot), read off the parent by the `items` `extractUsing`; the

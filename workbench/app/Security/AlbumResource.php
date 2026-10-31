@@ -16,7 +16,7 @@ use Workbench\App\Models\User;
 use Workbench\App\Security\Policies\AlbumApiPolicy;
 
 /**
- * The secured `albums` type for the authorization conformance suite (PLAN decision 7),
+ * The secured `albums` type for the authorization conformance suite,
  * served on the auth-guarded `secure` server so an unauthenticated request is a `401`
  * (the auth middleware) while an authenticated-but-denied one is a `403` (the policy).
  *

@@ -17,7 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 /**
- * Serves the OpenAPI 3.1 document for a server (PLAN decision 11):
+ * Serves the OpenAPI 3.1 document for a server:
  * `GET {json.path}` (default `/docs.json`) for the implicit `default` server and
  * `GET /{server}/docs.json` for a named one.
  *

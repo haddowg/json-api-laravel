@@ -11,7 +11,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The Phase-3b relationship-WRITE acceptance suite (the Laravel analogue of the bundle's
+ * The relationship-WRITE acceptance suite (the Laravel analogue of the bundle's
  * relationship-mutation + pivot-write conformance): the relationship-mutation endpoints
  * (`PATCH`/`POST`/`DELETE /{type}/{id}/relationships/{rel}`), the relationships embedded in
  * whole-resource writes (`data.relationships`), pivot upserts with `meta.pivot`

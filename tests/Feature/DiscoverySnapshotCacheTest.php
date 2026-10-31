@@ -11,7 +11,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * Tests the WRITE side of the Phase-0 discovery snapshot cache (PLAN decision 11): when
+ * Tests the WRITE side of the discovery snapshot cache: when
  * `jsonapi.discovery.cache` names a path, `jsonapi:optimize` writes a `require`-able
  * snapshot the {@see Discovery} loader consumes (so a `route:cache`d app skips the
  * filesystem scan), and `jsonapi:clear` removes it. Loading the written snapshot yields

@@ -9,7 +9,7 @@ namespace Workbench\App\Validation;
  * the validation-conformance suite. Property names are the storage **columns** the
  * {@see ArticleResource} fields resolve to, shared with the Eloquent
  * {@see \Workbench\App\Models\Article} model so one resource declaration drives the
- * always-on validator bridge on BOTH providers (blueprint §5.4).
+ * always-on validator bridge on BOTH providers.
  */
 final class Article
 {

@@ -19,7 +19,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Operation\Operation;
 
 /**
- * The `playlists` resource type (Phase 3b) — the parent of the pivot + relationship-mutation
+ * The `playlists` resource type — the parent of the pivot + relationship-mutation
  * surface, shared by BOTH provider suites. Two `belongsToMany` relations to the same `tracks`
  * type:
  *  - `tracks` is a PLAIN join (no pivot columns) — the bare-belongsToMany witness and the
@@ -83,7 +83,7 @@ final class PlaylistResource extends AbstractResource
     public function filters(): array
     {
         return [
-            // Relationship-existence over the `orderedTracks` belongsToMany (Phase 3b): a
+            // Relationship-existence over the `orderedTracks` belongsToMany: a
             // presence-only semi-join. `filter[withOrderedTracks]` keeps playlists with ≥1
             // track, `filter[withoutOrderedTracks]` those with none. The Eloquent provider
             // compiles an EXISTS / NOT EXISTS subquery over the join; the in-memory witness

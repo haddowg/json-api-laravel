@@ -6,7 +6,7 @@ namespace Workbench\App\Domain;
 
 /**
  * A genre — a plain mutable domain object seeded into the in-memory provider for the
- * Phase 0 reads-only slice.
+ * read-only feature suite.
  */
 final class Genre
 {

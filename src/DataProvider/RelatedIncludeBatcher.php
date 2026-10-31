@@ -21,7 +21,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * Laravel-style batch eager-loading of a read's effective `?include` tree, so an included
- * relationship does not N+1 (PLAN decision 8): one batched call loads a relation for every
+ * relationship does not N+1: one batched call loads a relation for every
  * source entity at a level, then its loaded targets seed the next level. Provider-agnostic
  * — the per-relation load runs through the SPI's
  * {@see DataProviderInterface::fetchRelatedCollectionBatch()}, so it
@@ -31,7 +31,7 @@ use Illuminate\Database\Eloquent\Model;
  * Each level loads in PLAIN-INCLUDE (fast-path) mode: an empty filter/sort criteria with a
  * NULL window, so the batch loads the WHOLE related set per parent — byte-for-byte the rows
  * a lazy read would have materialised. How a parent takes its batched value depends on the
- * parent (PLAN decision 8):
+ * parent:
  *  - an **Eloquent model** takes `$model->setRelation($column, $value)` — which makes
  *    `relationLoaded()` true, so the load-state seam then reports loaded and core reads the
  *    linkage off the model without a query;
@@ -63,7 +63,7 @@ use Illuminate\Database\Eloquent\Model;
  * `MorphTo`, or a `withData()` override) — for an Eloquent page ({@see preloadEagerLinkage()}).
  * Core never consults the load-state seam for an eager relation, so without this an Eloquent
  * collection would lazy-load that to-one once per parent just to emit identifiers (the N+1
- * PLAN decision 8 eliminates). It rides the SAME batched fast path + `setRelation`
+ * this batcher eliminates). It rides the SAME batched fast path + `setRelation`
  * and does not recurse; it is inert for the in-memory witness (whose value is already in
  * memory) so the two providers stay byte-identical.
  *
@@ -80,7 +80,7 @@ use Illuminate\Database\Eloquent\Model;
  * when included, and the nested include walk continues from them, otherwise only the guarded
  * types', so a hidden target's linkage renders as none.
  *
- * The `on()` eager-load pass the bundle also runs (flattened to-one chains) is a phase-4
+ * The `on()` eager-load pass the bundle also runs (flattened to-one chains) is a
  * flattened-attribute concern with no declarations in this package yet, so it is a
  * documented seam here (inert without `on()`), not ported.
  */
@@ -306,8 +306,8 @@ final class RelatedIncludeBatcher
             // EAGER monomorphic to-one (BelongsTo/MorphTo, or a withData() override) still
             // emits its linkage `data` on every read regardless of ?include. Core never
             // consults the load-state seam for an eager relation, so on an Eloquent page that
-            // is one lazy round-trip PER PARENT just to serialize identifiers — the N+1 PLAN
-            // decision 8 set out to eliminate ("preload via setRelation BEFORE any readValue").
+            // is one lazy round-trip PER PARENT just to serialize identifiers — the N+1 the
+            // batcher sets out to eliminate ("preload via setRelation BEFORE any readValue").
             // Preload it through the SAME batched fast path so the linkage renders from the
             // loaded relation in ONE query for the whole page.
             if ($batch) {
@@ -657,7 +657,7 @@ final class RelatedIncludeBatcher
      * Makes a parent render its batched related value. An Eloquent model takes
      * {@see Model::setRelation()} (a to-many wrapped in an {@see EloquentCollection}, a to-one
      * the single model or `null`), the same write its own lazy load makes, so `relationLoaded()`
-     * is true and the load-state seam reports loaded (PLAN decision 8). Any other object gets the
+     * is true and the load-state seam reports loaded. Any other object gets the
      * value as out-of-band linkage in `$linkages` and is left as it is.
      *
      * @param list<object>                                                            $loaded

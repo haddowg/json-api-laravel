@@ -111,7 +111,7 @@ final class PlaylistApiPolicy
 This is the "policies replace the Voter" demonstrator: the subject is typed `object`, so the
 same policy authorizes both the Eloquent model and an in-memory POPO. The example's
 `PlaylistApiPolicy` carries an **API-distinct method** (`curate` for update, `deletePlaylist`
-for delete) — the point of decision 7.
+for delete).
 
 A server only enforces the `policy:` and `abilities` of the resource class it exposes the
 type through, so two servers can secure one type differently. See

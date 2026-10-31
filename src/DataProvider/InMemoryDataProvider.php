@@ -45,7 +45,7 @@ use haddowg\JsonApi\Resource\Sort\SortDirective;
  * {@see store()} to an {@see \haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister}; the
  * two then share one store, so writes are immediately readable.
  *
- * **Relationship seams (the witness half of Phase 3).** It implements the batched related
+ * **Relationship seams (the witness half).** It implements the batched related
  * fetch, the grouped count, and the to-one match seams provider-agnostically off core's
  * {@see Accessor} + {@see CriteriaApplier} + {@see WindowExecutor} + the store — a per-parent
  * loop that is byte-identical to a one-at-a-time fetch, so the conformance suite referees the
@@ -166,7 +166,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
             return $this->runCursor($criteria, $this->store->all());
         }
 
-        // Count-free by default (G21): count the pre-window total only when the
+        // Count-free by default: count the pre-window total only when the
         // handler resolved a COUNT for this fetch (the paginator's withCount()
         // author opt-in, or ?withCount=_self_ under a countable() resource);
         // otherwise the executor fetches count-free via the window+1 probe and
@@ -183,7 +183,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
     ): CollectionResult {
         // Read the related objects off the parent via the relation's public accessor
         // (honours storedAs/extractUsing), then run the same criteria pipeline as a
-        // primary collection fetch. Count-free by default (G21): count the pre-window
+        // primary collection fetch. Count-free by default: count the pre-window
         // total only when the handler resolved a COUNT for this fetch (the relation
         // paginator's withCount() opt-in, or ?withCount=_self_ under a countable()
         // relation). A to-many whose related value is null/absent is an empty collection —
@@ -404,7 +404,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
             window: $criteria->window,
             defaultSort: $defaultSort,
             aliasOf: $criteria->aliasOf,
-            // Preserve the count decision through the tiebreak rebuild (G21): a windowed
+            // Preserve the count decision through the tiebreak rebuild: a windowed
             // include of a countable relation counts, so the rebuilt criteria must carry
             // the same wantsCount the batcher resolved.
             wantsCount: $criteria->wantsCount,

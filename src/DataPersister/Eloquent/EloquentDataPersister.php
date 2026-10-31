@@ -34,7 +34,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /**
- * The reference Eloquent write persister (PLAN decision 2): the storage twin of the
+ * The reference Eloquent write persister: the storage twin of the
  * {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider} and the
  * Laravel analogue of the bundle's `DoctrineDataPersister`. One instance serves every
  * Eloquent-mapped type — constructed with the SAME `type → model class-string` map the
@@ -60,7 +60,7 @@ use Illuminate\Support\Facades\DB;
  * reference.
  *
  * The segregated {@see TransactionalDataPersisterInterface} drives an Atomic Operations
- * batch (Phase 4): {@see beginTransaction()}/{@see commit()}/{@see rollback()} open, commit
+ * batch: {@see beginTransaction()}/{@see commit()}/{@see rollback()} open, commit
  * and (guarded) roll back one transaction on the configured connection, inside which the
  * per-op writes above buffer as savepoints — non-durable until {@see commit()} yet
  * materialising each store-generated id immediately (`save()` sets it before its savepoint
@@ -840,7 +840,7 @@ class EloquentDataPersister extends AbstractDataPersister implements Transaction
      * `$this->connection`, but each per-op write runs `$model->save()` on the MODEL's own
      * connection: if they differ, the write commits durably outside the batch and
      * {@see rollback()} could not undo it, silently breaking the transactional contract.
-     * Enforcing equality up front turns that latent Phase-4 atomic-operations hazard into a
+     * Enforcing equality up front turns that latent atomic-operations hazard into a
      * clear wiring error.
      */
     private function assertModelsShareTheBatchConnection(): void

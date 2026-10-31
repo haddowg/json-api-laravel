@@ -1,6 +1,6 @@
-## Testbench configuration for the `docker compose up` demo (PLAN Phase 5 docker item).
+## Testbench configuration for the `docker compose up` demo.
 ## The Dockerfile copies this over `testbench.yaml` inside the image so `testbench serve`
-## boots the FULL music-catalog domain (decision 14) instead of the default workbench
+## boots the FULL music-catalog domain instead of the default workbench
 ## suite — the two must never co-register (they reuse the same `$type` strings), so this
 ## config lists the music-catalog providers and deliberately omits WorkbenchServiceProvider.
 

@@ -25,8 +25,8 @@ use haddowg\JsonApi\Server\Server;
  *
  * The {@see Server} is passed per call (it flows from the operation context, and the
  * architecture is multi-server-capable) rather than held. The standalone
- * `#[AsJsonApiRelations]` registry the bundle folds in is a later-phase capstone feature
- * (PLAN decision 3) not yet present here, so relations resolve resource-only.
+ * `#[AsJsonApiRelations]` registry the bundle folds in is
+ * not present here, so relations resolve resource-only.
  */
 final class TypeMetadataResolver
 {

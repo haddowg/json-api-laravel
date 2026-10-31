@@ -27,12 +27,12 @@ use Workbench\Database\Seeders\ConformanceSeeder;
 
 /**
  * The reference Eloquent provider's batched relation seams, executed as real SQL over
- * SQLite (PLAN decision 8). Seeds the shared {@see \Workbench\App\Support\ConformanceFixtures}
+ * SQLite. Seeds the shared {@see \Workbench\App\Support\ConformanceFixtures}
  * (Radiohead owns four albums, Portishead one, Massive Attack two, three artists none — the
  * 0/1/many batch edge cases), then drives {@see EloquentDataProvider}'s relation methods
  * directly: the eager-pipeline fast path (dictionary partition + `setRelation` write-back),
  * the to-one FK projection, the grouped zero-filled count, the to-one filter probe, the
- * load-state seam, and the Phase-3b windowed-batch guard.
+ * load-state seam, and the windowed-batch guard.
  *
  * @internal
  */

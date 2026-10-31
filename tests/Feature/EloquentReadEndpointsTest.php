@@ -8,7 +8,7 @@ use haddowg\JsonApiLaravel\Tests\Eloquent\EloquentTestCase;
 use PHPUnit\Framework\Attributes\CoversNothing;
 
 /**
- * End-to-end coverage of the Phase 1 read surface backed by the reference
+ * End-to-end coverage of the read surface backed by the reference
  * {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider}: the whole
  * path — route → controller → negotiate → dispatch → Eloquent provider (real SQLite) →
  * render — proves filters, sorts, the counted and count-free pagination arms, the

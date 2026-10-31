@@ -12,7 +12,7 @@ use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use Illuminate\Routing\Router;
 
 /**
- * Emits the OpenAPI documentation routes (PLAN decision 11), gated behind the same
+ * Emits the OpenAPI documentation routes, gated behind the same
  * expose rule the Symfony bundle's `OpenApiRouteLoader` uses — `app.debug` OR
  * `jsonapi.openapi.expose_in_prod` — and only when `jsonapi.openapi.enabled` is true.
  *
