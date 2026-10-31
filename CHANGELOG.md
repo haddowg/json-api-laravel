@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.0](https://github.com/haddowg/json-api-laravel/compare/v1.20.0...v1.21.0) (2026-10-31)
+
+
+### Features
+
+* run entity-level constraints after relationship writes ([#178](https://github.com/haddowg/json-api-laravel/issues/178)) ([c56ab32](https://github.com/haddowg/json-api-laravel/commit/c56ab32896e368d4e11c413d6dcf40027f145baa))
+
 ## [1.20.0](https://github.com/haddowg/json-api-laravel/compare/v1.19.1...v1.20.0) (2026-10-28)
 
 
