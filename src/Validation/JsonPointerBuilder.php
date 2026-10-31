@@ -38,6 +38,15 @@ final class JsonPointerBuilder
     }
 
     /**
+     * The pointer for a violation on a relationship as a whole, such as an entity-level
+     * rule about its members: `/data/relationships/<relation>`.
+     */
+    public function forRelationship(string $relation): string
+    {
+        return '/data/relationships/' . $this->encodeSegment($relation);
+    }
+
+    /**
      * The pointer for a violation on a relationship **linkage** `type` in a
      * whole-resource write body: the to-one linkage points at
      * `/data/relationships/<rel>/data/type`, a to-many member at
