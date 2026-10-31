@@ -7,7 +7,9 @@ An in-depth, dimension-by-dimension comparison of **`haddowg/json-api` (core) +
 All LaravelJsonApi claims below were checked against **v5.2.1** (released 2026-04-14,
 supporting Laravel ^11–^13) and its published 5.x documentation and issue tracker. If you
 are reading this much later, re-verify anything load-bearing — open issues get closed and
-docs get written.
+docs get written. This suite's side was last re-checked on 31 October 2026, against
+`haddowg/json-api-laravel` 1.20.0 on core 1.21; the LaravelJsonApi side was not
+re-verified then.
 
 LaravelJsonApi is the established JSON:API package for Laravel: mature, widely adopted,
 deeply idiomatic, with years of production track record. This suite is the newer entrant.
@@ -51,7 +53,7 @@ No point burying this. Choose LaravelJsonApi when:
 | [Author-published/custom profiles](#author-publishedcustom-profiles-countable-relationship-queries) | Countable, Relationship Queries bundled | Absent | **Advantage** |
 | [Profile-contributed JSON Schema fragments](#profile-contributed-json-schema-fragments) | `allOf`-composed into validation | Absent | **Advantage** |
 | [OpenAPI engine completeness](#openapi-engine-completeness--fidelity-paths-schemas-parameters-from-metadata) | Full OAS 3.1 projection, served + exported | None first-party | **Advantage** |
-| [OpenAPI response declarations & vendor extensions](#openapi-response-declarations--vendor-extension-fidelity) | Per-operation responses, async lifecycle, self-describing pagination | None | **Advantage** |
+| [OpenAPI response declarations & vendor extensions](#openapi-response-declarations--vendor-extension-fidelity) | Per-operation responses, async lifecycle, raw bodies, worked examples, self-describing pagination | None | **Advantage** |
 | [Typed TypeScript client](#typed-typescript-client--query-cache-integration) | Sibling `json-api-ts` codegen + TanStack Query | None in org; no contract to generate from | **Advantage** |
 | [Declared filter vocabulary & operators](#declared-filter-vocabulary--operators) | Rich vocabulary, metadata/execution split | Comparably rich, execution embedded | Different approach |
 | [Filter value validation, defaults, fixed values & singular](#filter-value-validation-defaults-fixed-values--singular-collapse) | Declarative constraints + `default()`/`fixed()`/`singular()` | `singular()` + request-class rules; no default/fixed | **Advantage** (narrow) |
@@ -65,7 +67,7 @@ No point burying this. Choose LaravelJsonApi when:
 | [Sparse fieldsets — output narrowing](#sparse-fieldsets-fieldstype-output-narrowing) | Full support | Full support | Parity |
 | [Sparse fieldsets — SQL/computation push-down](#sparse-fieldsets--sqlcomputation-push-down) | `sparseByDefault()` skips computation | Output filtering only; `SELECT *` | **Advantage** |
 | [Compound includes — safeguards & batching](#compound-documents--includes--safeguards--n1-safe-batching) | Depth caps, whitelists, SPI batching | Depth caps, guards, eager loading | Parity |
-| [Error catalogue & typed exception model](#error-catalogue--typed-exception-model) | 53 typed exceptions, fixed shape | Error DTOs, no fixed catalogue | **Advantage** |
+| [Error catalogue & typed exception model](#error-catalogue--typed-exception-model) | ~60 typed exceptions, fixed shape, in the OpenAPI document | Error DTOs, no fixed catalogue | **Advantage** |
 | [Stable machine-readable error codes](#stable-machine-readable-error-codes) | Every error carries a stable `code` | `code` empty by default, developer-assigned | **Advantage** |
 | [Error message localization](#error-message-localization) | Code-keyed resolver, EN catalogue | Six locales shipped | Parity |
 | [Request/response document schema validation](#requestresponse-document-schema-validation) | Vendored 1.1 JSON Schema, opt-in middleware | Laravel-rule validation | **Advantage** |
@@ -80,10 +82,10 @@ No point burying this. Choose LaravelJsonApi when:
 | [Track record, adoption & governance](#production-track-record-adoption--release-cadencegovernance) | Young, rapid iteration | Mature, widely adopted, solo-maintained | **LaravelJsonApi** |
 | [Soft deletes](#soft-deletes-recoverable-delete-restoreforce-delete-actions) | Explicit restore/force-delete actions | PATCH-based restore, trashed DELETE | Different approach |
 | [Asynchronous processing (202/303)](#asynchronous-processing-202-accepted--303-see-other-job-lifecycle) | Shipped job lifecycle, in the contract | Unshipped roadmap item | **Advantage** |
-| [Custom actions & capability composition](#custom-actions--capability-composition-without-a-full-resource) | Contract-declared actions, resource-less types | First-class routed actions, outside any contract | Different approach |
+| [Custom actions & capability composition](#custom-actions--capability-composition-without-a-full-resource) | Contract-declared actions (incl. file and URL responses), resource-less types | First-class routed actions, outside any contract | Different approach |
 | [Multi-server support](#multi-server-support-independent-named-api-surfaces) | Named servers, per-server OpenAPI | Named servers, a founding concept | Parity |
 | [Response headers (caching, deprecation)](#response-headers-caching-rfc-8594-deprecation) | Declarative cache + RFC 8594 headers | Ordinary middleware | **Advantage** (modest) |
-| [Authorization model](#authorization-model-policypermission-integration) | Gate policies + relationship overrides | Policies + Authorizer classes | Parity |
+| [Authorization model](#authorization-model-policypermission-integration) | Gate policies, relation-level gates, OAuth scopes | Policies + Authorizer classes | Parity |
 
 ---
 
@@ -230,12 +232,18 @@ they are unofficial and necessarily reverse-engineer the schema classes.
 ### OpenAPI response declarations & vendor-extension fidelity
 
 **This suite**'s projection goes beyond happy-path schemas: per-operation success response
-sets (`Created`/`Ok`/`NoContent`/`Accepted`/`SeeOther`/meta-result/action-resource)
-including the full async `202` + `303` job lifecycle; vendor extensions such as
-`x-enum-varnames`/`x-enum-descriptions` and `x-profile` on profile-gated parameters; and
+sets (`Created`/`Ok`/`NoContent`/`Accepted`/`SeeOther`/meta-result/action-resource/raw
+result) including the full async `202` + `303` job lifecycle, an action's CSV or PDF
+response, and a download URL answered as a `303` or a location document; an action's
+accepted request bodies; vendor extensions such as `x-enum-varnames`/`x-enum-descriptions`,
+`x-profile` on profile-gated parameters, an action's `x-safety`, and your own `x-…` keys per
+type, operation or action; each operation's required OAuth scopes; worked request and
+response examples built only from the examples your fields and error codes declare; and
 self-describing `page[…]` parameter schemas — a Multi-paginator projects as a single
 `oneOf` menu discriminated by its `kind`, so the generated document tells a client exactly
-which pagination strategies are on offer.
+which pagination strategies are on offer. Every link the server builds renders as a link
+object whose `describedby` points at its operation in the served document. See
+[openapi](openapi.md).
 
 **LaravelJsonApi** generates no OpenAPI at all, so none of this layer exists to compare.
 
@@ -452,13 +460,14 @@ adjacent push-down and windowed-relation rows.
 
 ### Error catalogue & typed exception model
 
-**This suite**'s core ships a fixed **error catalogue**: 53 concrete typed exception
+**This suite**'s core ships a fixed **error catalogue**: nearly 60 concrete typed exception
 classes, each implementing `JsonApiExceptionInterface` and fixing its own HTTP status,
 `code`, `title`, `detail` and `source`. You throw the exception; the document renders
 itself; an uncaught throwable renders a debug-gated `500`. The Laravel package maps all
 of it through a route-scoped exception renderable plus tagged custom exception mappers,
-so JSON:API routes render error documents and the rest of your app is untouched. See
-[errors](errors.md).
+so JSON:API routes render error documents and the rest of your app is untouched. The
+catalogue is projected into the OpenAPI document, and your own described error codes join
+it through discovery. See [errors](errors.md).
 
 **LaravelJsonApi**'s errors are spec-compliant DTOs with automatic mapping of validation
 errors to `source.pointer` — solid — but there is no fixed exception-per-failure
@@ -626,8 +635,8 @@ fluent `JsonApiDocument`/`JsonApiErrors` assertions,
 schema assertions. The Laravel package adds the `InteractsWithJsonApi` trait,
 JSON:API-aware `TestResponse` macros, and an opt-in `SchemaConformanceTrait` that
 validates real responses against the **generated OpenAPI schemas** — your tests referee
-your contract. The package's own conformance suite (48 files) runs dual-provider,
-Eloquent and in-memory. See [multi-server-and-testing](multi-server-and-testing.md).
+your contract. The package's own feature suite runs its conformance assertions against
+both providers, Eloquent and in-memory. See [multi-server-and-testing](multi-server-and-testing.md).
 
 **LaravelJsonApi** has an official `testing` package: a `MakesJsonApiRequests` trait and
 a fluent `jsonApi()` request/assertion builder on Laravel's `TestResponse`, with
@@ -709,9 +718,13 @@ in that ecosystem — it just has not been carried into the current package as o
 ### Custom actions & capability composition without a full resource
 
 **This suite**: non-CRUD `-actions/{name}` endpoints, resource- or collection-scoped,
-with Document/Raw/None input modes, ability gating, **state-aware discoverable links**
-(an action advertises itself on the resources it currently applies to), and per-action
-OpenAPI response declarations — actions are part of the contract, not beside it.
+with Document/Raw/None input modes, several accepted request media types (a JSON:API
+document or a CSV upload on one action), raw response bodies (CSV, PDF, a stream), a
+download URL answered as a `303` or a JSON:API location document, ability and OAuth-scope
+gating, **state-aware discoverable links** (an action advertises itself on the resources
+it currently applies to, via `ConditionallyLinked` or a resource-declared `ActionLink`),
+declared safety (`readOnly`/`destructive`/`idempotent`), and per-action OpenAPI response
+declarations and examples — actions are part of the contract, not beside it.
 Separately, the capability model composes: serializer, hydrator, provider and persister
 are independent capabilities, so a resource-less type or a "two types, one model" design
 needs no `AbstractResource`, and a write operation without a hydrator fails discovery
@@ -751,8 +764,9 @@ that is the OpenAPI row's advantage, not this one's).
 
 **This suite**: declarative per-resource `Cache-Control`/`Vary` headers (with
 per-read-shape overrides) on successful `GET`s, plus RFC 8594
-`Deprecation`/`Sunset`/sunset-link headers, layered over global config defaults — the
-deprecation posture of a resource lives on the resource.
+`Deprecation`/`Sunset`/sunset-link headers, layered over per-server and global config
+defaults — the deprecation posture of a resource lives on the resource, and a whole API
+version can be sunset from its server's config block.
 
 **LaravelJsonApi**: no declarative package-level cache-header or deprecation-header
 support appears in its docs. The practical gap is modest — ordinary Laravel middleware
@@ -766,15 +780,19 @@ capability wall.
 **This suite**: native Gate policy authorization (`viewAny`/`view`/`create`/`update`/
 `delete`), ability-name overrides, an optional dedicated API-policy class, and
 relationship-level control — relationship mutations default to the parent's `update`
-ability but are overridable per relation, and related/relationship *reads* are gateable
-per relation. See [authorization](authorization.md).
+ability but are overridable per relation, a relation can declare its own read permission,
+related rows pass their own type's `view` policy, and an update is checked against both
+the stored and the changed resource. Separately, per-operation **OAuth scopes** are
+enforced (`403 INSUFFICIENT_SCOPE`, per operation inside an atomic batch too) and listed in
+the OpenAPI document. See [authorization](authorization.md) and [OAuth scopes](scopes.md).
 
 **LaravelJsonApi**: comprehensive and verified — standard Laravel policies,
 relationship-level policy methods (`viewAuthor`, `updateAuthor`, `attachTags`/
 `detachTags` with `LazyRelation` inspection), custom `Authorizer` classes (per-resource,
 per-group, or server-wide), and Gate responses with custom error messages.
 
-**Verdict: parity.** Both are thorough, idiomatic Laravel authorization.
+**Verdict: parity.** Both are thorough, idiomatic Laravel authorization. The scope layer
+we have not compared: their docs were not checked for token-scope support.
 
 ---
 
@@ -786,7 +804,8 @@ Laravel team.
 
 Choose **this suite** when the things it uniquely ships are on your requirements list:
 full JSON:API **1.1** (extensions, profiles, `lid`), **atomic operations**, a complete
-generated **OpenAPI 3.1 contract** with a typed **TypeScript client** behind it,
+generated **OpenAPI 3.1 contract** with worked examples and a typed **TypeScript client**
+behind it, enforced and documented **OAuth scopes**,
 **JSON Schema** publication and document validation, **SQL push-down** for sparse fields
 and windowed relations, a **stable machine-readable error catalogue**, and a
 framework-agnostic core that is equally idiomatic in Laravel, in Symfony, or over a
