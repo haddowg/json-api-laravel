@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature;
 
+use haddowg\JsonApi\OpenApi\GeneratorContract;
 use haddowg\JsonApiLaravel\Action\ActionDescriptor;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
@@ -98,8 +99,8 @@ final class OpenApiActionSafetyTest extends Orchestra
     #[Test]
     public function the_document_is_stamped_with_the_baseline_that_overtook_action_safety(): void
     {
-        // Action safety is tier 15, but the shared links components raised the baseline to 18.
-        self::assertSame(['contract' => 18], $this->arrayAt($this->document(), 'info', 'x-generator'));
+        // The action safety tier sits below the baseline, so the document carries the baseline.
+        self::assertSame(['contract' => GeneratorContract::BASELINE], $this->arrayAt($this->document(), 'info', 'x-generator'));
     }
 
     #[Test]
