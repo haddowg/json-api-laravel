@@ -10,7 +10,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The sparse-by-default field conformance witness (core ADR 0117), run against both
+ * The sparse-by-default field conformance witness (core's docs/fields.md), run against both
  * providers — the Laravel twin of the Symfony bundle's `SparseByDefaultFieldTest`: the
  * `sparseWidgets` resource's `expensiveScore` attribute (marked
  * {@see \haddowg\JsonApi\Resource\Field\AbstractFieldBuilder::sparseByDefault()}) is omitted

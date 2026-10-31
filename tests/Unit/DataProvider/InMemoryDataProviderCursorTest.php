@@ -25,7 +25,7 @@ use PHPUnit\Framework\TestCase;
  * The in-memory cursor (keyset) arm — the ground truth the Eloquent SQL push-down must
  * match byte-for-byte (bundle ADR 0063). Drives the real mint → decode → resolve → after
  * round-trip through core's shared {@see KeysetResolver} / {@see InMemoryKeyset} /
- * {@see CursorTokenMinter} (core ADR 0123), so forward/backward navigation, the has-flags,
+ * {@see CursorTokenMinter} (core ADR 0061), so forward/backward navigation, the has-flags,
  * NULL ordering, and the staleness guard are all exercised end-to-end.
  *
  * @internal

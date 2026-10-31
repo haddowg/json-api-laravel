@@ -148,7 +148,7 @@ use Psr\Log\LoggerInterface;
  * request document (allow-list hydration — an undeclared attribute is dropped; a wrong
  * `type` is core's `409`, a forbidden client `data.id` core's `403`), commits it through
  * the persister, and renders the created resource as `201` + a `Location` header equal to
- * the resource's own `links.self` (core ADR 0054). Update loads the target (a miss is a
+ * the resource's own `links.self` (core's docs/links-and-meta.md). Update loads the target (a miss is a
  * `404`), hydrates the incoming partial onto it, commits, and renders `200`. Delete loads
  * the target (a miss is a `404`), removes it, and renders `204`.
  *
@@ -422,7 +422,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         // A singular filter the client applied collapses the collection to a
         // zero-to-one response — a single resource (the first match) or null, never
-        // an array, and never paginated (core ADR 0039).
+        // an array, and never paginated (core's docs/filters.md).
         $singular = $this->appliesSingularFilter($filters, $operation->queryParameters());
 
         // The resource's pagination() return is the single source of truth (G21):
@@ -452,7 +452,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $filters,
             $resource?->allSorts() ?? [],
             $window,
-            // Applied only when the request carries no `sort` (core ADR 0044).
+            // Applied only when the request carries no `sort` (core's docs/sorts.md).
             $resource?->defaultSort() ?? [],
             wantsCount: $wantsCount,
         ));
@@ -816,7 +816,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * relation). A cursor-paginated relation windows to a real keyset page (the minted
      * `page[after]`/`page[before]` tokens on the links), attached to the response via core's
      * {@see IdentifierResponse::withPage()} so its profile is advertised while the body stays
-     * links-only (core ADR 0124). It pages by default, so a plain read with no
+     * links-only (core's docs/responses.md). It pages by default, so a plain read with no
      * query parameters serves page 1 of the relation's paginator (docs/adr/0010). A pivot
      * `belongsToMany` windows the same way, and each member of the page carries its
      * `meta.pivot` from the fetched pivot rows (docs/adr/0010). A polymorphic to-many has no
@@ -897,7 +897,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $relationshipName,
         );
 
-        // Attach the page that windowed the linkage (core ADR 0124): the body stays
+        // Attach the page that windowed the linkage (core's docs/responses.md): the body stays
         // links-only (the pagination links ride the request-scoped seam, no meta.page),
         // but a page that activates a profile — the cursor page — is then advertised in
         // `jsonapi.profile` + the Content-Type `profile` parameter, exactly as
@@ -1065,7 +1065,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      *
      * Returns the supplied page (`null` when the relation carries no paginator or the fetch
      * was not windowed) so the caller can attach it to the {@see IdentifierResponse} — the
-     * cursor page's profile is then advertised while the body stays links-only (core ADR 0124).
+     * cursor page's profile is then advertised while the body stays links-only (core's docs/responses.md).
      *
      * @param list<object>             $items  the page-1 linkage members
      * @param CollectionResult<object> $result the provider's windowed fetch result
@@ -1578,7 +1578,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // The Location uses the resource's URI segment (its uriType), so it matches the
         // route a client GETs; a bare pair falls back to the type. It is resolved from
         // the request the SAME way the body's links are, so the Location and the created
-        // resource's own `links.self` stay equal (core ADR 0054).
+        // resource's own `links.self` stay equal (core's docs/links-and-meta.md).
         $uriType = $server->hasResourceFor($type) ? $server->resourceFor($type)->uriType() : $type;
         $baseUri = RequestBaseUri::resolve($server->baseUri(), $request->getUri());
 

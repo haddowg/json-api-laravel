@@ -27,7 +27,7 @@ use PHPUnit\Framework\Attributes\Test;
  * wirings seed, so a created `albums` row is store-provided id `3` on BOTH providers (the
  * in-memory sequence and the SQLite auto-increment both continue past the two seeds). The
  * base URI is pinned to the request origin + the `api` route prefix, so the `Location`
- * (and the created resource's equal `links.self`, core ADR 0054) resolves to the route a
+ * (and the created resource's equal `links.self`, core's docs/links-and-meta.md) resolves to the route a
  * client GETs.
  *
  * Coverage: create (server- and client-generated ids per strategy, `201` + `Location`
@@ -83,7 +83,7 @@ abstract class WriteConformanceTestCase extends Orchestra
         $config = $app['config'];
         // Pin the base URI to the request origin + the `api` prefix so the created
         // resource's Location resolves to the route a client GETs (and equals its
-        // links.self, core ADR 0054) rather than the prefix-less request origin.
+        // links.self, core's docs/links-and-meta.md) rather than the prefix-less request origin.
         $config->set('jsonapi.base_uri', 'http://localhost/api');
     }
 
@@ -127,7 +127,7 @@ abstract class WriteConformanceTestCase extends Orchestra
         $location = 'http://localhost/api/albums/3';
         $response->assertHeader('Location', $location);
         // The created resource carries its convention self link, equal to the Location
-        // (the persister has assigned the id by render time — core ADR 0054).
+        // (the persister has assigned the id by render time — core's docs/links-and-meta.md).
         $response->assertJsonPath('data.links.self.href', $location);
 
         $response->assertJsonPath('data.attributes.title', 'A Brand New Album');

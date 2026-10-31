@@ -20,7 +20,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
  * fully declared member, so naming it in `fields[sparseWidgets]` is accepted rather than
  * rejected. `storedAs('expensive_score')` reads the value off both the in-memory POPO's
  * property and the Eloquent column, so the same declaration witnesses core's
- * sparse-by-default field tier (core ADR 0117) end-to-end over HTTP on both providers.
+ * sparse-by-default field tier (core's docs/fields.md) end-to-end over HTTP on both providers.
  * Read-only: the witness only fetches, so no persister is wired on either arm.
  */
 #[AsJsonApiResource(readOnly: true)]

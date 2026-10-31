@@ -228,7 +228,7 @@ final class ServerFactory
 
         // The serving bridge (PLAN decision 10): one core `serving` handler that turns
         // core's server-level seam (fired once per request inside `Server::dispatch()`,
-        // core ADR 0050) into a package {@see ServingEvent}. A ServingEvent listener that
+        // core's docs/server.md) into a package {@see ServingEvent}. A ServingEvent listener that
         // throws a JsonApiException aborts — the throw propagates out of the closure →
         // out of `dispatch()` → the route-scoped exception renderer. Wired only when a
         // dispatcher is present.

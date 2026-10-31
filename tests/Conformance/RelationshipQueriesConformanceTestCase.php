@@ -230,7 +230,7 @@ abstract class RelationshipQueriesConformanceTestCase extends Orchestra
     {
         // Album 1's artist is Radiohead (1, track_count 3). A MATCHING relatedQuery[artist][filter]
         // (minTracks 1 <= 3) keeps the linkage + the include; a non-matching one (minTracks 5 > 3)
-        // nulls the to-one linkage AND omits the include (core ADR 0068). Refereed on both
+        // nulls the to-one linkage AND omits the include (core ADR 0057). Refereed on both
         // providers — the Eloquent batcher nulls the relation through setRelation (never the
         // attribute bag), so the render is null without poisoning the model.
         //
@@ -365,7 +365,7 @@ abstract class RelationshipQueriesConformanceTestCase extends Orchestra
     {
         // `artist` is a to-one (BelongsTo): addressing it with a [sort] op is a 400 (a single
         // member has nothing to order), with the offending canonical profile param in
-        // source.parameter (core ADR 0068).
+        // source.parameter (core ADR 0057).
         $response = $this->fetchWithProfile('/api/albums/1?relatedQuery[artist][sort]=name');
 
         $response->assertStatus(400);

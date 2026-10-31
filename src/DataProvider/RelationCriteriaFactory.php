@@ -74,14 +74,14 @@ final class RelationCriteriaFactory
      * the requested `filter[…]`/`sort` against the related resource's vocabulary *merged*
      * with the relation's own scoped {@see RelationInterface::filters()}/
      * {@see RelationInterface::sorts()} — extra filters/sorts a relation declares for this
-     * ONE relationship endpoint (core ADR 0051), never reachable on the primary
+     * ONE relationship endpoint (core's docs/relations.md), never reachable on the primary
      * `/{relatedType}` collection.
      *
      * On a key clash the relation wins over the related resource, preserving the merge
      * order `[...resourceFilters, ...relationFilters]` then keyed by `->key()`.
      * `defaultSort` is the related resource's default order (empty for a polymorphic
      * to-many); the merged vocabulary rides the criteria so both providers' existing
-     * handlers apply it unchanged (core ADR 0044).
+     * handlers apply it unchanged (core's docs/sorts.md).
      *
      * `$wantsCount` rides onto the criteria: only the related endpoint passes `true` (the
      * relation's paginator opted in via `withCount()`, or the client asked
@@ -174,7 +174,7 @@ final class RelationCriteriaFactory
 
     /**
      * Merges two sort vocabularies, keyed by {@see SortInterface::key()} so a clash
-     * resolves to the later list's declaration (core ADR 0051). The order
+     * resolves to the later list's declaration (core's docs/relations.md). The order
      * `[...$resourceSorts, ...$relationSorts]` is preserved before the dedup; returned as
      * a list for the {@see CollectionCriteria}.
      *

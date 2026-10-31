@@ -67,7 +67,7 @@ use Illuminate\Database\Eloquent\Model;
  * and does not recurse; it is inert for the in-memory witness (whose value is already in
  * memory) so the two providers stay byte-identical.
  *
- * It honours the three include safeguards (core ADR 0037), resolved once against the ROOT
+ * It honours the three include safeguards (core ADR 0036), resolved once against the ROOT
  * resource and threaded unchanged through the recursion: it never batches a non-includable
  * relation, never descends past the effective max include depth, and never batches a path
  * the root resource's allowed-include-paths whitelist excludes. A request that violates any

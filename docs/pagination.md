@@ -142,7 +142,7 @@ A **queried** relationship GET (`GET /{type}/{id}/relationships/{rel}` with
 `?page`/`?sort`/`?filter`) over a cursor-paginated relation windows the identifier linkage to
 a keyset page: the document's pagination links carry the real `page[after]`/`page[before]`
 cursors (never a `last`), while the body stays links-only — identifier `data` members and no
-`meta.page` (core ADR 0124). A bare relationship GET serves the first keyset page at the
+`meta.page` (see [core's responses](https://github.com/haddowg/json-api/blob/main/docs/responses.md)). A bare relationship GET serves the first keyset page at the
 relation's default size. A pivot relation's cursor page filters on pivot columns but sorts only on
 the related resource's own sorts, because the keyset reads its columns off the related table.
 

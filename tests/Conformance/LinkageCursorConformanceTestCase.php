@@ -18,14 +18,14 @@ use PHPUnit\Framework\Attributes\Test;
  * ({@see InMemoryLinkageCursorConformanceTest}) and the reference Eloquent provider
  * ({@see EloquentLinkageCursorConformanceTest}) over the SAME
  * {@see \Workbench\App\Support\ConformanceFixtures::cursorGroups()} partition the
- * related-cursor suite walks (core ADR 0124).
+ * related-cursor suite walks (core's docs/responses.md).
  *
  * The `cursorGroups.widgets` relation declares its OWN
  * {@see \haddowg\JsonApi\Pagination\CursorPaginator}, so a QUERIED linkage read
  * (`?page[size]`/`page[after]`/`page[before]`/`?sort`) windows the identifier set to a
  * keyset page: members stay identifier-only (`type` + `id`, no attributes), the
  * document links carry the real `page[after]`/`page[before]` cursors (never a `last`),
- * the body stays links-only (no `meta.page` — core ADR 0124), and the published
+ * the body stays links-only (no `meta.page` — core's docs/responses.md), and the published
  * cursor-pagination profile (registered via `jsonapi.profiles`) is advertised through
  * the NEW core `IdentifierResponse::withPage()` seam in `jsonapi.profile` + the
  * `Content-Type` `profile` parameter. A bare (unqueried) linkage GET serves page 1 at the
@@ -65,7 +65,7 @@ abstract class LinkageCursorConformanceTestCase extends Orchestra
     /**
      * Registers the published cursor-pagination profile (`jsonapi.profiles`) so the
      * windowed linkage pages advertise it — the profile-advertising half of the
-     * `IdentifierResponse::withPage()` contract (core ADR 0124) — and sets the
+     * `IdentifierResponse::withPage()` contract (core's docs/responses.md) — and sets the
      * server `base_uri` to carry the `/api` route prefix: a linkage document's links
      * (self/related and the windowed pagination set) derive from the SERVER base URI
      * (not the request URI the related endpoint's page links ride), exactly as a
@@ -182,7 +182,7 @@ abstract class LinkageCursorConformanceTestCase extends Orchestra
             self::assertArrayNotHasKey('relationships', $identifier);
         }
 
-        // Links-only pagination: no `meta.page` on a linkage document (core ADR 0124).
+        // Links-only pagination: no `meta.page` on a linkage document (core's docs/responses.md).
         $meta = $document['meta'] ?? null;
         self::assertTrue(!\is_array($meta) || !\array_key_exists('page', $meta));
 

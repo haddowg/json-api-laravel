@@ -15,7 +15,7 @@ use Workbench\Database\Seeders\CursorWidgetSeeder;
  * `cursorGroups.widgets` parent-scoped keyset push-down the related endpoint runs
  * (the identical {@see RelatedCursorConformanceEloquentServiceProvider} wiring), so
  * every inherited assertion must produce the IDENTICAL identifier page the witness
- * renders (core ADR 0124).
+ * renders (core's docs/responses.md).
  *
  * @internal
  */

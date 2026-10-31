@@ -131,7 +131,7 @@ Core projects each entry under the operation's `requestBody.content`, in declare
 adds the `415` response. A JSON:API document entry carries the input type's request schema; an
 entry with a `schema` carries it inline, or as a component when it names a `DescribesRawBody`
 class; any other entry is a binary string, or an open object for `multipart/form-data`
-([core ADR 0175](https://github.com/haddowg/json-api/blob/main/docs/adr/0175-an-action-may-declare-the-request-bodies-it-accepts.md)).
+(see [core's OpenAPI docs](https://github.com/haddowg/json-api/blob/main/docs/openapi.md#accepted-request-bodies)).
 
 ### Which requests must name their media type
 

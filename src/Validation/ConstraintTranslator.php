@@ -102,7 +102,7 @@ final class ConstraintTranslator
      * The `illuminate/validation` rules enforcing one core constraint.
      *
      * The optional `$request` is threaded only into the closure-carrying {@see When}
-     * (its condition is widened to `($value, ?$request)`, core ADR 0080); every other
+     * (its condition is widened to `($value, ?$request)`, core's docs/constraints.md); every other
      * constraint is request-independent. A `null` request — the filter-side validator
      * and the id-format check pass none — invokes the condition with `null` as its
      * second argument, so an existing `fn($value)` closure keeps binding unchanged.
