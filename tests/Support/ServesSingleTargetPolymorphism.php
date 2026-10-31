@@ -21,14 +21,17 @@ trait ServesSingleTargetPolymorphism
     public function test_a_single_type_polymorphic_relation_is_projected_as_a_union(): void
     {
         $doc = $this->resolve(DocumentFactory::class)->forServer()->toArray();
-        $identifier = ['$ref' => '#/components/schemas/TagsResourceIdentifier'];
+        $union = [
+            'oneOf' => [['$ref' => '#/components/schemas/TagsResourceIdentifier']],
+            'discriminator' => ['propertyName' => 'type', 'mapping' => ['tags' => '#/components/schemas/TagsResourceIdentifier']],
+        ];
 
         self::assertSame(
-            ['anyOf' => [['anyOf' => [$identifier]], ['type' => 'null']]],
+            ['anyOf' => [$union, ['type' => 'null']]],
             $this->at($doc, 'components', 'schemas', 'PostsPinRelationship', 'properties', 'data'),
         );
         self::assertSame(
-            ['type' => 'array', 'items' => ['anyOf' => [$identifier]]],
+            ['type' => 'array', 'items' => $union],
             $this->at($doc, 'components', 'schemas', 'PostsPinnedRelationship', 'properties', 'data'),
         );
 
