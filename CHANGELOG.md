@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.21.0](https://github.com/haddowg/json-api-laravel/compare/v1.20.0...v1.21.0) (2026-10-31)
+
+
+### Features
+
+* follow core's discriminated resource unions and typed included ([#180](https://github.com/haddowg/json-api-laravel/issues/180)) ([76e73ad](https://github.com/haddowg/json-api-laravel/commit/76e73ad2be5dfbced9ae0fdbe8938d20cbdb2151))
+* run entity-level constraints after relationship writes ([#178](https://github.com/haddowg/json-api-laravel/issues/178)) ([c56ab32](https://github.com/haddowg/json-api-laravel/commit/c56ab32896e368d4e11c413d6dcf40027f145baa))
+* serve an identified MorphToMany from its stored pairs ([#181](https://github.com/haddowg/json-api-laravel/issues/181)) ([6696bd9](https://github.com/haddowg/json-api-laravel/commit/6696bd925baa6d51e867d3c78ee33cfa1a4f01eb))
+
 ## [1.20.0](https://github.com/haddowg/json-api-laravel/compare/v1.19.1...v1.20.0) (2026-10-28)
 
 
