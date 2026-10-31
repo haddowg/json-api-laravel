@@ -12,6 +12,7 @@ use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
 use haddowg\JsonApi\Serializer\ToOneRelationshipLinkageInterface;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Authorization\ViewableRows;
+use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphMembers;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphTargets;
 use haddowg\JsonApiLaravel\DataProvider\ScopedToOneTargets;
 
@@ -43,7 +44,9 @@ use haddowg\JsonApiLaravel\DataProvider\ScopedToOneTargets;
  * ({@see ViewableRows}), so it is missing from `data` and from `included`. A `MorphTo`
  * declared with `identifiedBy()` is never read off the parent here: it answers with the target
  * {@see IdentifiedMorphTargets} loaded for the parent, loading it when the pair names a guarded
- * type, or `null` so core renders the stored pair. A to-many
+ * type, or `null` so core renders the stored pair. A `MorphToMany` declared with
+ * `identifiedBy()` answers with the members {@see IdentifiedMorphMembers} admitted or loaded for
+ * the parent, or `null` so core renders its pairs. A to-many
  * shows exactly what its query returns; a related type the caller may not list is withheld
  * whole by the relation authorizer instead.
  *
@@ -64,7 +67,16 @@ final class RequestScopedRelationshipLinkage implements ToOneRelationshipLinkage
         private readonly ScopedToOneTargets $toOne,
         private readonly ViewableRows $rows,
         private readonly IdentifiedMorphTargets $identified,
+        private readonly IdentifiedMorphMembers $members,
     ) {}
+
+    /**
+     * The members of every `MorphToMany` declared with `identifiedBy()` this read renders.
+     */
+    public function members(): IdentifiedMorphMembers
+    {
+        return $this->members;
+    }
 
     /**
      * Starts an operation on `$server`, named `$serverName`: drops both backings and every
@@ -76,6 +88,7 @@ final class RequestScopedRelationshipLinkage implements ToOneRelationshipLinkage
         $this->scoped = [];
         $this->toOne->bind($server);
         $this->identified->bind($server, $serverName);
+        $this->members->bind($server);
         $this->rows->bind($server, $serverName);
     }
 
@@ -88,6 +101,7 @@ final class RequestScopedRelationshipLinkage implements ToOneRelationshipLinkage
         $this->scoped = [];
         $this->toOne->forget();
         $this->identified->forget();
+        $this->members->forget();
         $this->rows->forget();
     }
 
@@ -148,6 +162,10 @@ final class RequestScopedRelationshipLinkage implements ToOneRelationshipLinkage
         JsonApiRequestInterface $request,
     ): ?RelationshipLinkage {
         $linkage = $this->delegate?->linkageForRelationship($model, $relation, $request);
+
+        // An identified MorphToMany answers with its admitted or loaded members, admitting them
+        // when a type is scoped, so an unscoped one renders its pairs without a read.
+        $linkage ??= $this->members->linkageFor($model, $relation, $request);
 
         foreach ($this->scoped as $scoped) {
             $linkage ??= $scoped->linkageForRelationship($model, $relation, $request);
