@@ -211,6 +211,22 @@ final class TestingKitSchemaConformanceTest extends TestCase
     }
 
     #[Test]
+    public function anIncludedFailureNamesTheResource(): void
+    {
+        $response = $this->jsonApi()->withInclude('artist')->get('/api/albums/1')->assertOk();
+
+        try {
+            $this->assertBodyMatchesGeneratedComponent(self::without($response, 'included.0.attributes.bio'), 'AlbumsDocument');
+        } catch (AssertionFailedError $e) {
+            self::assertStringContainsString('/included/0 does not validate against "ArtistsResource"', $e->getMessage());
+
+            return;
+        }
+
+        self::fail('An included resource missing a required attribute must fail.');
+    }
+
+    #[Test]
     public function anIncludedTypeWithoutAFieldsetStaysStrict(): void
     {
         $response = $this->jsonApi()
@@ -243,13 +259,13 @@ final class TestingKitSchemaConformanceTest extends TestCase
     }
 
     #[Test]
-    public function anIncludedTypeWithoutAComponentIsSkipped(): void
+    public function anIncludedTypeTheIncludePathsCannotReachFails(): void
     {
         $body = $this->jsonApi()->get('/api/albums/1')->assertOk()->json();
         self::assertIsArray($body);
         $body['included'] = [['type' => 'not-a-registered-type', 'id' => '1', 'attributes' => ['anything' => 1]]];
 
-        self::assertTrue($this->bodyMatchesGeneratedComponent(\json_encode($body, \JSON_THROW_ON_ERROR), 'AlbumsDocument'));
+        self::assertFalse($this->bodyMatchesGeneratedComponent(\json_encode($body, \JSON_THROW_ON_ERROR), 'AlbumsDocument'));
     }
 
     #[Test]

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature\MusicCatalog;
 
+use haddowg\JsonApi\OpenApi\GeneratorContract;
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
 use haddowg\JsonApiLaravel\Tests\Support\InteractsWithOpenApiDocument;
 use haddowg\JsonApiLaravel\Tests\Support\PinsCatalogClock;
@@ -17,7 +18,7 @@ use Workbench\App\MusicCatalog\Support\Fixtures;
  * left out for a track with no duration, and an album's bare `store` link. They render on
  * every read that renders the resource, including the pivot related endpoint, where the
  * pivot serializer decorator has to pass them through. The OpenAPI document names both
- * links, shows them in the operation examples, and is stamped with contract 14.
+ * links, shows them in the operation examples, and is stamped with the baseline contract.
  *
  * @internal
  */
@@ -111,9 +112,8 @@ abstract class DeclaredLinksTestCase extends Orchestra
     {
         $doc = $this->resolve(DocumentFactory::class)->forServer('default')->toArray();
 
-        // The catalogue declares OAuth scopes, the scoped tier of 16, but the shared links
-        // components raised the baseline to 18.
-        self::assertSame(18, $this->at($doc, 'info', 'x-generator', 'contract'));
+        // The scoped tiers the catalogue uses sit below the baseline, so it carries the baseline.
+        self::assertSame(GeneratorContract::BASELINE, $this->at($doc, 'info', 'x-generator', 'contract'));
 
         foreach (['AlbumsResourceLinks', 'TracksResourceLinks'] as $name) {
             self::assertSame(['$ref' => '#/components/schemas/ResourceLinks'], $this->at($doc, 'components', 'schemas', $name, 'allOf', 0), $name);

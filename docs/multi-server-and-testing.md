@@ -205,12 +205,12 @@ returns the result as a bool for tests that expect a body to fail.
 
 #### Included resources
 
-The envelope schemas type `included` loosely, as objects with a `type` and an `id`. So once the
-envelope passes, the helpers validate each `included` resource against its own type's
-`<Type>Resource` component, e.g. `ArtistsResource` for an included artist. An included resource
-that is missing an attribute, or carries one of the wrong type, fails the assertion with a
-message naming its index, such as `/included/0 does not validate against "ArtistsResource"`. A
-type the document has no `<Type>Resource` component for is skipped.
+The envelope schemas type `included` as a `oneOf` over the `<Type>Resource` of every type the
+document's `?include` paths reach, so an included resource of any other type fails. The helpers
+also validate each `included` resource against its own type's `<Type>Resource` component, e.g.
+`ArtistsResource` for an included artist. An included resource that is missing an attribute, or
+carries one of the wrong type, fails the assertion with a message naming its index, such as
+`/included/0 does not validate against "ArtistsResource"`, rather than the envelope's `oneOf`.
 
 #### Sparse fieldsets
 
