@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
  * Resolves the `type → Eloquent model` map the auto-registered reference
  * {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider} /
  * {@see \haddowg\JsonApiLaravel\DataPersister\Eloquent\EloquentDataPersister} pair is
- * built from (ADR 0019) — the Laravel twin of the Symfony bundle's
+ * built from (ADR 0002) — the Laravel twin of the Symfony bundle's
  * `DoctrineEntityMapPass`, run lazily off the discovered {@see ResourceDescriptor}s
  * instead of at container compile time.
  *
@@ -38,7 +38,7 @@ use Illuminate\Support\Str;
  *
  * Resolving runs the inflector once per type, which is a measurable cost on every request
  * of a large API. `jsonapi:optimize` therefore writes the resolved map into the discovery
- * snapshot, and a resolver handed that map returns it as-is (ADR 0053).
+ * snapshot, and a resolver handed that map returns it as-is.
  */
 final class ModelMapResolver
 {

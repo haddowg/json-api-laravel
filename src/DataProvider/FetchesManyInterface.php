@@ -8,7 +8,7 @@ namespace haddowg\JsonApiLaravel\DataProvider;
  * An optional {@see DataProviderInterface} capability: looks up several rows of a type by their
  * wire ids in one read, returning those the provider serves for this request. The handler uses
  * it to narrow a polymorphic relation's members to the rows each member type's scoping provider
- * admits in one lookup per type (ADR 0051); a provider without it is asked through
+ * admits in one lookup per type (ADR 0032); a provider without it is asked through
  * {@see DataProviderInterface::fetchOne()} once per id.
  */
 interface FetchesManyInterface

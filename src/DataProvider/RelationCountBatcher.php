@@ -102,7 +102,7 @@ final class RelationCountBatcher
      * Counts a relation whose related type is served by its own scoping provider by fetching
      * each parent's members through that provider (the related endpoint's read), so a total
      * never counts a row the related endpoint hides. A polymorphic relation counts its members
-     * narrowed per member type, as its related endpoint lists them (ADR 0051).
+     * narrowed per member type, as its related endpoint lists them (ADR 0032).
      *
      * @param list<object> $parents
      *

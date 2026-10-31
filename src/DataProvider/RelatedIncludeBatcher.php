@@ -56,7 +56,7 @@ use Illuminate\Database\Eloquent\Model;
  * off it. Its members load through the related provider, per parent, whenever they render
  * (included, or as linkage without an include), batching on or off, and are handed back as
  * out-of-band linkage rather than written onto the parent. A polymorphic relation reaching
- * such a type has its members narrowed per member type instead (ADR 0051).
+ * such a type has its members narrowed per member type instead (ADR 0032).
  *
  * Beyond the `?include` tree it also preloads the one relation class that renders linkage
  * on EVERY read regardless of `?include` — an **eager monomorphic to-one** (`BelongsTo`/

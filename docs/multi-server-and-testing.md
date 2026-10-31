@@ -87,7 +87,7 @@ the model's Gate policy there, the same as in a single-server app, its responses
 server's own `defaults` headers layered over the global `jsonapi.defaults`, and its operations get the default tag. That fallback is per model,
 so a `Gate::policy()` mapping applies on every server. A check dispatched in code, with no
 routed request behind it, reads the server the operation was built on, and the `default`
-server when there is none. See [ADR 0052](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0052-authorization-is-keyed-by-server-and-type.md).
+server when there is none.
 
 ### Output timezone per server
 

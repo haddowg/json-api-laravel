@@ -148,7 +148,7 @@ final class Authorizer
     private const array STANDARD_ABILITIES = ['viewAny', 'view', 'create', 'update', 'delete', 'restore', 'forceDelete'];
 
     /**
-     * The read permission `$relation` declares on `$parent` (ADR 0049): `true` or `false` when it
+     * The read permission `$relation` declares on `$parent` (ADR 0044): `true` or `false` when it
      * declares one, `null` when it declares none and the related type's own gates apply. A
      * string `security(read:)` is checked against the parent; a bool one documents the
      * relation and allows it; otherwise a `view{Relation}` ability the parent type's policy or

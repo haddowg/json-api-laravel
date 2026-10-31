@@ -8,7 +8,7 @@ uses policies, ability names, and a dedicated API-policy class. Timing is on the
 subject, before hydration
 ([ADR 0004](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0004-write-authorization-is-pristine-subject-and-timed-before-hydration.md)),
 and an update is checked again on the changed resource before it is saved
-([ADR 0046](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0046-the-update-gate-checks-the-stored-and-the-changed-resource.md)).
+([ADR 0004](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0004-write-authorization-is-pristine-subject-and-timed-before-hydration.md)).
 
 ## The default: the model's policy
 

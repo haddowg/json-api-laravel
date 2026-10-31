@@ -14,7 +14,7 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * Each server decodes a wire id through the encoder of its own resource class (ADR 0052).
+ * Each server decodes a wire id through the encoder of its own resource class.
  * Only the Eloquent reference pair decodes ids, so there is no in-memory twin.
  *
  * @internal

@@ -38,7 +38,7 @@ abstract class CursorConformanceTestCase extends Orchestra
 
     /**
      * A cursor page advertises the cursor-pagination profile on its Content-Type,
-     * because the server registers that profile by default (Laravel ADR 0025, core ADR
+     * because the server registers that profile by default (core ADR
      * 0131); a count-based page selected from the same menu does not.
      */
     public const string CURSOR_CONTENT_TYPE = self::MEDIA_TYPE . '; profile="' . CursorPaginationProfile::URI . '"';
@@ -517,8 +517,8 @@ abstract class CursorConformanceTestCase extends Orchestra
 
     /**
      * Fetches a page and returns `[ids, links]` (null links dropped). A cursor page
-     * advertises the cursor-pagination profile on its Content-Type (Laravel ADR 0025,
-     * core ADR 0131); a count-based page selected from the same menu does not, so
+     * advertises the cursor-pagination profile on its Content-Type (core ADR
+     * 0131); a count-based page selected from the same menu does not, so
      * `$expectCursorProfile` is passed `false` for the page-strategy cases.
      *
      * @return array{0: list<string>, 1: array<string, mixed>}

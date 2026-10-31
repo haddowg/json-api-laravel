@@ -48,7 +48,7 @@ use Psr\Http\Message\StreamFactoryInterface;
 final class ServerFactory
 {
     /**
-     * The JSON:API profiles registered by default (ADR 0025): the three built-ins in
+     * The JSON:API profiles registered by default: the three built-ins in
      * the canonical order the OpenAPI `jsonapi.profile` enum advertises them (core ADR
      * 0131). The order is significant — it is the byte-order the `jsonapi.profile` enum
      * is generated in — and MUST match the Symfony bundle's default for cross-adapter
@@ -127,13 +127,13 @@ final class ServerFactory
         // the same container resolver the resource itself is built with.
         private readonly array $serializerOverrides = [],
         private readonly array $hydratorOverrides = [],
-        // The JSON:API profiles this server registers, in registration order (ADR 0025),
+        // The JSON:API profiles this server registers, in registration order,
         // data-driven from `jsonapi.profiles` (default {@see self::DEFAULT_PROFILES} — the
         // three built-ins in canonical order). Registration makes the server recognize a
         // profile (advertises its URI when negotiated, parses its opt-in query family only
         // under negotiation) and, core ADR 0131, gates the profile's OpenAPI output.
         private readonly array $profiles = [],
-        // The error-message resolver (ADR 0023): localizes/overrides every error's
+        // The error-message resolver: localizes/overrides every error's
         // title/detail per its stable code through the Laravel translator. Null renders
         // core's inline English copy, byte-identical to today.
         private readonly ?ErrorMessageResolverInterface $errorMessageResolver = null,
@@ -184,12 +184,12 @@ final class ServerFactory
             ->withResourceLinkContributor($this->resourceLinkContributor)
             ->withRelationAuthorizer($this->relationAuthorizer)
             // Localizes/overrides each error's title/detail per its stable code through
-            // the Laravel translator (ADR 0023); null renders core's inline English copy.
+            // the Laravel translator; null renders core's inline English copy.
             ->withErrorMessageResolver($this->errorMessageResolver)
             ->withContainer($this->resolver);
 
         // Register the server's JSON:API profiles, data-driven from `jsonapi.profiles`
-        // (ADR 0025; default {@see self::DEFAULT_PROFILES} — the three built-ins in
+        // (default {@see self::DEFAULT_PROFILES} — the three built-ins in
         // canonical order). Registration order is the order the OpenAPI `jsonapi.profile`
         // enum advertises them (core ADR 0131), so it is stable across framework adapters;
         // a profile's opt-in query family is parsed only when a client negotiates its URI.

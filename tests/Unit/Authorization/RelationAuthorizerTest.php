@@ -22,7 +22,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 
 /**
  * A to-many renders its data only when the caller may list every type it holds, through the
- * same collection gate `GET /{type}` runs (ADR 0045).
+ * same collection gate `GET /{type}` runs (ADR 0044).
  *
  * @internal
  */

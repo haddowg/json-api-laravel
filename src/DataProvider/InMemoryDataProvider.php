@@ -132,7 +132,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
     }
 
     /**
-     * The stored rows among `$ids` (ADR 0051).
+     * The stored rows among `$ids` (ADR 0032).
      *
      * @param list<string> $ids
      *

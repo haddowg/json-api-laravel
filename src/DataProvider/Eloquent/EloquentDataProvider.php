@@ -86,7 +86,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
  *
  * **Wiring.** The `type → model` map is either constructed by hand and registered at
  * `-128` (see the workbench provider), or — the zero-config path ADR 0002 deferred, now
- * delivered by ADR 0019 — resolved from the discovered resources (the
+ * delivered by ADR 0002 — resolved from the discovered resources (the
  * `#[AsJsonApiResource(model:)]` declarations plus the convention guess under
  * `jsonapi.eloquent.model_namespace`, via the
  * {@see \haddowg\JsonApiLaravel\Eloquent\ModelMapResolver}) and auto-registered at
@@ -193,7 +193,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     }
 
     /**
-     * The rows of `$type` among `$ids`, decoded and read in one query (ADR 0051).
+     * The rows of `$type` among `$ids`, decoded and read in one query (ADR 0032).
      *
      * @param list<string> $ids
      *
@@ -292,7 +292,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * + the strictly-after WHERE) simply composes on top of the FK/pivot constraint. That
      * includes a pivot-carrying `belongsToMany`: the keyset columns qualify off the RELATED
      * table (never the join's pivot columns), so the cursor page slots under the handler's
-     * `meta.pivot` wrap unchanged (docs/adr/0017). Shared with the in-memory witness and the
+     * `meta.pivot` wrap unchanged. Shared with the in-memory witness and the
      * bundle's Doctrine provider, so the parent-scoped keyset page stays refereed
      * byte-for-byte (bundle ADR 0063). The polymorphic PHP-window path does not window a
      * cursor (no single related keyset vocabulary).
@@ -501,7 +501,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // Relationship Queries profile pins the included page to page 1), so the window
         // is boundaryless — a FIRST cursor page per parent. It collapses to ONE
         // group-limit query exactly like the offset branch above, only ordered by the
-        // resolved keyset columns instead of the sort + hardcoded id ASC (ADR 0026).
+        // resolved keyset columns instead of the sort + hardcoded id ASC (ADR 0006).
         if ($window instanceof CursorWindow) {
             return $this->fetchWindowedCursorBatch($parentType, $parents, $relation, $criteria, $request, $window);
         }
@@ -633,7 +633,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * `CASE … IS NULL …` term composes verbatim into the window's `OVER (… ORDER BY …)`.
      * Each partition mints its forward cursor from its boundary row through the SAME shared
      * {@see \haddowg\JsonApi\Collection\Keyset\CursorTokenMinter} the per-parent path uses,
-     * so the batched include is byte-identical to the in-memory witness (ADR 0026, 0063).
+     * so the batched include is byte-identical to the in-memory witness (ADR 0006; bundle ADR 0063).
      *
      * A relation that cannot push down as one partitioned window — polymorphic, no Eloquent
      * method, or a bounded (non-first) page — falls back to
@@ -1120,7 +1120,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     /**
      * A pivot field's value off the pivot model. A date field's column the pivot model
      * doesn't cast comes back as the stored string, so it is cast the way a `datetime`
-     * cast would read it, and renders in the field's format like any other date (ADR 0072).
+     * cast would read it, and renders in the field's format like any other date (ADR 0030).
      */
     private function pivotValue(Model $pivot, FieldInterface $field): mixed
     {

@@ -503,7 +503,7 @@ final class DiscoveryScanner
     }
 
     /**
-     * Validates a `#[AsJsonApiResource(model:)]` class-string (ADR 0019): the named class
+     * Validates a `#[AsJsonApiResource(model:)]` class-string (ADR 0002): the named class
      * must exist and extend Eloquent's {@see Model}, so a typo'd or mis-typed mapping fails
      * discovery loudly instead of surfacing as a runtime provider error — the Laravel twin
      * of the bundle `DoctrineEntityMapPass`'s missing-entity guard.
@@ -530,7 +530,7 @@ final class DiscoveryScanner
 
     /**
      * Validates a `#[AsJsonApiResource(serializer:/hydrator:)]` override class-string
-     * (ADR 0015): the named class must exist and implement its core contract, so a typo'd
+     * (ADR 0011): the named class must exist and implement its core contract, so a typo'd
      * or mis-typed override fails discovery loudly instead of surfacing as a runtime
      * resolver error — the Laravel twin of the bundle compiler pass's guard. The
      * "registered service" half of that guard has no equivalent here: Laravel's container

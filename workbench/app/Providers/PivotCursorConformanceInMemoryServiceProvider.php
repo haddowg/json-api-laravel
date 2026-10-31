@@ -24,7 +24,7 @@ use Workbench\App\Support\CursorBoardInMemoryDataProvider;
  * SAME widget POPO instances the widgets store carries. `GET /cursorBoards/{id}/widgets`
  * then reads the member set off the parent and runs the ground-truth keyset the
  * Eloquent pivot-joined push-down must match byte-for-byte, `meta.pivot` included
- * (docs/adr/0017).
+ *.
  */
 final class PivotCursorConformanceInMemoryServiceProvider extends ServiceProvider
 {

@@ -18,7 +18,7 @@ use PHPUnit\Framework\Attributes\Test;
  * ({@see InMemoryLinkageCursorConformanceTest}) and the reference Eloquent provider
  * ({@see EloquentLinkageCursorConformanceTest}) over the SAME
  * {@see \Workbench\App\Support\ConformanceFixtures::cursorGroups()} partition the
- * related-cursor suite walks (docs/adr/0017, core ADR 0124).
+ * related-cursor suite walks (core ADR 0124).
  *
  * The `cursorGroups.widgets` relation declares its OWN
  * {@see \haddowg\JsonApi\Pagination\CursorPaginator}, so a QUERIED linkage read

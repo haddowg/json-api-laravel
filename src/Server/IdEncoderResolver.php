@@ -35,7 +35,7 @@ use haddowg\JsonApiLaravel\Discovery\ResourceDescriptor;
  *
  * Two servers may expose one type through resource classes with different encoders, so a
  * type resolves through the class of the server the operation runs on: the handler binds it
- * at the start of each dispatch, and `default` is used until then (ADR 0052). A type the
+ * at the start of each dispatch, and `default` is used until then. A type the
  * server does not expose resolves through the first class that declares it.
  */
 final class IdEncoderResolver

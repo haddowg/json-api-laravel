@@ -17,7 +17,7 @@ use Symfony\Component\Routing\Exception\RouteNotFoundException;
 /**
  * Finds the route that serves each server's OpenAPI document when the package's named
  * document routes aren't registered, because the app routes {@see OpenApiController}
- * itself (ADR 0041).
+ * itself (ADR 0037).
  *
  * A route serves a server's document when it is a named `GET` route whose action is the
  * controller (the invokable class, `Class@__invoke` or `[Class, '__invoke']`) and whose
@@ -76,7 +76,7 @@ final class DocumentRouteLocator
     /**
      * The servers at least one JSON:API route is registered for (a resource, custom action or
      * Atomic Operations route), whether the package registered it or the app did through
-     * `Route::jsonApi()` (ADR 0048).
+     * `Route::jsonApi()`.
      *
      * @return list<string>
      */

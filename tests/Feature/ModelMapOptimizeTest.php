@@ -21,7 +21,7 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Depends;
 
 /**
- * The optimize half of the model-mapping tiers (ADR 0019): the `jsonapi:optimize`
+ * The optimize half of the model-mapping tiers (ADR 0002): the `jsonapi:optimize`
  * snapshot carries the `model:` declaration (and passes servability validation, since
  * every type here resolves through a tier), so a cached (`route:cache`d) app resolves
  * the SAME `type → model` map a live scan does. The sibling
@@ -29,7 +29,7 @@ use PHPUnit\Framework\Attributes\Depends;
  * deliberately-unservable `ghosts` type, which would (rightly) fail this command.
  *
  * The snapshot also carries the resolved map itself, so an app booted from it serves the
- * Eloquent and in-memory types without inflecting (ADR 0053). Those tests boot from the
+ * Eloquent and in-memory types without inflecting. Those tests boot from the
  * snapshot the first test writes, so they depend on it.
  *
  * @internal

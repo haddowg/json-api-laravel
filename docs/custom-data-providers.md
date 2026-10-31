@@ -85,7 +85,7 @@ batched value as its loaded relation, exactly as its own lazy load would. Any ot
 left as it is, and the batched value renders from the request's own linkage. A filter in
 `relatedQuery` that excludes a to-one target works the same way, so a record your provider
 shares between requests is never changed by a read
-([ADR 0069](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0069-a-batched-read-never-writes-onto-the-parent.md)).
+([ADR 0005](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0005-include-batching-orchestrates-via-the-spi-not-eloquent-with.md)).
 
 ## The in-memory provider
 
@@ -163,7 +163,7 @@ provider's `fetchRelatedCollection()`, which narrows them before any filter, sor
 linkage, `included`, both endpoints, `?withCount` and the window all show the same rows. On an
 Eloquent type the closure's own queries already run through the model's global scopes, so a
 closure that calls `withoutGlobalScopes()` gets exactly the rows it asked for
-([ADR 0050](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0050-a-computed-relation-is-scoped-by-the-related-types-provider.md)).
+([ADR 0032](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0032-a-related-type-with-its-own-provider-loads-its-members-through-it.md)).
 
 A to-one target of such a type is read off the parent and kept only while the provider's
 `fetchOne()` still returns it. Otherwise the relation renders as empty everywhere: linkage,
@@ -177,7 +177,7 @@ one read through that provider, before any page is cut or count taken. Members o
 are kept as loaded. Linkage, `included`, both endpoints and `?withCount` all show the narrowed
 members. A provider that implements `FetchesManyInterface` answers that read with
 `fetchMany($type, $ids)`; one that doesn't is asked `fetchOne()` once per id. See
-[ADR 0051](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0051-a-polymorphic-to-many-is-narrowed-per-member-type.md).
+[ADR 0032](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0032-a-related-type-with-its-own-provider-loads-its-members-through-it.md).
 
 Writes go through the same provider. A persister looks related ids up in its own storage, so
 before it applies a relationship write, each id the client names for such a type must come back
@@ -189,7 +189,7 @@ operation in an atomic batch, where the `404` rolls the whole batch back.
 A to-many replace changes only the members the client can see: the persister is handed the
 hidden current members as well, so they stay attached with their pivot rows untouched. The
 response to a relationship write lists the members the relationship endpoint would. See
-[ADR 0034](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0034-a-relationship-write-resolves-related-ids-through-the-related-types-scope.md).
+[ADR 0032](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0032-a-related-type-with-its-own-provider-loads-its-members-through-it.md).
 
 ## Custom filters and sorts
 

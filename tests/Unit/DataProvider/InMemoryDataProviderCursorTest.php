@@ -97,7 +97,7 @@ final class InMemoryDataProviderCursorTest extends TestCase
         $after = $this->decode($first->cursorAfter, 'page[after]');
 
         // The client flipped `?sort=title` → `?sort=-title` while holding the cursor: the
-        // resolved keyset direction no longer matches the token's, so it is stale (ADR 0064).
+        // resolved keyset direction no longer matches the token's, so it is stale.
         $this->expectException(CursorStale::class);
 
         $this->fetch($provider, new CursorWindow(2, after: $after), $sorts, ['-title']);

@@ -14,8 +14,8 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * operation allow-list (as plain {@see Operation} case-value strings), its
  * authorization overrides (an optional dedicated policy class + per-operation ability
  * renames/disables), its optional serializer/hydrator override class-strings
- * (ADR 0015 — each container-constructed on first use, like the resource itself), and
- * its optional declared Eloquent model class-string (ADR 0019 — the `model:` tier of
+ * (ADR 0011 — each container-constructed on first use, like the resource itself), and
+ * its optional declared Eloquent model class-string (ADR 0002 — the `model:` tier of
  * the reference Eloquent layer's `type → model` resolution).
  *
  * It carries only scalars + lists, so a set of descriptors round-trips through
@@ -37,7 +37,7 @@ final readonly class ResourceDescriptor
      * @param list<string>                                              $tags       the explicit OpenAPI tag names the type's operations are grouped under (empty = the humanized-type default)
      * @param class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null $serializer the custom serializer this type renders through (null = the resource's field inventory)
      * @param class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null     $hydrator   the custom hydrator this type writes through (null = the resource's field inventory)
-     * @param class-string<\Illuminate\Database\Eloquent\Model>|null             $model      the Eloquent model this type declares for the reference Eloquent layer (null = resolve by convention, ADR 0019)
+     * @param class-string<\Illuminate\Database\Eloquent\Model>|null             $model      the Eloquent model this type declares for the reference Eloquent layer (null = resolve by convention, ADR 0002)
      * @param array<string, list<array{status: int, jobType: string|null}>>      $responses  the per-operation OpenAPI success-response overrides, keyed by {@see Operation} case value → an ordered list of `{status, jobType}` scalar pairs (empty = each operation's default); kept as scalars so it round-trips through the discovery cache
      * @param array{restore: bool, forceDelete: bool, restoreAbility: string, forceAbility: string, restorePath: string, forcePath: string}|null $softDeletes the resolved {@see \haddowg\JsonApiLaravel\Attribute\SoftDeletes} config as scalars (null = not soft-deletable); the scanner reads it to synthesize the restore/force-delete actions
      * @param array<string, mixed>                                         $extensions          the OpenAPI vendor extensions (`x-…`) stamped on every operation of the type

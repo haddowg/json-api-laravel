@@ -755,7 +755,7 @@ final class RelationshipWindowBatcher
         // per-parent boundary tokens (an include is always a FIRST cursor page — no cursor
         // token rides an include — so `hasPrevious` is false and `prev` is omitted), so
         // render through the paginator's cursor path carrying the minted `next` token +
-        // `hasMore`, mirroring the primary/related cursor render (ADR 0063). `from`/`to`
+        // `hasMore`, mirroring the primary/related cursor render (bundle ADR 0063). `from`/`to`
         // are the wire ids of the first/last rendered rows — the related serializer is
         // resolved only here (a cursor-resolved relation's related type is always servable),
         // never eagerly for every windowed relation.

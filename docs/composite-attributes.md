@@ -39,7 +39,8 @@ vocabulary translates to native illuminate rules, and a violation points at the
 child: `/data/attributes/packaging/material`, `/data/attributes/format/rpm`. For a
 `OneOf`, only the **selected variant's** children are validated, and an unknown or
 missing discriminator is itself the violation — a `422` pointing at
-`/data/attributes/format/medium`.
+`/data/attributes/format/medium`. The cascade goes one level deep: a child that is itself an
+`Obj` or `OneOf` is not descended into.
 
 **A `Shape` is value-validated by core's `SchemaValueValidator`** (opis), not by
 rule translation — its members are raw JSON Schema no illuminate rule can express.
@@ -49,10 +50,6 @@ own: a missing member of the matched variant surfaces under
 `/data/attributes/availability/...`. Without opis a `Shape` still **documents** (its
 combinator projects into the OpenAPI schema); it just doesn't validate — install
 `opis/json-schema` to get the `422`s.
-
-Design records: [ADR 0012](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0012-composite-attribute-validation-cascade.md)
-(the `Obj`/`OneOf` cascade) and [ADR 0013](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0013-shape-value-validation-via-core-schema-value-validator.md)
-(`Shape` value validation through the core validator).
 
 ## Storage: one `json` column
 

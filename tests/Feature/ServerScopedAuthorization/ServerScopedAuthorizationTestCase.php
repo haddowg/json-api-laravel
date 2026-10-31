@@ -16,7 +16,7 @@ use Workbench\App\Models\User;
 
 /**
  * `documents` and `notes` are each exposed on `default` and `admin` through a different
- * resource class, and each server enforces only what its own class declares (ADR 0052).
+ * resource class, and each server enforces only what its own class declares.
  * On `default`, documents follow PublicDocumentPolicy and notes declare nothing. On `admin`,
  * documents follow AdminDocumentPolicy with `update` renamed to `edit` and `delete`
  * disabled, and notes follow AdminNotePolicy, which only an admin passes.

@@ -14,7 +14,7 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
 /**
  * Runs a relation's `fillUsing()` hook for a relationship write. A relation that declares one
  * owns how its linkage lands on the entity, so the write goes through core's hydrate path
- * instead of the persister's relationship seam (ADR 0055).
+ * instead of the persister's relationship seam.
  *
  * @internal
  */

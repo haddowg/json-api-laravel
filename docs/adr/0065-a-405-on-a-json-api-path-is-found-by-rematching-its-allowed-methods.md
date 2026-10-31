@@ -1,3 +1,0 @@
-# A 405 on a JSON:API path is found by re-matching its allowed methods
-
-Laravel's router refuses a method a path does not accept before any route matches, so the route-scoped renderable declined it and a write to a read-only type got Laravel's own `405` page. The `MethodNotAllowedHttpException` it throws names only the allowed methods, in its `Allow` header, so the renderable asks the router which route each of them reaches on the same path and renders core's `METHOD_NOT_ALLOWED` under that route's server when the route carries the marker. Matching the path against each server's prefix was the alternative, but a prefix also covers an application's own routes beneath it. The bundle made the same choice in its ADR 0160.

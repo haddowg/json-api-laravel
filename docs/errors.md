@@ -183,7 +183,8 @@ JsonApi::register([\Acme\Billing\Exception\CardDeclined::class]);
 ```
 
 Discovered error classes ride the same snapshot as everything else, so `jsonapi:optimize`
-caches them and a `route:cache`d app documents exactly the codes a scanning one does. See
+caches them and a `route:cache`d app documents exactly the codes a scanning one does. An
+exception class belongs to no server, so its code is documented on every server. See
 [optimize](optimize.md).
 
 Two classes claiming the same `code` string fails loudly rather than merging

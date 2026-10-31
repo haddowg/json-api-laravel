@@ -15,7 +15,7 @@ use PHPUnit\Framework\Attributes\Test;
 use Workbench\App\Models\User;
 
 /**
- * A server's own `defaults` block (ADR 0073) over global defaults of a public 5s cache and
+ * A server's own `defaults` block over global defaults of a public 5s cache and
  * `Deprecation: true`. The `admin` server sets a sunset and its link and a 45s cache varying
  * on Accept-Language; `default` sets nothing. `labels` declares no headers on either server,
  * admin `notes` cache publicly for 600s with their own sunset, and admin `documents` cache

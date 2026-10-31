@@ -77,7 +77,7 @@ final class ResourceValidator
         private readonly ConstraintTranslator $translator,
         private readonly JsonPointerBuilder $pointers,
         // Null when opis/json-schema is not installed — a Shape then documents its
-        // OpenAPI shape but is not value-validated (ADR 0013).
+        // OpenAPI shape but is not value-validated.
         private readonly ?SchemaValueValidator $schemaValues = null,
         // Resolves the provider registry a scoped uniqueness check reads, lazily, since the
         // registry is built after this validator.
@@ -96,7 +96,7 @@ final class ResourceValidator
      * present in stored state no longer spuriously fails. A stored value resolving to
      * `null` is dropped before the merge (folding it would flip an absent optional into a
      * present-null); an incoming explicit `null` still overrides (the partial merges
-     * last). On create there is no existing object (ADR 0049).
+     * last). On create there is no existing object (bundle ADR 0049).
      *
      * @param object|null $existingObject the already-loaded domain object on update (null on create),
      *                                    whose stored attribute values are folded under the incoming partial
@@ -786,7 +786,7 @@ final class ResourceValidator
      * variant yields one error at `/data/attributes/<field>/<discriminator>`; the main
      * pass's `array` rule already rejects a non-array value. Absent or explicit-null
      * values are the main pass's concern (presence / nullability), so they are skipped
-     * here. (ADR 0012.)
+     * here.
      *
      * @param array<string, mixed> $attributes the merged incoming attribute map
      *
@@ -857,7 +857,7 @@ final class ResourceValidator
      * A no-op when opis is not installed (`$this->schemaValues === null`), so a Shape
      * still documents its OpenAPI shape but is not value-validated. Absent or
      * explicit-null values are the main pass's concern (presence / nullability), so
-     * they are skipped here. (ADR 0013.)
+     * they are skipped here.
      *
      * An incoming value is read from the body's object-decoded view, so a client's `{}`
      * reaches opis as an object rather than the `[]` the associative decode made of it.

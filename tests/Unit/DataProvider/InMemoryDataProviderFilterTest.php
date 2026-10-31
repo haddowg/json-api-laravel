@@ -71,8 +71,7 @@ final class InMemoryDataProviderFilterTest extends TestCase
         // is null yields false, mirroring SQL three-valued logic rather than PHP's silent
         // coercion of null toward 0). Row 3's rating is null, so it is excluded from BOTH
         // the `>=` set (`null >= 9.0` is false) and the `<=` set (`null <= 5.5` is false):
-        // the in-memory witness now CONVERGES with the Eloquent/SQL reference (this pins
-        // the resolved side of the divergence docs/adr/0003 deferred to core).
+        // the in-memory witness CONVERGES with the Eloquent/SQL reference.
         self::assertSame([1], $this->filter([Where::make('ratingGte', 'rating', '>=')], ['ratingGte' => 9.0]));
         self::assertSame([2], $this->filter([Where::make('ratingLte', 'rating', '<=')], ['ratingLte' => 5.5]));
     }

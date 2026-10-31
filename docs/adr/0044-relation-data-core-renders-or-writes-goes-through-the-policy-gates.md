@@ -1,7 +1,13 @@
-# Relation data core renders or writes goes through the policy gates
+# Related data passes the related type's gates unless the relation declares its own read permission
 
-Core 1.9 asks the host before it renders a relationship's data and before a flattened `on()` attribute writes onto a related row (core ADR 0170), so each server is built with a `RelationAuthorizer` that answers from the same policy rules the handler applies at the relation's endpoints. A relationship renders its data only when the caller passes the relation's `security(read:)` ability against the parent, through the parent type's dedicated `policy:` when it declares one; a `null` read inherits the parent's read, which the caller already passed to see the parent, and `true`/`false` only document the endpoints, so all three render. A flattened write needs the related type's `update` ability (its rename, or nothing when it is `false`) on the row it lands on. We picked `update` on the row over the parent's ability because the write changes the row, and the same check catches a body that links a row and writes onto it in one go.
+A type restricted by its read policy could still be read through another type as `included` data or a related endpoint. Rows another type renders pass their own type's gates, split by shape: a single related row passes `view` and reads as absent when refused, while a to-many passes `viewAny` once and shows exactly what the related type's query and scopes return, withheld to its links when refused. A relation can replace those gates for itself with `security(read:)` or a `view{Relation}` policy method checked against the parent; scoping always applies, and a write through `on()` needs the related type's `update` on the row it lands on.
+
+## Considered options
+
+- **Check `view` on every row of a list and drop refused ones.** Pages came out short and totals counted rows the caller couldn't see.
+- **Refuse the whole include with a `403`.** One row would fail a valid document and reveal that it exists.
+- **Check only `viewAny` for single rows too.** It can't express per-row ownership.
 
 ## Consequences
 
-The authorizer finds the parent type by looking up which resource of the server declares the relation it is asked about, built once per server, since core passes the relation and the parent but not the parent's type. A relation that no resource of the server declares has its ability checked through the Gate alone. A decorating resolver passes the authorizer through, so the pivot linkage asks it too. The Symfony bundle is to evaluate the relation's read expression with the parent as the subject and the related type's update expression with the row as the subject.
+Rows that must never be listed need a query scope; `view` no longer hides them from lists. An app with an existing `view{Relation}` policy method finds it starts deciding that relation.

@@ -67,7 +67,7 @@ use Illuminate\Support\Facades\DB;
  * releases), so a later batch operation can reference a just-created resource.
  *
  * An application may extend it to override {@see instantiate()} or {@see delete()} for the
- * types it registers the subclass for, keeping every other write and capability (ADR 0056).
+ * types it registers the subclass for, keeping every other write and capability.
  */
 class EloquentDataPersister extends AbstractDataPersister implements TransactionalDataPersisterInterface, SoftDeleteCapable, ReportsCurrentOwners
 {

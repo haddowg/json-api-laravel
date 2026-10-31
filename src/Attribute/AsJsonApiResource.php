@@ -32,7 +32,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * `model` names the Eloquent model this type maps to for the reference
  * [Eloquent data layer]{@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider}
  * — the twin of the Symfony bundle's `entity:` (read by its `DoctrineEntityMapPass`).
- * It is the middle tier of the three-tier model resolution (ADR 0019): an explicit
+ * It is the middle tier of the three-tier model resolution (ADR 0002): an explicit
  * `JsonApi::provider()`/`persister()` registration shadows it, and a type declaring
  * neither falls back to the convention guess (`albums` → `App\Models\Album` under the
  * configurable `jsonapi.eloquent.model_namespace`). Declare it when the type and model
@@ -45,7 +45,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * so it may have constructor dependencies) when the field DSL cannot express the wire
  * shape. The generic CRUD engine then drives reads/writes for the type through the
  * override instead of the resource's field inventory, while the *other* concern stays
- * field-driven — the twin of the Symfony bundle's escape hatch (its ADR 0023; ADR 0015
+ * field-driven — the twin of the Symfony bundle's escape hatch (its ADR 0023; ADR 0011
  * here).
  *
  * `operations` is the exposed operation allow-list: the {@see Operation} cases this

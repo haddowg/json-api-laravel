@@ -1,5 +1,0 @@
-# The discovery snapshot carries the resolved model map
-
-Resolving the `type → Eloquent model` map singularizes every discovered type, about 6.5 µs each, and it ran on every request because the snapshot held only the descriptors: 3.4 ms a request at 500 types. `jsonapi:optimize` now resolves the map, running the two-models-for-one-type check as it does, and writes it into the snapshot with the `model_namespace` it was resolved under; an app booted from that snapshot reads the map and inflects nothing. A snapshot with no map, a malformed one, or one resolved under a different namespace than the one now configured is resolved live as before, so an older snapshot keeps working and a changed namespace never serves a stale guess.
-
-Writing the snapshot always rescans the discovery paths and never reads the snapshot already on disk. Before, a second `jsonapi:optimize` over an existing file wrote that file back unchanged, so a resource added since the first run, and its model, never reached the cache.

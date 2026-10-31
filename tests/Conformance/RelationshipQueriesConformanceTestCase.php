@@ -394,7 +394,7 @@ abstract class RelationshipQueriesConformanceTestCase extends Orchestra
     public function aQueriedPivotRelationshipEndpointHonoursTheRelatedSort(): void
     {
         // `orderedTracks` is a pivot belongsToMany; its linkage endpoint windows like any
-        // monomorphic to-many (docs/adr/0039), so a related-resource `?sort` orders the
+        // monomorphic to-many (docs/adr/0010), so a related-resource `?sort` orders the
         // linkage on both providers. Tracks 1/2/3 tie on released_at, so the appended
         // primary-key tiebreak decides their order.
         $response = $this->fetch('/api/playlists/1/relationships/orderedTracks?sort=-releasedAt');

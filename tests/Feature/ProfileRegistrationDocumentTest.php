@@ -15,7 +15,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The OpenAPI projection is registration-aware (Laravel ADR 0025, core ADR 0131): the
+ * The OpenAPI projection is registration-aware (core ADR 0131): the
  * `jsonapi.profile` enum, the Countable `?withCount` parameter, and the Relationship
  * Queries `relatedQuery` parameter are advertised only for a profile the server
  * registered. The default `jsonapi.profiles` is the three built-ins in canonical order;

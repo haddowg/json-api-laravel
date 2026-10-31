@@ -1,3 +1,0 @@
-# A server counts as mounted with any JSON:API route
-
-The missing-docs-route warning skips servers the app never mounts, and it counted a server as mounted only when a resource route was registered for it, so a server mounted just for its Atomic Operations endpoint or its custom actions got no warning while the Symfony bundle warned about it. A server now counts as mounted when any route carrying the `_jsonapi` marker is registered for it, which covers resource, custom action and Atomic Operations routes, whether the package registered them or the app did through `Route::jsonApi()`. We aligned to the bundle because the check is about whether the app serves that server at all, and a route of any kind answers that.

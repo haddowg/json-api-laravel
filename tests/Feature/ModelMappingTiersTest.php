@@ -14,7 +14,7 @@ use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
 
 /**
- * The three-tier resource→model resolution, end-to-end over HTTP (ADR 0019):
+ * The three-tier resource→model resolution, end-to-end over HTTP (ADR 0002):
  *
  *  - `recordings` is served through its `#[AsJsonApiResource(model: VinylRecord::class)]`
  *    declaration (the type name diverges from the model — convention could not map it);

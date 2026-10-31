@@ -18,7 +18,7 @@ use Workbench\App\Models\CursorWidget;
  * the parent AND the related type — so `GET /cursorBoards/{id}/widgets` runs the
  * keyset push-down on the belongsToMany's pivot-joined query (and the handler's
  * `meta.pivot` wrap reads the join's stored `position`), and every inherited assertion
- * must produce the IDENTICAL page the witness renders (docs/adr/0017).
+ * must produce the IDENTICAL page the witness renders.
  */
 final class PivotCursorConformanceEloquentServiceProvider extends ServiceProvider
 {

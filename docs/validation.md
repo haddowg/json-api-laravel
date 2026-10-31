@@ -127,8 +127,7 @@ More options, each mirroring the Symfony bundle's `UniqueEntity`:
 Str::make('code')->constrain(new UniqueEntity(['code', 'region'], using: 'active', errorPath: 'region', ignoreNull: false));
 ```
 
-Setting any of these runs the check against the stored rows instead of `Rule::unique`
-([ADR 0059](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0059-scoped-uniqueness-reads-the-rows-the-caller-can-see.md)).
+Setting any of these runs the check against the stored rows instead of `Rule::unique`.
 
 ## Entity-level (post-hydration) validation {#entity-level-validation}
 

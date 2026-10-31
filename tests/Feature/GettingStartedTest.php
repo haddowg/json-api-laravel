@@ -13,7 +13,7 @@ use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
 
 /**
- * The [getting-started](../../docs/getting-started.md) flow, run verbatim (ADR 0019):
+ * The [getting-started](../../docs/getting-started.md) flow, run verbatim (ADR 0002):
  * ONE resource class with fields only (no attribute, no `model:`, no provider/persister
  * wiring anywhere) plus ONE plain Eloquent model whose name matches the convention — and
  * all five CRUD endpoints work over HTTP, backed by the auto-registered reference

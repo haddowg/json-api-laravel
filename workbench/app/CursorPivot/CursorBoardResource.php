@@ -18,7 +18,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
  * carrying a declared pivot field (`position`, read-only) AND its own
  * {@see CursorPaginator} (default size 2), so `GET /cursorBoards/{id}/widgets`
  * resolves a keyset window over the pivot-joined relation and renders each member's
- * stored pivot as `meta.pivot` on the SAME cursor page (docs/adr/0017). The keyset
+ * stored pivot as `meta.pivot` on the SAME cursor page. The keyset
  * vocabulary is the widget resource's own sortable fields
  * ({@see \Workbench\App\Cursor\CursorWidgetResource}), so the pivot walk exercises
  * the identical branches the plain related-cursor suite does — with the join in play.

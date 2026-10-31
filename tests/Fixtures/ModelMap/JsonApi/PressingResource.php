@@ -9,7 +9,7 @@ use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Str;
 
 /**
- * The convention-tier witness (ADR 0019): no attribute, no wiring — `pressings`
+ * The convention-tier witness (ADR 0002): no attribute, no wiring — `pressings`
  * resolves to the fixture `Pressing` model purely by name under the test's configured
  * `jsonapi.eloquent.model_namespace`.
  *

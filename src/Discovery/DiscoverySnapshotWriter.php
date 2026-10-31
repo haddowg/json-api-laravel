@@ -18,7 +18,7 @@ use haddowg\JsonApiLaravel\Eloquent\ModelMapResolver;
  * described-error class-strings — so a cached configuration is behaviourally identical to
  * a live scan. It also writes the resolved Eloquent `type → model` map with the namespace
  * it was resolved under, so a request served from the snapshot runs no inflection
- * (ADR 0053), and each server's resolved scope table, so the scope enforcer loads it
+ *, and each server's resolved scope table, so the scope enforcer loads it
  * rather than asking the resolver again.
  *
  * The snapshot is **opt-in**: it is written only when `jsonapi.discovery.cache` names a

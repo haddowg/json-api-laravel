@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 /**
  * One type declared against two different models, here by exposing `recordings` on a
  * second server through a class that declares another model, fails both when the map
- * is resolved live and when `jsonapi:optimize` writes it into the snapshot (ADR 0053).
+ * is resolved live and when `jsonapi:optimize` writes it into the snapshot.
  *
  * @internal
  */

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Http;
 
 /**
- * Reads and checks a response-header `defaults` block (ADR 0073): the global
+ * Reads and checks a response-header `defaults` block: the global
  * `jsonapi.defaults` or a server's own `jsonapi.servers.<name>.defaults`. Both take the
  * same keys and fail the boot on the same bad values, the ones the bundle's config tree
  * rejects. A null or absent value is unset, so a server block replaces only the global

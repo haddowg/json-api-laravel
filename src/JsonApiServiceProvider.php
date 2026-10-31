@@ -157,20 +157,20 @@ final class JsonApiServiceProvider extends ServiceProvider
 
     /**
      * The container tag an {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentFilterArmInterface}
-     * binding carries to join the auto-registered reference Eloquent provider (ADR 0019) —
+     * binding carries to join the auto-registered reference Eloquent provider (ADR 0002) —
      * the push-down seam for a custom `FilterInterface` without hand-wiring the provider.
      */
     public const string ELOQUENT_FILTER_ARM_TAG = 'jsonapi.eloquent.filter_arm';
 
     /**
      * The container tag an {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentSortArmInterface}
-     * binding carries to join the auto-registered reference Eloquent provider (ADR 0019).
+     * binding carries to join the auto-registered reference Eloquent provider (ADR 0002).
      */
     public const string ELOQUENT_SORT_ARM_TAG = 'jsonapi.eloquent.sort_arm';
 
     /**
      * The priority the auto-registered reference Eloquent pair joins the registries at
-     * (ADR 0019): below the documented explicit-wiring floor (`-128`), so ANY hand
+     * (ADR 0002): below the documented explicit-wiring floor (`-128`), so ANY hand
      * registration — an application provider at the default `0`, or the reference pair
      * wired by hand at `-128` (docs/eloquent.md) — shadows the auto pair for the types
      * it `supports()`.
@@ -260,7 +260,7 @@ final class JsonApiServiceProvider extends ServiceProvider
             // The explicit OpenAPI tags each mount type declares, so an action with no tags of
             // its own inherits the mount type's tags before the humanized default (bundle parity).
             // Keyed by server, then type, so an action inherits the tags of the class its own
-            // server exposes the type through (ADR 0052).
+            // server exposes the type through.
             $typeTags = [];
             foreach ($discovery->resources() as $descriptor) {
                 if ($descriptor->tags !== []) {
@@ -308,7 +308,7 @@ final class JsonApiServiceProvider extends ServiceProvider
      * cache + deprecation/sunset config projected off the discovered
      * {@see \haddowg\JsonApiLaravel\Discovery\ResourceDescriptor}s (a discovery-time
      * projection, like the Authorizer config), layered over each server's own
-     * `jsonapi.servers.<name>.defaults` and then the global `jsonapi.defaults.*` (ADR 0073). The {@see \haddowg\JsonApiLaravel\Http\ResponseHeadersMiddleware}
+     * `jsonapi.servers.<name>.defaults` and then the global `jsonapi.defaults.*`. The {@see \haddowg\JsonApiLaravel\Http\ResponseHeadersMiddleware}
      * queries it per request.
      */
     private function registerResponseHeaders(): void
@@ -317,7 +317,7 @@ final class JsonApiServiceProvider extends ServiceProvider
             /** @var Discovery $discovery */
             $discovery = $app->make(Discovery::class);
 
-            // Keyed by server, then type, like the authorization config (ADR 0052).
+            // Keyed by server, then type, like the authorization config.
             $byServer = [];
             foreach ($discovery->resources() as $descriptor) {
                 if ($descriptor->headers !== []) {
@@ -457,10 +457,10 @@ final class JsonApiServiceProvider extends ServiceProvider
         });
 
         // The `type → model` map behind the auto-registered reference Eloquent pair
-        // (ADR 0019). Resolved lazily off the memoized discovery descriptors (a snapshot
+        // (ADR 0002). Resolved lazily off the memoized discovery descriptors (a snapshot
         // load or a live scan alike) at first registry use — never at boot — so
         // `route:cache` / `jsonapi:optimize` timing is untouched. A snapshot written by
-        // `jsonapi:optimize` carries the resolved map, so no request inflects (ADR 0053).
+        // `jsonapi:optimize` carries the resolved map, so no request inflects.
         $this->app->singleton(ModelMapResolver::class, static function (Container $app): ModelMapResolver {
             /** @var Discovery $discovery */
             $discovery = $app->make(Discovery::class);
@@ -476,7 +476,7 @@ final class JsonApiServiceProvider extends ServiceProvider
      * explicit {@see JsonApiManager} registrations plus the discovered SPI classes,
      * sorted by descending priority (highest first, ties keeping registration order).
      *
-     * When the resolved `type → model` map (ADR 0019) is non-empty, the reference
+     * When the resolved `type → model` map (ADR 0002) is non-empty, the reference
      * Eloquent provider/persister pair over that map joins each registry at
      * {@see ELOQUENT_AUTO_PRIORITY} (`-256`) — below every hand registration, claiming
      * only the mapped types, so the zero-config Eloquent flow works while any explicit
@@ -544,7 +544,7 @@ final class JsonApiServiceProvider extends ServiceProvider
             }
 
             // The write half of the auto-registered reference pair, over the SAME
-            // memoized map the read provider claims (ADR 0019).
+            // memoized map the read provider claims (ADR 0002).
             $modelByType = $app->make(ModelMapResolver::class)->map();
             if ($modelByType !== []) {
                 $registrations[] = [
@@ -592,7 +592,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         // when opis/json-schema is installed — without it a Shape still documents its
         // OpenAPI shape but is not value-validated (the same optional posture the
         // testing kit's schema assertions have). Independent of any structural-linter
-        // toggle: a declared Shape exists solely to be enforced (ADR 0013).
+        // toggle: a declared Shape exists solely to be enforced.
         $opisInstalled = \class_exists(\Opis\JsonSchema\Validator::class);
         if ($opisInstalled) {
             $this->app->singleton(SchemaValueValidator::class);
@@ -797,7 +797,7 @@ final class JsonApiServiceProvider extends ServiceProvider
             $strict = config('jsonapi.strict_query_parameters', true);
 
             // The server-registered profiles (`jsonapi.profiles`, class-strings), in
-            // registration order — the full recognized set (ADR 0025; default the three
+            // registration order — the full recognized set (default the three
             // built-ins in canonical order via ServerFactory::DEFAULT_PROFILES when the
             // key is absent from a not-yet-republished config). Instantiated once, shared
             // by every server (profiles are stateless VOs).
@@ -831,7 +831,7 @@ final class JsonApiServiceProvider extends ServiceProvider
             foreach (\array_keys($serversConfig) as $server) {
                 $server = (string) $server;
                 $resourceClasses = [];
-                // The per-resource serializer/hydrator overrides (ADR 0015), keyed by
+                // The per-resource serializer/hydrator overrides (ADR 0011), keyed by
                 // resource class — threaded into core's register() by the factory so the
                 // overridden concern wins while the other stays field-driven.
                 $serializerOverrides = [];
@@ -887,7 +887,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $hydratorOverrides,
                     $profiles,
                     // Localize/override the error catalogue through the Laravel translator
-                    // (ADR 0023): title/detail per stable error code from the jsonapi-errors
+                    //: title/detail per stable error code from the jsonapi-errors
                     // translation group. The translator is always available in Laravel, so the
                     // resolver is always wired; with no jsonapi-errors lines it resolves null and
                     // core renders its inline English copy, byte-identical to today.
@@ -1139,7 +1139,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         });
 
         // Finds the app's own route to the OpenAPI controller when the package's named
-        // document routes aren't registered (ADR 0041).
+        // document routes aren't registered (ADR 0037).
         $this->app->singleton(DocumentRouteLocator::class, function (Container $app): DocumentRouteLocator {
             /** @var OpenApiConfig $config */
             $config = $app->make(OpenApiConfig::class);

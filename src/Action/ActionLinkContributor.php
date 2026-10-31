@@ -18,7 +18,7 @@ use haddowg\JsonApiLaravel\Authorization\Authorizer;
  * Contributes a custom action's URL as an out-of-band `links` member on every rendered
  * resource of its mount type — core's {@see ResourceLinkContributorInterface} seam — when
  * the action declared `asLink: true`, or when the type's resource declares an
- * {@see ActionLink} for the action's path in its `links()` (ADR 0064). The Laravel twin of
+ * {@see ActionLink} for the action's path in its `links()`. The Laravel twin of
  * the bundle's `Action\ActionLinkContributor`.
  *
  * It is **per server**: each declared server's memoized {@see \haddowg\JsonApi\Server\Server}

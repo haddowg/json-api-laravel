@@ -10,7 +10,7 @@ use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
 
 /**
- * The explicit-tier wiring for the model-mapping-tiers fixture app (ADR 0019): it
+ * The explicit-tier wiring for the model-mapping-tiers fixture app (ADR 0002): it
  * registers ONLY the in-memory pair for `imports` at the default priority `0` — every
  * other fixture type (`recordings`, `pressings`, `ghosts`) is left to the attribute /
  * convention / no tier, so the feature test observes each tier in isolation. Discovery

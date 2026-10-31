@@ -73,7 +73,7 @@ use Illuminate\Database\Eloquent\Model;
  *    {@see \haddowg\JsonApi\Resource\Link\ActionLink} in `links()` links a resource-scope
  *    custom action of the type. A server without it leaves the link out, but a path no
  *    server serving the type has would never render, so it is reported, naming the
- *    resource class (ADR 0064). Building the
+ *    resource class. Building the
  *    links also throws core's own declaration errors: two action links for one path, or a
  *    declared link named like an action link.
  *

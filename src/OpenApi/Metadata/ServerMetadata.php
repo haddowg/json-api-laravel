@@ -53,7 +53,7 @@ use haddowg\JsonApiLaravel\Scope\ScopeTables;
  *
  * Through {@see DeclaresMethodNotAllowed} it says the exception renderer answers a method
  * a JSON:API path does not accept with a `405` error document, so the catalogue lists
- * `METHOD_NOT_ALLOWED` (ADR 0065).
+ * `METHOD_NOT_ALLOWED`.
  */
 final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLinkObjects, DeclaresReadOnlyAttributeRejection, DeclaresExampleGeneration, DeclaresOperationScopeTable, DeclaresMethodNotAllowed
 {

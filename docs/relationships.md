@@ -152,6 +152,10 @@ BelongsToMany::make('orderedTracks', 'tracks')
 `weight >= position`, and `addedAt` is server-owned (`readOnly`). Pivot fields are merged into
 the payload **before validation**, so cross-field rules see them.
 
+`meta.pivot` renders on the related endpoint, the relationship endpoint and the `200` linkage a
+relationship mutation answers with. Only a provider that reads pivot rows supplies it, so the
+in-memory provider renders none.
+
 Each member's `meta.pivot` carries every pivot field a response may show for that member:
 core's `BelongsToMany::readablePivotFieldsFor($request, $member)`, which leaves out a field that
 is hidden or write-only for the request. A field's `hidden(when:)` predicate receives the
@@ -182,9 +186,7 @@ unconstrained filter's OpenAPI value from the single column it targets, and `piv
 nothing to it — the prefix is this package's Eloquent convention — so a pivot filter without
 one documents as the plain `string` every query parameter is on the wire, not as the integer
 or date its column really holds. The constraint buys both a `400` on a mistyped value and
-the narrower OpenAPI type. (Pivot-meta *read* rendering
-is described in
-[ADR 0008](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0008-pivot-meta-read-render-is-deferred-to-phase-3b.md).)
+the narrower OpenAPI type.
 
 ## Relationship mutations and prohibitions
 
@@ -214,7 +216,7 @@ adding a row that another parent holds moves it. That needs the `update` ability
 that holds it now, or on the row itself, or the write is a `403`
 ([ADR 0042](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0042-moving-a-related-row-needs-update-on-its-current-parent.md)).
 Adding a row that no parent holds needs the `update` ability on the row
-([ADR 0047](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0047-adding-a-row-no-parent-holds-needs-update-on-the-row.md)).
+([ADR 0042](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0042-moving-a-related-row-needs-update-on-its-current-parent.md)).
 Removing a row the parent doesn't hold changes nothing. Removing one whose foreign key column
 is `NOT NULL` is a `403` (`REMOVAL_PROHIBITED`, or `FULL_REPLACEMENT_PROHIBITED` for a
 replacement that would drop it), since the row can't be left without a parent.
@@ -240,8 +242,7 @@ MorphTo::make('target', ['boards', 'cards'])
 
 The hook gets wire ids, so a type with an id encoder decodes them itself. Validation, the
 `cannot*` prohibitions, the policy gates and related-id scoping still run first. A hooked
-relation in a `POST` applies before the insert, like an attribute
-([ADR 0055](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0055-a-relation-fill-hook-replaces-the-persisters-relationship-write.md)).
+relation in a `POST` applies before the insert, like an attribute.
 
 ## Hidden relations
 
@@ -280,8 +281,7 @@ as readable, since it is on other requests.
 
 ## Polymorphic relations
 
-- **`MorphTo` (to-one)** — the member's type is resolved from the related object
-  ([ADR 0007](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0007-morph-alias-is-decoupled-from-the-json-api-type.md)).
+- **`MorphTo` (to-one)** — the member's type is resolved from the related object.
   On Eloquent it is a native `morphTo`; the example's `favorites.favoritable` points at a
   track, album, or artist.
 - **`MorphToMany` (to-many)** — a mixed collection where each member renders through its own

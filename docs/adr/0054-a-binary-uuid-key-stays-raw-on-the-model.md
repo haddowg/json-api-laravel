@@ -1,3 +1,0 @@
-# A binary UUID key stays raw on the model
-
-Eloquent has no typed query parameters: `whereKey()`, relation eager loading and pivot writes bind whatever `getAttribute()` returns, so a key column cast with `AsBinary::uuid()` binds the 36-character string against a 16-byte column and matches nothing, in plain Laravel as much as here. A binary UUID key therefore stays as raw bytes on the model, where Eloquent's own lookups and relations work unchanged, and the package ships `BinaryUuidEncoder` to turn it into the canonical UUID on the wire through the existing id-encoder seam (ADR 0014). The encoder is declared on the resource's `Id` because core reads it from that field when it serializes, so the package cannot attach it on its own.

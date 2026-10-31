@@ -9,7 +9,7 @@ reference layer; the storage-agnostic SPI it implements is on
 ## The model map (three tiers)
 
 Each type resolves to its model through three tiers — first match wins per type
-([ADR 0019](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0019-three-tier-model-mapping-with-an-auto-registered-reference-pair.md)):
+([ADR 0002](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0002-port-the-provider-persister-spi.md)):
 
 1. **Explicit wiring** — a `JsonApi::provider()`/`persister()` registration (below). It
    always wins for the types it `supports()`, whatever its priority: the auto-registered
@@ -292,7 +292,7 @@ bytes too, so Eloquent's relations match them as they are. To mint the key, over
 Don't cast a key column with `AsBinary::uuid()`. Eloquent binds the cast string, not the
 bytes, when it queries by key or loads a relation, so `find()`, eager loading and pivot writes
 miss every row
-([ADR 0054](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0054-a-binary-uuid-key-stays-raw-on-the-model.md)).
+([ADR 0014](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0014-encoded-id-decode-is-a-reference-eloquent-layer-concern.md)).
 
 ## Sorting, sparse fieldsets, pagination
 
@@ -329,8 +329,7 @@ run.
 ## Polymorphic relations and the morph map
 
 The Eloquent morph **alias** (the `Relation::morphMap()` value) is decoupled from the JSON:API
-**type**
-([ADR 0007](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0007-morph-alias-is-decoupled-from-the-json-api-type.md)):
+**type**:
 the alias only picks the model class when Eloquent hydrates a morph relation; the wire type is
 resolved from each member object's serializer `getType()`. So a stored alias may differ freely
 from the rendered type, and renaming aliases is a storage migration that never touches the API.

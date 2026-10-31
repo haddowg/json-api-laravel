@@ -165,8 +165,7 @@ Trim an entry to stop recognizing and advertising that profile; its OpenAPI para
 with it. Append your own `ProfileInterface` class to recognize a custom profile. Keep the
 built-ins in the order above, which is the order the OpenAPI `jsonapi.profile` enum lists them
 and part of the document's byte-compatibility with the Symfony bundle. See
-[pagination](pagination.md#advertising-the-cursor-pagination-profile) and
-[ADR 0025](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0025-built-in-profiles-are-default-registered-and-consumer-trimmable.md).
+[pagination](pagination.md#advertising-the-cursor-pagination-profile).
 
 ## `defaults` (response headers)
 
@@ -291,7 +290,7 @@ its own `sunset` keeps it, and still inherits the server's `sunset_link` unless 
 The `default` server takes a block too, since it is configured under `servers` like any
 other. A server block fails the boot on the same bad values as the global one. The OpenAPI
 document describes none of these headers on any server, so a server block doesn't change
-it. See [ADR 0073](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0073-a-server-may-declare-its-own-response-header-defaults.md).
+it.
 
 ### Prefixes and the base
 

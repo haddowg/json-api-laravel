@@ -83,8 +83,7 @@ final class AlbumResource extends AbstractResource
             // that core ADR 0116 makes an ordered comparison / Range bound against `null`
             // never match — the in-memory witness converged with SQL three-valued logic —
             // a null-bearing range returns the SAME set on both providers, the null rows
-            // (albums 4, 7) excluded rather than coerced in. This is the fixture ADR 0003
-            // deferred until the core fix landed; see
+            // (albums 4, 7) excluded rather than coerced in; see
             // orderedComparisonAndRangeOverANullableColumnExcludeNullsIdentically.
             Range::make('rating', 'average_rating'),
             // Coerced boolean equality on `explicit`.
