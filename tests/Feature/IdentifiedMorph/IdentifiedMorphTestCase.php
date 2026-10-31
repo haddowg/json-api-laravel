@@ -15,7 +15,7 @@ use PHPUnit\Framework\Attributes\Test;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * A `MorphTo` identified by the type and id columns its parent stores (ADR 0068): `campaigns`
+ * A `MorphTo` identified by the type and id columns its parent stores: `campaigns`
  * target an advertiser or an agency. Advertisers are guarded, by a global scope or a scoping
  * provider that hides advertiser 3, and agencies are not. Agency linkage renders from the columns
  * alone; advertiser linkage, an include and the related endpoint load each type's targets in one

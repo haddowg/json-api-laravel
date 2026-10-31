@@ -13,14 +13,14 @@ namespace haddowg\JsonApiLaravel\DataPersister;
  * the `201`/`200` a synchronous write returns.
  *
  * This is the package's thin async-write seam — the Laravel twin of the Symfony
- * bundle's `DataPersister\AcceptedForProcessing` (bundle ADR 0110): a persister that
+ * bundle's `DataPersister\AcceptedForProcessing`: a persister that
  * dispatches the work (a Laravel queued job, say) instead of persisting inline returns
  * this, pointing at a job resource the client can poll ({@see poll()} sets the
  * `Content-Location`). When the job completes, that job endpoint responds with a
  * `303 See Other` (see {@see \haddowg\JsonApiLaravel\Action\ActionContext::seeOther()})
  * pointing at the produced resource — the JSON:API 1.1 asynchronous-processing
  * lifecycle. Nothing about *how* the work is queued is baked in; the persister owns
- * that decision (ADR 0020).
+ * that decision.
  *
  * The `202` body is either the pollable job resource ({@see withJob()}, rendered
  * through the job type's registered serializer) or a meta-only status document

@@ -275,8 +275,8 @@ final class MetadataSource
 
     /**
      * Builds the type metadata list for one server, in descriptor (discovery) order:
-     * the resources first, then the standalone-serializer types (PLAN decision 3, bundle
-     * ADR 0024) — the same resources-then-standalone ordering the bundle's descriptor map
+     * the resources first, then the standalone-serializer types — the same
+     * resources-then-standalone ordering the bundle's descriptor map
      * carries, so the projected OpenAPI `paths` stay byte-compatible.
      *
      * @return list<TypeMetadataInterface>
@@ -305,7 +305,7 @@ final class MetadataSource
 
     /**
      * Assembles a standalone-serializer type's metadata (no resource, no field inventory)
-     * — the fieldless projection path (PLAN decision 3, bundle ADR 0024). `hasFields` is
+     * — the fieldless projection path. `hasFields` is
      * `false`, so core's projector emits a permissive resource object with an inline
      * `attributes: {type: object}` (no `{Type}Attributes` `$ref`), byte-identical to the
      * bundle. It carries no authorization config of its own, so it declares no

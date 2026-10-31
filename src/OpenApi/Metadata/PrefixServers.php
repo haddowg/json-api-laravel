@@ -13,7 +13,7 @@ use Illuminate\Routing\Router;
 
 /**
  * The OpenAPI `servers` for a server with an empty `base_uri`, read from the prefixes its
- * registered routes carry (ADR 0028).
+ * registered routes carry.
  *
  * Each distinct prefix becomes one relative server URL (`/api`), sorted so the document
  * doesn't depend on route order. A prefix with placeholders (`{tenant}/api`) becomes a

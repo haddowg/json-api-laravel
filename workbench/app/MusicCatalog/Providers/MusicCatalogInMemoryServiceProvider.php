@@ -113,7 +113,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
             SummarizeAlbums::class,
             UploadAlbumArtwork::class,
             // The two standalone-serializer types (no resource), registered last so their
-            // paths follow the resources — the byte-compat contract (decision 3, bundle ADR 0024).
+            // paths follow the resources — the byte-compat contract.
             ChartSerializer::class,
             CountrySerializer::class,
         ]);
@@ -171,7 +171,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
 
         // The two standalone-serializer types are served by the SAME custom providers the
         // Eloquent wiring uses — charts/countries are storage-orthogonal reference data, so
-        // both provider arms read them identically (decision 3, bundle ADR 0024).
+        // both provider arms read them identically.
         JsonApi::provider(new ChartProvider());
         JsonApi::provider(new CountryProvider());
 

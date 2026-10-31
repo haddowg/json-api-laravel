@@ -62,7 +62,7 @@ use Illuminate\Validation\Rule;
  * **recursion**: each present child is registered under a dot-notation key
  * (`address.postcode`) that mirrors the top-level resolution (same create/update context
  * per child), so a child violation maps to `/data/attributes/<map>/<child>` — the
- * implicit one-level cascade (ADR 0020).
+ * implicit one-level cascade.
  *
  * {@see CompareField} (a cross-field rule) is evaluated at the **document** level, after
  * the per-field pass, because the comparison needs the sibling field's value. The
@@ -96,7 +96,7 @@ final class ResourceValidator
      * present in stored state no longer spuriously fails. A stored value resolving to
      * `null` is dropped before the merge (folding it would flip an absent optional into a
      * present-null); an incoming explicit `null` still overrides (the partial merges
-     * last). On create there is no existing object (bundle ADR 0049).
+     * last). On create there is no existing object.
      *
      * @param object|null $existingObject the already-loaded domain object on update (null on create),
      *                                    whose stored attribute values are folded under the incoming partial
@@ -146,7 +146,7 @@ final class ResourceValidator
             if ($field instanceof Id || $field instanceof RelationInterface) {
                 continue;
             }
-            // The read-only gate is request-aware (core ADR 0079): a field marked
+            // The read-only gate is request-aware: a field marked
             // readOnly(fn) is validated for a caller it is writable for and skipped for
             // one it is read-only for, so validation and hydration stay consistent.
             if ($field->isReadOnlyFor($creating, $request)) {
@@ -750,7 +750,7 @@ final class ResourceValidator
      * and a violation maps to `/data/attributes/<field>/<child>`. The two structured
      * types cascade identically — they differ only in storage (flat columns vs one
      * value), which validation never sees. Registered only when the value is a present
-     * array, so an omitted optional field never fires its required children (ADR 0020).
+     * array, so an omitted optional field never fires its required children.
      * The recursion is one level deep by design — a child that is itself structured is
      * not descended into.
      *
@@ -763,7 +763,7 @@ final class ResourceValidator
         $rules = [];
         foreach ($map->children() as $child) {
             // A Map child's visibility (read-only) stays static — request-aware child
-            // predicates are an explicit non-goal (ADR 0020) — but its when() condition
+            // predicates are an explicit non-goal — but its when() condition
             // still sees the request via fieldRules().
             if ($child->isReadOnly($creating)) {
                 continue;
@@ -821,7 +821,7 @@ final class ResourceValidator
 
             $rules = [];
             foreach ($variant->children() as $child) {
-                // Static visibility, mirroring the Map/Obj cascade (ADR 0020).
+                // Static visibility, mirroring the Map/Obj cascade.
                 if ($child->isReadOnly($creating)) {
                     continue;
                 }
@@ -1179,7 +1179,7 @@ final class ResourceValidator
      * Whether a presence rule of `$ruleClass` ({@see Required}/{@see Nullable}) applies in
      * this context, looking at the field's own constraints and inside any {@see When}
      * whose (widened) condition holds for the caller/value — the seam that lets a
-     * `when()`-wrapped presence rule be request-aware (ADR 0084).
+     * `when()`-wrapped presence rule be request-aware.
      *
      * @param class-string<ConstraintInterface> $ruleClass
      */

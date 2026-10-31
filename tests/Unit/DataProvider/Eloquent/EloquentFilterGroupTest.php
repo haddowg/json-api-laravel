@@ -20,8 +20,8 @@ use Workbench\App\Models\Artist;
 
 /**
  * The Eloquent selection witness for the server-composed filter groups
- * ({@see WhereAll} / {@see WhereAny}) and the {@see Where::fixed()} wither (#24b,
- * core ADR 0129): the groups are compiled to SQL and EXECUTED against a seeded
+ * ({@see WhereAll} / {@see WhereAny}) and the {@see Where::fixed()} wither (#24b): the groups are
+ * compiled to SQL and EXECUTED against a seeded
  * SQLite `artists` table, asserting the surviving ids — the Eloquent half of the
  * dual-provider contract whose in-memory twin is
  * {@see \haddowg\JsonApiLaravel\Tests\Unit\DataProvider\InMemoryDataProviderFilterTest}.

@@ -586,7 +586,7 @@ abstract class WriteConformanceTestCase extends Orchestra
     #[Group('spec:crud')]
     public function anUnparseableDateReachingCoreHydrationIsATyped422(): void
     {
-        // The core-owned change the earlier GAP flagged has LANDED (core ADR: an
+        // The core-owned change the earlier GAP flagged has LANDED (in core: an
         // uncoercible attribute value is a typed AttributeValueInvalid): core's DateTime
         // cast (haddowg\JsonApi\Resource\Field\DateTime::deserializeValue) now raises a
         // `422` ATTRIBUTE_VALUE_INVALID at /data/attributes/<name> on a calendar-garbage

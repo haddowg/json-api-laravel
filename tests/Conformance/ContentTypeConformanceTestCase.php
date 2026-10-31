@@ -14,7 +14,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * A request that carries, or may carry, a body must declare its media type (core ADR 0172):
+ * A request that carries, or may carry, a body must declare its media type:
  * every `POST`, and a `PATCH`, `PUT` or `DELETE` that has a body. CRUD and relationship
  * writes, atomic batches and document or no-input actions take only the JSON:API media type;
  * an action's `accepts` list names what else it takes.

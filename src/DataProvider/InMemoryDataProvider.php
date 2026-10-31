@@ -132,7 +132,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
     }
 
     /**
-     * The stored rows among `$ids` (ADR 0032).
+     * The stored rows among `$ids`.
      *
      * @param list<string> $ids
      *
@@ -444,7 +444,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
 
     /**
      * The in-memory cursor (keyset) execution — the **ground truth** the Eloquent
-     * push-down matches byte-for-byte (bundle ADR 0063). It resolves the keyset
+     * push-down matches byte-for-byte. It resolves the keyset
      * columns (the active sort + the appended/deduped PK; validates `?sort`),
      * applies the filters, checks the cursor against the resolved columns (a stale
      * cursor → 400), then runs {@see InMemoryKeyset}: sort by the forced
@@ -566,11 +566,11 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
     /**
      * Applies `$criteria` (filter + sort) to `$items` through core's reference
      * in-memory handlers, then delegates the window/count/count-free tail to the
-     * shared {@see WindowExecutor} (core ADR 0061) over `array_slice`/`count`
+     * shared {@see WindowExecutor} over `array_slice`/`count`
      * closures — the same tail the Eloquent reference provider runs (its closures
      * push down LIMIT/OFFSET/COUNT).
      *
-     * When `$countable` is false (the count-free default, bundle ADR 0052) the
+     * When `$countable` is false (the count-free default) the
      * executor builds the window **count-free**: the result carries no total, only
      * a `hasMore` flag derived from a limit+1 probe — so the handler renders a
      * count-free page (no `total`/`last`). A counted fetch passes `$countable` true

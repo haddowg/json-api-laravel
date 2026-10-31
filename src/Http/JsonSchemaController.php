@@ -34,7 +34,7 @@ use Illuminate\Http\Response;
  * not re-check exposure.
  *
  * ETags, conditional requests, `Cache-Control` and {@see JsonSchemaServeDecoratorInterface}
- * work as they do for the OpenAPI document (ADR 0036). The schemas are standalone
+ * work as they do for the OpenAPI document. The schemas are standalone
  * documents with no shared components, so nothing is pruned after decoration.
  */
 final class JsonSchemaController

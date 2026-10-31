@@ -42,7 +42,7 @@ use Illuminate\Http\Response;
  * as they are, tagged with the hash the warmer stored beside them, so a matching
  * `If-None-Match` costs one small read. With serve decorators it loads the warmed value
  * objects, runs the decorators with the request, prunes what they orphaned and serialises
- * the result (ADR 0036).
+ * the result.
  */
 final class OpenApiController
 {

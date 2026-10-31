@@ -13,8 +13,7 @@ use haddowg\JsonApiLaravel\Discovery\ResourceDescriptor;
 /**
  * Resolves a JSON:API type's id encoder from the resource that declares it: the
  * {@see Id} field's {@see IdEncoderInterface} (storage-key ⇄ wire-id codec) — the
- * Laravel twin of the Symfony bundle's `IdEncoderResolver` (bundle ADR 0038,
- * package ADR 0014).
+ * Laravel twin of the Symfony bundle's `IdEncoderResolver`.
  *
  * The encode/decode boundary is split by where the id flows: core owns the entity's
  * own-id transform (encode on serialize, decode a client-generated id on create), and

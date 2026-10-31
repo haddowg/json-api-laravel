@@ -362,15 +362,15 @@ abstract class RelationshipMutationTestCase extends Orchestra
             ->assertStatus(400);
     }
 
-    // --- relationships embedded in a whole-resource create (ADR 0009) ---------
+    // --- relationships embedded in a whole-resource create ---------
 
     public function test_create_with_embedded_to_one_and_to_many_sets_both_through_the_seam(): void
     {
         // POST /api/posts embedding an owner-side to-one (`author`, a BelongsTo applied inline
         // before the insert — its FK on the parent row) AND a join to-many (`tags`, a
         // belongsToMany DEFERRED to after the parent is keyed — the Eloquent join insert needs
-        // the parent PK; ADR 0009). The create + the deferred apply commit as ONE transaction, so
-        // both associations read back on both providers — the headline ADR-0009 path the suite
+        // the parent PK). The create + the deferred apply commit as ONE transaction, so
+        // both associations read back on both providers — the headline path the suite
         // previously exercised only for the embedded to-one.
         $response = $this->writeJsonApi('POST', '/api/posts', [
             'data' => [

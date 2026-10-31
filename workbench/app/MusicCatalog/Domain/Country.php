@@ -10,7 +10,7 @@ namespace Workbench\App\MusicCatalog\Domain;
  * country name) by the {@see \Workbench\App\MusicCatalog\Provider\CountryProvider} and
  * rendered by the standalone {@see \Workbench\App\MusicCatalog\Serializer\CountrySerializer}
  * — the simplest "expose arbitrary, non-database data as JSON:API" path: a static custom
- * provider + a standalone serializer, read-only (PLAN decision 3, bundle ADR 0024).
+ * provider + a standalone serializer, read-only.
  */
 final class Country
 {

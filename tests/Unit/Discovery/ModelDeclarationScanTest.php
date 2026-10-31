@@ -17,7 +17,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
 /**
- * The scan-time half of the `model:` declaration (ADR 0002): the class-string lands on
+ * The scan-time half of the `model:` declaration: the class-string lands on
  * the {@see ResourceDescriptor} (and survives its snapshot array form, so
  * `jsonapi:optimize` carries it), and a declaration naming a missing or non-Model class
  * fails discovery loudly — the Laravel twin of the bundle `DoctrineEntityMapPass`'s

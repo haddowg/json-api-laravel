@@ -40,10 +40,10 @@ use haddowg\JsonApiLaravel\DataProvider\ScopedToOneTargets;
  * the window is itself fetched through the same provider.
  *
  * Every to-one target it hands core leaves out a related row the caller may not `view`
- * ({@see ViewableRows}, ADR 0044), so it is missing from `data` and from `included`. A `MorphTo`
+ * ({@see ViewableRows}), so it is missing from `data` and from `included`. A `MorphTo`
  * declared with `identifiedBy()` is never read off the parent here: it answers with the target
  * {@see IdentifiedMorphTargets} loaded for the parent, loading it when the pair names a guarded
- * type, or `null` so core renders the stored pair (ADR 0068). A to-many
+ * type, or `null` so core renders the stored pair. A to-many
  * shows exactly what its query returns; a related type the caller may not list is withheld
  * whole by the relation authorizer instead.
  *
@@ -161,7 +161,7 @@ final class RequestScopedRelationshipLinkage implements ToOneRelationshipLinkage
         RelationInterface $relation,
         JsonApiRequestInterface $request,
     ): ?ToOneRelationshipLinkage {
-        // A permission the relation declares replaces the target type's `view` (ADR 0044).
+        // A permission the relation declares replaces the target type's `view`.
         $permission = \is_object($model) ? $this->rows->relationPermission($model, $relation) : null;
         if ($permission === false) {
             return ToOneRelationshipLinkage::none();

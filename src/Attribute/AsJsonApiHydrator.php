@@ -8,7 +8,7 @@ namespace haddowg\JsonApiLaravel\Attribute;
  * Registers the annotated {@see \haddowg\JsonApi\Hydrator\HydratorInterface} as the
  * hydrator for a JSON:API `type`, **without** an
  * {@see \haddowg\JsonApi\Resource\AbstractResource} (the Laravel twin of the bundle's
- * ADR 0024) — the decoupled write half that pairs with {@see AsJsonApiSerializer}. A
+ * standalone hydrator) — the decoupled write half that pairs with {@see AsJsonApiSerializer}. A
  * standalone type is writable exactly when a hydrator is registered for it (and a
  * persister is wired); no hydrator means no writes — a `Create`/`Update` in the paired
  * serializer's `operations` allow-list without one fails route registration loudly.

@@ -207,7 +207,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // stripped-down programmatic wiring → every dispatch is a no-op (events are
         // an opt-in seam, exactly like the bundle's optional dispatcher).
         private readonly ?Dispatcher $dispatcher = null,
-        // The related type's own read gates (ADR 0044). Null on a stripped-down wiring leaves
+        // The related type's own read gates. Null on a stripped-down wiring leaves
         // a related to-many read gated by the parent alone.
         private readonly ?ViewableRows $viewableRows = null,
         // Names the server a dispatch that carries no request server runs on, so its
@@ -480,7 +480,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // the wire ids of the first/last rendered rows (meta.page.from/to). This is
         // the only total-null primary path (a primary collection is otherwise always
         // countable), so the offset and fromCollection branches below stay
-        // byte-identical (bundle ADR 0063).
+        // byte-identical.
         if ($result instanceof CursorCollectionResult && $paginator instanceof CursorPaginator && $request !== null) {
             $from = $items === [] ? null : $serializer->getId($items[0]);
             $to = $items === [] ? null : $serializer->getId($items[\array_key_last($items)]);
@@ -650,7 +650,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->filterValidator->validate($operation->queryParameters()->filter, $criteria->filters);
 
             // A relation over several types reaching a scoped type is read off the parent and
-            // narrowed per member type before the page is cut, so the page stays full (ADR 0032).
+            // narrowed per member type before the page is cut, so the page stays full.
             // Over one type, that type's own provider reads it in one query.
             $result = \count($relatedTypes) > 1 && $this->providers->relatesToScopedType($type, $relation)
                 ? $this->polymorphicMembers()->window($criteria, $this->narrowedMembers($server, $type, $parent, $relation, $request))
@@ -677,7 +677,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // A polymorphic page spans types (no single related type), so its relations are not
             // windowed and it carries no single related type to count. Its includes and linkage
             // are preloaded per member type, so a member's own relation into a scoped type shows
-            // only the rows that type admits (ADR 0032).
+            // only the rows that type admits.
             if (!$polymorphic) {
                 $this->preloadIncludes($server, $items, $relatedType, $request);
                 $this->applyRelationshipWindows($server, $relatedType, $items, $request);
@@ -770,7 +770,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         // An identified MorphTo's target loaded as the type its parent stores, so it renders,
-        // and preloads its own includes, as that type (ADR 0068).
+        // and preloads its own includes, as that type.
         $pair = \is_object($related) && IdentifiedMorphTargets::identifies($relation) ? $relation->storedIdentifier($parent, $request) : null;
         if ($pair !== null) {
             $relatedType = $pair[0];
@@ -817,9 +817,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * `page[after]`/`page[before]` tokens on the links), attached to the response via core's
      * {@see IdentifierResponse::withPage()} so its profile is advertised while the body stays
      * links-only (core's docs/responses.md). It pages by default, so a plain read with no
-     * query parameters serves page 1 of the relation's paginator (docs/adr/0010). A pivot
+     * query parameters serves page 1 of the relation's paginator. A pivot
      * `belongsToMany` windows the same way, and each member of the page carries its
-     * `meta.pivot` from the fetched pivot rows (docs/adr/0010). A polymorphic to-many has no
+     * `meta.pivot` from the fetched pivot rows. A polymorphic to-many has no
      * windowed linkage here and renders the whole association.
      */
     private function fetchRelationship(FetchRelationshipOperation $operation): IdentifierResponse|ErrorResponse
@@ -883,7 +883,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // The endpoint cannot honour the client's query on THIS relation shape, so it is a
             // 400 rather than a silent full-set render: a to-one has no collection to
             // sort/page/count, and a polymorphic to-many has no single related provider or
-            // shared sort/filter vocabulary. See docs/adr/0010.
+            // shared sort/filter vocabulary. See ADR 0006.
             return $this->rejectRelationshipEndpointQuery($operation->queryParameters(), $request);
         } elseif ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation)) {
             // The whole association, but loaded through the related type's own scoping provider
@@ -979,7 +979,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
     /**
      * Supplies a plain (unqueried) to-many relationship endpoint's linkage out-of-band from the
      * related type's own scoping provider. A polymorphic relation is read off the parent and
-     * narrowed per member type instead (ADR 0032).
+     * narrowed per member type instead.
      */
     private function scopeRelationshipEndpoint(
         Server $server,
@@ -1012,7 +1012,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * The members a polymorphic `$relation` holds on `$parent`, narrowed per member type to the
-     * rows each scoped type's provider admits (ADR 0032).
+     * rows each scoped type's provider admits.
      *
      * @return list<object>
      */
@@ -1030,7 +1030,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * Rejects a query the relationship (linkage) endpoint cannot honour on the addressed
-     * relation shape — a to-one or a polymorphic to-many (docs/adr/0010) — with
+     * relation shape — a to-one or a polymorphic to-many — with
      * a `400` rather than silently rendering the full association. `?withCount=_self_` is the
      * related endpoint's same {@see RelationshipCountNotAllowed}; a filter mirrors
      * {@see fetchRelated()}'s polymorphic-to-one {@see FilterParamUnrecognized}; a `?sort`/`?page`
@@ -1177,7 +1177,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * `$items` under the Relationship Queries profile: the {@see RelationshipWindowBatcher}
      * windows each rendered to-many relation to page 1 of its `relatedQuery`-ordered/filtered
      * set — on the Eloquent reference through the `groupLimit`/ROW_NUMBER SQL push-down
-     * (ADR 0006) — and supplies that page-1 LINKAGE + relationship-object PAGINATION out-of-band
+     * — and supplies that page-1 LINKAGE + relationship-object PAGINATION out-of-band
      * (NOT written back onto each parent), both maps swapped into the request-scoped holders the
      * memoized Server renders through, so core emits the windowed linkage and the relationship
      * object's pagination links in plain form while a column-sharing bystander relation still
@@ -1270,7 +1270,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         // An explicit string ability, or else a `view{Relation}` ability the parent's policy or
-        // the Gate defines, replaces the parent's `view` (ADR 0044).
+        // the Gate defines, replaces the parent's `view`.
         $ability = \is_string($read) ? $read : ($read === null ? $this->authorizer->conventionReadAbility($type, $relation, $parent, $serverName) : null);
         if ($ability !== null) {
             $this->authorizer->authorizeAbility($type, $ability, $parent, $serverName);
@@ -1283,13 +1283,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * Refuses a related or relationship read of a to-many whose related type the caller may not
-     * list, exactly as `GET /{type}` refuses them (ADR 0044). A polymorphic to-many needs every
+     * list, exactly as `GET /{type}` refuses them. A polymorphic to-many needs every
      * member type.
      */
     private function gateRelatedList(string $type, object $parent, RelationInterface $relation): void
     {
         // A read permission the relation declares replaces the related type's list gate, and
-        // gateRead() has already enforced it (ADR 0044).
+        // gateRead() has already enforced it.
         if ($this->viewableRows === null || !$relation->isToMany()
             || $this->viewableRows->relationPermission($parent, $relation, $type) !== null) {
             return;
@@ -1364,7 +1364,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      *
      * A pivot value the provider returns as a `\DateTimeInterface` renders through its
      * `DateTime`, `Date` or `Time` field, in the field's format and, for a `DateTime`, in
-     * the field's own `outputTimezone()` or else the server's (ADR 0030). Every other value
+     * the field's own `outputTimezone()` or else the server's. Every other value
      * renders as the provider returned it.
      *
      * @param list<object>|null $members
@@ -1478,7 +1478,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // no instance to the policy method, so the blank instance's class-string is used
         // (a policy's `create($user)`). The pristine-subject / authorize-before-hydrate
         // timing (and its entity-seam-422-after-403 + uniqueness-oracle consequences) is a
-        // recorded divergence from the bundle — see docs/adr/0004.
+        // recorded divergence from the bundle — see ADR 0002.
         $serverName = $this->serverNameOf($operation->context());
         $this->authorizer->authorize($type, Operation::Create, $entity, $serverName);
 
@@ -1486,13 +1486,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // would assign a scalar linkage id to a typed association property (a TypeError /
         // NOT-NULL 500), so the relationships are stripped from the body before hydration
         // and set through the persister's relationship seam instead — a full replacement,
-        // the flush deferred to the single create() commit (bundle ADR 0017). Each embedded
+        // the flush deferred to the single create() commit. Each embedded
         // linkage is validated with the same pass the dedicated endpoint uses (a `409`
         // resource-type conflict / `422` malformed linkage or pivot meta), before persist.
         // A to-one (owner-side FK) applies inline before the create; a to-many (join /
         // inverse FK) is DEFERRED to after the parent is keyed — an Eloquent belongsToMany
         // join insert needs the parent PK, a reference-storage divergence from the bundle's
-        // uniform pre-create apply (docs/adr/0009). The `cannot*` gate is NOT applied on a
+        // uniform pre-create apply (ADR 0005). The `cannot*` gate is NOT applied on a
         // create (there is nothing to replace; a create sets the initial state).
         $relationships = $this->extractRelationships($server, $type, $body, true);
         $resolveResource = $this->resourceResolver($server);
@@ -1537,7 +1537,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // outer boundary, so a failing deferred apply (a QueryException on a join insert, an FK
         // violation) rolls the parent row back too — no orphaned, partially-related resource.
         // This restores the atomicity the bundle's single flush guarantees, despite the
-        // Eloquent PK-before-join reordering (docs/adr/0009); a non-transactional persister
+        // Eloquent PK-before-join reordering; a non-transactional persister
         // runs the closure directly (it owns its own atomicity).
         $entity = $this->writeTransactionally($persister, function () use ($persister, $type, $entity, $deferred, $body, $server, $request): object {
             // The persister commits and returns the entity with any store-generated id
@@ -1550,7 +1550,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // The persister accepted the write for asynchronous processing (it dispatched
             // the work instead of committing) — nothing was persisted, so the deferred
             // (join / inverse-FK) applies have no keyed parent to hang off and are skipped;
-            // the queued job owns the whole write, relationships included (ADR 0020).
+            // the queued job owns the whole write, relationships included (ADR 0009).
             if ($created instanceof AcceptedForProcessing) {
                 return $created;
             }
@@ -1561,7 +1561,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         });
 
         // Render the async accept as a `202 Accepted` pointing at the job resource, not
-        // the `201` a synchronous create renders (the twin of bundle ADR 0110). The
+        // the `201` a synchronous create renders (as the bundle does). The
         // post-commit include/window/count wiring and the After* hooks below do not apply
         // (no resource was persisted), so the branch returns here.
         if ($entity instanceof AcceptedForProcessing) {
@@ -1635,13 +1635,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // The `update` policy gate authorizes the stored target first, before validation and
         // before anything is applied, so ownership is decided on stored state and a caller it
         // refuses learns nothing from validation errors. It runs again on the changed
-        // resource before the save below (ADR 0004).
+        // resource before the save below.
         $serverName = $this->serverNameOf($operation->context());
         $this->authorizer->authorize($type, Operation::Update, $entity, $serverName);
 
         // Document-semantic validation runs here, creating: false, with the loaded target
         // so a PATCH validates the MERGED resource state (stored values overlaid by the
-        // incoming partial), not the partial alone (bundle ADR 0049) — and the loaded
+        // incoming partial), not the partial alone — and the loaded
         // model supplies the UniqueEntity `Rule::unique` table + self-ignore id.
         if ($resource !== null) {
             ReadOnlyAttributes::reject($server, $resource, $request, false);
@@ -1649,8 +1649,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         // Whole-resource writes embedding `data.relationships` (Phase 3b): stripped from the
-        // body before hydration and set through the persister's relationship seam (bundle
-        // ADR 0018), a full replacement per named association (never an incremental
+        // body before hydration and set through the persister's relationship seam, a full
+        // replacement per named association (never an incremental
         // add/remove). Each is validated with the endpoint's pass — folding the loaded
         // parent's stored pivot rows in for the merge-before-validate (an existing member's
         // omitted required pivot field keeps its stored value, no false 422). The apply is
@@ -1699,8 +1699,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->dispatch(new BeforeUpdateEvent($type, $request, $entity, $original, $this->serverName($request)));
 
             // The same gates again on the resource as changed, before it is saved, so a caller
-            // can't turn it into one they couldn't update, such as handing it to another user
-            // (ADR 0004). A denial rolls back everything applied above.
+            // can't turn it into one they couldn't update, such as handing it to another user.
+            // A denial rolls back everything applied above.
             $this->authorizer->authorize($type, Operation::Update, $entity, $serverName);
             $this->gateEmbeddedMutations($type, $entity, $relationships, $serverName);
 
@@ -1709,7 +1709,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         // The persister accepted the update for asynchronous processing — render a
         // `202 Accepted` pointing at the job resource, as the async create does; the
-        // post-commit wiring and After* hooks below do not apply (ADR 0020).
+        // post-commit wiring and After* hooks below do not apply.
         if ($entity instanceof AcceptedForProcessing) {
             return $this->accepted($entity, $server);
         }
@@ -1745,7 +1745,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * `Content-Location` and any `Retry-After` the persister set. An async accept
      * cannot participate in an all-or-nothing Atomic Operations batch — it defers the
      * write past the batch's commit — so it is refused (`422`, rolling the batch back)
-     * when a batch is in flight (the twin of bundle ADR 0110; ADR 0020).
+     * when a batch is in flight.
      */
     private function accepted(AcceptedForProcessing $accepted, Server $server): AcceptedResponse
     {
@@ -1827,7 +1827,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      *  7. {@see gateMutate()} — the policy gate (PLAN decision 7): the parent's `update`
      *     policy, or the relation's `securityMutate` ability override;
      *  8. apply through the persister's storage-owning relationship seam inside a transaction,
-     *     run the policy gate again on the changed parent before it commits (ADR 0004), and
+     *     run the policy gate again on the changed parent before it commits, and
      *     render the resulting linkage ({@see IdentifierResponse::forRelationship()},
      *     `200` — the spec allows `200`/`204`; the bundle returns `200`, matched here).
      *
@@ -1868,7 +1868,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             : $body->getRelationshipDataToOne($relationshipName);
 
         // The relation's request-aware mutability flags (cannotReplace/cannotAdd/cannotRemove)
-        // — a 403 family, distinct from the policy gate below (core ADR 0079).
+        // — a 403 family, distinct from the policy gate below.
         $this->guardMutability($relation, $relationshipName, $linkage, $mode, $body, $parent);
 
         // A pivot relation folds its stored pivot rows in for the merge-before-validate pass:
@@ -1911,7 +1911,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->dispatch(new BeforeRelationshipMutateEvent($type, $request, $parent, $relation, $linkage, $mode, $this->serverName($request)));
 
         // The mutation gate runs again on the parent as changed, before the change commits, so a
-        // caller can't leave the parent in a state they couldn't update (ADR 0004).
+        // caller can't leave the parent in a state they couldn't update.
         $persister = $this->persisters->forType($type);
         $parent = $this->writeTransactionally($persister, function () use ($persister, $type, $parent, $relation, $applied, $mode, $serverName): object {
             $changed = RelationFillHook::declaredBy($relation)
@@ -1948,7 +1948,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * Enforces the relation's request-aware mutability flags for the requested mutation,
-     * throwing core's typed `403`s (core ADR 0079 — each gate resolves its `cannotReplace/
+     * throwing core's typed `403`s (each gate resolves its `cannotReplace/
      * cannotAdd/cannotRemove` closure against the inbound `$body` + `$parent`, so "only admins
      * may replace this relationship" is enforced HERE, distinct from the policy gate):
      *  - a to-one clear (`data: null`) is a removal ({@see RemovalProhibited}); a non-null
@@ -2037,8 +2037,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * Refuses to move a related row away from another parent unless the client may update
-     * that parent, or the row itself (ADR 0042), and refuses to move a row no parent holds
-     * unless the client may update the row (ADR 0042). Only relations where a row has one
+     * that parent, or the row itself (ADR 0017), and refuses to move a row no parent holds
+     * unless the client may update the row. Only relations where a row has one
      * parent (an inverse foreign key) report owners; a Remove never moves a row.
      */
     private function guardReparenting(string $type, object $parent, RelationInterface $relation, ToOneRelationship|ToManyRelationship $linkage, Mode $mode, string $serverName): void
@@ -2068,7 +2068,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * Collects the writable relationships named in a whole-resource write body's
      * `data.relationships`, resolved to their declared relation + parsed linkage. A
      * relationship that is unknown, or read-only for this operation, is skipped — the
-     * read-only gate is request-aware (core ADR 0079) and mirrors core's own
+     * read-only gate is request-aware and mirrors core's own
      * `AbstractResource::hydrateRelationships()`, which never sees these because the
      * handler strips relationships from the body before core hydrates.
      *
@@ -2170,7 +2170,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * Splits collected relationships into `[beforeCreate, deferred]` by STORAGE SIDE, not
-     * cardinality (docs/adr/0009). Only an **owner-side FK** relation — a {@see BelongsTo}
+     * cardinality. Only an **owner-side FK** relation — a {@see BelongsTo}
      * (but NOT its {@see HasOne} subclass) or a {@see MorphTo} — carries its foreign key on the
      * parent row, so it can be applied before the create and committed by the create's own
      * insert. Every OTHER relation is an inverse FK on the related rows (a {@see HasOne}/
@@ -2245,8 +2245,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
     /**
      * A copy of the write body with `data.relationships` removed, so core's hydrator
      * hydrates only the id + attributes and never assigns a scalar linkage id to a typed
-     * association property — the associations apply through the persister seam instead
-     * (bundle ADR 0017).
+     * association property — the associations apply through the persister seam instead.
      */
     private function withoutRelationships(JsonApiRequestInterface $body): JsonApiRequestInterface
     {

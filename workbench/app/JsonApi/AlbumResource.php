@@ -80,7 +80,7 @@ final class AlbumResource extends AbstractResource
             DateRange::make('releasedRange', 'released_at'),
             // Structured numeric range over the NULLABLE `average_rating` column (matching
             // the bundle's `filter[rating]` for OpenAPI byte-compat, PLAN decision 11). Now
-            // that core ADR 0116 makes an ordered comparison / Range bound against `null`
+            // that core makes an ordered comparison / Range bound against `null`
             // never match — the in-memory witness converged with SQL three-valued logic —
             // a null-bearing range returns the SAME set on both providers, the null rows
             // (albums 4, 7) excluded rather than coerced in; see

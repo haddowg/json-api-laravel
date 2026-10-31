@@ -8,8 +8,7 @@ reference layer; the storage-agnostic SPI it implements is on
 
 ## The model map (three tiers)
 
-Each type resolves to its model through three tiers — first match wins per type
-([ADR 0002](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0002-port-the-provider-persister-spi.md)):
+Each type resolves to its model through three tiers — first match wins per type:
 
 1. **Explicit wiring** — a `JsonApi::provider()`/`persister()` registration (below). It
    always wins for the types it `supports()`, whatever its priority: the auto-registered
@@ -291,8 +290,7 @@ bytes too, so Eloquent's relations match them as they are. To mint the key, over
 
 Don't cast a key column with `AsBinary::uuid()`. Eloquent binds the cast string, not the
 bytes, when it queries by key or loads a relation, so `find()`, eager loading and pivot writes
-miss every row
-([ADR 0014](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0014-encoded-id-decode-is-a-reference-eloquent-layer-concern.md)).
+miss every row.
 
 ## Sorting, sparse fieldsets, pagination
 
@@ -304,8 +302,7 @@ columns. Page / offset / cursor (keyset) pagination all push down — see
 ## `?include` batching — SPI, not `with()`
 
 Compound documents are assembled by a provider-agnostic **batcher** over the SPI, not by
-top-level Eloquent `with()`
-([ADR 0005](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0005-include-batching-orchestrates-via-the-spi-not-eloquent-with.md)):
+top-level Eloquent `with()`:
 top-level `with()` cannot return the per-parent totals / `hasMore` a windowed relationship
 needs. The Eloquent provider *implements* the batch seams using Eloquent's own eager-load
 internals (`addEagerConstraints` + `getEager` + dictionary matching, a `BelongsTo`
@@ -316,8 +313,7 @@ fetch.
 ## Windowed relationship queries — SQL push-down only
 
 Per-parent relationship paging (the Relationship Queries profile, `?withCount`, a related
-collection with its own `page[]`) is a **SQL push-down only** — no toggle, no PHP fallback
-([ADR 0006](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0006-windowed-relation-batches-are-sql-push-down-only.md)).
+collection with its own `page[]`) is a **SQL push-down only** — no toggle, no PHP fallback.
 It uses Eloquent's relation `limit()` → `Builder::groupLimit()` →
 `ROW_NUMBER() OVER (PARTITION BY …)` with the relation's order plus a deterministic id
 tie-breaker; `hasMore` is an N+1 probe on the same query; countable totals are a grouped

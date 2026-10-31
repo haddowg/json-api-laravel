@@ -56,7 +56,7 @@ use Illuminate\Database\Eloquent\Model;
  * off it. Its members load through the related provider, per parent, whenever they render
  * (included, or as linkage without an include), batching on or off, and are handed back as
  * out-of-band linkage rather than written onto the parent. A polymorphic relation reaching
- * such a type has its members narrowed per member type instead (ADR 0032).
+ * such a type has its members narrowed per member type instead.
  *
  * Beyond the `?include` tree it also preloads the one relation class that renders linkage
  * on EVERY read regardless of `?include` — an **eager monomorphic to-one** (`BelongsTo`/
@@ -67,7 +67,7 @@ use Illuminate\Database\Eloquent\Model;
  * and does not recurse; it is inert for the in-memory witness (whose value is already in
  * memory) so the two providers stay byte-identical.
  *
- * It honours the three include safeguards (core ADR 0036), resolved once against the ROOT
+ * It honours the three include safeguards, resolved once against the ROOT
  * resource and threaded unchanged through the recursion: it never batches a non-includable
  * relation, never descends past the effective max include depth, and never batches a path
  * the root resource's allowed-include-paths whitelist excludes. A request that violates any
@@ -76,7 +76,7 @@ use Illuminate\Database\Eloquent\Model;
  *
  * A `MorphTo` declared with `identifiedBy()` renders its linkage from the pair its parent stores.
  * Its targets load through each type's own provider, one read per type for the level, batching on
- * or off, since nothing else can read them ({@see IdentifiedMorphTargets}, ADR 0068): every type's
+ * or off, since nothing else can read them ({@see IdentifiedMorphTargets}): every type's
  * when included, and the nested include walk continues from them, otherwise only the guarded
  * types', so a hidden target's linkage renders as none.
  *

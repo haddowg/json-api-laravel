@@ -102,8 +102,7 @@ final class FilterValueValidator
         $rules = [];
         foreach ($filter->constraints() as $constraint) {
             // Filter-side validation passes no request: a widened when($value, $request)
-            // condition receives a null request here (the documented MVP boundary, ADR
-            // 0084).
+            // condition receives a null request here (the documented MVP boundary).
             foreach ($this->translator->translate($constraint) as $rule) {
                 $rules[] = $rule;
             }

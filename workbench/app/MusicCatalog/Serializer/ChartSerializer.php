@@ -13,8 +13,8 @@ use haddowg\JsonApiLaravel\Operation\Operation;
 use Workbench\App\MusicCatalog\Domain\Chart;
 
 /**
- * The standalone serialize-plus-fetch witness (capability composition, PLAN decision 3,
- * bundle ADR 0024): a hand-written serializer for the `charts` type registered with
+ * The standalone serialize-plus-fetch witness (capability composition): a hand-written serializer
+ * for the `charts` type registered with
  * {@see AsJsonApiSerializer} — there is **no** `charts` Resource, **no** Eloquent model,
  * and **no** hydrator. The type is read-only, opened to exactly two endpoints by the
  * `operations` allow-list (`GET /charts` and `GET /charts/{id}`); without it a standalone

@@ -20,7 +20,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
  * Its `pagination()` returns a {@see MultiPaginator} offering a page-number strategy
  * alongside the cursor (keyset) strategy, defaulting to cursor — so the same endpoint
  * witnesses both client-selectable strategy selection AND the keyset push-down (PLAN
- * decision 9, bundle ADR 0063). Absent a discriminator (or with only the shared
+ * decision 9). Absent a discriminator (or with only the shared
  * `page[size]` key) it resolves to the cursor default, keeping the keyset suite
  * unchanged; `page[kind]=page` (or the page-unique `page[number]`) selects the
  * count-based strategy instead.

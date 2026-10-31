@@ -15,7 +15,7 @@ use PHPUnit\Framework\Attributes\Test;
 use Workbench\App\Providers\SecurityInMemoryServiceProvider;
 
 /**
- * The OpenAPI `servers` list (ADR 0028): a server with an empty `base_uri` advertises its
+ * The OpenAPI `servers` list: a server with an empty `base_uri` advertises its
  * route prefix as a relative URL, a parameterised prefix as a templated URL when the
  * route has a default for it, a configured base as it is, and `jsonapi.openapi.servers`
  * overrides all of it. Two servers: `default` (genres) under `api` and `secure`

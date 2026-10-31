@@ -77,7 +77,7 @@ use Illuminate\Database\Eloquent\Model;
  *    links also throws core's own declaration errors: two action links for one path, or a
  *    declared link named like an action link.
  *
- * Standalone-serializer types (PLAN decision 3, bundle ADR 0024) are validated too — a
+ * Standalone-serializer types are validated too — a
  * fetch-opened standalone type without a provider is exactly the deploy-time
  * misconfiguration this warmer exists to catch. Gating is on the per-type operation
  * allow-list, so an embedded-only standalone serializer (no operations) and a
@@ -125,7 +125,7 @@ final class ServableResourceWarmer
                 $this->guardActionLinks($serverName, $type, $problems);
             }
 
-            // The standalone-serializer types (PLAN decision 3, bundle ADR 0024) run the
+            // The standalone-serializer types run the
             // same guards: servability bites (a fetch-opened standalone type needs a
             // provider), while the resource-shaped guards no-op — a resource-less type has
             // no field inventory, so resourceFor() is null and relationsFor() is empty.

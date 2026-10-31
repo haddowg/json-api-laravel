@@ -56,7 +56,7 @@ final class PlaylistResource extends AbstractResource
             // the `tracks` relation method / POPO property): it renders its membership on the
             // read endpoints, but every mutation verb is prohibited — a PATCH is a
             // FULL_REPLACEMENT_PROHIBITED, a POST an ADDITION_PROHIBITED, a DELETE a
-            // REMOVAL_PROHIBITED (all 403, request-aware, core ADR 0079) — so the relationship
+            // REMOVAL_PROHIBITED (all 403, request-aware) — so the relationship
             // -write conformance can referee the `cannot*` family on both providers without a
             // second backing table.
             BelongsToMany::make('lockedTracks', 'tracks')

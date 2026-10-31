@@ -18,7 +18,7 @@ use Workbench\App\Domain\Album;
  * instead of committing it: {@see create()} / {@see update()} dispatch the work
  * (here, nothing — a real one would dispatch a Laravel queued job) and return an
  * {@see AcceptedForProcessing} pointing at a pollable {@see Job}. The witness for
- * the package's async-write seam (ADR 0020, the twin of the Symfony bundle's
+ * the package's async-write seam (the twin of the Symfony bundle's
  * `AsyncArticlesPersister`): the handler renders these as a `202 Accepted` with
  * `Content-Location` + `Retry-After` rather than a `201`/`200`.
  *

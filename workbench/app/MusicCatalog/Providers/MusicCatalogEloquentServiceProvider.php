@@ -114,7 +114,7 @@ final class MusicCatalogEloquentServiceProvider extends ServiceProvider
             UploadAlbumArtwork::class,
             // The two standalone-serializer types (no resource, no model), registered
             // last so their paths follow the resources in the projected document — the
-            // byte-compat contract (decision 11, decision 3, bundle ADR 0024).
+            // byte-compat contract.
             ChartSerializer::class,
             CountrySerializer::class,
         ]);

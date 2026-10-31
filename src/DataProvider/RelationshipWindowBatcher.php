@@ -53,7 +53,7 @@ use haddowg\JsonApiLaravel\Validation\FilterValueValidator;
  *    {@see DataProviderInterface::fetchRelatedCollectionBatch()} seam (so an unknown
  *    sort/filter key is the endpoint's same `400`, and the scoping/count-free vs countable
  *    distinction is reused verbatim) for the WHOLE page in one round-trip — on the Eloquent
- *    reference this is the `groupLimit`/ROW_NUMBER SQL push-down (PLAN decision 9, ADR 0006);
+ *    reference this is the `groupLimit`/ROW_NUMBER SQL push-down;
  *  - per parent, records the page-1 items as a {@see RelationshipLinkage} supplied to core
  *    OUT-OF-BAND (the relationship-linkage seam) — NOT written onto the parent's relation
  *    property — so the linkage `data` IS page 1 of the profile-ordered set WHILE any relation
@@ -755,7 +755,7 @@ final class RelationshipWindowBatcher
         // per-parent boundary tokens (an include is always a FIRST cursor page — no cursor
         // token rides an include — so `hasPrevious` is false and `prev` is omitted), so
         // render through the paginator's cursor path carrying the minted `next` token +
-        // `hasMore`, mirroring the primary/related cursor render (bundle ADR 0063). `from`/`to`
+        // `hasMore`, mirroring the primary/related cursor render. `from`/`to`
         // are the wire ids of the first/last rendered rows — the related serializer is
         // resolved only here (a cursor-resolved relation's related type is always servable),
         // never eagerly for every windowed relation.

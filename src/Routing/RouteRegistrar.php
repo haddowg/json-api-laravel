@@ -43,7 +43,7 @@ use Illuminate\Routing\Router;
  * path is a build-time {@see \LogicException} ({@see guardAtomicPathCollision()}).
  *
  * **Id route pattern (PLAN decision 4).** When a type's {@see \haddowg\JsonApi\Resource\Field\Id} field declares a route
- * pattern (`uuid()`/`ulid()`/`numeric()`/`pattern()`/`matchAs()`, core ADR 0038), that
+ * pattern (`uuid()`/`ulid()`/`numeric()`/`pattern()`/`matchAs()`), that
  * pattern is composed INTO the `{id}` requirement — `(?!-actions(?:/|$))(?:<pattern>)` — so
  * a malformed id 404s at routing exactly as the projected OpenAPI document (which advertises
  * the same `idPattern` anchored `^(?:…)$`) declares. The pattern is read lazily from the
@@ -112,7 +112,7 @@ final class RouteRegistrar
             $this->addResourceRoutes($router, $server, $namePrefix, $descriptor);
         }
 
-        // Standalone-serializer types (no resource; PLAN decision 3, bundle ADR 0024) are
+        // Standalone-serializer types (no resource; PLAN decision 3) are
         // emitted after the resources, matching the bundle's descriptor order (resources,
         // then standalone types) so the projected OpenAPI paths stay byte-compatible. A
         // standalone hydrator for the same type (the decoupled write half) makes the
@@ -476,7 +476,7 @@ final class RouteRegistrar
     /**
      * Applies the server's configured `route_defaults`, such as the value of a
      * placeholder in its prefix (`{tenant}/api`), which the OpenAPI `servers` entry uses
-     * as the variable's default (ADR 0028).
+     * as the variable's default.
      */
     private function withServerDefaults(Route $route, string $server): Route
     {

@@ -18,8 +18,8 @@ use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
 /**
- * The `releases` resource type — the composite-attribute showcase (core ADRs
- * 0118–0121), the byte-compat twin of the bundle example's `ReleaseResource`,
+ * The `releases` resource type — the composite-attribute showcase, the byte-compat twin of the
+ * bundle example's `ReleaseResource`,
  * exercising all three composite kinds on one resource:
  *
  * - `format` is a discriminated {@see OneOf}: its `medium` key selects the

@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
  * Resolves the `type → Eloquent model` map the auto-registered reference
  * {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider} /
  * {@see \haddowg\JsonApiLaravel\DataPersister\Eloquent\EloquentDataPersister} pair is
- * built from (ADR 0002) — the Laravel twin of the Symfony bundle's
+ * built from — the Laravel twin of the Symfony bundle's
  * `DoctrineEntityMapPass`, run lazily off the discovered {@see ResourceDescriptor}s
  * instead of at container compile time.
  *

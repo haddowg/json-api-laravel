@@ -26,7 +26,7 @@ use Illuminate\Database\Eloquent\Model;
  *
  * `scoped: true` checks uniqueness only among the rows the caller can see: the model's global
  * scopes apply, and a type served by a scoping provider counts only the rows that provider
- * returns, the same rules the related endpoint and relationship writes follow (ADR 0032). It
+ * returns, the same rules the related endpoint and relationship writes follow. It
  * also works for a type with no Eloquent model, by reading that type's provider. `using`
  * narrows the Eloquent query further, by a local scope name or a `fn (Builder $query)`
  * closure; `model` checks another model's table; `errorPath` reports the violation on another

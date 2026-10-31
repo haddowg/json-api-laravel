@@ -14,7 +14,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * The read half of the write-capable standalone `beacons` pair: a hand-written wire
  * shape with no `AbstractResource`, its allow-list opening ALL five operations — the
  * write verbs are legal because {@see BeaconHydrator} registers the type's decoupled
- * write half (the Laravel twin of the bundle's ADR 0024 serializer+hydrator pairing).
+ * write half (the Laravel twin of the bundle's serializer+hydrator pairing).
  *
  * @internal
  */

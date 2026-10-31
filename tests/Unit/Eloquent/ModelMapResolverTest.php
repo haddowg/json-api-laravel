@@ -17,8 +17,8 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
 /**
- * The `type → model` resolution behind the auto-registered reference Eloquent pair
- * (ADR 0002): the declared `model:` tier wins over the convention guess, the convention
+ * The `type → model` resolution behind the auto-registered reference Eloquent pair:
+ * the declared `model:` tier wins over the convention guess, the convention
  * guess claims only an existing Eloquent model under the configured namespace, an
  * unresolvable type is simply absent (no claim), and one type declared against two
  * different models is a loud wiring fault — the bundle `DoctrineEntityMapPass`'s

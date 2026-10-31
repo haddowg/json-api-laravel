@@ -16,7 +16,7 @@ use Workbench\App\MusicCatalog\Domain\Chart;
  * {@see \Workbench\App\MusicCatalog\Serializer\ChartSerializer} is paired with this
  * provider rather than the reference Eloquent provider. It proves a fetchable type needs
  * only a serializer (for the wire shape) + a provider (for the data), no
- * resource/hydrator/persister at all (PLAN decision 3, bundle ADR 0024).
+ * resource/hydrator/persister at all.
  *
  * It delegates the reads to an {@see InMemoryDataProvider}, so `GET /charts` /
  * `GET /charts/{id}` reuse the shared {@see \haddowg\JsonApiLaravel\DataProvider\CriteriaApplier}

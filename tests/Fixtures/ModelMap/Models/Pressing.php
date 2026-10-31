@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
  * The model behind the `pressings` fixture type — named exactly what the convention
  * tier guesses (`pressings` → `Pressing` under the configured
  * `jsonapi.eloquent.model_namespace`), so the type is served with no attribute and no
- * wiring at all (ADR 0002).
+ * wiring at all.
  *
  * @property int    $id
  * @property string $title

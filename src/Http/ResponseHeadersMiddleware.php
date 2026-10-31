@@ -12,7 +12,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * The route-scoped "after" middleware that emits the declarative response headers a
- * JSON:API type declares (PLAN decision 12, bundle ADR 0054) — the Laravel twin of
+ * JSON:API type declares — the Laravel twin of
  * the bundle's `kernel.response` `ResponseHeadersListener`. Laravel has no
  * `kernel.response`, and its exception path renders errors separately, so the seam
  * is an after-middleware on the JSON:API route group: it runs the controller

@@ -14,7 +14,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * Serve decorators that all supply a cache key (ADR 0036): the document varies per host,
+ * Serve decorators that all supply a cache key: the document varies per host,
  * orphaned components are pruned, and a matching `If-None-Match` is answered before any
  * decorator runs.
  *

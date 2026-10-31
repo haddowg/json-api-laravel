@@ -17,8 +17,8 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
 /**
- * The standalone-hydrator discovery channel (the write twin of the serializer channel,
- * bundle ADR 0024): classification off `#[AsJsonApiHydrator]`, the dual-attribute
+ * The standalone-hydrator discovery channel (the write twin of the serializer channel):
+ * classification off `#[AsJsonApiHydrator]`, the dual-attribute
  * (one class, both halves) case, the descriptor's cacheable array form, and the
  * jsonapi:optimize snapshot round trip.
  *

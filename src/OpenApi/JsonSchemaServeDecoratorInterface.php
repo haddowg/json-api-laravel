@@ -7,7 +7,7 @@ namespace haddowg\JsonApiLaravel\OpenApi;
 use Illuminate\Http\Request;
 
 /**
- * Adjusts the served `schemas.json` aggregate for one request (ADR 0036), the per-type
+ * Adjusts the served `schemas.json` aggregate for one request, the per-type
  * JSON Schema counterpart of {@see OpenApiServeDecoratorInterface}.
  *
  * Bind the class and tag it with

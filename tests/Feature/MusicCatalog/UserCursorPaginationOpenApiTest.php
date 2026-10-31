@@ -19,7 +19,7 @@ use Workbench\App\MusicCatalog\Support\CatalogConfig;
  * Pins the OpenAPI projection of the catalogue's sole cursor (keyset) witness:
  * `UserResource::pagination()` returns a {@see \haddowg\JsonApi\Pagination\CursorPaginator},
  * so the admin-only `users` primary collection's single `page` deepObject parameter
- * (ADR 0130) carries the keyset object schema — the opaque `after`/`before` cursor tokens
+ * carries the keyset object schema — the opaque `after`/`before` cursor tokens
  * plus `size`, and NOT the `number` of the page-based server default.
  *
  * The cursor projection is PER-RESOURCE, not server-wide: `albums` is exposed on the admin

@@ -55,8 +55,8 @@ use Illuminate\Database\Eloquent\Model;
  * cannot supply.)
  *
  * The scan also picks up the application's {@see DescribedErrorInterface} classes, so
- * its own error codes are catalogued in the generated OpenAPI document beside core's
- * (core ADR 0136). **Only the configured paths are walked**, which is what keeps that
+ * its own error codes are catalogued in the generated OpenAPI document beside core's.
+ * **Only the configured paths are walked**, which is what keeps that
  * safe: a described error reaches a published contract because someone put it where
  * discovery looks, or named it in `JsonApi::register()` — never because it happens to
  * exist. A test fixture stays a test fixture.
@@ -133,7 +133,7 @@ final class DiscoveryScanner
 
             // A standalone serializer is a SerializerInterface carrying #[AsJsonApiSerializer]
             // and no AbstractResource (checked above) — a type whose wire shape is hand-written
-            // (PLAN decision 3, the Laravel twin of bundle ADR 0024). A serializer-override class
+            // (the Laravel twin of the bundle's channel). A serializer-override class
             // (referenced from #[AsJsonApiResource(serializer:)]) carries no attribute and so is
             // never mis-classified here; it is resolved through its resource instead. The same
             // applies to the standalone hydrator (the decoupled write half): both attributes may
@@ -503,7 +503,7 @@ final class DiscoveryScanner
     }
 
     /**
-     * Validates a `#[AsJsonApiResource(model:)]` class-string (ADR 0002): the named class
+     * Validates a `#[AsJsonApiResource(model:)]` class-string: the named class
      * must exist and extend Eloquent's {@see Model}, so a typo'd or mis-typed mapping fails
      * discovery loudly instead of surfacing as a runtime provider error — the Laravel twin
      * of the bundle `DoctrineEntityMapPass`'s missing-entity guard.
@@ -529,8 +529,8 @@ final class DiscoveryScanner
     }
 
     /**
-     * Validates a `#[AsJsonApiResource(serializer:/hydrator:)]` override class-string
-     * (ADR 0011): the named class must exist and implement its core contract, so a typo'd
+     * Validates a `#[AsJsonApiResource(serializer:/hydrator:)]` override class-string:
+     * the named class must exist and implement its core contract, so a typo'd
      * or mis-typed override fails discovery loudly instead of surfacing as a runtime
      * resolver error — the Laravel twin of the bundle compiler pass's guard. The
      * "registered service" half of that guard has no equivalent here: Laravel's container

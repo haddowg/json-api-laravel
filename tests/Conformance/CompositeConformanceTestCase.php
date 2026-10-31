@@ -12,7 +12,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The composite-attribute conformance witness (core ADR 0114; core docs/constraints.md), run against both
+ * The composite-attribute conformance witness (core docs/constraints.md), run against both
  * providers — the Laravel twin of the Symfony bundle's `CompositeConformanceTestCase`:
  * the bridge cascades an {@see \haddowg\JsonApi\Resource\Field\Obj}'s children and a
  * {@see \haddowg\JsonApi\Resource\Field\OneOf}'s selected variant children through

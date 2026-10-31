@@ -45,7 +45,7 @@ use haddowg\JsonApiLaravel\Authorization\Authorizer;
  *
  * The href is the action route's path relative to the server, `/{uriType}/{id}/-actions/{path}`,
  * and core prefixes it with the same base as the resource's `self` link: the configured
- * `base_uri`, or the request origin plus the route prefix when that is empty (ADR 0028).
+ * `base_uri`, or the request origin plus the route prefix when that is empty.
  * Generating it through the URL generator instead would base it on the request host and
  * ignore a configured `base_uri`. The serializer is resolved LAZILY at render time (via the injected resolver closure) so
  * building the Server — which is threaded this contributor — does not recurse.

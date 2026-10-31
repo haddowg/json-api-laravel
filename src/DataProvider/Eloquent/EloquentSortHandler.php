@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMan
 
 /**
  * Executes a requested sort order against an Eloquent query {@see Builder}: the
- * directives arrive most significant first (one composite call, core ADR 0016) and
+ * directives arrive most significant first (one composite call) and
  * append as sequential `orderBy` terms, so the request's first `sort` field is the
  * primary key, as the spec requires. Any non-{@see SortByField} directive (a
  * computed/multi-column sort) has no generic SQL translation and raises

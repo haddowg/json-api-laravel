@@ -40,9 +40,9 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  * Phase 3 (relationships/pivot) concern and lands with the Eloquent alias-aware
  * handlers; for Phase 1 every directive routes to the query root, exactly as the
  * bundle's applier does on every non-pivot fetch path and the entire in-memory
- * provider (bundle ADR 0045). Sorts do not compose commutatively, so the whole
+ * provider. Sorts do not compose commutatively, so the whole
  * ordered directive list is handed to the sort handler in ONE composite call,
- * most-significant first (core ADR 0016).
+ * most-significant first.
  */
 final class CriteriaApplier
 {
@@ -138,7 +138,7 @@ final class CriteriaApplier
         }
 
         // Resolve the requested directives in request order; the handler owns the
-        // combination (sorts do not compose commutatively, core ADR 0016), so the
+        // combination (sorts do not compose commutatively), so the
         // whole list is applied in ONE composite call, most significant first.
         $directives = [];
         foreach ($requested as $field) {

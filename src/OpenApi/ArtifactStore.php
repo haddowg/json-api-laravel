@@ -25,7 +25,7 @@ use haddowg\JsonApi\OpenApi\Serve\UnserializableValue;
  * `<cacheDir>/document-routes.json`. Beside each served artifact sits a
  * `.hash` file (the served ETag), and beside the document a `.serve` file holding it as
  * serialized value objects for the serve decorators, encoded by core's
- * {@see ServeArtifactCodec} (ADR 0036).
+ * {@see ServeArtifactCodec}.
  *
  * This is a pure path/IO helper (no projection): the factories build the documents,
  * this stores and loads their serialized form.
@@ -75,7 +75,7 @@ final class ArtifactStore
     /**
      * The operations the warmed document carries, as path template to lower-case methods:
      * the input of the `describedby` resolver, so a request never loads the whole document
-     * to point a link at it (ADR 0037). Null when it was never written or can't be read.
+     * to point a link at it. Null when it was never written or can't be read.
      *
      * @return array<string, list<string>>|null
      */
@@ -193,7 +193,7 @@ final class ArtifactStore
     }
 
     /**
-     * The warmed document as value objects (ADR 0036), or null when it was never written,
+     * The warmed document as value objects, or null when it was never written,
      * no longer decodes, or was written by another installed version of core or this package.
      */
     public function readServeArtifact(string $server): ?ServeArtifact

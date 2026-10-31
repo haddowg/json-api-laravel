@@ -27,7 +27,7 @@ use Workbench\Database\Seeders\ConformanceSeeder;
 
 /**
  * The Eloquent provider's WINDOWED multi-parent relation batch — the Relationship Queries
- * profile's SQL push-down (PLAN decision 9, ADR 0006), executed as real SQL over SQLite. It
+ * profile's SQL push-down, executed as real SQL over SQLite. It
  * replaces the Phase-3a throwing seam with `Builder::groupLimit` (`ROW_NUMBER() OVER (PARTITION
  * BY <parent FK> ORDER BY <relation order>, <pk>)`): one query bounds every parent's related
  * partition to page 1, deterministic on ties through the appended primary-key tiebreak.

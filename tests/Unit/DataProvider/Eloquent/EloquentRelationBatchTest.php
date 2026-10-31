@@ -266,7 +266,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
     #[Test]
     public function aWindowedBatchOfARealRelationThrowsRatherThanWindowingInPhp(): void
     {
-        // A real relation's windowed batch is a SQL push-down ONLY (PLAN decision 9 / ADR 0006).
+        // A real relation's windowed batch is a SQL push-down ONLY.
         // A polymorphic one has no single query to group-limit, so the batch THROWS rather than
         // windowing in PHP. The pushable case is exercised in EloquentWindowedRelationBatchTest.
         $this->expectException(\LogicException::class);
@@ -285,7 +285,7 @@ final class EloquentRelationBatchTest extends EloquentTestCase
     public function aWindowedBatchOfAComputedRelationWindowsItsMembersInPhp(): void
     {
         // A computed relation has no Eloquent method, so there is no query to push down; each
-        // parent's computed members are windowed in PHP, as its related endpoint does (ADR 0006).
+        // parent's computed members are windowed in PHP, as its related endpoint does.
         $relation = HasMany::make('latestAlbums', 'albums')
             ->extractUsing(static fn(mixed $artist): array => $artist instanceof Artist
                 ? Album::query()->where('artist_id', $artist->getKey())->orderBy('id')->get()->all()

@@ -25,7 +25,7 @@ use Workbench\Database\Seeders\McCatalogSeeder;
  * The seeded playlist holds tracks 1 and 2 at positions 1 and 2; this suite adds track 3 at
  * position 3 (weight 5) so the default page has a next page. The join's `added_at` is stored
  * as ISO-8601 text here; the workbench pivot does not cast it, so the provider casts it and it
- * renders in the `addedAt` field's format (ADR 0030).
+ * renders in the `addedAt` field's format.
  *
  * @internal
  */

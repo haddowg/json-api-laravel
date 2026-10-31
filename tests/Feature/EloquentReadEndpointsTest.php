@@ -147,7 +147,7 @@ final class EloquentReadEndpointsTest extends EloquentTestCase
         // The structured range over the `released_at` (releasedRange) on the counted
         // albums arm: 1997+ keeps only OK Computer (1997), and meta.page.total reflects the
         // FILTERED collection, not the full count. (A null-bearing range now lives
-        // alongside it, filter[rating], since core ADR 0116 aligned the witness with SQL
+        // alongside it, filter[rating], since core aligned the witness with SQL
         // null-exclusion.)
         $response = $this->get('/api/albums?filter[releasedRange][min]=1997-01-01', ['Accept' => self::MEDIA_TYPE]);
 

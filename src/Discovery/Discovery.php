@@ -118,7 +118,7 @@ final class Discovery
     }
 
     /**
-     * The discovered standalone-serializer descriptors (PLAN decision 3, bundle ADR 0024).
+     * The discovered standalone-serializer descriptors.
      *
      * @return list<SerializerDescriptor>
      */
@@ -146,7 +146,7 @@ final class Discovery
 
     /**
      * The discovered standalone-hydrator descriptors (the decoupled write half of the
-     * serializer channel, bundle ADR 0024).
+     * serializer channel).
      *
      * @return list<HydratorDescriptor>
      */

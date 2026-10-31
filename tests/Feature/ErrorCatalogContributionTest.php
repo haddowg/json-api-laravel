@@ -18,7 +18,7 @@ use PHPUnit\Framework\Attributes\Test;
 use Workbench\App\Providers\WorkbenchServiceProvider;
 
 /**
- * The application-contributed error catalogue (core ADR 0136): an app's own described
+ * The application-contributed error catalogue: an app's own described
  * errors reach the projected document as named schema variants beside core's. Discovery
  * finds them under the configured paths, and `JsonApi::register()` names the ones no
  * scan reaches.

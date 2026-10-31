@@ -85,8 +85,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
  * reports so a preloaded lazy relation renders without a re-fetch (the load-state seam).
  *
  * **Wiring.** The `type → model` map is either constructed by hand and registered at
- * `-128` (see the workbench provider), or — the zero-config path ADR 0002 deferred, now
- * delivered by ADR 0002 — resolved from the discovered resources (the
+ * `-128` (see the workbench provider), or — the zero-config path — resolved from the discovered resources (the
  * `#[AsJsonApiResource(model:)]` declarations plus the convention guess under
  * `jsonapi.eloquent.model_namespace`, via the
  * {@see \haddowg\JsonApiLaravel\Eloquent\ModelMapResolver}) and auto-registered at
@@ -126,7 +125,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     private readonly array $modelByType;
 
     /**
-     * The id-encoder resolver wire ids decode through (ADR 0014) — injected, or
+     * The id-encoder resolver wire ids decode through — injected, or
      * resolved lazily from the container on first use so the hand-constructed
      * reference wiring (`new EloquentDataProvider($modelByType)`) keeps working.
      */
@@ -138,7 +137,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * @param array<string, class-string<Model>>          $modelByType a `type → Eloquent model FQCN` map
      * @param iterable<EloquentFilterArmInterface<Model>> $filterArms  author arms for custom `FilterInterface` types
      * @param iterable<EloquentSortArmInterface<Model>>   $sortArms    author arms for custom `SortInterface` types
-     * @param IdEncoderResolver|null                      $idEncoders  resolves a type's id encoder (wire-id decode, ADR 0014); null resolves it lazily from the container
+     * @param IdEncoderResolver|null                      $idEncoders  resolves a type's id encoder (wire-id decode); null resolves it lazily from the container
      */
     public function __construct(array $modelByType, iterable $filterArms = [], iterable $sortArms = [], ?IdEncoderResolver $idEncoders = null)
     {
@@ -177,7 +176,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     {
         // Decode the wire id to its storage key when the type declares an encoder.
         // An undecodable id is a 404: no row holds that key, so short-circuit without
-        // querying (the SPI stays wire-id — only this reference impl decodes; ADR 0014).
+        // querying (the SPI stays wire-id — only this reference impl decodes; ADR 0008).
         $encoder = $this->encoderFor($type);
         if ($encoder !== null) {
             /** @var mixed $key */
@@ -193,7 +192,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     }
 
     /**
-     * The rows of `$type` among `$ids`, decoded and read in one query (ADR 0032).
+     * The rows of `$type` among `$ids`, decoded and read in one query.
      *
      * @param list<string> $ids
      *
@@ -248,7 +247,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // WHERE + the forced NULL=largest ORDER BY); the OffsetWindow / null-window
         // path stays byte-identical below. The keyset still applies the FILTERS via
         // the shared applier (and validates `?sort` through the resolver) but builds
-        // its OWN order, never the plain sort handler (bundle ADR 0063).
+        // its OWN order, never the plain sort handler.
         if ($criteria->window instanceof CursorWindow) {
             return $this->runCursor($builder, $criteria, $criteria->window);
         }
@@ -259,7 +258,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // fetches the windowed page only when the handler resolved a COUNT for this
         // fetch (the paginator's withCount() author opt-in, or ?withCount=_self_
         // under a countable() resource); otherwise it fetches count-free via the
-        // window+1 probe (no COUNT) and reports `hasMore` (bundle ADR 0052).
+        // window+1 probe (no COUNT) and reports `hasMore`.
         return $this->windowExecutor->run(
             $criteria->window,
             countable: $criteria->wantsCount,
@@ -294,7 +293,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * table (never the join's pivot columns), so the cursor page slots under the handler's
      * `meta.pivot` wrap unchanged. Shared with the in-memory witness and the
      * bundle's Doctrine provider, so the parent-scoped keyset page stays refereed
-     * byte-for-byte (bundle ADR 0063). The polymorphic PHP-window path does not window a
+     * byte-for-byte. The polymorphic PHP-window path does not window a
      * cursor (no single related keyset vocabulary).
      *
      * @return CollectionResult<object>
@@ -381,7 +380,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * load-state seam report loaded) happens here; the orchestrator's own `setRelation()`
      * is then idempotent.
      *
-     * **No PHP-window fallback (PLAN decision 9, ADR 0006).** A windowed multi-parent batch
+     * **No PHP-window fallback (ADR 0004).** A windowed multi-parent batch
      * is the Relationship Queries profile's SQL push-down ({@see fetchWindowedBatch()}): one
      * `groupLimit`/`ROW_NUMBER() OVER (PARTITION BY <parent FK> ORDER BY <relation order>, <pk>)`
      * query bounds each parent's partition to page 1, deterministic on ties through the
@@ -444,15 +443,15 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
     /**
      * The windowed multi-parent relation batch — the Relationship Queries profile's SQL
-     * push-down (PLAN decision 9, ADR 0006). It bounds each parent's related partition to page
+     * push-down. It bounds each parent's related partition to page
      * 1 of the relation's order in ONE query via Eloquent's own group-limit
      * (`ROW_NUMBER() OVER (PARTITION BY <parent FK> ORDER BY <sort>, <pk>)`), then partitions
      * the bounded rows per parent through the eager pipeline's dictionary `match()`. The order
      * is the requested/default sort followed by the primary key ASC — the SAME final tiebreak
      * the in-memory witness's `withPkTiebreak` appends, so the two providers resolve a tie to
-     * byte-identical pages (the ADR 0006 determinism referee). NULL ordering is the shared
+     * byte-identical pages (the determinism referee). NULL ordering is the shared
      * applier's plain `ORDER BY`, which on SQLite (and MySQL) places NULLs first on ASC / last
-     * on DESC — byte-identical to the witness's `<=>` comparator (ADR 0006 addendum).
+     * on DESC — byte-identical to the witness's `<=>` comparator.
      *
      * The window is applied through the relation's own `limit()`: a multi-parent eager relation
      * has a non-existing parent, so `HasOneOrMany::limit()` / `BelongsToMany::limit()` route to
@@ -467,7 +466,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * There is NO PHP-window fallback for a real relation (PLAN decision 9): a polymorphic
      * relation (which the batcher never windows) cannot push down and throws. A computed
      * relation with no Eloquent method has no query at all, so it is windowed in PHP over the
-     * members it computes, like its related endpoint (ADR 0006).
+     * members it computes, like its related endpoint.
      *
      * @param list<object> $parents
      *
@@ -484,7 +483,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
         // A computed relation (no Eloquent relation method, such as an `extractUsing()` view) has
         // no query to push down. Its members are already in PHP, so each parent's page is
-        // windowed there, exactly as its related endpoint windows it (ADR 0006). A real relation
+        // windowed there, exactly as its related endpoint windows it. A real relation
         // never falls back to PHP.
         $models = $this->eloquentModels($parents);
         if ($models !== [] && \count($relation->relatedTypes()) === 1 && $this->eagerRelation($models[0], $relation) === null) {
@@ -501,7 +500,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // Relationship Queries profile pins the included page to page 1), so the window
         // is boundaryless — a FIRST cursor page per parent. It collapses to ONE
         // group-limit query exactly like the offset branch above, only ordered by the
-        // resolved keyset columns instead of the sort + hardcoded id ASC (ADR 0006).
+        // resolved keyset columns instead of the sort + hardcoded id ASC.
         if ($window instanceof CursorWindow) {
             return $this->fetchWindowedCursorBatch($parentType, $parents, $relation, $criteria, $request, $window);
         }
@@ -570,7 +569,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // it back onto the real parents (`initRelation`/`match` on `$models`) would flip their
         // `relationLoaded()` true and leave the shared relation cache holding the trimmed probe
         // page, corrupting a column-sharing sibling relation and contradicting the out-of-band
-        // contract the batcher + WindowedRelationshipLinkage stake (ADR 0006). The page reaches
+        // contract the batcher + WindowedRelationshipLinkage stake. The page reaches
         // the wire through the relationship-linkage seam; the parents stay untouched.
         $clones = \array_map(static fn(Model $model): Model => clone $model, $models);
         $eager->addEagerConstraints($clones);
@@ -633,13 +632,12 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * `CASE … IS NULL …` term composes verbatim into the window's `OVER (… ORDER BY …)`.
      * Each partition mints its forward cursor from its boundary row through the SAME shared
      * {@see \haddowg\JsonApi\Collection\Keyset\CursorTokenMinter} the per-parent path uses,
-     * so the batched include is byte-identical to the in-memory witness (ADR 0006; bundle ADR 0063).
+     * so the batched include is byte-identical to the in-memory witness.
      *
      * A relation that cannot push down as one partitioned window — polymorphic, no Eloquent
      * method, or a bounded (non-first) page — falls back to
      * {@see fetchCursorBatchPerParent()}: the per-parent keyset loop that is also the
-     * related-collection endpoint's path (a real keyset LIMIT push-down, never a PHP window,
-     * ADR 0006).
+     * related-collection endpoint's path (a real keyset LIMIT push-down, never a PHP window).
      *
      * @param list<object> $parents
      */
@@ -736,7 +734,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
         // ONE group-limit query for the whole page, matched onto lightweight CLONES so the
         // windowed (limit + 1)-probe page is setRelation'd onto the clones, never the
-        // caller's models — identical to the offset path's clone discipline (ADR 0006).
+        // caller's models — identical to the offset path's clone discipline.
         $clones = \array_map(static fn(Model $model): Model => clone $model, $models);
         $eager->addEagerConstraints($clones);
         $clones = $eager->initRelation($clones, $method);
@@ -779,7 +777,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * keyset path ({@see runCursor()}) once per parent, minting each parent's forward cursor
      * from its boundary row via the shared
      * {@see \haddowg\JsonApi\Collection\Keyset\CursorTokenMinter}. Each is a real per-parent
-     * keyset LIMIT push-down, not a PHP window (ADR 0006); this is also the very path the
+     * keyset LIMIT push-down, not a PHP window; this is also the very path the
      * related-collection endpoint runs, so the two stay byte-identical.
      *
      * @param list<object> $parents
@@ -1120,7 +1118,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     /**
      * A pivot field's value off the pivot model. A date field's column the pivot model
      * doesn't cast comes back as the stored string, so it is cast the way a `datetime`
-     * cast would read it, and renders in the field's format like any other date (ADR 0030).
+     * cast would read it, and renders in the field's format like any other date.
      */
     private function pivotValue(Model $pivot, FieldInterface $field): mixed
     {
@@ -1203,7 +1201,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
     /**
      * The id encoder declared by `$type`'s resource, or `null` when wire == storage (no
-     * resource / no Id field / no encoder — today's behaviour, ADR 0014). The resolver is
+     * resource / no Id field / no encoder — today's behaviour). The resolver is
      * injected, or resolved lazily from the container once so the hand-constructed
      * reference wiring keeps working; outside a container (a bare unit test) every type
      * resolves encoder-less.
@@ -1339,7 +1337,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     /**
      * The cursor (keyset) execution pushed down to SQL — the twin of the in-memory
      * witness ({@see \haddowg\JsonApi\Collection\Keyset\InMemoryKeyset}),
-     * the ground truth (bundle ADR 0063). It resolves the keyset columns (the active
+     * the ground truth. It resolves the keyset columns (the active
      * sort + the appended/deduped PK; validates `?sort`), applies the filters, checks
      * the cursor against the resolved columns (a stale cursor → 400), then via
      * {@see EloquentKeyset} builds the forced NULL=largest `ORDER BY` and the

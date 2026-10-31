@@ -125,8 +125,7 @@ GET /api/albums/1?relatedQuery[tracks][sort]=duration&relatedQuery[tracks][filte
 
 Windowing per parent uses the SQL push-down described in
 [eloquent](eloquent.md#windowed-relationship-queries--sql-push-down-only). A relationship
-endpoint query it cannot honour is a `400`, never silently ignored
-([ADR 0010](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0010-relationship-endpoint-query-params-reject-not-ignore.md)).
+endpoint query it cannot honour is a `400`, never silently ignored.
 
 ## Pivot (`belongsToMany`) data
 
@@ -201,8 +200,7 @@ BelongsToMany::make('playlists', 'playlists')->cannotReplace()->countable()->wit
 relation refuses all three the same way, since a relationship mutation is an update of the
 parent, and the OpenAPI document lists no mutation operations for it. `readOnly(fn …)` is
 judged per request, so the document keeps them. Embedded
-belongs-to-many writes in a whole-resource `POST` are applied after the parent is created
-([ADR 0009](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0009-embedded-relationship-writes-defer-belongs-to-many-to-after-create.md)).
+belongs-to-many writes in a whole-resource `POST` are applied after the parent is created, since the join row needs the parent's key.
 
 A related id is resolved through the same scope its type's own endpoint reads through: an
 Eloquent global scope on the related model (soft deletes included), or a
@@ -213,10 +211,8 @@ providers, resolves ids as it always has.
 
 On a `HasMany`/`HasOne` (the foreign key is on the related row, so a row has one parent),
 adding a row that another parent holds moves it. That needs the `update` ability on the parent
-that holds it now, or on the row itself, or the write is a `403`
-([ADR 0042](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0042-moving-a-related-row-needs-update-on-its-current-parent.md)).
-Adding a row that no parent holds needs the `update` ability on the row
-([ADR 0042](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0042-moving-a-related-row-needs-update-on-its-current-parent.md)).
+that holds it now, or on the row itself, or the write is a `403`.
+Adding a row that no parent holds needs the `update` ability on the row.
 Removing a row the parent doesn't hold changes nothing. Removing one whose foreign key column
 is `NOT NULL` is a `403` (`REMOVAL_PROHIBITED`, or `FULL_REPLACEMENT_PROHIBITED` for a
 replacement that would drop it), since the row can't be left without a parent.
@@ -354,7 +350,7 @@ The target renders with the serializer of the pair's type, so its resource needs
 object-aware `getType()`.
 Writes are unchanged, so `fillUsing()` owns them, and the OpenAPI document is the same as for
 any `MorphTo`. Core's [relations guide](https://github.com/haddowg/json-api/blob/main/docs/relations.md#identifying-the-target-without-loading-it)
-covers the declaration ([ADR 0068](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0068-an-identified-morph-to-loads-a-guarded-types-targets-whenever-its-linkage-renders.md)).
+covers the declaration.
 
 When a member type is served by its own scoping provider, the members are narrowed per member
 type to the rows that provider admits, before the page is cut, so pages stay full and every

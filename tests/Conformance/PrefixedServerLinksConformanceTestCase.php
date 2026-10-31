@@ -12,7 +12,7 @@ use PHPUnit\Framework\Attributes\Test;
 
 /**
  * Links for a server whose routes live under the `api` prefix and whose `base_uri` is
- * empty (ADR 0028), against both data layers. Every link kind carries the request origin
+ * empty, against both data layers. Every link kind carries the request origin
  * plus the prefix once: resource, relationship and related links, included resources,
  * document `self`, pagination, and the `Location` of a create.
  */

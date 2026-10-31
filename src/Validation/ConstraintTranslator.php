@@ -210,7 +210,7 @@ final class ConstraintTranslator
      * ({@see \haddowg\JsonApi\Resource\Constraint\Required} /
      * {@see \haddowg\JsonApi\Resource\Constraint\Nullable}) carry no value rule — they
      * are resolved by the {@see ResourceValidator} during presence resolution (a
-     * conditionally-required field, ADR 0084) — so they are filtered out before
+     * conditionally-required field) — so they are filtered out before
      * translating the rest, which would otherwise fail loud (they have no value-rule
      * translation).
      *

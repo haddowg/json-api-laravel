@@ -68,7 +68,7 @@ use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
  * may come before negotiation ran: a `405`, or a `401` from the auth middleware. A request
  * that never named the extension gets a plain JSON:API error. A `415`
  * ({@see MediaTypeUnsupported}) or `406` ({@see MediaTypeUnacceptable}) never declares it,
- * since negotiation failed (ADR 0066, matching the bundle).
+ * since negotiation failed (ADR 0020, matching the bundle).
  *
  * Reporting/logging is deliberately NOT done here: unlike the Symfony bundle's
  * `ExceptionListener` (the only reporter in that kernel), Laravel's exception handler

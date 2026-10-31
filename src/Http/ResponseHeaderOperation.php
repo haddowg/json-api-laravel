@@ -8,7 +8,7 @@ use haddowg\JsonApi\Operation\Target;
 
 /**
  * The read shapes a per-operation cache-header override can key on (PLAN decision
- * 12, bundle ADR 0054). Cache headers apply only to safe (`GET`) reads, and a
+ * 12). Cache headers apply only to safe (`GET`) reads, and a
  * JSON:API type serves four of them — the primary collection, a single resource, a
  * related resource(s) endpoint, and a relationship linkage endpoint — so a resource
  * can tune caching per shape (e.g. a long-lived `collection` vs a short-lived

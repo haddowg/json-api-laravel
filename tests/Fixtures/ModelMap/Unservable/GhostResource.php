@@ -9,7 +9,7 @@ use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Str;
 
 /**
- * The unresolvable-type witness (ADR 0002): no `model:` declaration and no `Ghost`
+ * The unresolvable-type witness: no `model:` declaration and no `Ghost`
  * model under the configured namespace, so no tier claims `ghosts` — the auto pair must
  * NOT claim it, and a request keeps failing with the pre-existing no-provider wiring
  * error, exactly as before the tiers existed. It lives outside the fixture `JsonApi`

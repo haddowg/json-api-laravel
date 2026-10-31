@@ -9,7 +9,7 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * The declarative HTTP cache directives a JSON:API type declares for its safe
  * (`GET`) reads via `#[AsJsonApiResource(cacheHeaders: …)]` or the global
- * `jsonapi.defaults.cache_headers` config key (PLAN decision 12, bundle ADR 0054).
+ * `jsonapi.defaults.cache_headers` config key.
  * A pure, immutable value object of scalars.
  *
  * It maps onto a response via {@see applyTo()}: the RFC-7234 `Cache-Control`

@@ -37,7 +37,7 @@ use PHPUnit\Framework\Attributes\Test;
  * dedicated {@see RelationshipReadConformanceTestCase}. The client-driven `?withCount=_self_`
  * opt-in is now recognized (the Countable profile is wired) and asserted here as core's `400`
  * safe-default until a resource opts in via CountableSelfInterface. The null-in-comparison
- * semantics (core ADR 0116) are asserted directly in
+ * semantics are asserted directly in
  * {@see orderedComparisonAndRangeOverANullableColumnExcludeNullsIdentically}.
  */
 abstract class ReadConformanceTestCase extends Orchestra
@@ -826,7 +826,7 @@ abstract class ReadConformanceTestCase extends Orchestra
     #[Group('spec:fetching-filtering')]
     public function orderedComparisonAndRangeOverANullableColumnExcludeNullsIdentically(): void
     {
-        // Core ADR 0116 (an ordered comparison against `null` never matches) aligned the
+        // Core's rule (an ordered comparison against `null` never matches) aligned the
         // in-memory witness with SQL: it excludes
         // null rows from an ordered `<`/`<=`/`>`/`>=` — and therefore a Range bound —
         // exactly as Eloquent/SQL three-valued logic already did, instead of coercing
@@ -839,8 +839,8 @@ abstract class ReadConformanceTestCase extends Orchestra
         // A bounded range excludes 1 (9.8): 9.0–9.5 → 2 (9.1), 3 (9.5), 6 (9.0).
         self::assertSame(['2', '3', '6'], $this->sortedIds('/api/albums?filter[rating][min]=9.0&filter[rating][max]=9.5', 'albums'));
         // The crucial null case — a MAX-only bound (a `<=` arm): `null <= 9.0` was the
-        // coercion the OLD in-memory witness matched; under core
-        // ADR 0116 both providers now EXCLUDE the unrated rows (4, 7), keeping only 5 (8.7)
+        // coercion the OLD in-memory witness matched; under core's
+        // rule both providers now EXCLUDE the unrated rows (4, 7), keeping only 5 (8.7)
         // and 6 (9.0) — the null-comparison parity this suite could not prove before.
         self::assertSame(['5', '6'], $this->sortedIds('/api/albums?filter[rating][max]=9.0', 'albums'));
     }

@@ -16,8 +16,7 @@ use Workbench\Database\Seeders\CursorWidgetSeeder;
  * top of the FK constraint. It seeds the SAME
  * {@see \Workbench\App\Support\ConformanceFixtures::cursorGroups()} partition the
  * in-memory witness carries ({@see CursorWidgetSeeder} then {@see CursorGroupSeeder}),
- * so every inherited assertion must produce the IDENTICAL parent-scoped keyset page
- * (bundle ADR 0063).
+ * so every inherited assertion must produce the IDENTICAL parent-scoped keyset page.
  *
  * @internal
  */

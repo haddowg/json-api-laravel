@@ -20,7 +20,7 @@ use Illuminate\Testing\TestResponse;
 use Opis\JsonSchema\Validator;
 
 /**
- * Shared scaffolding for the serve-time customisation suites (ADR 0036): each subclass
+ * Shared scaffolding for the serve-time customisation suites: each subclass
  * names the serve decorators it tags, requests go to a chosen host, and the warmer can be
  * run on demand.
  *

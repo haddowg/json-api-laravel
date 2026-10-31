@@ -193,6 +193,3 @@ The evaluator inspects the ability through `Gate::forUser($user)->inspect()`. It
 well as the user, or when the policy has a `before()` method, since the answer then depends on
 the resource. A public or unguarded operation is `Allowed`. `ScopeChecker` uses the same
 matcher as enforcement.
-
-See [ADR 0061](https://github.com/haddowg/json-api-laravel/blob/main/docs/adr/0061-scope-tables-live-in-the-snapshot-and-the-catalogue-reads-the-gate.md)
-for why the tables are kept where they are and how the evaluator decides.

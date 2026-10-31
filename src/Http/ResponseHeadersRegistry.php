@@ -7,8 +7,8 @@ namespace haddowg\JsonApiLaravel\Http;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 
 /**
- * The server- and type-keyed registry of declarative response-header config (PLAN decision 12,
- * bundle ADR 0054): each JSON:API type's {@see CacheHeaders} (resource-level +
+ * The server- and type-keyed registry of declarative response-header config: each JSON:API type's
+ * {@see CacheHeaders} (resource-level +
  * per-operation overrides) and {@see DeprecationHeaders}, layered over the global
  * defaults from `jsonapi.defaults.cache_headers` / `jsonapi.defaults.deprecation` /
  * `…sunset`.

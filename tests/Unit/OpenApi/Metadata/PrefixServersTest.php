@@ -13,7 +13,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * The OpenAPI `servers` an empty-base server advertises, read from the prefixes on its
- * registered routes (ADR 0028).
+ * registered routes.
  *
  * @internal
  */

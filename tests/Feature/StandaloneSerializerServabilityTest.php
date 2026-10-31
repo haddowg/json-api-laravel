@@ -13,8 +13,8 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The servability guard's failure path for the **serializer channel** (PLAN decision 3,
- * bundle ADR 0024): a standalone-serializer type whose allow-list opens the fetch
+ * The servability guard's failure path for the **serializer channel**: a standalone-serializer type
+ * whose allow-list opens the fetch
  * endpoints but has no data provider is exactly as unservable as a provider-less
  * resource, and must fail the BUILD (`jsonapi:optimize`) rather than 500 at runtime.
  * The provider-less {@see \haddowg\JsonApiLaravel\Tests\Fixtures\OrphanStandaloneSerializer}

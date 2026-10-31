@@ -10,7 +10,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
 /**
  * A deliberately broken fixture: its `model:` names a class that does not exist, so
- * discovery must fail loudly at scan time (the ADR 0002 contract guard) instead of
+ * discovery must fail loudly at scan time (the contract guard) instead of
  * surfacing as a runtime provider error. Never placed in a scanned path — the scanner
  * unit test registers it explicitly.
  *

@@ -21,7 +21,7 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Depends;
 
 /**
- * The optimize half of the model-mapping tiers (ADR 0002): the `jsonapi:optimize`
+ * The optimize half of the model-mapping tiers: the `jsonapi:optimize`
  * snapshot carries the `model:` declaration (and passes servability validation, since
  * every type here resolves through a tier), so a cached (`route:cache`d) app resolves
  * the SAME `type → model` map a live scan does. The sibling

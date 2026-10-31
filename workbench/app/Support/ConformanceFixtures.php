@@ -195,7 +195,7 @@ final class ConformanceFixtures
 
     /**
      * Eight cursor widgets, shared by BOTH cursor (keyset) conformance concretes so the
-     * SQL push-down and the in-memory witness referee the SAME rows (bundle ADR 0063).
+     * SQL push-down and the in-memory witness referee the SAME rows.
      * Deliberately shaped to exercise every keyset branch:
      *  - `category` carries ties (guide ×4, news ×4), so the appended PK tiebreak is the
      *    ONLY thing keeping tied rows totally ordered;

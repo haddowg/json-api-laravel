@@ -27,7 +27,7 @@ use Workbench\Database\Seeders\CursorWidgetSeeder;
 
 /**
  * The Eloquent provider's WINDOWED multi-parent relation batch for a CURSOR (keyset)
- * included relation — the N→1 collapse (ADR 0006). A cursor-resolved include is a
+ * included relation — the N→1 collapse. A cursor-resolved include is a
  * boundaryless FIRST cursor page per parent, and it now pushes down to the SAME single
  * `Builder::groupLimit` query the offset include uses (`ROW_NUMBER() OVER (PARTITION BY
  * <parent FK> ORDER BY <keyset>)` capped at `limit + 1` per partition), only ordered by

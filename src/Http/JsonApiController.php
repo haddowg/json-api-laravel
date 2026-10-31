@@ -80,7 +80,7 @@ final class JsonApiController
         private readonly ?ActionRegistry $actions = null,
         private readonly OperationFactory $operationFactory = new OperationFactory(),
         // The atomic endpoint's path as the OpenAPI document keys it, so an Atomic
-        // Operations result's `describedby` can name its `POST` operation (ADR 0037).
+        // Operations result's `describedby` can name its `POST` operation.
         private readonly string $atomicPath = '/operations',
     ) {}
 

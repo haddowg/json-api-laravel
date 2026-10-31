@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * The async-write seam acceptance suite (ADR 0020), asserted byte-identical over HTTP on
+ * The async-write seam acceptance suite, asserted byte-identical over HTTP on
  * the in-memory witness ({@see InMemoryAsyncWriteConformanceTest}) and the reference
  * Eloquent provider ({@see EloquentAsyncWriteConformanceTest}). An `albums` persister that
  * accepts every write for asynchronous processing

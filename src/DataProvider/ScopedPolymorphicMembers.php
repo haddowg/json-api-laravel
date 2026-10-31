@@ -13,7 +13,7 @@ use haddowg\JsonApi\Server\Server;
 
 /**
  * Narrows a polymorphic relation's members to the rows each member type's own scoping provider
- * admits (ADR 0032). The members a relation holds are the candidates; they are grouped by member
+ * admits (ADR 0013). The members a relation holds are the candidates; they are grouped by member
  * type, and for each type served by its own scoping provider the candidate ids of every parent
  * are looked up in one read through that provider. Members of other types are kept as loaded,
  * since their reference provider's rows are exactly what a relation read yields.

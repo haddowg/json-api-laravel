@@ -34,7 +34,7 @@ use Symfony\Component\Yaml\Yaml;
  * `describedby` is checked against ({@see DescribedByResolverProvider}).
  * Beside each JSON artifact it writes the artifact's hash (the served ETag) and the
  * document as serialized value objects, which a request with serve decorators loads
- * instead of rebuilding (ADR 0036). A document whose values hold an object the serve
+ * instead of rebuilding. A document whose values hold an object the serve
  * artifact can't carry gets no serialized copy and a logged warning; a decorated request
  * then builds it instead.
  */

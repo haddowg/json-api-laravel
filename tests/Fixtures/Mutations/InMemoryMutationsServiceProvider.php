@@ -65,7 +65,7 @@ final class InMemoryMutationsServiceProvider extends ServiceProvider
         };
 
         // A server-generated create needs a minted id (mirroring the Eloquent auto-increment),
-        // so the witness can create a post embedding relationships — the ADR-0009 headline path.
+        // so the witness can create a post embedding relationships — the headline path.
         $assignId = static function (object $item, string $id): void {
             Accessor::set($item, 'id', $id);
         };

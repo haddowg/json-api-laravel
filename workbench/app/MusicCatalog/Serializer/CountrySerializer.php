@@ -18,7 +18,7 @@ use Workbench\App\MusicCatalog\Domain\Country;
  * `GET /countries` and `GET /countries/{id}` by the `operations` allow-list. Its rows
  * come from {@see \Workbench\App\MusicCatalog\Provider\CountryProvider}, which sources
  * them from `symfony/intl` — so an external/static data source is a first-class JSON:API
- * collection with no database behind it (PLAN decision 3, bundle ADR 0024).
+ * collection with no database behind it.
  *
  * Like {@see ChartSerializer} it implements {@see UriTypeAwareInterface} so its URI path
  * segment is `countries`.

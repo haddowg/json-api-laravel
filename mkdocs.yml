@@ -62,12 +62,11 @@ hooks:
 
 validation:
   nav:
-    # The ADRs are linked from the pages by file but deliberately not in the nav.
     omitted_files: ignore
   links:
     anchors: warn
 
-# The ADRs are linked from the pages by absolute GitHub URL, not built as site pages.
+# The ADRs are internal records, not published with the docs.
 exclude_docs: |
   adr/
 

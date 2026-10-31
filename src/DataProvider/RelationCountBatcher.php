@@ -15,7 +15,7 @@ use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 /**
  * Batches the cardinality of every `?withCount`-named countable to-many relation across an
  * already-fetched page of parents, so a collection render of `meta.total` does not N+1
- * (bundle ADR 0052, re-idiomized). It runs once, before render, over the page the handler
+ * (re-idiomized). It runs once, before render, over the page the handler
  * already materialized, and asks the provider for ONE grouped count per relation
  * ({@see DataProviderInterface::countRelated()}) rather than one count per parent.
  *
@@ -102,7 +102,7 @@ final class RelationCountBatcher
      * Counts a relation whose related type is served by its own scoping provider by fetching
      * each parent's members through that provider (the related endpoint's read), so a total
      * never counts a row the related endpoint hides. A polymorphic relation counts its members
-     * narrowed per member type, as its related endpoint lists them (ADR 0032).
+     * narrowed per member type, as its related endpoint lists them.
      *
      * @param list<object> $parents
      *

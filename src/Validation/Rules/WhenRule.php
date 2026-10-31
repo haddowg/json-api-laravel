@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Validator;
  * Presence rules ({@see \haddowg\JsonApi\Resource\Constraint\Required} /
  * {@see \haddowg\JsonApi\Resource\Constraint\Nullable}) nested in a `When` are resolved
  * by the {@see \haddowg\JsonApiLaravel\Validation\ResourceValidator} during presence
- * resolution (a conditionally-required field, ADR 0084), not here — this rule validates
+ * resolution (a conditionally-required field), not here — this rule validates
  * only the inner *value* rules.
  */
 final class WhenRule implements ValidationRule

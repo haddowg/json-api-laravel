@@ -18,7 +18,7 @@ use PHPUnit\Framework\Attributes\Test;
  * ({@see InMemoryRelatedCursorConformanceTest}) and the reference Eloquent provider
  * ({@see EloquentRelatedCursorConformanceTest}) over the SAME
  * {@see \Workbench\App\Support\ConformanceFixtures::cursorGroups()} partition of the
- * shared cursor-widget rows (bundle ADR 0063).
+ * shared cursor-widget rows.
  *
  * The `cursorGroups.widgets` relation declares its OWN {@see \haddowg\JsonApi\Pagination\CursorPaginator}
  * (default size 2), so the walk proves the relation-declared paginator resolves end to
@@ -34,8 +34,7 @@ abstract class RelatedCursorConformanceTestCase extends Orchestra
 
     /**
      * A related-collection cursor page advertises the cursor-pagination profile on its
-     * Content-Type, because the server registers that profile by default (Laravel ADR
-     * 0025, core ADR 0131).
+     * Content-Type, because the server registers that profile by default.
      */
     public const string CURSOR_CONTENT_TYPE = self::MEDIA_TYPE . '; profile="' . CursorPaginationProfile::URI . '"';
 

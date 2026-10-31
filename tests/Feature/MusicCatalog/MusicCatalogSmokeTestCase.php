@@ -257,7 +257,7 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
     {
         // A resource-less type (a standalone serializer + a custom provider, no Resource and
         // no model) served identically by both provider arms — the capability-composition
-        // witness (decision 3, bundle ADR 0024). Index + show over the two opened operations.
+        // witness. Index + show over the two opened operations.
         $index = $this->fetch('/api/charts')->assertOk();
         $index->assertJsonPath('data.0.type', 'charts');
 

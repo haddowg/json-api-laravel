@@ -16,7 +16,7 @@ use PHPUnit\Framework\Attributes\Test;
 
 /**
  * Two servers under different prefixes, both with an empty `base_uri`, each link under
- * their own prefix (ADR 0028). `gizmos` is served on both.
+ * their own prefix. `gizmos` is served on both.
  *
  * @internal
  */

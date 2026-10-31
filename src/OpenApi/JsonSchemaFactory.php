@@ -35,7 +35,7 @@ use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
  * the fuller contract; the standalone document is authoritative for a type's attribute
  * shape.
  *
- * A resource-less / standalone-serializer type (PLAN decision 3, bundle ADR 0024)
+ * A resource-less / standalone-serializer type
  * contributes a permissive resource-object schema (no field inventory, so an inline
  * `attributes: {type: object}`), so every type yields a document — the same fieldless
  * projection the OpenAPI document carries for it.

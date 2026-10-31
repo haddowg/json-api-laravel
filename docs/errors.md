@@ -191,8 +191,7 @@ Two classes claiming the same `code` string fails loudly rather than merging
 last-one-wins: a `code` is what a client dispatches on, so publishing one class's status
 and title under another's would be a lie. The catalogue stays **open** either way — the
 `anyOf` leads with the generic `Error`, so an error carrying a code you never declared is
-still a valid error object
-([core ADR 0136](https://github.com/haddowg/json-api/blob/main/docs/adr/0136-the-projected-error-code-catalogue-is-open.md)).
+still a valid error object.
 
 ## Content negotiation and query errors
 
@@ -206,7 +205,7 @@ a `400`/`422`, and an over-deep `?include` a `400`.
 
 Every error's `title` and `detail` are message templates core resolves per stable error
 `code`
-([core ADR 0128](https://github.com/haddowg/json-api/blob/main/docs/errors-and-exceptions.md#localizing-and-overriding-error-copy)).
+([core's guide](https://github.com/haddowg/json-api/blob/main/docs/errors-and-exceptions.md#localizing-and-overriding-error-copy)).
 The package binds that seam to the **Laravel translator** automatically: localize or rebrand
 any error's copy through ordinary translation files in the `jsonapi-errors` group, keyed by
 code:
