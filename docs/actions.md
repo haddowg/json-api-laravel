@@ -130,9 +130,7 @@ accepts: [
 Core projects each entry under the operation's `requestBody.content`, in declared order, and
 adds the `415` response. A JSON:API document entry carries the input type's request schema; an
 entry with a `schema` carries it inline, or as a component when it names a `DescribesRawBody`
-class; any other entry is a binary string, or an open object for `multipart/form-data`. A
-document that used `accepts` was stamped contract 11, and every document now carries the
-baseline of 18
+class; any other entry is a binary string, or an open object for `multipart/form-data`
 ([core ADR 0175](https://github.com/haddowg/json-api/blob/main/docs/adr/0175-an-action-may-declare-the-request-bodies-it-accepts.md)).
 
 ### Which requests must name their media type
@@ -316,8 +314,7 @@ JSON:API documents.
 The `mediaType` is the opt-in. A bare `new SeeOther()`, such as an async completion, stays a
 plain `303` for every client, and an `Accept` it can't answer is still a `406`. The OpenAPI
 document describes both responses of a download action: the `200` location document and the
-`303` with its `Location` header. Generator contract 17 introduced this, and every document
-now carries the baseline of 18. Core's
+`303` with its `Location` header. Core's
 [location responses](https://github.com/haddowg/json-api/blob/main/docs/responses.md#location-responses)
 covers the rest, including `withType()` for a file whose type varies.
 

@@ -158,8 +158,7 @@ catalogue:
 ```
 
 A document in which no operation needs a scope is unchanged. One with scopes lists
-`INSUFFICIENT_SCOPE` in its error catalogue. Scopes arrived in contract 16, but every
-document now carries 18, the baseline since the links components were shared. `jsonapi:openapi:export` warns about
+`INSUFFICIENT_SCOPE` in its error catalogue. `jsonapi:openapi:export` warns about
 each required scope neither the catalogue nor the scheme's flows declare, and fails on them
 with `--strict`. A scope scheme that is not `oauth2` is a warning only.
 
