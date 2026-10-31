@@ -26,7 +26,10 @@ use haddowg\JsonApi\Server\Server;
  */
 final class ScopedRelationshipWrites
 {
-    public function __construct(private readonly DataProviderRegistry $providers) {}
+    public function __construct(
+        private readonly DataProviderRegistry $providers,
+        private readonly ?IdentifiedMorphMembers $identifiedMembers = null,
+    ) {}
 
     /**
      * Throws {@see ResourceNotFound} when an id in `$linkage` names a row its type's scoping
@@ -61,6 +64,24 @@ final class ScopedRelationshipWrites
         Server $server,
         JsonApiRequestInterface $request,
     ): ToManyRelationship {
+        // An identified MorphToMany's current members are its stored pairs; a scoped type's pair
+        // whose row the scope hides stays attached.
+        if ($this->identifiedMembers !== null && IdentifiedMorphMembers::identifies($relation)) {
+            $sent = [];
+            foreach ($linkage->resourceIdentifiers as $identifier) {
+                $sent[$identifier->type . "\0" . $identifier->id] = true;
+            }
+
+            $hidden = [];
+            foreach ($this->identifiedMembers->hiddenPairs($server, $parent, $relation, $request) as [$type, $id]) {
+                if (!isset($sent[$type . "\0" . $id])) {
+                    $hidden[] = new ResourceIdentifier($type, $id);
+                }
+            }
+
+            return $hidden === [] ? $linkage : new ToManyRelationship([...$linkage->resourceIdentifiers, ...$hidden]);
+        }
+
         if (!$this->relatesToScopingProvider($relation)) {
             return $linkage;
         }

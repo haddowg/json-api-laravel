@@ -57,7 +57,7 @@ use haddowg\JsonApi\Resource\Sort\SortDirective;
  *
  * @extends AbstractDataProvider<object>
  */
-final class InMemoryDataProvider extends AbstractDataProvider implements FetchesManyInterface
+final class InMemoryDataProvider extends AbstractDataProvider implements FetchesManyInterface, AdmitsIdsInterface
 {
     private readonly InMemoryStore $store;
 
@@ -149,6 +149,11 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
         }
 
         return $rows;
+    }
+
+    public function admitIds(string $type, array $ids): array
+    {
+        return \array_values(\array_filter($ids, fn(string $id): bool => $this->store->find($id) !== null));
     }
 
     /**

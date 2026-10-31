@@ -22,6 +22,11 @@ final class GuardedTypes
      */
     private array $guarded = [];
 
+    /**
+     * @var array<string, bool>
+     */
+    private array $scoped = [];
+
     public function __construct(
         private readonly DataProviderRegistry $providers,
         private readonly DataPersisterRegistry $persisters,
@@ -31,6 +36,25 @@ final class GuardedTypes
     public function isGuarded(string $server, string $type): bool
     {
         return $this->guarded[$server][$type] ??= $this->decide($server, $type);
+    }
+
+    /**
+     * Whether a read of `$type` may leave out a row that exists: an Eloquent global scope on its
+     * model, or a provider of its own that may scope or hide rows. A `view` check doesn't count,
+     * since it never filters a list. A type no provider serves has no rows to hide.
+     */
+    public function isScoped(string $type): bool
+    {
+        return $this->scoped[$type] ??= $this->providers->supportsType($type)
+            && ($this->providers->scopingProviderFor($type) !== null || $this->hasGlobalScopes($type));
+    }
+
+    private function hasGlobalScopes(string $type): bool
+    {
+        $provider = $this->providers->forType($type);
+        $class = $provider instanceof EloquentDataProvider ? $provider->modelClassFor($type) : null;
+
+        return $class !== null && (new $class())->getGlobalScopes() !== [];
     }
 
     private function decide(string $server, string $type): bool

@@ -357,6 +357,48 @@ Writes are unchanged, so `fillUsing()` owns them, and the OpenAPI document is th
 any `MorphTo`. Core's [relations guide](https://github.com/haddowg/json-api/blob/main/docs/relations.md#identifying-the-target-without-loading-it)
 covers the declaration.
 
+### A `MorphToMany` stored as type and id rows
+
+A parent whose members are join rows that each name a type and a key declares `identifiedBy()` on
+the `MorphToMany` and returns its pairs in order:
+
+```php
+MorphToMany::make('companies', ['agencies', 'advertisers', 'publishers'])
+    ->countable()
+    ->identifiedBy(static fn(mixed $user): array => $user instanceof User
+        ? $user->userCompanies->map(static fn(UserCompany $row): array => [$row->company_type, $row->company_id])->all()
+        : [])
+    ->fillUsing($writeTheJoinRows),
+```
+
+The linkage renders from the pairs in their order. A member type is scoped when a read of it may
+leave out a row that exists: a global scope on its model, or a data provider of its own that may
+hide rows. A `view` check doesn't count here, since it never filters a list.
+
+- An unscoped type's pairs render with no query.
+- A scoped type's ids are admitted whenever the linkage renders, in one key-only query per type
+  for the whole page, and a hidden or missing member is left out of the linkage.
+- `GET /users/{id}/companies` admits each scoped type over all of the parent's pairs, cuts the
+  page from the admitted pairs in pair order, and only then loads the page's rows, one query per
+  type. A page is never short and `?withCount=_self_` is exact. `?filter` and `?sort` are a
+  `400`, as for any polymorphic to-many.
+- `?withCount=companies` counts the admitted pairs.
+- `?include=companies` loads every member's row, one query per type, and leaves out a row that
+  doesn't come back.
+- `GET /users/{id}/relationships/companies` pages the admitted pairs exactly as the related
+  endpoint does, with the same paginator, `page` parameters and `?withCount=_self_`, but loads no
+  rows. `?filter` and `?sort` are a `400`. Other polymorphic to-many relationship endpoints still
+  answer any query with a `400`.
+
+The pairs must point at rows that exist. A scoped type checks every pair, so a pair whose row is
+gone drops out and pages and totals stay exact. An unscoped type costs no query, so a dangling pair
+of one still shows in the linkage, and a related page that reaches it comes back one member short.
+
+Each member renders under its pair's type, so one model or record class can back several of the
+types. A stored type the relation doesn't declare is a `500`. Writes go through `fillUsing()`, and
+a replace keeps the members a scope hides. A provider that can admit ids without loading rows
+implements `AdmitsIdsInterface`; the Eloquent and in-memory references do.
+
 When a member type is served by its own scoping provider, the members are narrowed per member
 type to the rows that provider admits, before the page is cut, so pages stay full and every
 count matches. A write naming a member resolves it through its own member type's provider: a
