@@ -32,6 +32,11 @@ Existing tests are the contract: seed correct data to satisfy them, never edit a
   `~/.claude/references/pull-requests.md`. Rebase with `--force-with-lease`.
 - Record architecture decisions as ADRs under `docs/adr/` — see
   [`docs/adr/ADR-FORMAT.md`](docs/adr/ADR-FORMAT.md).
+- **Don't record generator-contract history.** `info.x-generator.contract` is a compatibility
+  check for the code generators, not a changelog. When a core release bumps it, document the new
+  behaviour as current behaviour; never write which contract or release introduced it ("from
+  contract 17…", "every document now carries 18") in `docs/`, this file or a code comment. The
+  changelogs record when it arrived.
 
 ## How this package differs from the bundle
 
