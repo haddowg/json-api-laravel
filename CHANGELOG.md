@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.0](https://github.com/haddowg/json-api-laravel/compare/v1.21.0...v1.22.0) (2026-11-01)
+
+
+### Features
+
+* expose the resolved paginator on the after-fetch-collection event ([#182](https://github.com/haddowg/json-api-laravel/issues/182)) ([1103d44](https://github.com/haddowg/json-api-laravel/commit/1103d441aed485af1ba6284cf5233e9a02aab952))
+
 ## [1.21.0](https://github.com/haddowg/json-api-laravel/compare/v1.20.0...v1.21.0) (2026-10-31)
 
 
