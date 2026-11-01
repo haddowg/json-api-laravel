@@ -473,7 +473,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->applyRelationshipCounts($server, $type, $items, $request);
 
         if ($singular) {
-            return $this->afterFetchCollection(DataResponse::fromResource($items[0] ?? null, $serializer), $type, $request, $items, $activatedProfiles);
+            return $this->afterFetchCollection(DataResponse::fromResource($items[0] ?? null, $serializer), $type, $request, $items, null, $activatedProfiles);
         }
 
         // A cursor (keyset) page: the provider minted the boundary tokens, so render
@@ -504,6 +504,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $type,
                 $request,
                 $items,
+                $paginator,
                 $activatedProfiles,
             );
         }
@@ -518,6 +519,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $type,
                 $request,
                 $items,
+                $paginator,
                 $activatedProfiles,
             );
         }
@@ -529,6 +531,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $type,
                 $request,
                 $items,
+                $paginator,
                 $activatedProfiles,
             );
         }
@@ -539,11 +542,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $type,
                 $request,
                 $items,
+                $paginator,
                 $activatedProfiles,
             );
         }
 
-        return $this->afterFetchCollection(DataResponse::fromCollection($items, $serializer), $type, $request, $items, $activatedProfiles);
+        return $this->afterFetchCollection(DataResponse::fromCollection($items, $serializer), $type, $request, $items, $paginator, $activatedProfiles);
     }
 
     /**
@@ -2496,12 +2500,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
      */
     /**
      * @param list<object>                                          $items
+     * @param PaginatorInterface|null                               $paginator         the request-resolved paginator that paged the collection, null when none ran
      * @param list<\haddowg\JsonApi\Schema\Profile\ProfileInterface> $activatedProfiles profiles a cursor-paginated included relation activated, surfaced onto the document's applied set
      */
-    private function afterFetchCollection(DataResponse $response, string $type, ?JsonApiRequestInterface $request, array $items, array $activatedProfiles = []): DataResponse
+    private function afterFetchCollection(DataResponse $response, string $type, ?JsonApiRequestInterface $request, array $items, ?PaginatorInterface $paginator, array $activatedProfiles = []): DataResponse
     {
         if ($request !== null) {
-            $event = new AfterFetchCollectionEvent($type, $request, $items, $this->serverName($request));
+            $event = new AfterFetchCollectionEvent($type, $request, $items, $this->serverName($request), $paginator);
             $this->dispatch($event);
             $response = $event->response() ?? $response;
         }
