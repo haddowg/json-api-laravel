@@ -40,15 +40,18 @@ use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Request\RelatedQuery;
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\DateTimeParser;
 use haddowg\JsonApi\Resource\Field\AcceptsDefaultOutputTimezoneInterface;
 use haddowg\JsonApi\Resource\Field\BelongsTo;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
+use haddowg\JsonApi\Resource\Field\Date;
 use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\HasOne;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Field\Time;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\SupportsSingular;
 use haddowg\JsonApi\Resource\ResolvesCompletionRedirect;
@@ -82,6 +85,7 @@ use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\NaiveDateTimeStorage;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphMembers;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphTargets;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
@@ -124,6 +128,7 @@ use haddowg\JsonApiLaravel\Validation\ReadOnlyAttributes;
 use haddowg\JsonApiLaravel\Validation\ResourceValidator;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Routing\Router;
 use Psr\Log\LoggerInterface;
 
@@ -1610,7 +1615,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // `type` 409s, a forbidden client id 403s) then allow-list-hydrates the
         // attributes; the throws propagate to the exception renderer. The
         // relationships are stripped so core never scalar-hydrates an association.
-        $entity = $server->hydratorFor($type)->hydrate($this->withoutRelationships($body), $entity);
+        $entity = $server->hydratorFor($type)->hydrate($this->datesInStorageZone($resource, $entity, $this->withoutRelationships($body)), $entity);
         \assert(\is_object($entity));
 
         // The post-hydration entity seam (uniqueness's custom cousin): a resource's
@@ -1780,7 +1785,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // the same `403` a PATCH …/relationships/{rel} would raise.
             $entity = $this->applyRelationships($persister, $type, $entity, $relationships, $body, false, $server, $request, flush: false);
 
-            $entity = $hydrator->hydrate($this->withoutRelationships($body), $entity);
+            $entity = $hydrator->hydrate($this->datesInStorageZone($resource, $entity, $this->withoutRelationships($body)), $entity);
             \assert(\is_object($entity));
 
             if ($resource !== null) {
@@ -2347,6 +2352,54 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * hydrates only the id + attributes and never assigns a scalar linkage id to a typed
      * association property — the associations apply through the persister seam instead.
      */
+    /**
+     * The body with each `DateTime` attribute bound for a datetime-cast column of an
+     * Eloquent model moved into the zone the column is stored in. Eloquent formats a
+     * date-time as `Y-m-d H:i:s` the moment it is assigned, dropping the offset, so a
+     * value sent in `Z` has to arrive in that zone already or the column stores the wrong
+     * local time. The instant is unchanged, and a value that does not parse is left for
+     * core's cast to reject.
+     */
+    private function datesInStorageZone(?AbstractResource $resource, object $entity, JsonApiRequestInterface $body): JsonApiRequestInterface
+    {
+        if ($resource === null || !$entity instanceof Model) {
+            return $body;
+        }
+
+        /** @var array<string, mixed> $document */
+        $document = (array) $body->getParsedBody();
+        $attributes = \is_array($document['data'] ?? null) ? ($document['data']['attributes'] ?? null) : null;
+        if (!\is_array($attributes)) {
+            return $body;
+        }
+
+        $dates = new NaiveDateTimeStorage();
+        $changed = false;
+        foreach ($resource->allFields() as $field) {
+            if (!$field instanceof DateTime || $field instanceof Date || $field instanceof Time) {
+                continue;
+            }
+
+            $value = DateTimeParser::tryParse($attributes[$field->name()] ?? null);
+            if ($value === null || !$dates->isNaive($entity, $field->column() ?? $field->name())) {
+                continue;
+            }
+
+            $attributes[$field->name()] = $dates->toStorage($value)->format('Y-m-d\\TH:i:s.uP');
+            $changed = true;
+        }
+
+        if (!$changed) {
+            return $body;
+        }
+
+        $document['data']['attributes'] = $attributes;
+        $converted = $body->withParsedBody($document);
+        \assert($converted instanceof JsonApiRequestInterface);
+
+        return $converted;
+    }
+
     private function withoutRelationships(JsonApiRequestInterface $body): JsonApiRequestInterface
     {
         /** @var array<string, mixed> $document */

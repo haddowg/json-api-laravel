@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\DataProvider\Eloquent;
 
 use haddowg\JsonApi\Collection\Keyset\KeysetColumn;
 use haddowg\JsonApi\Pagination\CursorBoundary;
+use haddowg\JsonApi\Resource\DateTimeParser;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
@@ -168,11 +169,7 @@ final class EloquentKeyset
             return $value;
         }
 
-        try {
-            return new \DateTimeImmutable($value);
-        } catch (\Exception) {
-            return $value;
-        }
+        return DateTimeParser::tryParse($value) ?? $value;
     }
 
     /**

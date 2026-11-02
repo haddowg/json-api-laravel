@@ -16,6 +16,7 @@ use haddowg\JsonApi\Resource\Constraint\Nullable;
 use haddowg\JsonApi\Resource\Constraint\Required;
 use haddowg\JsonApi\Resource\Constraint\Shape;
 use haddowg\JsonApi\Resource\Constraint\When;
+use haddowg\JsonApi\Resource\DateTimeParser;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
@@ -1168,15 +1169,7 @@ final class ResourceValidator
 
     private function asDate(mixed $value): ?\DateTimeImmutable
     {
-        if (!\is_string($value) || $value === '') {
-            return null;
-        }
-
-        try {
-            return new \DateTimeImmutable($value);
-        } catch (\Exception) {
-            return null;
-        }
+        return DateTimeParser::tryParse($value);
     }
 
     private function describe(Comparison $operator): string

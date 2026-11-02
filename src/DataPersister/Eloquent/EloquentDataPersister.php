@@ -11,15 +11,18 @@ use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\Resource\Field\BelongsToMany as PivotRelation;
+use haddowg\JsonApi\Resource\Field\Date;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Field\Time;
 use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApiLaravel\DataPersister\AbstractDataPersister;
 use haddowg\JsonApiLaravel\DataPersister\ReportsCurrentOwners;
 use haddowg\JsonApiLaravel\DataPersister\SoftDeleteCapable;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\NaiveDateTimeStorage;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use Illuminate\Container\Container;
 use Illuminate\Database\ConnectionInterface;
@@ -548,7 +551,7 @@ class EloquentDataPersister extends AbstractDataPersister implements Transaction
                 continue;
             }
             $creating = !isset($attached[(string) $storageId]);
-            $payload[(string) $storageId] = $this->pivotAttributes($relation, $identifier->meta, $creating);
+            $payload[(string) $storageId] = $this->pivotAttributes($eloquentRelation, $relation, $identifier->meta, $creating);
         }
 
         if ($mode === Mode::Add) {
@@ -626,12 +629,17 @@ class EloquentDataPersister extends AbstractDataPersister implements Transaction
      * absent from meta is left out (its stored value is preserved on update, its server default
      * taken on insert); a readOnly field is never in the writable set, so never written.
      *
-     * @param array<string, mixed> $meta the linkage member's full meta (pivot values nest under `pivot`)
+     * @param BelongsToMany<Model, Model> $eloquentRelation
+     * @param array<string, mixed>        $meta             the linkage member's full meta (pivot values nest under `pivot`)
      *
      * @return array<string, mixed> a `pivotColumn => value` map (possibly empty)
      */
-    private function pivotAttributes(PivotRelation $relation, array $meta, bool $creating): array
+    private function pivotAttributes(BelongsToMany $eloquentRelation, PivotRelation $relation, array $meta, bool $creating): array
     {
+        $pivotClass = $eloquentRelation->getPivotClass();
+        $pivotModel = new $pivotClass();
+        $dates = new NaiveDateTimeStorage();
+
         $pivot = $meta['pivot'] ?? [];
         if (!\is_array($pivot)) {
             return [];
@@ -645,7 +653,18 @@ class EloquentDataPersister extends AbstractDataPersister implements Transaction
             $column = $field->column() ?? $field->name();
             /** @var mixed $raw */
             $raw = $pivot[$field->name()];
-            $attributes[$column] = $field->castWireValue($raw);
+            /** @var mixed $value */
+            $value = $field->castWireValue($raw);
+
+            // A pivot column is written as Y-m-d H:i:s whatever offset the value carries,
+            // so a date-time moves into the storage zone unless the pivot model gives the
+            // column a cast of its own.
+            if ($value instanceof \DateTimeInterface && !$field instanceof Date && !$field instanceof Time
+                && ($dates->isNaive($pivotModel, $column) || !$pivotModel->hasCast($column))) {
+                $value = $dates->toStorage($value);
+            }
+
+            $attributes[$column] = $value;
         }
 
         return $attributes;

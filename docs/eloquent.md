@@ -115,11 +115,35 @@ declare, and the provider translates:
 | `WhereIn::make('genres')` | `whereIn(...)` |
 | `Contains::make('title')` | `where('title', 'like', "%…%")` |
 | `Range::make('rating', 'average_rating')` | a `>=`/`<=` bound pair |
-| `DateRange::make('releasedAt', 'released_at')` | a datetime bound pair |
+| `DateRange::make('releasedAt', 'released_at')` | a datetime bound pair, in the app timezone (see [below](#date-times-and-the-app-timezone)) |
 | `WhereHas::make('tracks')` | `whereHas('tracks')` (relationship existence) |
 | `WhereThrough::make('artist.name')` | a dotted-path correlated `EXISTS` |
 | `WhereAll` / `WhereAny` | a nested `where(fn ($q) => …)` combining the children with `AND` / `orWhere` |
 | `Where…->fixed($value)` | the same `where` predicate with its value pinned server-side (no arm needed) |
+
+### Date-times and the app timezone
+
+Eloquent writes a `\DateTimeInterface` as `Y-m-d H:i:s`, both for a query binding and for a
+datetime cast, so the offset is dropped. It reads the column back in PHP's default timezone,
+normally `app.timezone`. The column therefore holds local time in that zone. A client bound such
+as `filter[startsAt][min]=2026-10-01T15:00:00Z` is an instant, though, and comparing its
+`15:00:00` against local times picks the wrong rows. Under `America/New_York` a row stored as
+`2026-10-01 12:00:00`, which is 16:00Z, would be left out.
+
+So a date-time compared against a column with a `datetime`, `immutable_datetime`,
+`datetime:<format>` or `timestamp` cast, or one of the model's timestamp columns, is converted
+to PHP's default timezone first. That covers `DateRange`, `Where` and its comparison presets when
+their deserializer yields a date, and a `WhereThrough` leaf. Writes get the same treatment: a
+`DateTime` attribute bound for such a column, sent as `2026-10-03T16:00:00Z`, is stored as
+`2026-10-03 12:00:00` under New York rather than `16:00:00`, and so is a `DateTime` pivot field.
+The timezone is read with `date_default_timezone_get()` each time, so an application that
+switches it per request, say per tenant, gets the right zone.
+
+A column with a `date` or `immutable_date` cast is compared with `whereDate()` against the
+bound's own calendar day, never converted, because moving a midnight bound into another zone
+can change its day: `2026-10-01T00:00:00Z` is still 30 September in New York. A column with a
+custom cast class, or with no cast, is left alone, since its type is unknown. Cursor keys are not
+converted either, because a cursor already carries the stored wall-clock time.
 
 ### Server-composed filter groups and `->fixed()`
 
