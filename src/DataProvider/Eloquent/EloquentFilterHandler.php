@@ -92,12 +92,15 @@ final class EloquentFilterHandler implements FilterHandlerInterface
      */
     private ?EloquentBelongsToMany $pivot = null;
 
+    private readonly NaiveDateTimeStorage $dates;
+
     /**
      * @param iterable<EloquentFilterArmInterface<Model>> $arms author arms for custom filter types, consulted in order
      */
     public function __construct(iterable $arms = [])
     {
         $this->arms = \is_array($arms) ? \array_values($arms) : \iterator_to_array($arms, false);
+        $this->dates = new NaiveDateTimeStorage();
     }
 
     /**
@@ -308,7 +311,55 @@ final class EloquentFilterHandler implements FilterHandlerInterface
             )),
         };
 
-        $query->where($this->qualify($query, $column), $sqlOperator, $expected);
+        $this->compare($query, $column, $sqlOperator, $expected);
+    }
+
+    /**
+     * Adds `column operator value` to `$query`. A date-time compared against a
+     * datetime-cast column is first moved into the zone the column is stored in, and
+     * one compared against a `date` cast compares its own calendar day with
+     * `whereDate()`, so a midnight bound in another offset never shifts a day.
+     *
+     * @param Builder<Model> $query
+     */
+    private function compare(Builder $query, string $column, string $operator, mixed $value): void
+    {
+        $qualified = $this->qualify($query, $column);
+
+        if ($value instanceof \DateTimeInterface) {
+            [$model, $attribute] = $this->modelOf($query, $column);
+
+            if ($this->dates->isDateOnly($model, $attribute)) {
+                $query->whereDate($qualified, $operator, $value->format('Y-m-d'));
+
+                return;
+            }
+
+            if ($this->dates->isNaive($model, $attribute)) {
+                $value = $this->dates->toStorage($value);
+            }
+        }
+
+        $query->where($qualified, $operator, $value);
+    }
+
+    /**
+     * The model whose casts describe `$column`, and the column's name on it: the
+     * pivot model for a `pivot.` column, the query's model otherwise.
+     *
+     * @param Builder<Model> $query
+     *
+     * @return array{Model, string}
+     */
+    private function modelOf(Builder $query, string $column): array
+    {
+        if ($this->pivot !== null && \str_starts_with($column, RelationCriteriaFactory::PIVOT_PREFIX)) {
+            $pivotClass = $this->pivot->getPivotClass();
+
+            return [new $pivotClass(), \substr($column, \strlen(RelationCriteriaFactory::PIVOT_PREFIX))];
+        }
+
+        return [$query->getModel(), $column];
     }
 
     /**
@@ -360,17 +411,16 @@ final class EloquentFilterHandler implements FilterHandlerInterface
      */
     private function range(Builder $query, Range $filter, mixed $value): void
     {
-        $column = $this->qualify($query, $filter->column);
         $bounds = \is_array($value) ? $value : [];
         $min = $this->bound($filter, $bounds, 'min');
         $max = $this->bound($filter, $bounds, 'max');
 
         if ($min !== null) {
-            $query->where($column, '>=', $min);
+            $this->compare($query, $filter->column, '>=', $min);
         }
 
         if ($max !== null) {
-            $query->where($column, '<=', $max);
+            $this->compare($query, $filter->column, '<=', $max);
         }
     }
 

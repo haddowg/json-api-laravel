@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Validation\Rules;
 
+use haddowg\JsonApi\Resource\DateTimeParser;
+
 /**
  * Shared date coercion for the closure-bounded date rules
  * ({@see AfterDate}/{@see BeforeDate}/{@see BetweenDates}): coerce a raw wire value to
@@ -20,15 +22,7 @@ trait ResolvesDateBound
      */
     private static function toDateTime(mixed $value): ?\DateTimeImmutable
     {
-        if (!\is_string($value) || $value === '') {
-            return null;
-        }
-
-        try {
-            return new \DateTimeImmutable($value);
-        } catch (\Exception) {
-            return null;
-        }
+        return DateTimeParser::tryParse($value);
     }
 
     /**
