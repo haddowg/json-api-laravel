@@ -88,6 +88,11 @@ GET /api/users/1?include=playlists.owner
 - **Path whitelist** — `getAllowedIncludePaths()` restricts the dotted paths from a root type
   (the example's `users` allows `playlists`, `playlists.owner`, `library` but not
   `playlists.tracks` → `400`).
+- **Excluded paths** — `getExcludedIncludePaths()` is the opposite list, for a root type that
+  allows nearly everything. A listed path and everything below it is a `400`, so
+  `['playlists.tracks']` also refuses `playlists.tracks.album`. It composes with the
+  whitelist, checks only requested paths so a default include still renders, and drops the
+  excluded paths from the OpenAPI `include` parameter.
 - **Per-relation opt-out** — `cannotBeIncluded()` keeps `?include=favoritable` a `400` while
   the related/relationship endpoints still render (the example's `favorites.favoritable`).
 
