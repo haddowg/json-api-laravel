@@ -351,6 +351,16 @@ public function getAllowedIncludePaths(): array
 }
 ```
 
+When a root type should allow nearly every include, list the few to refuse instead. An
+excluded path also refuses everything below it:
+
+```php
+public function getExcludedIncludePaths(): array
+{
+    return ['playlists.tracks']; // playlists.tracks and playlists.tracks.album → 400
+}
+```
+
 Both are exercised by the example (`albums` default include; `users` include whitelist). See
 [relationships](relationships.md#include).
 
