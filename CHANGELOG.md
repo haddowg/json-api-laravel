@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.1](https://github.com/haddowg/json-api-laravel/compare/v1.22.0...v1.22.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* compare and store client date-times in the app timezone ([#184](https://github.com/haddowg/json-api-laravel/issues/184)) ([bd7d67d](https://github.com/haddowg/json-api-laravel/commit/bd7d67d49fd8ff1742df5c6b99e59fd295552ae1))
+
 ## [1.22.0](https://github.com/haddowg/json-api-laravel/compare/v1.21.0...v1.22.0) (2026-11-01)
 
 
