@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.23.0](https://github.com/haddowg/json-api-laravel/compare/v1.22.1...v1.23.0) (2026-11-02)
+
+
+### Features
+
+* honour excluded include paths ([#187](https://github.com/haddowg/json-api-laravel/issues/187)) ([6a0cb8f](https://github.com/haddowg/json-api-laravel/commit/6a0cb8f673862f8cff717717907b51bad5896b49))
+
 ## [1.22.1](https://github.com/haddowg/json-api-laravel/compare/v1.22.0...v1.22.1) (2026-11-02)
 
 
