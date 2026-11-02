@@ -56,6 +56,36 @@ the app's timezone, and every pivot date renders through its field's format (see
 
 A hand-written serializer formats its own values and is not affected.
 
+## `storage_timezone`
+
+```php
+'storage_timezone' => env('JSONAPI_STORAGE_TIMEZONE'),   // null
+```
+
+Eloquent stores a datetime cast as `Y-m-d H:i:s` with no offset, so the Eloquent data layer
+converts a client date-time to one zone before it compares or assigns it. See
+[date-times and the app timezone](eloquent.md#date-times-and-the-app-timezone). By default,
+`null` or `''`, that zone is PHP's default timezone, normally `app.timezone`, read each time a
+value is converted. An application that calls `date_default_timezone_set()` per request, for
+example per tenant, gets each request's zone.
+
+Set it when the columns hold one fixed zone whatever the default is:
+
+```php
+'storage_timezone' => 'UTC',
+```
+
+With `app.timezone` set to `America/New_York`, `filter[startsAt][min]=2026-10-01T11:00:00-04:00`
+then compares against `2026-10-01 15:00:00`, and a write of the same value stores `15:00:00`.
+
+Eloquent still reads a datetime cast back in the default timezone. So when `storage_timezone`
+differs from it, give those columns a cast that reads them in the storage zone too, or reads
+render the stored time in the wrong zone. `date` casts are never converted.
+
+The setting describes the database, so servers cannot override it. The value is checked like
+[`output_timezone`](#output_timezone): an identifier PHP's `\DateTimeZone` accepts, or the app's
+boot fails with an `\InvalidArgumentException` that names the key.
+
 ## `link_objects`
 
 ```php

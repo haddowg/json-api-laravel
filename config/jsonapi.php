@@ -39,6 +39,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Storage timezone
+    |--------------------------------------------------------------------------
+    |
+    | The zone the Eloquent data layer stores datetime-cast columns in, such as
+    | 'UTC'. A filter bound or a written DateTime attribute that carries an
+    | offset is converted to it before it is bound or assigned. Null or an
+    | empty string uses PHP's default timezone, normally `app.timezone`, read
+    | each time a value is converted so a per-request change is honoured. Date
+    | casts are compared by calendar day and never converted. Eloquent still
+    | reads columns back in the default timezone, so a zone that differs from
+    | it needs casts that read in the same zone. Servers cannot override it,
+    | because it describes the database. An identifier PHP does not recognise
+    | fails the boot.
+    |
+    */
+    'storage_timezone' => env('JSONAPI_STORAGE_TIMEZONE'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Link objects
     |--------------------------------------------------------------------------
     |

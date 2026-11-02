@@ -137,7 +137,8 @@ their deserializer yields a date, and a `WhereThrough` leaf. Writes get the same
 `DateTime` attribute bound for such a column, sent as `2026-10-03T16:00:00Z`, is stored as
 `2026-10-03 12:00:00` under New York rather than `16:00:00`, and so is a `DateTime` pivot field.
 The timezone is read with `date_default_timezone_get()` each time, so an application that
-switches it per request, say per tenant, gets the right zone.
+switches it per request, say per tenant, gets the right zone. To store one fixed zone instead,
+set [`storage_timezone`](configuration.md#storage_timezone).
 
 A column with a `date` or `immutable_date` cast is compared with `whereDate()` against the
 bound's own calendar day, never converted, because moving a midnight bound into another zone

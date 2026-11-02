@@ -54,6 +54,17 @@ final class OutputTimezoneConfig
         }
     }
 
+    /**
+     * The `jsonapi.storage_timezone` naive datetime columns are stored in, or null for PHP's
+     * default timezone. An empty string means null too.
+     *
+     * @throws \InvalidArgumentException when the value is not a timezone PHP recognises
+     */
+    public static function storage(mixed $timezone): ?string
+    {
+        return $timezone === null ? null : self::validated($timezone, 'jsonapi.storage_timezone');
+    }
+
     private static function validated(mixed $timezone, string $key): ?string
     {
         if ($timezone === '') {

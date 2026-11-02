@@ -402,14 +402,15 @@ final class JsonApiServiceProvider extends ServiceProvider
     }
 
     /**
-     * Fails the boot on an `output_timezone` PHP does not recognise, rather than on the
-     * first JSON:API request that builds the server.
+     * Fails the boot on an `output_timezone` or `storage_timezone` PHP does not recognise,
+     * rather than on the first JSON:API request that uses it.
      */
     private function assertOutputTimezones(): void
     {
         $servers = config('jsonapi.servers', []);
 
         OutputTimezoneConfig::assertValid(config('jsonapi.output_timezone'), \is_array($servers) ? $servers : []);
+        OutputTimezoneConfig::storage(config('jsonapi.storage_timezone'));
     }
 
     /**
