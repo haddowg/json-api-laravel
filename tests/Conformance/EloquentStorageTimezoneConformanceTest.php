@@ -45,6 +45,18 @@ final class EloquentStorageTimezoneConformanceTest extends StorageTimezoneConfor
     protected function seedConformanceData(): void
     {
         DB::table('tz_shifts')->insert(ShiftFixtures::rows());
+        DB::table('tz_workers')->insert(['id' => 1, 'name' => 'Ana']);
+    }
+
+    #[Test]
+    #[Group('spec:updating-relationships')]
+    public function aPivotDateTimeIsStoredAsLocalTime(): void
+    {
+        $this->jsonApi()->withDocument(['data' => [
+            ['type' => 'workers', 'id' => '1', 'meta' => ['pivot' => ['checkedInAt' => '2026-10-01T16:00:00Z']]],
+        ]])->post('/api/shifts/1/relationships/workers')->assertSuccessful();
+
+        self::assertSame('2026-10-01 12:00:00', DB::table('tz_shift_worker')->where(['shift_id' => 1, 'worker_id' => 1])->value('checked_in_at'));
     }
 
     #[Test]

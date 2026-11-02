@@ -12,7 +12,7 @@ use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\Where;
 
-final class ShiftResource extends AbstractResource
+class ShiftResource extends AbstractResource
 {
     public static string $type = 'shifts';
 
