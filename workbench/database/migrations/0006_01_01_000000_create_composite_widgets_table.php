@@ -8,8 +8,8 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * The `composite_widgets` schema backing the Eloquent composite-attribute conformance
- * suite: each composite attribute (Obj `address`, OneOf `block`, ArrayHash+Shape
- * `contact`) is a single nullable `json` column — the shape the
+ * suite: each composite attribute (Obj `address` and `schedule`, OneOf `block`,
+ * ArrayHash+Shape `contact`) is a single nullable `json` column — the shape the
  * {@see \Workbench\App\Validation\CompositeWidgetResource} round-trips as one value.
  */
 return new class extends Migration {
@@ -20,6 +20,7 @@ return new class extends Migration {
             $table->string('name');
             $table->json('address')->nullable();
             $table->json('block')->nullable();
+            $table->json('schedule')->nullable();
             $table->json('contact')->nullable();
             $table->json('settings')->nullable();
             $table->json('steps')->nullable();

@@ -8,6 +8,8 @@ use haddowg\JsonApi\OpenApi\Schema;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Constraint\Shape;
 use haddowg\JsonApi\Resource\Field\ArrayHash;
+use haddowg\JsonApi\Resource\Field\Date;
+use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Integer;
 use haddowg\JsonApi\Resource\Field\Obj;
@@ -25,7 +27,8 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
  * schemas). The Obj/OneOf children exercise the bridge's dotted-key cascade
  * (`/data/attributes/address/city`, `/data/attributes/block/level`); the Shape
  * exercises the core opis {@see \haddowg\JsonApi\Validation\SchemaValueValidator}
- * value-validation pass (`/data/attributes/contact/...`).
+ * value-validation pass (`/data/attributes/contact/...`). The `schedule` Obj and the
+ * heading variant carry date children.
  */
 #[AsJsonApiResource]
 final class CompositeWidgetResource extends AbstractResource
@@ -43,8 +46,12 @@ final class CompositeWidgetResource extends AbstractResource
                 Str::make('postcode')->required()->maxLength(10),
             ),
             OneOf::make('block')->nullable()->discriminator('kind')
-                ->variant('heading', Str::make('text')->required(), Integer::make('level')->min(1)->max(6))
+                ->variant('heading', Str::make('text')->required(), Integer::make('level')->min(1)->max(6), DateTime::make('publishedAt'))
                 ->variant('image', Url::make('src')->required(), Str::make('alt')),
+            Obj::make('schedule')->nullable()->fields(
+                DateTime::make('startsAt')->required(),
+                Date::make('endsOn'),
+            ),
             ArrayHash::make('contact')->nullable()->constrain(
                 Shape::oneOf(
                     Schema::ofType('object')
