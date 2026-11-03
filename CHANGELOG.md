@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.0](https://github.com/haddowg/json-api-laravel/compare/v1.23.0...v1.24.0) (2026-11-03)
+
+
+### Features
+
+* support sort families and custom sorts under a cursor ([#189](https://github.com/haddowg/json-api-laravel/issues/189)) ([219f35c](https://github.com/haddowg/json-api-laravel/commit/219f35c848b1359fbd1b968697f077a62062679b))
+
 ## [1.23.0](https://github.com/haddowg/json-api-laravel/compare/v1.22.1...v1.23.0) (2026-11-02)
 
 
