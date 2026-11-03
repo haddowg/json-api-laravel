@@ -52,6 +52,7 @@ Core's constraint VOs translate to the natural Laravel rule:
 | `Map` children | nested dot-notation rules → `/data/attributes/<map>/<child>` pointers |
 | `Obj` children | the same dot-notation cascade as `Map` (one value, one json column) |
 | `OneOf` variants | the discriminator selects the variant; its children cascade like `Map`'s, an unknown discriminator is a `422` at `/data/attributes/<field>/<discriminator>` |
+| `ArrayList` of `Obj` / `OneOf` | each element validates as its `Obj` or `OneOf` would, at `/data/attributes/<list>/<index>/…`; see [lists of structured elements](composite-attributes.md#lists-of-structured-elements) |
 | `Shape` | not translated — value-validated by core's opis `SchemaValueValidator` when opis is installed (see [composite attributes](composite-attributes.md)) |
 
 A required field must be present on create and may be left out of an update. When it is

@@ -334,6 +334,222 @@ abstract class CompositeConformanceTestCase extends Orchestra
         self::assertSame('/atomic:operations/1', $response->json('errors.0.source.pointer'));
     }
 
+    #[Test]
+    #[Group('spec:crud')]
+    public function structuredListsRoundTripInOrder(): void
+    {
+        $attributes = [
+            'name' => 'Cleanup',
+            'steps' => [
+                ['operation' => 'find_replace', 'params' => ['find' => 'colour', 'replace' => 'color']],
+                ['operation' => 'trim'],
+                ['operation' => 'find_replace', 'params' => ['find' => 'grey', 'replace' => 'gray']],
+            ],
+            'checks' => [
+                ['label' => 'Spelling', 'code' => 'spell-1', 'rules' => [['pattern' => 'colou?r'], ['pattern' => 'gr[ae]y']]],
+                ['label' => 'Length', 'code' => null, 'rules' => null],
+            ],
+        ];
+
+        $created = $this->writeJsonApi('POST', '/api/pipelines', ['data' => ['type' => 'pipelines', 'attributes' => $attributes]]);
+        $created->assertStatus(201);
+        self::assertSame($attributes, $created->json('data.attributes'));
+
+        $fetched = $this->getJson('/api/pipelines/' . $this->createdId($created), ['Accept' => self::MEDIA_TYPE]);
+        $fetched->assertStatus(200);
+        self::assertSame($attributes, $fetched->json('data.attributes'));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function aPatchReplacesTheWholeStructuredList(): void
+    {
+        $id = $this->createPipeline([
+            'steps' => [['operation' => 'trim'], ['operation' => 'find_replace', 'params' => ['find' => 'a', 'replace' => 'b']]],
+            'checks' => [['label' => 'One', 'code' => 'one'], ['label' => 'Two', 'code' => 'two']],
+        ]);
+
+        $updated = $this->writeJsonApi('PATCH', '/api/pipelines/' . $id, ['data' => ['type' => 'pipelines', 'id' => $id, 'attributes' => [
+            'steps' => [['operation' => 'find_replace', 'params' => ['find' => 'x', 'replace' => 'y']]],
+            'checks' => [['label' => 'Only']],
+        ]]]);
+        $updated->assertStatus(200);
+
+        $fetched = $this->getJson('/api/pipelines/' . $id, ['Accept' => self::MEDIA_TYPE]);
+        self::assertSame([['operation' => 'find_replace', 'params' => ['find' => 'x', 'replace' => 'y']]], $fetched->json('data.attributes.steps'));
+        // The stored element at index 0 is not merged into the new one.
+        self::assertSame([['label' => 'Only', 'code' => null, 'rules' => null]], $fetched->json('data.attributes.checks'));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function anEmptyAndANullStructuredListPersist(): void
+    {
+        $id = $this->createPipeline(['steps' => [], 'checks' => null]);
+
+        $fetched = $this->getJson('/api/pipelines/' . $id, ['Accept' => self::MEDIA_TYPE]);
+        self::assertSame([], $fetched->json('data.attributes.steps'));
+        self::assertNull($fetched->json('data.attributes.checks'));
+
+        $this->writeJsonApi('PATCH', '/api/pipelines/' . $id, ['data' => ['type' => 'pipelines', 'id' => $id, 'attributes' => ['steps' => null]]])
+            ->assertStatus(200);
+        self::assertNull($this->getJson('/api/pipelines/' . $id, ['Accept' => self::MEDIA_TYPE])->json('data.attributes.steps'));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function anInvalidElementChildPointsAtItsIndex(): void
+    {
+        $response = $this->createPipelineResponse([
+            'steps' => [
+                ['operation' => 'trim'],
+                ['operation' => 'find_replace', 'params' => ['find' => \str_repeat('x', 21)]],
+            ],
+            'checks' => [['label' => 'Fine'], ['label' => \str_repeat('y', 21)]],
+        ]);
+
+        self::assertEqualsCanonicalizing([
+            '/data/attributes/steps/1/params/find',
+            '/data/attributes/steps/1/params/replace',
+            '/data/attributes/checks/1/label',
+        ], $this->pointers($response));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function aListNestedInAnElementValidatesAtBothIndexes(): void
+    {
+        $response = $this->createPipelineResponse(['checks' => [
+            ['label' => 'A', 'rules' => [['pattern' => 'x'], ['pattern' => '']]],
+            ['label' => 'B', 'rules' => ['y']],
+        ]]);
+
+        self::assertEqualsCanonicalizing([
+            '/data/attributes/checks/0/rules/1/pattern',
+            '/data/attributes/checks/1/rules/0',
+        ], $this->pointers($response));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function aCustomConstraintOnAnElementChildPointsAtItsIndex(): void
+    {
+        $response = $this->createPipelineResponse(['checks' => [['label' => 'A', 'code' => 'ok'], ['label' => 'B', 'code' => 'not ok!']]]);
+
+        self::assertSame(['/data/attributes/checks/1/code'], $this->pointers($response));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function anUnknownOrMissingElementDiscriminatorPointsAtIt(): void
+    {
+        $response = $this->createPipelineResponse(['steps' => [
+            ['operation' => 'trim'],
+            ['operation' => 'uppercase'],
+            ['params' => ['find' => 'a', 'replace' => 'b']],
+        ]]);
+
+        self::assertEqualsCanonicalizing([
+            '/data/attributes/steps/1/operation',
+            '/data/attributes/steps/2/operation',
+        ], $this->pointers($response));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function aScalarOrNullElementIsRejectedAtItsIndex(): void
+    {
+        $response = $this->createPipelineResponse(['checks' => [['label' => 'A'], 'B', null]]);
+
+        self::assertEqualsCanonicalizing([
+            '/data/attributes/checks/1',
+            '/data/attributes/checks/2',
+        ], $this->pointers($response));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function aStructuredListKeepsItsItemCount(): void
+    {
+        $response = $this->createPipelineResponse(['steps' => \array_fill(0, 4, ['operation' => 'trim'])]);
+
+        self::assertSame(['/data/attributes/steps'], $this->pointers($response));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function aRequiredElementChildIsEnforcedOnUpdate(): void
+    {
+        $id = $this->createPipeline(['checks' => [['label' => 'One']]]);
+
+        $response = $this->writeJsonApi('PATCH', '/api/pipelines/' . $id, ['data' => ['type' => 'pipelines', 'id' => $id, 'attributes' => [
+            'checks' => [['label' => 'Kept'], ['code' => 'nolabel']],
+            'steps' => [['operation' => 'find_replace']],
+        ]]]);
+
+        self::assertEqualsCanonicalizing([
+            '/data/attributes/checks/1/label',
+            '/data/attributes/steps/0/params',
+        ], $this->pointers($response));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function anUntouchedStoredListIsNotRevalidated(): void
+    {
+        $id = $this->createPipeline(['checks' => [['label' => 'One']]]);
+
+        $this->writeJsonApi('PATCH', '/api/pipelines/' . $id, ['data' => ['type' => 'pipelines', 'id' => $id, 'attributes' => ['name' => 'Renamed']]])
+            ->assertStatus(200);
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function coresStructuralChecksPointAtTheListOrElement(): void
+    {
+        self::assertSame(['/data/attributes/checks'], $this->pointers($this->rawJsonApi(
+            'POST',
+            '/api/pipelines',
+            '{"data":{"type":"pipelines","attributes":{"name":"P","checks":{"label":"A"}}}}',
+        )));
+        self::assertSame(['/data/attributes/checks/1'], $this->pointers($this->createPipelineResponse(['checks' => [['label' => 'A'], ['B']]])));
+        self::assertSame(['/data/attributes/steps/0/params'], $this->pointers($this->createPipelineResponse([
+            'steps' => [['operation' => 'find_replace', 'params' => ['a', 'b']]],
+        ])));
+    }
+
+    /**
+     * @param array<string, mixed> $attributes
+     */
+    private function createPipeline(array $attributes): string
+    {
+        $response = $this->createPipelineResponse($attributes);
+        $response->assertStatus(201);
+
+        return $this->createdId($response);
+    }
+
+    /**
+     * @param array<string, mixed> $attributes
+     *
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    private function createPipelineResponse(array $attributes): TestResponse
+    {
+        return $this->writeJsonApi('POST', '/api/pipelines', ['data' => ['type' => 'pipelines', 'attributes' => ['name' => 'Pipeline', ...$attributes]]]);
+    }
+
+    /**
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
+     */
+    private function createdId(TestResponse $response): string
+    {
+        $id = $response->json('data.id');
+        self::assertIsString($id);
+
+        return $id;
+    }
+
     /**
      * Every error points at `$pointer`. Core's opis value validator appends the root
      * instance pointer `/` to a whole-value violation, so a trailing slash is tolerated.
