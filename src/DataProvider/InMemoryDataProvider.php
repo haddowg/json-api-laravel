@@ -413,6 +413,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
             // include of a countable relation counts, so the rebuilt criteria must carry
             // the same wantsCount the batcher resolved.
             wantsCount: $criteria->wantsCount,
+            request: $criteria->request,
         );
     }
 
@@ -476,6 +477,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
             $criteria->sorts,
             $criteria->defaultSort,
             $this->idColumn,
+            request: $criteria->request,
         );
 
         // Apply the FILTERS only — the keyset owns the order, so the plain sort is
@@ -543,6 +545,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
             sorts: [],
             window: null,
             defaultSort: [],
+            request: $criteria->request,
         );
 
         /** @var list<object> $applied */
@@ -563,7 +566,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
     private function flip(array $columns): array
     {
         return \array_map(
-            static fn(KeysetColumn $column): KeysetColumn => new KeysetColumn($column->column, !$column->descending),
+            static fn(KeysetColumn $column): KeysetColumn => $column->flipped(),
             $columns,
         );
     }

@@ -23,7 +23,8 @@ use Illuminate\Database\Eloquent\Model;
  * `orderBy`/`orderByRaw` (which append), never a call that discards the earlier
  * terms. This is the Eloquent twin of core's in-memory
  * {@see \haddowg\JsonApi\Resource\Sort\InMemory\ArraySortArmInterface}; a portable
- * custom sort ships both.
+ * custom sort ships both. A cursor page never calls {@see apply()}; an arm whose sort should
+ * order one implements {@see EloquentKeysetSortArmInterface}.
  *
  * @template TModel of Model
  */

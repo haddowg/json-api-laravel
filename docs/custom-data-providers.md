@@ -202,3 +202,10 @@ through an **arm seam** — register an `EloquentFilterArmInterface` / `Eloquent
 for a custom `FilterInterface` / `SortInterface` and the reference provider pushes it down
 without you replacing the provider. See
 [the Eloquent arm seam](eloquent.md#custom-filters-and-sorts-the-arm-seam).
+
+Match requested sort keys with core's `SortMatcher` rather than comparing keys yourself, passing
+the criteria's `$request`, so [sort families](eloquent.md#sort-families) resolve the same way on
+every provider. `SortMatcher::directives($criteria->queryParameters->sort, $criteria->sorts, $criteria->request)`
+returns the directives and throws the usual `400`s. A cursor provider passes the same request as
+`KeysetResolver::resolve()`'s last argument and builds a backward page with `KeysetColumn::flipped()`,
+which keeps a custom sort on its level.

@@ -728,6 +728,7 @@ final class RelatedIncludeBatcher
                 filter: [],
                 pagination: $request->getPagination(),
             ),
+            request: $request,
         );
     }
 

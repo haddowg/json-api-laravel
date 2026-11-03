@@ -56,6 +56,14 @@ public function pagination(?PaginatorInterface $serverDefault): PaginatorInterfa
 }
 ```
 
+A cursor page can be ordered by any sortable field and by a key a
+[sort family](eloquent.md#sort-families) resolves to a field sort. A custom sort orders a
+cursor page only when it implements core's `KeysetSortInterface` and its Eloquent arm
+implements `EloquentKeysetSortArmInterface`, which supplies the SQL expression the keyset
+orders and compares by; see [custom sorts on a cursor page](eloquent.md#custom-sorts-on-a-cursor-page).
+Anything else is a `500` `UnsupportedSort`. The token stores each value under its sort key, so
+a cursor minted under `?sort=value.cap` is a `400` `CURSOR_STALE` under `?sort=value.reach`.
+
 ## Offering a menu of strategies (`page[kind]`)
 
 A resource can offer **several** pagination strategies and let the client pick one per

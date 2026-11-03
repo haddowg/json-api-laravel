@@ -1,0 +1,3 @@
+# A custom sort orders a cursor page through an expression its arm supplies
+
+A cursor page needs the null-aware keyset `WHERE` and the NULL=largest `ORDER BY` to agree with core's in-memory keyset exactly, and an arm writing both itself would repeat four null cases per sort and drift. So an `EloquentKeysetSortArmInterface` returns only the SQL expression its sort orders by, with how the token's boundary value is bound, and `EloquentKeyset` builds the order and comparison around it as it does for a column. The boundary binds as-is unless the arm asks for a date-time, and only `asNaiveDateTime()` moves it into the default timezone, because the provider can't know whether an arbitrary expression stores a naive datetime the way a cast column does.

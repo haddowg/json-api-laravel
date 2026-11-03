@@ -462,6 +462,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // Applied only when the request carries no `sort` (core's docs/sorts.md).
             $resource?->defaultSort() ?? [],
             wantsCount: $wantsCount,
+            request: $request,
         ));
 
         $items = $this->materialize($result);
@@ -652,6 +653,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $window,
                 wantsCount: $relWantsCount,
                 includePivotFields: $pivotQuery,
+                request: $request,
             );
 
             // Validate a client-supplied filter value against the merged vocabulary (related
@@ -785,6 +787,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                     $relatedResource,
                     $relation,
                     null,
+                    request: $request,
                 );
                 $this->filterValidator->validate($filter, $criteria->filters);
 
@@ -1003,6 +1006,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $window,
             wantsCount: $wantsCount,
             includePivotFields: $this->pivotQueryingProvider($parent, $relation) !== null,
+            request: $request,
         );
         $this->filterValidator->validate($queryParameters->filter, $criteria->filters);
 
@@ -1038,7 +1042,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             && !($paginator instanceof CursorPaginator)
             && ($paginator->wantsCount() || $request->countsRelationship('_self_'));
 
-        $criteria = $this->relationCriteria->criteriaFor($queryParameters, null, $relation, $paginator?->window($request), wantsCount: $wantsCount);
+        $criteria = $this->relationCriteria->criteriaFor($queryParameters, null, $relation, $paginator?->window($request), wantsCount: $wantsCount, request: $request);
         $result = $this->relationshipLinkage->members()->pageMembers($server, $parent, $relation, $criteria, $request);
 
         return $this->supplyWindowedRelationship($parent, $relation->name(), $this->materialize($result), $paginator, $result, $wantsCount, $request, $queryParameters);
@@ -1070,7 +1074,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         \assert($provider !== null);
 
         $items = $this->materialize(
-            $provider->fetchRelatedCollection($relatedTypes[0], $parent, $relation, new CollectionCriteria($queryParameters), $request),
+            $provider->fetchRelatedCollection($relatedTypes[0], $parent, $relation, new CollectionCriteria($queryParameters, request: $request), $request),
         );
 
         $this->relationshipLinkage->scope(new WindowedRelationshipLinkage(

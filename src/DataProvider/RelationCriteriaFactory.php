@@ -8,6 +8,7 @@ use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Pagination\CursorWindow;
 use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Pagination\WindowInterface;
+use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
@@ -16,6 +17,7 @@ use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
+use haddowg\JsonApi\Resource\Sort\SortMatcher;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\OpenApi\PivotFields;
 
@@ -92,6 +94,8 @@ final class RelationCriteriaFactory
      * `$includePivotFields` keeps the relation's `pivot.`-columned filters and adds the pivot
      * field sorts. A cursor window gets the pivot filters but not the pivot sorts: the keyset
      * reads its columns off the related model, never the join.
+     *
+     * `$request` rides onto the criteria so a sort family can resolve a requested key.
      */
     public function criteriaFor(
         QueryParameters $queryParameters,
@@ -100,6 +104,7 @@ final class RelationCriteriaFactory
         ?WindowInterface $window,
         bool $wantsCount = false,
         bool $includePivotFields = false,
+        ?JsonApiRequestInterface $request = null,
     ): CollectionCriteria {
         $relationFilters = $includePivotFields
             ? $relation->allFilters()
@@ -107,16 +112,17 @@ final class RelationCriteriaFactory
 
         $relationSorts = $relation->sorts();
         if ($includePivotFields && !$window instanceof CursorWindow) {
-            $relationSorts = $this->mergeSorts($relationSorts, self::pivotSorts($relation));
+            $relationSorts = SortMatcher::merge($relationSorts, self::pivotSorts($relation));
         }
 
         return new CollectionCriteria(
             $queryParameters,
             $this->mergeFilters($relatedResource?->allFilters() ?? [], $relationFilters),
-            $this->mergeSorts($relatedResource?->allSorts() ?? [], $relationSorts),
+            SortMatcher::merge($relatedResource?->allSorts() ?? [], $relationSorts),
             $window,
             $relatedResource?->defaultSort() ?? [],
             wantsCount: $wantsCount,
+            request: $request,
         );
     }
 
@@ -167,27 +173,6 @@ final class RelationCriteriaFactory
         $merged = [];
         foreach ([...$resourceFilters, ...$relationFilters] as $filter) {
             $merged[$filter->key()] = $filter;
-        }
-
-        return \array_values($merged);
-    }
-
-    /**
-     * Merges two sort vocabularies, keyed by {@see SortInterface::key()} so a clash
-     * resolves to the later list's declaration (core's docs/relations.md). The order
-     * `[...$resourceSorts, ...$relationSorts]` is preserved before the dedup; returned as
-     * a list for the {@see CollectionCriteria}.
-     *
-     * @param list<SortInterface> $resourceSorts
-     * @param list<SortInterface> $relationSorts
-     *
-     * @return list<SortInterface>
-     */
-    private function mergeSorts(array $resourceSorts, array $relationSorts): array
-    {
-        $merged = [];
-        foreach ([...$resourceSorts, ...$relationSorts] as $sort) {
-            $merged[$sort->key()] = $sort;
         }
 
         return \array_values($merged);

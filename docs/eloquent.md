@@ -234,6 +234,125 @@ Eloquent-specific filter (a raw scope) ships only the Eloquent arm. A custom pro
 needs its own filter/sort translation is covered in
 [custom data providers](custom-data-providers.md#custom-filters-and-sorts).
 
+### Custom sorts on a cursor page
+
+A cursor page builds its own `ORDER BY` and keyset `WHERE`, so it never calls a sort arm's
+`apply()`. A custom sort only orders cursor pages when both halves opt in. The sort implements
+core's [`KeysetSortInterface`](https://github.com/haddowg/json-api/blob/main/src/Resource/Sort/KeysetSortInterface.php),
+whose `keysetValue($row)` gives the value the cursor token stores for a boundary row. Its arm
+implements [`EloquentKeysetSortArmInterface`](https://github.com/haddowg/json-api-laravel/blob/main/src/DataProvider/Eloquent/EloquentKeysetSortArmInterface.php),
+which adds one method to `EloquentSortArmInterface`:
+
+```php
+public function keysetExpression(KeysetSortInterface $sort, Builder $query): EloquentKeysetExpression;
+```
+
+The provider calls it once per query and uses the expression wherever it would use a column.
+It orders by `CASE WHEN (expr) IS NULL THEN 1 ELSE 0 END` and then the expression, so null sorts
+as the largest value, and compares the expression with the token's boundary value in the same
+four null-aware cases a column gets. The arm may add joins to `$query`. When it does and the
+query selects nothing yet, the provider selects the model's own columns, so a joined `id` can't
+overwrite the model's. Use a left join, so rows without a value stay in the page and sort as
+null. A cursor page ordered by a custom sort without both opt-ins is a `500` `UnsupportedSort`.
+
+`EloquentKeysetExpression::make($sql, $bindings)` takes raw SQL (a string or an `Expression`)
+and the values for its own `?` placeholders. The boundary value arrives in its token form, a
+number or string as written and a date-time as an RFC 3339 string with microseconds. How it is
+bound depends on the expression:
+
+| Method | The boundary binds as |
+|---|---|
+| none | the token value as-is, for a number or string |
+| `asDateTime()` | a `DateTimeImmutable` in the offset the token carries |
+| `asNaiveDateTime()` | a `DateTimeImmutable` moved into PHP's default timezone, for a datetime column Eloquent stores without its offset (see [date-times and the app timezone](#date-times-and-the-app-timezone)) |
+| `castUsing(fn)` | whatever the callable returns for the token value |
+
+A string that doesn't parse as a date binds verbatim. Nothing converts a custom expression's
+date-time to another timezone unless the arm asks for `asNaiveDateTime()`. The expression and
+`keysetValue()` must agree on every row, nulls included, or pages skip or repeat rows.
+
+Here a campaign's placeholder values live in a `campaign_values` table with a text `value`
+column. A [sort family](#sort-families) resolves `value.<name>` to a `PlaceholderValueSort`,
+and one arm orders page and cursor pages by joining the placeholder's row and casting it:
+
+```php
+use haddowg\JsonApi\Resource\Sort\KeysetSortInterface;
+
+final readonly class PlaceholderValueSort implements KeysetSortInterface
+{
+    public function __construct(public string $key, public string $placeholder) {}
+
+    public function key(): string
+    {
+        return $this->key;
+    }
+
+    public function keysetValue(mixed $row): mixed
+    {
+        // Runs only for a page's first and last rows.
+        $value = $row->values->firstWhere('name', $this->placeholder)?->value;
+
+        return \is_numeric($value) ? (float) $value : null;
+    }
+}
+```
+
+```php
+use haddowg\JsonApi\Resource\Sort\KeysetSortInterface;
+use haddowg\JsonApi\Resource\Sort\SortInterface;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentKeysetExpression;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentKeysetSortArmInterface;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Expression;
+use Illuminate\Database\Query\JoinClause;
+
+final class PlaceholderValueArm implements EloquentKeysetSortArmInterface
+{
+    public function supports(SortInterface $sort): bool
+    {
+        return $sort instanceof PlaceholderValueSort;
+    }
+
+    public function apply(SortInterface $sort, Builder $query, bool $descending): void
+    {
+        $query->orderBy(new Expression($this->join($sort, $query)), $descending ? 'desc' : 'asc');
+    }
+
+    public function keysetExpression(KeysetSortInterface $sort, Builder $query): EloquentKeysetExpression
+    {
+        return EloquentKeysetExpression::make($this->join($sort, $query));
+    }
+
+    private function join(PlaceholderValueSort $sort, Builder $query): string
+    {
+        // The placeholder names the alias, so only a plain identifier reaches the SQL.
+        if (\preg_match('/^[a-z_]+$/', $sort->placeholder) !== 1) {
+            throw new \LogicException(\sprintf('"%s" is not a placeholder name.', $sort->placeholder));
+        }
+
+        $alias = 'sort_value_' . $sort->placeholder;
+        $model = $query->getModel();
+
+        if ($query->getQuery()->columns === null) {
+            $query->select($model->qualifyColumn('*'));
+        }
+
+        $query->leftJoin('campaign_values as ' . $alias, function (JoinClause $join) use ($alias, $model, $sort): void {
+            $join->on($alias . '.campaign_id', '=', $model->getQualifiedKeyName())
+                ->where($alias . '.name', '=', $sort->placeholder);
+        });
+
+        return 'CAST(' . $alias . '.value AS REAL)';
+    }
+}
+```
+
+A date placeholder stored as `Y-m-d H:i:s` text would return a `DateTimeImmutable` from
+`keysetValue()` and `->asDateTime()` from `keysetExpression()`, so the boundary binds back to
+the same text form. Register the arm like any other sort arm. The in-memory provider needs
+only an `ArraySortArmInterface` for page ordering, since its cursor pages read `keysetValue()`.
+The workbench's `sortCampaigns` type runs this example on both providers.
+
 ### Self-applying filters: no arm to register
 
 For a one-off, dependency-free Eloquent filter, skip the separate arm and put the query
@@ -322,6 +441,42 @@ miss every row.
 column); `defaultSort()` orders an unsorted collection. Sparse fieldsets narrow the selected
 columns. Page / offset / cursor (keyset) pagination all push down — see
 [pagination](pagination.md).
+
+### Sort families
+
+Some sort keys are data: a campaign's placeholder values, custom fields, keys of a JSON column.
+Core's [`SortFamily`](https://github.com/haddowg/json-api/blob/main/docs/sorts.md#sort-families-keys-matched-by-prefix)
+answers every `<prefix>.<suffix>` key and resolves the suffix, with the request, to an ordinary
+sort keyed by the full key:
+
+```php
+use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\Sort\SortByField;
+use haddowg\JsonApi\Resource\Sort\SortFamily;
+use haddowg\JsonApi\Resource\Sort\SortInterface;
+
+public function sorts(): array
+{
+    return [
+        SortFamily::make('attr', fn(string $suffix, JsonApiRequestInterface $request): ?SortInterface
+            => \in_array($suffix, ['name', 'team'], true) ? SortByField::make('attr.' . $suffix, $suffix) : null)
+            ->withSuffixPattern('[a-z]+'),
+        SortFamily::make('value', fn(string $suffix, JsonApiRequestInterface $request): ?SortInterface
+            => $this->placeholders->exists($suffix) ? new PlaceholderValueSort('value.' . $suffix, $suffix) : null),
+    ];
+}
+```
+
+`?sort=team,-value.cap` then sorts by the fixed `team` key and the `cap` placeholder. An exact
+key wins over a family, the longest matching prefix decides between families, and the bare
+prefix (`?sort=value`) or a suffix the resolver returns `null` for is the usual `400`. Both
+providers match keys through core's `SortMatcher`, on the primary collection, related and
+relationship endpoints, a relation's own `sorts()`, the Relationship Queries profile's
+`relatedQuery[<path>][sort]` and `defaultSort()`. A family resolving to a `SortByField` needs
+nothing more. One resolving to a custom sort needs an
+[arm](#custom-filters-and-sorts-the-arm-seam) on each provider, and a
+[keyset arm](#custom-sorts-on-a-cursor-page) to order cursor pages. The OpenAPI `sort`
+parameter lists each family under `x-sort-families` beside the fixed keys.
 
 ## `?include` batching — SPI, not `with()`
 

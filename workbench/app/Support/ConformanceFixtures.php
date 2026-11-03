@@ -225,6 +225,28 @@ final class ConformanceFixtures
     }
 
     /**
+     * Eight campaigns for the sort-family cases, shared by both providers. `team` ties in
+     * fours and each campaign's placeholder values live beside it, keyed by placeholder
+     * name: `cap` repeats each value twice and is missing on campaigns 3 and 6, so a
+     * `value.cap` sort has ties for the id tiebreak and a null bucket.
+     *
+     * @return list<array{id: int, name: string, team: string, values: array<string, float>}>
+     */
+    public static function sortCampaigns(): array
+    {
+        return [
+            ['id' => 1, 'name' => 'alpha', 'team' => 'east', 'values' => ['cap' => 30.0, 'reach' => 5.0]],
+            ['id' => 2, 'name' => 'bravo', 'team' => 'east', 'values' => ['cap' => 10.0]],
+            ['id' => 3, 'name' => 'charlie', 'team' => 'west', 'values' => ['reach' => 1.0]],
+            ['id' => 4, 'name' => 'delta', 'team' => 'east', 'values' => ['cap' => 30.0]],
+            ['id' => 5, 'name' => 'echo', 'team' => 'west', 'values' => ['cap' => 20.0, 'reach' => 3.0]],
+            ['id' => 6, 'name' => 'foxtrot', 'team' => 'west', 'values' => []],
+            ['id' => 7, 'name' => 'golf', 'team' => 'east', 'values' => ['cap' => 10.0]],
+            ['id' => 8, 'name' => 'hotel', 'team' => 'west', 'values' => ['cap' => 20.0]],
+        ];
+    }
+
+    /**
      * Two cursor groups partitioning the {@see cursorWidgets()} rows, shared by BOTH
      * related-collection cursor (keyset) conformance concretes so the parent-scoped
      * SQL push-down and the in-memory witness referee the SAME membership:
