@@ -40,7 +40,8 @@ child: `/data/attributes/packaging/material`, `/data/attributes/format/rpm`. For
 `OneOf`, only the **selected variant's** children are validated, and an unknown or
 missing discriminator is itself the violation — a `422` pointing at
 `/data/attributes/format/medium`. The cascade goes one level deep: a child that is itself an
-`Obj` or `OneOf` is not descended into.
+`Obj` or `OneOf` is not descended into. A child that is a list of structured elements is the
+exception, covered next.
 
 **A `Shape` is value-validated by core's `SchemaValueValidator`** (opis), not by
 rule translation — its members are raw JSON Schema no illuminate rule can express.
@@ -50,6 +51,40 @@ own: a missing member of the matched variant surfaces under
 `/data/attributes/availability/...`. Without opis a `Shape` still **documents** (its
 combinator projects into the OpenAPI schema); it just doesn't validate — install
 `opis/json-schema` to get the `422`s.
+
+## Lists of structured elements
+
+An `ArrayList` whose `of()` is an `Obj` or `OneOf` holds a list of those shapes, as core's
+[field types](https://github.com/haddowg/json-api/blob/main/docs/field-types.md#lists-of-structured-elements)
+describe. A list of edits, each one a bare `trim` or a `find_replace` carrying its parameters:
+
+```php
+ArrayList::make('steps')
+    ->of(OneOf::make('step')
+        ->discriminator('operation')
+        ->variant('trim')
+        ->variant('find_replace', Obj::make('params')->required()->fields(
+            Str::make('find')->required(),
+            Str::make('replace')->required(),
+        )))
+    ->maxItems(50);
+```
+
+The bridge validates every element the client sends at its index. An `Obj` element runs its
+children's rules, and a `OneOf` element the rules of the variant its discriminator names, so a
+missing `find` in the third step is a `422` at `/data/attributes/steps/2/params/find`. An
+unknown or missing `operation` is reported at `/data/attributes/steps/2/operation`, and an
+element that is a scalar or `null` at `/data/attributes/steps/2`. Inside an element the
+cascade follows every structured child, so a list nested in an element validates at both
+indexes. The list's own `minItems`, `maxItems` and `uniqueItems` still apply to the list.
+
+A write replaces the whole list and builds each element from nothing, so a `required()`
+child must be present in every element on a `PATCH` too, not only on a create. A `PATCH`
+that leaves the list out keeps it without validating its stored elements again. A JSON object
+sent for the list, or a list sent where an element belongs, is refused by core with its own
+`422` at the list or the element.
+
+Store the list in one `json` column with an `array` cast, like any other composite.
 
 ## Storage: one `json` column
 

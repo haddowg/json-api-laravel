@@ -17,6 +17,7 @@ use haddowg\JsonApi\Resource\Constraint\Required;
 use haddowg\JsonApi\Resource\Constraint\Shape;
 use haddowg\JsonApi\Resource\Constraint\When;
 use haddowg\JsonApi\Resource\DateTimeParser;
+use haddowg\JsonApi\Resource\Field\ArrayList;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
@@ -63,7 +64,9 @@ use Illuminate\Validation\Rule;
  * **recursion**: each present child is registered under a dot-notation key
  * (`address.postcode`) that mirrors the top-level resolution (same create/update context
  * per child), so a child violation maps to `/data/attributes/<map>/<child>` — the
- * implicit one-level cascade.
+ * implicit one-level cascade. A structured {@see ArrayList} validates each element the
+ * client sent at its index (`steps.2.params.find`), as its {@see Obj} or {@see OneOf}
+ * would be validated as an attribute written whole.
  *
  * {@see CompareField} (a cross-field rule) is evaluated at the **document** level, after
  * the per-field pass, because the comparison needs the sibling field's value. The
@@ -73,6 +76,8 @@ use Illuminate\Validation\Rule;
  */
 final class ResourceValidator
 {
+    private const string UNKNOWN_VARIANT = 'This value is not one of the allowed types.';
+
     public function __construct(
         private readonly ValidationFactory $validatorFactory,
         private readonly ConstraintTranslator $translator,
@@ -142,6 +147,8 @@ final class ResourceValidator
         $compares = [];
         /** @var list<array{0: string, 1: StoredRowsUnique}> $storedRowRules */
         $storedRowRules = [];
+        /** @var list<Error> $elementErrors */
+        $elementErrors = [];
 
         foreach ($resource->allFields() as $field) {
             if ($field instanceof Id || $field instanceof RelationInterface) {
@@ -157,9 +164,17 @@ final class ResourceValidator
             $name = $field->name();
             $value = $attributes[$name] ?? null;
             $rules[$name] = $this->fieldRules($field, $creating, $request, $value);
+            // A stored list is not re-validated element by element: it was valid when
+            // written, and its rendered elements omit what a write would carry.
+            $sent = \array_key_exists($name, $incoming);
 
             if (($field instanceof Map || $field instanceof Obj) && \is_array($value)) {
-                foreach ($this->mapChildRules($field, $creating, $request, $value) as $childKey => $childRules) {
+                foreach ($this->childRules($field->children(), $name, $value, $creating, $request, false, $sent, $elementErrors) as $childKey => $childRules) {
+                    $rules[$childKey] = $childRules;
+                }
+            }
+            if ($field instanceof ArrayList && $sent) {
+                foreach ($this->listElementRules($field, $name, $value, $creating, $request, $elementErrors) as $childKey => $childRules) {
                     $rules[$childKey] = $childRules;
                 }
             }
@@ -183,7 +198,7 @@ final class ResourceValidator
             $rules[$key][] = $rule;
         }
 
-        $errors = [];
+        $errors = $elementErrors;
 
         if ($rules !== []) {
             $bag = $this->validatorFactory->make($attributes, $rules)->errors();
@@ -206,7 +221,7 @@ final class ResourceValidator
         // The composite passes also run document-level: a OneOf's variant is selected by
         // the incoming discriminator (value-dependent, so no static rule map can carry
         // it), and a Shape is raw JSON Schema no illuminate rule can translate.
-        foreach ($this->oneOfErrors($resource, $attributes, $creating, $request) as $error) {
+        foreach ($this->oneOfErrors($resource, $attributes, $incoming, $creating, $request) as $error) {
             $errors[] = $error;
         }
         foreach ($this->shapeErrors($resource, \array_merge($stored, $incoming), $incoming, $creating, $request) as $error) {
@@ -651,11 +666,13 @@ final class ResourceValidator
 
     /**
      * The rule-set for one attribute field: its translated value rules wrapped by the
-     * create/update presence + nullability resolution.
+     * create/update presence + nullability resolution. `$whole` marks a child of a value
+     * the write builds from nothing, a structured list element, so a required child must
+     * be present on an update too.
      *
      * @return list<string|\Stringable|\Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\Rule>
      */
-    private function fieldRules(FieldInterface $field, bool $creating, JsonApiRequestInterface $request, mixed $value): array
+    private function fieldRules(FieldInterface $field, bool $creating, JsonApiRequestInterface $request, mixed $value, bool $whole = false): array
     {
         $valueRules = $this->valueConstraints($field, $creating, $request);
 
@@ -663,7 +680,7 @@ final class ResourceValidator
         $isNullable = $this->hasPresenceRule($field, Nullable::class, $creating, $request, $value);
 
         $presence = [];
-        if ($creating && $isRequired) {
+        if (($creating || $whole) && $isRequired) {
             if ($isNullable) {
                 // Present and non-blank, but may be null.
                 $presence = ['present', 'nullable', new RequiredOrNull()];
@@ -751,24 +768,29 @@ final class ResourceValidator
     }
 
     /**
-     * The dot-notation child rule-sets for a present {@see Map} or {@see Obj} value, one
-     * per writable child, keyed `<field>.<child>` so Laravel validates each nested child
-     * and a violation maps to `/data/attributes/<field>/<child>`. The two structured
-     * types cascade identically — they differ only in storage (flat columns vs one
-     * value), which validation never sees. Registered only when the value is a present
-     * array, so an omitted optional field never fires its required children.
-     * The recursion is one level deep by design — a child that is itself structured is
-     * not descended into.
+     * The dot-notation rule-sets for the writable children of a present {@see Map},
+     * {@see Obj} or {@see OneOf} variant value, keyed `<key>.<child>` so Laravel validates
+     * each nested child and a violation maps to `/data/attributes/<field>/<child>`. The
+     * structured types cascade identically; they differ only in storage, which validation
+     * never sees. Registered only when the value is a present array, so an omitted optional
+     * field never fires its required children.
      *
-     * @param array<array-key, mixed> $value the incoming structured value
+     * An attribute's children cascade one level, except that a structured list child the
+     * client sent (`$descend`) is validated element by element. Inside a list element
+     * (`$whole`) the cascade follows every structured child, since the write builds the
+     * element from nothing.
+     *
+     * @param iterable<FieldInterface> $children
+     * @param array<array-key, mixed>  $value    the incoming structured value
+     * @param list<Error>              $errors   collects the violations no rule can carry
      *
      * @return array<string, list<string|\Stringable|\Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\Rule>>
      */
-    private function mapChildRules(Map|Obj $map, bool $creating, JsonApiRequestInterface $request, array $value): array
+    private function childRules(iterable $children, string $key, array $value, bool $creating, JsonApiRequestInterface $request, bool $whole, bool $descend, array &$errors): array
     {
         $rules = [];
-        foreach ($map->children() as $child) {
-            // A Map child's visibility (read-only) stays static — request-aware child
+        foreach ($children as $child) {
+            // A child's visibility (read-only) stays static — request-aware child
             // predicates are an explicit non-goal — but its when() condition
             // still sees the request via fieldRules().
             if ($child->isReadOnly($creating)) {
@@ -777,10 +799,83 @@ final class ResourceValidator
 
             /** @var mixed $childValue */
             $childValue = $value[$child->name()] ?? null;
-            $rules[$map->name() . '.' . $child->name()] = $this->fieldRules($child, $creating, $request, $childValue);
+            $childKey = $key . '.' . $child->name();
+            $rules[$childKey] = $this->fieldRules($child, $creating, $request, $childValue, $whole);
+
+            $nested = match (true) {
+                $child instanceof ArrayList => $descend ? $this->listElementRules($child, $childKey, $childValue, $creating, $request, $errors) : [],
+                !$whole || !\is_array($childValue) || ($childValue !== [] && \array_is_list($childValue)) => [],
+                $child instanceof Obj, $child instanceof Map => $this->childRules($child->children(), $childKey, $childValue, $creating, $request, true, true, $errors),
+                $child instanceof OneOf => $this->elementRules($child, $childKey, $childValue, $creating, $request, $errors),
+                default => [],
+            };
+            foreach ($nested as $nestedKey => $nestedRules) {
+                $rules[$nestedKey] = $nestedRules;
+            }
         }
 
         return $rules;
+    }
+
+    /**
+     * The rule-sets for each element of a structured {@see ArrayList}, keyed by index
+     * (`steps.2.params.find`). Every element must be an object, and is validated as its
+     * {@see Obj} or {@see OneOf} would be as an attribute of its own, written whole. A
+     * value that is not a list, and an element sent as a list, are left to the 422 core
+     * raises when it hydrates the list.
+     *
+     * @param list<Error> $errors collects the violations no rule can carry
+     *
+     * @return array<string, list<string|\Stringable|\Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\Rule>>
+     */
+    private function listElementRules(ArrayList $list, string $key, mixed $value, bool $creating, JsonApiRequestInterface $request, array &$errors): array
+    {
+        $element = $list->element();
+        if ($element === null || !\is_array($value) || !\array_is_list($value)) {
+            return [];
+        }
+
+        $rules = [];
+        foreach ($value as $index => $item) {
+            $itemKey = $key . '.' . $index;
+            $rules[$itemKey] = ['array'];
+            if (!\is_array($item) || ($item !== [] && \array_is_list($item))) {
+                continue;
+            }
+
+            foreach ($this->elementRules($element, $itemKey, $item, $creating, $request, $errors) as $childKey => $childRules) {
+                $rules[$childKey] = $childRules;
+            }
+        }
+
+        return $rules;
+    }
+
+    /**
+     * The rule-sets for one element of a structured list: an {@see Obj}'s children, or the
+     * children of the {@see OneOf} variant its discriminator names. A discriminator naming
+     * no variant is reported at `<key>.<discriminator>`, as a {@see OneOf} attribute's is.
+     *
+     * @param array<array-key, mixed> $item
+     * @param list<Error>             $errors
+     *
+     * @return array<string, list<string|\Stringable|\Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\Rule>>
+     */
+    private function elementRules(Obj|OneOf $element, string $key, array $item, bool $creating, JsonApiRequestInterface $request, array &$errors): array
+    {
+        if ($element instanceof Obj) {
+            return $this->childRules($element->children(), $key, $item, $creating, $request, true, true, $errors);
+        }
+
+        $discriminator = $element->discriminatorName();
+        $variant = $element->variantFor($item[$discriminator] ?? null);
+        if ($variant === null) {
+            $errors[] = $this->error(self::UNKNOWN_VARIANT, $key . '.' . $discriminator);
+
+            return [];
+        }
+
+        return $this->childRules($variant->children(), $key, $item, $creating, $request, true, true, $errors);
     }
 
     /**
@@ -795,10 +890,11 @@ final class ResourceValidator
      * here.
      *
      * @param array<string, mixed> $attributes the merged incoming attribute map
+     * @param array<string, mixed> $incoming   the attributes the client sent
      *
      * @return list<Error>
      */
-    private function oneOfErrors(AbstractResource $resource, array $attributes, bool $creating, JsonApiRequestInterface $request): array
+    private function oneOfErrors(AbstractResource $resource, array $attributes, array $incoming, bool $creating, JsonApiRequestInterface $request): array
     {
         $errors = [];
         foreach ($resource->allFields() as $field) {
@@ -817,25 +913,12 @@ final class ResourceValidator
             $discriminator = $field->discriminatorName();
             $variant = $field->variantFor($value[$discriminator] ?? null);
             if ($variant === null) {
-                $errors[] = $this->error(
-                    'This value is not one of the allowed types.',
-                    $field->name() . '.' . $discriminator,
-                );
+                $errors[] = $this->error(self::UNKNOWN_VARIANT, $field->name() . '.' . $discriminator);
 
                 continue;
             }
 
-            $rules = [];
-            foreach ($variant->children() as $child) {
-                // Static visibility, mirroring the Map/Obj cascade.
-                if ($child->isReadOnly($creating)) {
-                    continue;
-                }
-
-                /** @var mixed $childValue */
-                $childValue = $value[$child->name()] ?? null;
-                $rules[$field->name() . '.' . $child->name()] = $this->fieldRules($child, $creating, $request, $childValue);
-            }
+            $rules = $this->childRules($variant->children(), $field->name(), $value, $creating, $request, false, \array_key_exists($field->name(), $incoming), $errors);
             if ($rules === []) {
                 continue;
             }

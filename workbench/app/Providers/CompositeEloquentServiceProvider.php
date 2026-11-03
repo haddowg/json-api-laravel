@@ -9,6 +9,7 @@ use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\Models\CompositeWidget;
+use Workbench\App\Validation\CompositePipelineResource;
 use Workbench\App\Validation\CompositeSettingsResource;
 use Workbench\App\Validation\CompositeWidgetResource;
 
@@ -23,9 +24,9 @@ final class CompositeEloquentServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([CompositeWidgetResource::class, CompositeSettingsResource::class]);
+        JsonApi::register([CompositeWidgetResource::class, CompositeSettingsResource::class, CompositePipelineResource::class]);
 
-        $modelByType = ['composites' => CompositeWidget::class, 'composite-settings' => CompositeWidget::class];
+        $modelByType = ['composites' => CompositeWidget::class, 'composite-settings' => CompositeWidget::class, 'pipelines' => CompositeWidget::class];
 
         JsonApi::provider(new EloquentDataProvider($modelByType), priority: -128);
         JsonApi::persister(new EloquentDataPersister($modelByType), priority: -128);

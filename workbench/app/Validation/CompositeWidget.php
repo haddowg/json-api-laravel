@@ -19,6 +19,8 @@ final class CompositeWidget
      * @param array<string, mixed>|null $block
      * @param array<string, mixed>|null $contact
      * @param array<string, mixed>|null $settings
+     * @param list<mixed>|null          $steps
+     * @param list<mixed>|null          $checks
      */
     public function __construct(
         public string $id = '',
@@ -27,5 +29,7 @@ final class CompositeWidget
         public ?array $block = null,
         public ?array $contact = null,
         public ?array $settings = null,
+        public ?array $steps = null,
+        public ?array $checks = null,
     ) {}
 }

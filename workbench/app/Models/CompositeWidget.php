@@ -17,6 +17,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property array<string, mixed>|null $address
  * @property array<string, mixed>|null $block
  * @property array<string, mixed>|null $contact
+ * @property list<mixed>|null          $steps
+ * @property list<mixed>|null          $checks
  */
 final class CompositeWidget extends Model
 {
@@ -37,5 +39,7 @@ final class CompositeWidget extends Model
         'block' => 'array',
         'contact' => 'array',
         'settings' => 'array',
+        'steps' => 'array',
+        'checks' => 'array',
     ];
 }
