@@ -6,6 +6,7 @@ namespace Workbench\App\Validation;
 
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\ArrayList;
+use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Obj;
 use haddowg\JsonApi\Resource\Field\OneOf;
@@ -16,7 +17,9 @@ use haddowg\JsonApiLaravel\Validation\Constraint\LaravelRules;
 /**
  * A third type over the composite witness's backing, carrying lists of structured
  * elements: `steps` holds discriminated {@see OneOf} elements and `checks` plain
- * {@see Obj} elements, each list one `json` value. A check nests a list of its own.
+ * {@see Obj} elements, each list one `json` value. A check nests a list of its own
+ * and carries a `checkedAt` date-time, which an `array` cast stores as the date
+ * object's JSON dump.
  */
 #[AsJsonApiResource]
 final class CompositePipelineResource extends AbstractResource
@@ -41,6 +44,7 @@ final class CompositePipelineResource extends AbstractResource
                     Str::make('label')->required()->maxLength(20),
                     Str::make('code')->nullable()->constrain(LaravelRules::make(['alpha_dash'])),
                     ArrayList::make('rules')->nullable()->of(Obj::make('rule')->fields(Str::make('pattern')->required())),
+                    DateTime::make('checkedAt')->nullable(),
                 ),
             ),
         ];

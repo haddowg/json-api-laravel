@@ -86,13 +86,15 @@ abstract class CompositeConformanceTestCase extends Orchestra
     #[Group('spec:crud')]
     public function compositeValuesRoundTripThroughPersistence(): void
     {
-        // Scalar children of all three composite kinds, written as one value per
-        // attribute and read back equal — on the Eloquent kernel this is the
-        // single-json-column round-trip (an int `level` survives json encoding).
+        // Children of all three composite kinds, written as one value per attribute
+        // and read back equal — on the Eloquent kernel this is the single-json-column
+        // round-trip (an int `level` survives json encoding, and a date child comes
+        // back from its JSON dump in the field's format).
         $attributes = [
             'name' => 'Gadget',
             'address' => ['street' => '1 High St', 'city' => 'London', 'postcode' => 'EC1'],
-            'block' => ['kind' => 'heading', 'text' => 'Hello', 'level' => 2],
+            'block' => ['kind' => 'heading', 'text' => 'Hello', 'level' => 2, 'publishedAt' => '2024-07-01T12:30:00+00:00'],
+            'schedule' => ['startsAt' => '2024-07-01T09:00:00+00:00', 'endsOn' => '2024-07-05'],
             'contact' => ['kind' => 'phone', 'number' => '+44 20 7946 0000'],
         ];
 
@@ -100,6 +102,7 @@ abstract class CompositeConformanceTestCase extends Orchestra
             'data' => ['type' => 'composites', 'attributes' => $attributes],
         ]);
         $created->assertStatus(201);
+        self::assertSame($attributes, $created->json('data.attributes'));
 
         $id = $created->json('data.id');
         self::assertIsString($id);
@@ -346,8 +349,8 @@ abstract class CompositeConformanceTestCase extends Orchestra
                 ['operation' => 'find_replace', 'params' => ['find' => 'grey', 'replace' => 'gray']],
             ],
             'checks' => [
-                ['label' => 'Spelling', 'code' => 'spell-1', 'rules' => [['pattern' => 'colou?r'], ['pattern' => 'gr[ae]y']]],
-                ['label' => 'Length', 'code' => null, 'rules' => null],
+                ['label' => 'Spelling', 'code' => 'spell-1', 'rules' => [['pattern' => 'colou?r'], ['pattern' => 'gr[ae]y']], 'checkedAt' => '2024-07-01T12:30:00+00:00'],
+                ['label' => 'Length', 'code' => null, 'rules' => null, 'checkedAt' => null],
             ],
         ];
 
@@ -378,7 +381,7 @@ abstract class CompositeConformanceTestCase extends Orchestra
         $fetched = $this->getJson('/api/pipelines/' . $id, ['Accept' => self::MEDIA_TYPE]);
         self::assertSame([['operation' => 'find_replace', 'params' => ['find' => 'x', 'replace' => 'y']]], $fetched->json('data.attributes.steps'));
         // The stored element at index 0 is not merged into the new one.
-        self::assertSame([['label' => 'Only', 'code' => null, 'rules' => null]], $fetched->json('data.attributes.checks'));
+        self::assertSame([['label' => 'Only', 'code' => null, 'rules' => null, 'checkedAt' => null]], $fetched->json('data.attributes.checks'));
     }
 
     #[Test]

@@ -10,10 +10,10 @@ use Workbench\App\Providers\CompositeEloquentServiceProvider;
 
 /**
  * {@see CompositeConformanceTestCase} against the reference Eloquent provider: each
- * composite attribute (Obj `address`, OneOf `block`, ArrayHash+Shape `contact`) is a
- * single `json` column with an `array` cast on {@see CompositeWidget} in an in-memory
- * SQLite database — so the same assertions witness that a composite value round-trips
- * real column storage, not just the in-memory array.
+ * composite attribute (Obj `address` and `schedule`, OneOf `block`, ArrayHash+Shape
+ * `contact`) is a single `json` column with an `array` cast on {@see CompositeWidget}
+ * in an in-memory SQLite database — so the same assertions witness that a composite
+ * value round-trips real column storage, not just the in-memory array.
  *
  * @internal
  */

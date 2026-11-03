@@ -8,14 +8,16 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * The `composites` Eloquent model backing the composite-attribute conformance suite:
- * each composite attribute (`address` = Obj, `block` = OneOf, `contact` =
- * ArrayHash+Shape) is a single `json` column with an `array` cast — the storage
- * decision for composite types: one value in, one value out, scalar children.
+ * each composite attribute (`address` and `schedule` = Obj, `block` = OneOf,
+ * `contact` = ArrayHash+Shape) is a single `json` column with an `array` cast — the
+ * storage decision for composite types: one value in, one value out. A date child is
+ * stored as its date object's JSON dump, which core reads back in the field's format.
  *
  * @property int                       $id
  * @property string                    $name
  * @property array<string, mixed>|null $address
  * @property array<string, mixed>|null $block
+ * @property array<string, mixed>|null $schedule
  * @property array<string, mixed>|null $contact
  * @property list<mixed>|null          $steps
  * @property list<mixed>|null          $checks
@@ -37,6 +39,7 @@ final class CompositeWidget extends Model
     protected $casts = [
         'address' => 'array',
         'block' => 'array',
+        'schedule' => 'array',
         'contact' => 'array',
         'settings' => 'array',
         'steps' => 'array',
