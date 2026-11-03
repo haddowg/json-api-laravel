@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.0](https://github.com/haddowg/json-api-laravel/compare/v1.24.0...v1.25.0) (2026-11-03)
+
+
+### Features
+
+* validate each element of a structured list ([#191](https://github.com/haddowg/json-api-laravel/issues/191)) ([d955bab](https://github.com/haddowg/json-api-laravel/commit/d955bab57353fc88de919bfcfd5f487fbabba313))
+
 ## [1.24.0](https://github.com/haddowg/json-api-laravel/compare/v1.23.0...v1.24.0) (2026-11-03)
 
 
