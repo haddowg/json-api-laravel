@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\DataProvider\Eloquent;
 
+use haddowg\JsonApi\Resource\Sort\KeysetSortInterface;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortHandlerInterface;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
@@ -31,6 +32,11 @@ final class EloquentSortHandler implements SortHandlerInterface
      * message when a custom sort reaches this handler with no arm to run it.
      */
     private const string ARM_HINT = 'To run a custom sort on the Eloquent provider, register an EloquentSortArmInterface on the EloquentDataProvider (constructor $sortArms).';
+
+    /**
+     * The remediation when a cursor page is ordered by a custom sort with no keyset arm.
+     */
+    private const string KEYSET_ARM_HINT = 'To order a cursor page by a custom sort on the Eloquent provider, its arm must implement EloquentKeysetSortArmInterface.';
 
     /**
      * @var list<EloquentSortArmInterface<Model>>
@@ -107,6 +113,28 @@ final class EloquentSortHandler implements SortHandlerInterface
         }
 
         throw new UnsupportedSort($sort, self::ARM_HINT);
+    }
+
+    /**
+     * The expression a custom sort orders a cursor page of `$query` by, from the first
+     * registered arm that supports it; {@see UnsupportedSort} when that arm is not an
+     * {@see EloquentKeysetSortArmInterface}, or no arm supports the sort.
+     *
+     * @param Builder<Model> $query
+     */
+    public function keysetExpression(KeysetSortInterface $sort, Builder $query): EloquentKeysetExpression
+    {
+        foreach ($this->arms as $arm) {
+            if ($arm->supports($sort)) {
+                if (!$arm instanceof EloquentKeysetSortArmInterface) {
+                    break;
+                }
+
+                return $arm->keysetExpression($sort, $query);
+            }
+        }
+
+        throw new UnsupportedSort($sort, self::KEYSET_ARM_HINT);
     }
 
     /**

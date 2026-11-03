@@ -18,6 +18,7 @@ use haddowg\JsonApi\Request\RelatedQuery;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
+use haddowg\JsonApi\Resource\Sort\SortMatcher;
 use haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile;
 use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
 use haddowg\JsonApi\Schema\Relationship\RelationshipPagination;
@@ -241,6 +242,7 @@ final class RelationshipWindowBatcher
             $relation,
             $window,
             wantsCount: $wantsCount,
+            request: $request,
         );
 
         // Validate the relatedQuery filter VALUE against the per-relation merged vocabulary
@@ -429,6 +431,7 @@ final class RelationshipWindowBatcher
                 $relatedResource,
                 $relation,
                 null,
+                request: $request,
             );
 
             $this->assertRelatedQueryKeysRecognised($relatedQuery, $criteria);
@@ -445,7 +448,7 @@ final class RelationshipWindowBatcher
      * filter/sort key, mirroring {@see CriteriaApplier}'s key recognition exactly (so the gated
      * links-only path and the fetched windowed path agree): each requested filter key must name
      * a declared {@see FilterInterface}; each requested sort field (with any leading `-`
-     * stripped) must name a declared {@see SortInterface}, and a sort requested against a
+     * stripped) must match a declared {@see SortInterface} through {@see SortMatcher}, and a sort requested against a
      * relation that declares none is {@see SortingUnsupported}.
      *
      * @throws FilterParamUnrecognized on an unrecognised filter key
@@ -472,7 +475,7 @@ final class RelationshipWindowBatcher
 
         foreach ($sortFields as $field) {
             $key = \str_starts_with($field, '-') ? \substr($field, 1) : $field;
-            if (!$this->declaresSort($criteria->sorts, $key)) {
+            if (SortMatcher::match($criteria->sorts, $key, $criteria->request) === null) {
                 throw new SortParamUnrecognized($key);
             }
         }
@@ -487,22 +490,6 @@ final class RelationshipWindowBatcher
     {
         foreach ($filters as $filter) {
             if ($filter->key() === $key) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Whether the criteria's declared sorts carry one keyed `$key`.
-     *
-     * @param list<SortInterface> $sorts
-     */
-    private function declaresSort(array $sorts, string $key): bool
-    {
-        foreach ($sorts as $sort) {
-            if ($sort->key() === $key) {
                 return true;
             }
         }
@@ -577,6 +564,7 @@ final class RelationshipWindowBatcher
                 $relatedResource,
                 $relation,
                 null,
+                request: $request,
             );
 
             // Validate the relatedQuery filter VALUE against the per-relation merged vocabulary

@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\DataProvider\Eloquent;
 use haddowg\JsonApi\Collection\Keyset\KeysetColumn;
 use haddowg\JsonApi\Pagination\CursorBoundary;
 use haddowg\JsonApi\Resource\DateTimeParser;
+use haddowg\JsonApi\Resource\Sort\UnsupportedSort;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
@@ -35,25 +36,47 @@ use Illuminate\Database\Eloquent\Model;
  * Eloquent's connection format it to the stored form — the Eloquent analogue of
  * Doctrine's DBAL-typed bind.
  *
- * @template TModel of Model
+ * A level ordered by a custom sort has no column. Its expression comes from the sort's
+ * {@see EloquentKeysetSortArmInterface} and takes the column's place in both the order
+ * and the `WHERE`, its boundary bound as {@see EloquentKeysetExpression::boundary()} says.
  */
 final class EloquentKeyset
 {
     /**
-     * @param TModel $model the query's model (its table qualifies columns; its `$casts` flag date columns)
+     * The custom-sort expressions resolved for the query, keyed by sort key, so an arm
+     * adds its joins once however many terms reuse its expression.
+     *
+     * @var array<string, array{string, list<mixed>, EloquentKeysetExpression}>
      */
-    public function __construct(private readonly Model $model) {}
+    private array $expressions = [];
+
+    /**
+     * @param Model                $model the query's model (its table qualifies columns; its `$casts` flag date columns)
+     * @param ?EloquentSortHandler $sorts the handler whose arms supply a custom sort's expression
+     */
+    public function __construct(
+        private readonly Model $model,
+        private readonly ?EloquentSortHandler $sorts = null,
+    ) {}
 
     /**
      * Emits the forced NULL=largest `ORDER BY` for `$columns` onto `$builder`.
      *
-     * @param Builder<TModel>    $builder
+     * @param Builder<Model>     $builder
      * @param list<KeysetColumn> $columns
      */
     public function orderBy(Builder $builder, array $columns): void
     {
         foreach ($columns as $column) {
             $direction = $column->descending ? 'DESC' : 'ASC';
+            if ($column->sort !== null) {
+                [$sql, $bindings] = $this->expression($builder, $column);
+                $builder->orderByRaw(\sprintf('CASE WHEN %s IS NULL THEN 1 ELSE 0 END %s', $sql, $direction), $bindings);
+                $builder->orderByRaw(\sprintf('%s %s', $sql, $direction), $bindings);
+
+                continue;
+            }
+
             $path = $this->qualify($column->column);
             // Portable NULL=largest: the CASE term is built from a validated identifier
             // qualified off the model table (no client input).
@@ -67,7 +90,7 @@ final class EloquentKeyset
      * `$columns`" onto `$builder`. Every level is the asc + null-boundary degenerate
      * (nothing is strictly after a maximal null) → matches nothing.
      *
-     * @param Builder<TModel>    $builder
+     * @param Builder<Model>     $builder
      * @param list<KeysetColumn> $columns
      */
     public function applyAfter(Builder $builder, CursorBoundary $boundary, array $columns): void
@@ -87,6 +110,12 @@ final class EloquentKeyset
             $builder->whereRaw('1 = 0');
 
             return;
+        }
+
+        foreach ($columns as $column) {
+            if ($column->sort !== null) {
+                $this->expression($builder, $column);
+            }
         }
 
         $builder->where(function (Builder $or) use ($levels, $columns, $boundary): void {
@@ -109,10 +138,23 @@ final class EloquentKeyset
      * value is `IS NULL` (never `= :v`, which is UNKNOWN and would drop the row); a
      * non-null value binds a (date-coerced) parameter.
      *
-     * @param Builder<TModel> $query
+     * @param Builder<Model> $query
      */
     private function equals(Builder $query, KeysetColumn $column, mixed $value): void
     {
+        if ($column->sort !== null) {
+            [$sql, $bindings, $expression] = $this->expressions[$column->column];
+            if ($value === null) {
+                $query->whereRaw($sql . ' IS NULL', $bindings);
+
+                return;
+            }
+
+            $query->whereRaw($sql . ' = ?', [...$bindings, $this->boundary($expression, $value)]);
+
+            return;
+        }
+
         $path = $this->qualify($column->column);
         if ($value === null) {
             $query->whereNull($path);
@@ -131,10 +173,16 @@ final class EloquentKeyset
      *   desc + bound non-null:  col < :v                   (nulls are first in desc, already before)
      *   desc + bound null:      col IS NOT NULL            (after a leading null come all non-nulls)
      *
-     * @param Builder<TModel> $query
+     * @param Builder<Model> $query
      */
     private function after(Builder $query, KeysetColumn $column, mixed $value): void
     {
+        if ($column->sort !== null) {
+            $this->afterExpression($query, $column, $value);
+
+            return;
+        }
+
         $path = $this->qualify($column->column);
 
         if (!$column->descending) {
@@ -154,6 +202,82 @@ final class EloquentKeyset
         }
 
         $query->where($path, '<', $this->bindValue($column->column, $value));
+    }
+
+    /**
+     * {@see after()} for a level ordered by a custom sort's expression.
+     *
+     * @param Builder<Model> $query
+     */
+    private function afterExpression(Builder $query, KeysetColumn $column, mixed $value): void
+    {
+        [$sql, $bindings, $expression] = $this->expressions[$column->column];
+
+        if (!$column->descending) {
+            $bound = $this->boundary($expression, $value);
+            $query->where(function (Builder $after) use ($sql, $bindings, $bound): void {
+                $after->whereRaw($sql . ' > ?', [...$bindings, $bound])->orWhereRaw($sql . ' IS NULL', $bindings);
+            });
+
+            return;
+        }
+
+        if ($value === null) {
+            $query->whereRaw($sql . ' IS NOT NULL', $bindings);
+
+            return;
+        }
+
+        $query->whereRaw($sql . ' < ?', [...$bindings, $this->boundary($expression, $value)]);
+    }
+
+    /**
+     * The custom sort's expression for `$column`, parenthesised, with its bindings, asked
+     * of the sort's arm once per query. A join the arm adds onto a query that selects
+     * nothing yet would let the joined columns overwrite the model's own, so the query
+     * then selects the model's columns.
+     *
+     * @param Builder<Model> $builder
+     *
+     * @return array{string, list<mixed>, EloquentKeysetExpression}
+     */
+    private function expression(Builder $builder, KeysetColumn $column): array
+    {
+        if (isset($this->expressions[$column->column])) {
+            return $this->expressions[$column->column];
+        }
+
+        $sort = $column->sort;
+        \assert($sort !== null);
+        if ($this->sorts === null) {
+            throw new UnsupportedSort($sort);
+        }
+
+        $query = $builder->getQuery();
+        $joins = $query->joins ?? [];
+        $expression = $this->sorts->keysetExpression($sort, $builder);
+
+        if ($query->columns === null && ($query->joins ?? []) !== $joins) {
+            $builder->select($builder->getModel()->qualifyColumn('*'));
+        }
+
+        return $this->expressions[$column->column] = [
+            '(' . $expression->sql($query->getGrammar()) . ')',
+            $expression->bindings,
+            $expression,
+        ];
+    }
+
+    /**
+     * A non-null boundary value in its token form, bound as the expression says.
+     */
+    private function boundary(EloquentKeysetExpression $expression, mixed $value): mixed
+    {
+        if (!\is_scalar($value)) {
+            throw new \LogicException(\sprintf('A keyset boundary value must be a scalar; got %s.', \get_debug_type($value)));
+        }
+
+        return $expression->boundary($value);
     }
 
     /**

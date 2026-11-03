@@ -40,7 +40,8 @@ _Avoid_: fake provider, mock store
 
 **Filter arm**:
 A registered handler that teaches the Eloquent provider to apply one filter class; a **sort arm**
-does the same for a sort.
+does the same for a sort. A **keyset sort arm** also supplies the expression its sort orders a
+cursor page by.
 _Avoid_: filter driver, filter strategy
 
 **Include batcher**:

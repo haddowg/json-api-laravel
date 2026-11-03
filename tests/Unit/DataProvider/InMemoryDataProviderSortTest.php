@@ -8,8 +8,10 @@ use haddowg\JsonApi\Collection\CollectionResult;
 use haddowg\JsonApi\Exception\SortingUnsupported;
 use haddowg\JsonApi\Exception\SortParamUnrecognized;
 use haddowg\JsonApi\Operation\QueryParameters;
+use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
+use haddowg\JsonApi\Resource\Sort\SortFamily;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\CriteriaApplier;
@@ -107,6 +109,28 @@ final class InMemoryDataProviderSortTest extends TestCase
             sorts: [],
             defaultSort: [new SortDirective(SortByField::make('title'), descending: false)],
         ));
+    }
+
+    #[Test]
+    public function aFamilyKeyResolvesThroughTheCriteriaRequest(): void
+    {
+        $request = $this->createStub(JsonApiRequestInterface::class);
+        $sorts = [SortFamily::make('by', static fn(string $suffix): ?SortInterface => $suffix === 'title' ? SortByField::make('by.title', 'title') : null)];
+
+        $requested = $this->songs()->fetchCollection('songs', new CollectionCriteria($this->query(sort: ['-by.title']), sorts: $sorts, request: $request));
+        self::assertSame([3, 1, 2], $this->ids($requested));
+
+        // A default sort naming a family key is matched through the family too.
+        $defaulted = $this->songs()->fetchCollection('songs', new CollectionCriteria(
+            $this->query(sort: []),
+            sorts: $sorts,
+            defaultSort: [new SortDirective(SortByField::make('by.title', 'title'), descending: false)],
+            request: $request,
+        ));
+        self::assertSame([2, 1, 3], $this->ids($defaulted));
+
+        $this->expectException(SortParamUnrecognized::class);
+        $this->songs()->fetchCollection('songs', new CollectionCriteria($this->query(sort: ['by.status']), sorts: $sorts, request: $request));
     }
 
     /**

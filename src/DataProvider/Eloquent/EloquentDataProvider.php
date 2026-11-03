@@ -746,6 +746,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             $criteria->sorts,
             $criteria->defaultSort,
             $related->getKeyName(),
+            request: $criteria->request,
         );
 
         // Filters only (the keyset owns the order), then the forced NULL=largest keyset
@@ -756,7 +757,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // the SELECT is left untouched — overriding it would drop the FK/pivot the partition
         // needs.
         $this->applier->apply($this->filtersOnly($criteria), $eager->getQuery(), $this->filterHandler, $this->sortHandler);
-        (new EloquentKeyset($related))->orderBy($eager->getQuery(), $columns);
+        (new EloquentKeyset($related, $this->sortHandler))->orderBy($eager->getQuery(), $columns);
 
         // A cursor page is count-free by definition (a CursorPaginator never counts), so the
         // window always probes limit + 1 per partition for the hasMore signal.
@@ -1396,6 +1397,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             $criteria->sorts,
             $criteria->defaultSort,
             $pkColumn,
+            request: $criteria->request,
         );
 
         // Apply the FILTERS only (the keyset owns the order). A sort-stripped,
@@ -1415,7 +1417,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             $this->keysetResolver->assertFresh($boundary, $columns, $parameter);
         }
 
-        $keyset = new EloquentKeyset($model);
+        $keyset = new EloquentKeyset($model, $sortHandler ?? $this->sortHandler);
         if ($boundary !== null) {
             $keyset->applyAfter($builder, $boundary, $orderColumns);
         }
@@ -1462,6 +1464,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             window: null,
             defaultSort: [],
             aliasOf: $criteria->aliasOf,
+            request: $criteria->request,
         );
     }
 
@@ -1476,7 +1479,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     private function flip(array $columns): array
     {
         return \array_map(
-            static fn(KeysetColumn $column): KeysetColumn => new KeysetColumn($column->column, !$column->descending),
+            static fn(KeysetColumn $column): KeysetColumn => $column->flipped(),
             $columns,
         );
     }

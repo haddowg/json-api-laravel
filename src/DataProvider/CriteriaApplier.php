@@ -12,7 +12,7 @@ use haddowg\JsonApi\Resource\Filter\FilterHandlerInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApi\Resource\Sort\SortHandlerInterface;
-use haddowg\JsonApi\Resource\Sort\SortInterface;
+use haddowg\JsonApi\Resource\Sort\SortMatcher;
 
 /**
  * The storage-agnostic half of a collection fetch: matches the requested
@@ -133,23 +133,10 @@ final class CriteriaApplier
             return $handler->apply($directives, $query);
         }
 
-        if ($criteria->sorts === []) {
-            throw new SortingUnsupported();
-        }
-
-        // Resolve the requested directives in request order; the handler owns the
-        // combination (sorts do not compose commutatively), so the
-        // whole list is applied in ONE composite call, most significant first.
-        $directives = [];
-        foreach ($requested as $field) {
-            $descending = \str_starts_with($field, '-');
-            $key = $descending ? \substr($field, 1) : $field;
-
-            $sort = $this->sortFor($criteria->sorts, $key)
-                ?? throw new SortParamUnrecognized($key);
-
-            $directives[] = new SortDirective($sort, $descending);
-        }
+        // Matched in request order (exact keys, then sort families); the handler owns
+        // the combination (sorts do not compose commutatively), so the whole list is
+        // applied in ONE composite call, most significant first.
+        $directives = SortMatcher::directives($requested, $criteria->sorts, $criteria->request);
 
         return $handler->apply($directives, $query);
     }
@@ -173,7 +160,7 @@ final class CriteriaApplier
 
         foreach ($criteria->defaultSort as $directive) {
             $key = $directive->sort->key();
-            if ($this->sortFor($criteria->sorts, $key) === null) {
+            if (SortMatcher::match($criteria->sorts, $key, $criteria->request) === null) {
                 throw new SortParamUnrecognized($key);
             }
         }
@@ -189,20 +176,6 @@ final class CriteriaApplier
         foreach ($filters as $filter) {
             if ($filter->key() === $key) {
                 return $filter;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @param list<SortInterface> $sorts
-     */
-    private function sortFor(array $sorts, string $key): ?SortInterface
-    {
-        foreach ($sorts as $sort) {
-            if ($sort->key() === $key) {
-                return $sort;
             }
         }
 
