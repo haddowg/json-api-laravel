@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.1](https://github.com/haddowg/json-api-laravel/compare/v1.25.0...v1.25.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* render json-stored dates inside composite attributes ([#193](https://github.com/haddowg/json-api-laravel/issues/193)) ([9529206](https://github.com/haddowg/json-api-laravel/commit/9529206e1d408ec93cbcfd13385b7ef6b21c7553))
+
 ## [1.25.0](https://github.com/haddowg/json-api-laravel/compare/v1.24.0...v1.25.0) (2026-11-03)
 
 
