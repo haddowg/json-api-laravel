@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.2](https://github.com/haddowg/json-api-laravel/compare/v1.25.1...v1.25.2) (2026-11-05)
+
+
+### Bug Fixes
+
+* keep http exception headers on json:api error responses ([#195](https://github.com/haddowg/json-api-laravel/issues/195)) ([4767bf0](https://github.com/haddowg/json-api-laravel/commit/4767bf0bd436bf28bdc012b7f5e06fa53a803fc3))
+
 ## [1.25.1](https://github.com/haddowg/json-api-laravel/compare/v1.25.0...v1.25.1) (2026-11-03)
 
 
