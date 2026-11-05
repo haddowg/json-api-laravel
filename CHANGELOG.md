@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.3](https://github.com/haddowg/json-api-laravel/compare/v1.25.2...v1.25.3) (2026-11-05)
+
+
+### Bug Fixes
+
+* title a 429 error Too Many Requests ([#197](https://github.com/haddowg/json-api-laravel/issues/197)) ([8f1186f](https://github.com/haddowg/json-api-laravel/commit/8f1186f460d9621315088712e09ad5d9cd320fe4))
+
 ## [1.25.2](https://github.com/haddowg/json-api-laravel/compare/v1.25.1...v1.25.2) (2026-11-05)
 
 
