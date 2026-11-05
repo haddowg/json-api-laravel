@@ -102,6 +102,16 @@ abstract class MethodNotAllowedConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:errors')]
+    public function theResponseCarriesExactlyOneAllowHeader(): void
+    {
+        $response = $this->send('PATCH', '/api/v5/artists/1', ['data' => ['type' => 'artists', 'id' => '1']]);
+
+        $response->assertStatus(405);
+        self::assertSame(['GET, HEAD'], $response->headers->all('allow'));
+    }
+
+    #[Test]
+    #[Group('spec:errors')]
     public function aWritableTypesPathListsEveryMethodItAccepts(): void
     {
         $this->assertMethodNotAllowed($this->send('PATCH', '/api/v5/albums'), 'GET, HEAD, POST');
