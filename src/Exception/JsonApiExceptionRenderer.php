@@ -62,6 +62,12 @@ use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
  * core's {@see MethodNotAllowed} under that route's server, with the `Allow` header. A
  * path none of whose routes is a JSON:API endpoint is left to Laravel.
  *
+ * Whichever arm renders it, an {@see HttpExceptionInterface} that is not a core
+ * exception keeps its own headers on the response, such as the `WWW-Authenticate`
+ * challenge of `auth.basic` or the `Retry-After` of `throttle`. Only `Content-Type`
+ * and `Content-Length` come from the JSON:API rendering. The status and body still
+ * follow the mapping above.
+ *
  * On the Atomic Operations route an error document declares the atomic extension on its
  * `Content-Type` `ext` parameter only when the request named it, on the `Content-Type`
  * `ext` or on any `Accept` range's `ext`. The headers are read directly, since the error
@@ -137,9 +143,33 @@ final class JsonApiExceptionRenderer
             $errorResponse = $errorResponse->withExtensions([AtomicExtension::URI]);
         }
 
-        $psrResponse = $errorResponse->toPsrResponse($server, $psrRequest);
+        $response = $this->httpFoundationFactory->createResponse($errorResponse->toPsrResponse($server, $psrRequest));
 
-        return $this->httpFoundationFactory->createResponse($psrResponse);
+        if ($throwable instanceof HttpExceptionInterface && !$throwable instanceof JsonApiExceptionInterface) {
+            foreach ($throwable->getHeaders() as $name => $value) {
+                if (\in_array(\strtolower((string) $name), ['content-type', 'content-length'], true)) {
+                    continue;
+                }
+                $response->headers->set((string) $name, self::headerValue($value));
+            }
+        }
+
+        return $response;
+    }
+
+    /**
+     * An exception header as `HeaderBag` takes it. Laravel's `throttle` sets its values
+     * as integers.
+     *
+     * @return list<string>|string|null
+     */
+    private static function headerValue(mixed $value): array|string|null
+    {
+        if (\is_array($value)) {
+            return \array_values(\array_map(static fn(mixed $item): string => \is_scalar($item) ? (string) $item : '', $value));
+        }
+
+        return \is_scalar($value) ? (string) $value : null;
     }
 
     private static function isAtomicRoute(Request $request): bool

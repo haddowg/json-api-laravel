@@ -37,6 +37,15 @@ An exception thrown on a JSON:API route is mapped in order, first match wins:
 } ] }
 ```
 
+### Headers from HTTP exceptions
+
+A Laravel or Symfony `HttpExceptionInterface` keeps its own headers on the JSON:API
+response, whichever step above renders it, your mappers included. So `auth.basic` still
+sends its `WWW-Authenticate: Basic` challenge with the `401`, and `throttle` still sends
+`Retry-After` and its `X-RateLimit-*` headers with the `429`. Only `Content-Type` and
+`Content-Length` come from the JSON:API rendering. The headers don't change the status or
+the body.
+
 A denied policy check renders as:
 
 ```json
