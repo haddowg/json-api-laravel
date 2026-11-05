@@ -62,6 +62,7 @@ final class MiddlewareErrorHeadersTest extends TestCase
         $response->assertHeader('X-RateLimit-Remaining', '0');
         $response->assertJsonCount(1, 'errors');
         $response->assertJsonPath('errors.0.status', '429');
+        $response->assertJsonPath('errors.0.title', 'Too Many Requests');
     }
 
     /**
