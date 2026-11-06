@@ -12,6 +12,7 @@ use haddowg\JsonApiLaravel\Tests\Fixtures\OpenApiServe\FeatureGateSchemaDecorato
 use haddowg\JsonApiLaravel\Tests\Fixtures\OpenApiServe\HostServersDecorator;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Serve decorators that all supply a cache key: the document varies per host,
@@ -205,5 +206,40 @@ final class OpenApiServeKeyedTest extends OpenApiServeTestCase
 
         $this->fetch('/schemas.json', 'tenant.test', ['If-None-Match' => 'W/' . $this->etagOf($limited)])->assertStatus(304);
         $this->assertSame(2, FeatureGateSchemaDecorator::$decorated);
+    }
+
+    #[Test]
+    #[Group('openapi')]
+    public function the_yaml_document_is_decorated_and_keyed_the_same_way(): void
+    {
+        $this->warm();
+        $artifactHash = $this->store()->readHash('default');
+        $this->assertIsString($artifactHash);
+
+        $json = $this->fetch('/docs.json', 'one.test');
+        $yaml = $this->fetch('/docs.yaml', 'one.test');
+        $this->assertYamlOf($yaml, $json);
+        $this->assertSame(2, FeatureGateDecorator::$decorated);
+
+        // The decorators' changes reach the YAML.
+        $limited = $this->arr(Yaml::parse((string) $yaml->getContent()));
+        $this->assertSame([['url' => 'https://one.test/api']], $limited['servers'] ?? null);
+        $this->assertArrayNotHasKey('/genres', $this->arr($limited['paths'] ?? null));
+        $fullYaml = $this->fetch('/docs.yaml', 'full.tenant.test');
+        $this->assertYamlOf($fullYaml, $this->fetch('/docs.json', 'full.tenant.test'));
+        $this->assertArrayHasKey('/genres', $this->arr($this->arr(Yaml::parse((string) $fullYaml->getContent()))['paths'] ?? null));
+
+        $keys = \json_encode([
+            [HostServersDecorator::class, 'one.test'],
+            [FeatureGateDecorator::class, ['v' => 1, 'features' => ['catalog']]],
+        ], \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE);
+        $this->assertSame(self::quoted(EntityTag::hash(EntityTag::hash($artifactHash . "\n" . $keys) . "\nyaml")), $this->etagOf($yaml));
+        $this->assertNotSame($this->etagOf($json), $this->etagOf($yaml));
+
+        // A matching tag is answered before any decorator runs.
+        $decorated = FeatureGateDecorator::$decorated;
+        $this->fetch('/docs.yaml', 'one.test', ['If-None-Match' => $this->etagOf($yaml)])->assertStatus(304);
+        $this->fetch('/docs.yaml', 'one.test', ['If-None-Match' => $this->etagOf($json)])->assertOk();
+        $this->assertSame($decorated + 1, FeatureGateDecorator::$decorated);
     }
 }

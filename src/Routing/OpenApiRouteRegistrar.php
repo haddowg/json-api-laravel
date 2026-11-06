@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Routing;
 use haddowg\JsonApiLaravel\Http\JsonSchemaController;
 use haddowg\JsonApiLaravel\Http\OpenApiController;
 use haddowg\JsonApiLaravel\Http\OpenApiUiController;
+use haddowg\JsonApiLaravel\Http\OpenApiYamlController;
 use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiConfig;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use Illuminate\Routing\Router;
@@ -21,13 +22,15 @@ use Illuminate\Routing\Router;
  *  - `GET {json.path}` (default `/docs.json`) → the default server's document
  *    ({@see OpenApiController}, route name {@see OpenApiUiController::DOCUMENT_ROUTE}).
  *  - `GET /{server}/docs.json` per named (non-default) server.
+ *  - `GET {yaml.path}` (default `/docs.yaml`) + `GET /{server}/docs.yaml`, the same
+ *    documents as YAML ({@see OpenApiYamlController}), when `yaml.enabled` resolves true.
  *  - `GET {json_schema.path}` (default `/schemas.json`) + `GET /{server}/schemas.json`,
  *    gated additionally by `json_schema.enabled` ({@see JsonSchemaController}).
  *  - `GET {ui.path}` (default `/docs`) → the viewer ({@see OpenApiUiController}), gated
  *    additionally by `ui.enabled`.
  *
- * In **combined** multi-server mode only the single `{json.path}` / `{json_schema.path}`
- * routes are emitted (no per-server route); the controllers serve the combined document.
+ * In **combined** multi-server mode only the single `{json.path}` / `{yaml.path}` /
+ * `{json_schema.path}` routes are emitted (no per-server route); the controllers serve the combined document.
  *
  * Because registration is a pure function of config + the declared server names, it is
  * `route:cache`-safe and is guarded by the same `routesAreCached()` check as the CRUD
@@ -55,6 +58,10 @@ final class OpenApiRouteRegistrar
 
         $this->registerDocumentRoutes($router);
 
+        if ($this->config->yamlEnabled) {
+            $this->registerYamlRoutes($router);
+        }
+
         if ($this->config->jsonSchemaEnabled) {
             $this->registerSchemaRoutes($router);
         }
@@ -78,6 +85,22 @@ final class OpenApiRouteRegistrar
             $router->get('/' . $server . '/docs.json', OpenApiController::class)
                 ->defaults('server', $server)
                 ->name(\sprintf('jsonapi.%s.openapi.json', $server));
+        }
+    }
+
+    private function registerYamlRoutes(Router $router): void
+    {
+        $router->get($this->config->yamlPath, OpenApiYamlController::class)
+            ->name(OpenApiUiController::YAML_DOCUMENT_ROUTE);
+
+        if ($this->config->combined) {
+            return;
+        }
+
+        foreach ($this->namedServers() as $server) {
+            $router->get('/' . $server . '/docs.yaml', OpenApiYamlController::class)
+                ->defaults('server', $server)
+                ->name(\sprintf('jsonapi.%s.openapi.yaml', $server));
         }
     }
 

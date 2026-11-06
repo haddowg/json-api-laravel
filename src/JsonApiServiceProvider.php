@@ -59,6 +59,7 @@ use haddowg\JsonApiLaravel\Exception\JsonApiExceptionRenderer;
 use haddowg\JsonApiLaravel\Http\JsonApiController;
 use haddowg\JsonApiLaravel\Http\JsonSchemaController;
 use haddowg\JsonApiLaravel\Http\OpenApiController;
+use haddowg\JsonApiLaravel\Http\OpenApiYamlController;
 use haddowg\JsonApiLaravel\Http\ResponseHeaderDefaultsConfig;
 use haddowg\JsonApiLaravel\Http\ResponseHeadersRegistry;
 use haddowg\JsonApiLaravel\OpenApi\ArtifactStore;
@@ -78,6 +79,7 @@ use haddowg\JsonApiLaravel\OpenApi\Metadata\IncludePathResolver;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\PrefixServers;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\TagNameResolver;
+use haddowg\JsonApiLaravel\OpenApi\OpenApiDocumentUrls;
 use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
 use haddowg\JsonApiLaravel\Routing\JsonApiRoute;
@@ -114,6 +116,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use Psr\Log\LoggerInterface;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
 use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * The package service provider (auto-discovered via `extra.laravel.providers`). It
@@ -350,6 +353,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->assertOutputTimezones();
         $this->assertLinkObjects();
         $this->assertRedocVersion();
+        $this->assertYamlAvailable();
 
         $this->registerRouteMacro();
         JsonApiRoute::registerMacro();
@@ -399,6 +403,15 @@ final class JsonApiServiceProvider extends ServiceProvider
     private function assertRedocVersion(): void
     {
         OpenApiUiConfig::redocVersion(config('jsonapi.openapi.ui.redoc_version'));
+    }
+
+    /**
+     * Fails the boot when `jsonapi.openapi.yaml.enabled` is true but symfony/yaml is not
+     * installed, rather than on the first request for the YAML document.
+     */
+    private function assertYamlAvailable(): void
+    {
+        OpenApiConfigResolver::yamlEnabled(config('jsonapi.openapi.yaml.enabled'), \class_exists(Yaml::class));
     }
 
     /**
@@ -1157,6 +1170,27 @@ final class JsonApiServiceProvider extends ServiceProvider
             return new DocumentRouteLocator($router, $url, $app->make(ArtifactStore::class), $this->serverNames(), $config->combined, $debug);
         });
 
+        // The served document's JSON and YAML URLs, for the viewer's download links.
+        $this->app->singleton(OpenApiDocumentUrls::class, function (Container $app): OpenApiDocumentUrls {
+            /** @var OpenApiConfig $config */
+            $config = $app->make(OpenApiConfig::class);
+            /** @var Router $router */
+            $router = $app->make('router');
+            /** @var UrlGenerator $url */
+            $url = $app->make(UrlGenerator::class);
+            /** @var bool $debug */
+            $debug = config('app.debug', false);
+
+            return new OpenApiDocumentUrls(
+                $url,
+                $config->combined,
+                $config->yamlEnabled,
+                $config->jsonPath,
+                $app->make(DocumentRouteLocator::class),
+                new DocumentRouteLocator($router, $url, $app->make(ArtifactStore::class), $this->serverNames(), $config->combined, $debug, OpenApiYamlController::class),
+            );
+        });
+
         $this->app->singleton(DocumentRouteWarmer::class, static function (Container $app): DocumentRouteWarmer {
             /** @var OpenApiConfig $config */
             $config = $app->make(OpenApiConfig::class);
@@ -1228,6 +1262,21 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(ArtifactStore::class),
                 $decorators,
                 $config->cacheControl,
+            );
+        });
+
+        $this->app->bind(OpenApiYamlController::class, static function (Container $app): OpenApiYamlController {
+            /** @var OpenApiConfig $config */
+            $config = $app->make(OpenApiConfig::class);
+            /** @var iterable<\haddowg\JsonApiLaravel\OpenApi\OpenApiServeDecoratorInterface> $decorators */
+            $decorators = $app->tagged(self::OPENAPI_SERVE_DECORATOR_TAG);
+
+            return new OpenApiYamlController(
+                $app->make(DocumentFactory::class),
+                $app->make(ArtifactStore::class),
+                $decorators,
+                $config->cacheControl,
+                $config->yamlEnabled,
             );
         });
 

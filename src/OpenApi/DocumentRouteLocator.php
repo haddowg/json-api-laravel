@@ -42,6 +42,9 @@ final class DocumentRouteLocator
      * @param list<string> $servers  the declared server names
      * @param bool         $combined `jsonapi.openapi.multi_server === combined`
      * @param bool         $debug    `app.debug`
+     * @param class-string $controller the controller whose routes serve the document: {@see OpenApiController}
+     *                                  for JSON, whose scan `optimize` stores, or another format's, which is
+     *                                  scanned once per process
      */
     public function __construct(
         private readonly Router $router,
@@ -50,6 +53,7 @@ final class DocumentRouteLocator
         private readonly array $servers,
         private readonly bool $combined = false,
         private readonly bool $debug = false,
+        private readonly string $controller = OpenApiController::class,
     ) {}
 
     /**
@@ -106,7 +110,9 @@ final class DocumentRouteLocator
         }
 
         // A request never writes the scan: only the optimize step does.
-        return $this->routes = ($this->debug ? null : $this->store->readDocumentRoutes()) ?? $this->scan();
+        $stored = !$this->debug && $this->controller === OpenApiController::class ? $this->store->readDocumentRoutes() : null;
+
+        return $this->routes = $stored ?? $this->scan();
     }
 
     /**
@@ -120,7 +126,7 @@ final class DocumentRouteLocator
         $collection = [];
         foreach ($this->router->getRoutes()->getRoutes() as $route) {
             $name = $route->getName();
-            if ($name !== null && self::servesDocument($route)) {
+            if ($name !== null && $this->servesDocument($route)) {
                 $collection[$name] = $route;
             }
         }
@@ -187,7 +193,7 @@ final class DocumentRouteLocator
         }
     }
 
-    private static function servesDocument(Route $route): bool
+    private function servesDocument(Route $route): bool
     {
         if (!\in_array('GET', $route->methods(), true)) {
             return false;
@@ -211,7 +217,7 @@ final class DocumentRouteLocator
             [$class, $method] = [$uses, '__invoke'];
         }
 
-        return \strcasecmp(\ltrim($class, '\\'), OpenApiController::class) === 0 && \strcasecmp($method, '__invoke') === 0;
+        return \strcasecmp(\ltrim($class, '\\'), $this->controller) === 0 && \strcasecmp($method, '__invoke') === 0;
     }
 
     /**

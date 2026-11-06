@@ -10,8 +10,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 /**
- * The ETag, `If-None-Match` and `Cache-Control` handling shared by the `docs.json` and
- * `schemas.json` controllers. The tags themselves and the match come from
+ * The ETag, `If-None-Match` and `Cache-Control` handling shared by the `docs.json`, `docs.yaml`
+ * and `schemas.json` controllers. The tags themselves and the match come from
  * core's {@see EntityTag}; this maps them onto Laravel's request and response.
  *
  * @internal
@@ -56,12 +56,12 @@ final class ConditionalResponder
     }
 
     /**
-     * A JSON response carrying the ETag and the configured `Cache-Control`, still without
-     * a body.
+     * A response carrying the ETag, the content type and the configured `Cache-Control`,
+     * still without a body.
      */
-    public function prepare(string $hash): Response
+    public function prepare(string $hash, string $contentType = 'application/json'): Response
     {
-        $response = new Response('', Response::HTTP_OK, ['Content-Type' => 'application/json']);
+        $response = new Response('', Response::HTTP_OK, ['Content-Type' => $contentType]);
         $response->setEtag($hash);
         if ($this->cacheControl !== null) {
             $response->headers->set('Cache-Control', $this->cacheControl);

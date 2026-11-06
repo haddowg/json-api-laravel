@@ -64,4 +64,19 @@ final class OpenApiServeUnkeyedTest extends OpenApiServeTestCase
         $this->fetch('/schemas.json', 'one.test', ['If-None-Match' => $this->etagOf($response)])->assertStatus(304);
         $this->assertSame(2, UnkeyedSchemaDecorator::$decorated);
     }
+
+    #[Test]
+    #[Group('openapi')]
+    public function the_yaml_tag_folds_the_format_into_the_body_hash(): void
+    {
+        $json = $this->fetch('/docs.json', 'one.test');
+        $yaml = $this->fetch('/docs.yaml', 'one.test');
+
+        $this->assertYamlOf($yaml, $json);
+        $this->assertStringContainsString('Served to one.test', (string) $yaml->getContent());
+        $this->assertSame(self::quoted(EntityTag::hash(EntityTag::hash((string) $json->getContent()) . "\nyaml")), $this->etagOf($yaml));
+
+        $this->fetch('/docs.yaml', 'one.test', ['If-None-Match' => $this->etagOf($yaml)])->assertStatus(304);
+        $this->fetch('/docs.yaml', 'one.test', ['If-None-Match' => $this->etagOf($json)])->assertOk();
+    }
 }

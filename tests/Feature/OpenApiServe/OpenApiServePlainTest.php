@@ -120,4 +120,39 @@ final class OpenApiServePlainTest extends OpenApiServeTestCase
 
         $this->fetch('/schemas.json', headers: ['If-None-Match' => 'W/' . self::quoted($hash)])->assertStatus(304);
     }
+
+    #[Test]
+    #[Group('openapi')]
+    public function the_yaml_document_is_the_json_one_with_a_tag_of_its_own(): void
+    {
+        $this->warm();
+        $hash = $this->store()->readHash('default');
+        $this->assertIsString($hash);
+
+        $json = $this->fetch('/docs.json');
+        $yaml = $this->fetch('/docs.yaml');
+
+        $this->assertYamlOf($yaml, $json);
+        $this->assertSame(self::quoted(EntityTag::hash($hash . "\nyaml")), $this->etagOf($yaml));
+        $this->assertNotSame($this->etagOf($json), $this->etagOf($yaml));
+        $this->assertSame(self::CACHE_CONTROL, $this->cacheControl($yaml));
+
+        // The JSON tag doesn't match the YAML document.
+        $this->fetch('/docs.yaml', headers: ['If-None-Match' => $this->etagOf($json)])->assertOk();
+        $notModified = $this->fetch('/docs.yaml', headers: ['If-None-Match' => 'W/' . $this->etagOf($yaml)]);
+        $notModified->assertStatus(304);
+        $this->assertSame('', $notModified->getContent());
+        $this->assertSame($this->etagOf($yaml), $this->etagOf($notModified));
+    }
+
+    #[Test]
+    #[Group('openapi')]
+    public function an_unwarmed_yaml_document_is_tagged_from_the_json_body(): void
+    {
+        $json = $this->fetch('/docs.json');
+        $yaml = $this->fetch('/docs.yaml');
+
+        $this->assertYamlOf($yaml, $json);
+        $this->assertSame(self::quoted(EntityTag::hash(EntityTag::hash((string) $json->getContent()) . "\nyaml")), $this->etagOf($yaml));
+    }
 }
