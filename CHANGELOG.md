@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.28.0](https://github.com/haddowg/json-api-laravel/compare/v1.27.0...v1.28.0) (2026-11-06)
+
+
+### Features
+
+* mark deprecated types, operations and actions in openapi ([#206](https://github.com/haddowg/json-api-laravel/issues/206)) ([3ae7471](https://github.com/haddowg/json-api-laravel/commit/3ae747197cd3d7c9703bd0d901b1b009c511e9a7))
+
 ## [1.27.0](https://github.com/haddowg/json-api-laravel/compare/v1.26.0...v1.27.0) (2026-11-06)
 
 
