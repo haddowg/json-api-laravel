@@ -107,7 +107,7 @@ final class OpenApiExportCommand extends Command
 
         $document = $projection->document;
         $rendered = $isYaml
-            ? Yaml::dump($document->toArray(), 16, 2, Yaml::DUMP_OBJECT_AS_MAP)
+            ? \haddowg\JsonApiLaravel\OpenApi\Serve\DocumentFormat::Yaml->encode($document->toJsonString(true))
             : $document->toJsonString(!$compact) . "\n";
 
         if ($outputFile === null) {

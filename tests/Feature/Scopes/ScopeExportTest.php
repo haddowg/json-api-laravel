@@ -91,6 +91,21 @@ final class ScopeExportTest extends Orchestra
             ->assertExitCode(0);
     }
 
+    public function test_the_yaml_export_keeps_empty_security_lists(): void
+    {
+        $json = $this->file();
+        $yaml = $this->file();
+        $this->jsonApiArtisan('jsonapi:openapi:export', ['--output' => $json])->assertExitCode(0);
+        $this->jsonApiArtisan('jsonapi:openapi:export', ['--format' => 'yaml', '--output' => $yaml])->assertExitCode(0);
+
+        $this->assertStringContainsString('"security": []', (string) \file_get_contents($json));
+        // Compared as objects, so an empty list dumped as a map would not compare equal.
+        $this->assertEquals(
+            \json_decode((string) \file_get_contents($json), false, 512, \JSON_THROW_ON_ERROR),
+            \Symfony\Component\Yaml\Yaml::parse((string) \file_get_contents($yaml), \Symfony\Component\Yaml\Yaml::PARSE_OBJECT_FOR_MAP),
+        );
+    }
+
     private function file(): string
     {
         return \sys_get_temp_dir() . '/jsonapi-scope-export-' . \bin2hex(\random_bytes(4)) . '.json';
