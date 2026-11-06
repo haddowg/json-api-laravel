@@ -16,8 +16,8 @@ use Workbench\App\Providers\ExtensionsInMemoryServiceProvider;
 
 /**
  * `#[AsJsonApiResource(extensions:, operationExtensions:)]` reaches the served OpenAPI
- * document: the type-wide set on every operation of the type, and a per-operation set merged
- * over it on its CRUD operation.
+ * document: the type-wide set on every operation of the type, a per-operation set merged
+ * over it on its CRUD operation, and a set keyed by core operation name on that operation.
  *
  * @internal
  */
@@ -86,6 +86,39 @@ final class OpenApiVendorExtensionsTest extends Orchestra
         // A per-operation set stays on its own operation.
         self::assertArrayNotHasKey('x-danger', $this->arrayAt($doc, 'paths', '/gadgets/{id}', 'patch'));
         self::assertArrayNotHasKey('x-rate-limit', $this->arrayAt($doc, 'paths', '/gadgets', 'get'));
+    }
+
+    #[Test]
+    public function a_related_endpoint_gets_the_set_named_for_it(): void
+    {
+        $doc = $this->document();
+
+        $related = $this->arrayAt($doc, 'paths', '/gadgets/{id}/designer', 'get');
+        self::assertFalse($related['x-mcp'] ?? null);
+        self::assertSame('gadgets', $related['x-feature'] ?? null);
+        self::assertSame('experimental', $related['x-stability'] ?? null);
+
+        $relationship = $this->arrayAt($doc, 'paths', '/gadgets/{id}/relationships/designer', 'get');
+        self::assertSame('linkage', $relationship['x-audit'] ?? null);
+        self::assertSame('beta', $relationship['x-stability'] ?? null);
+        self::assertArrayNotHasKey('x-mcp', $relationship);
+
+        // A named set stays on its own operation.
+        self::assertArrayNotHasKey('x-mcp', $this->arrayAt($doc, 'paths', '/gadgets/{id}/maker', 'get'));
+        self::assertArrayNotHasKey('x-audit', $this->arrayAt($doc, 'paths', '/gadgets/{id}/relationships/designer', 'patch'));
+        self::assertArrayNotHasKey('x-mcp', $this->arrayAt($doc, 'paths', '/gadgets', 'get'));
+    }
+
+    #[Test]
+    public function a_crud_operation_can_be_keyed_by_its_core_name(): void
+    {
+        $doc = $this->document();
+
+        $one = $this->arrayAt($doc, 'paths', '/gadgets/{id}', 'get');
+        self::assertSame(['ttl' => 300], $one['x-cache'] ?? null);
+        self::assertSame(['name' => 'show_gadget', 'description' => 'One gadget by id.'], $one['x-mcp'] ?? null);
+        self::assertSame('beta', $one['x-stability'] ?? null);
+        self::assertArrayNotHasKey('x-cache', $this->arrayAt($doc, 'paths', '/gadgets', 'get'));
     }
 
     #[Test]

@@ -99,4 +99,30 @@ final class AsJsonApiSerializerTest extends TestCase
 
         new AsJsonApiSerializer(type: 'parts', operationExtensions: ['FetchOne' => ['x-feature' => 'parts']]);
     }
+
+    public function test_it_accepts_a_core_operation_name(): void
+    {
+        $attribute = new AsJsonApiSerializer(type: 'parts', operations: [Operation::FetchOne], operationExtensions: ['fetchOne' => ['x-mcp' => false]]);
+
+        self::assertSame(['fetchOne' => ['x-mcp' => false]], $attribute->operationExtensions);
+    }
+
+    public function test_it_rejects_a_core_name_for_an_unexposed_operation(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('fetchCollection');
+
+        new AsJsonApiSerializer(type: 'parts', operations: [Operation::FetchOne], operationExtensions: ['fetchCollection' => ['x-feature' => 'parts']]);
+    }
+
+    public function test_it_rejects_an_operation_named_twice(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('"fetchOne" and "FetchOne"');
+
+        new AsJsonApiSerializer(type: 'parts', operations: [Operation::FetchOne], operationExtensions: [
+            'fetchOne' => ['x-mcp' => false],
+            'FetchOne' => ['x-cache' => ['ttl' => 60]],
+        ]);
+    }
 }

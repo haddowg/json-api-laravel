@@ -35,7 +35,7 @@ final readonly class SerializerDescriptor
      * @param list<string>                                                  $operations the exposed operations as {@see Operation} case-value strings (empty = serialize-only)
      * @param list<string>                                                  $tags       the explicit OpenAPI tag names the type's operations are grouped under (empty = the humanized-type default)
      * @param array<string, mixed>                                          $extensions          the OpenAPI vendor extensions (`x-…`) stamped on every operation of the type
-     * @param array<string, array<string, mixed>>                           $operationExtensions per-CRUD-operation vendor extensions keyed by {@see Operation} case value, merged over `$extensions`
+     * @param array<string, array<string, mixed>>                           $operationExtensions per-operation vendor extensions keyed by {@see Operation} case value or core operation name, merged over `$extensions`
      */
     public function __construct(
         public string $class,

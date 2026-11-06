@@ -41,8 +41,8 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * `extensions` and `operationExtensions` declare **OpenAPI vendor extensions** exactly as on
  * {@see AsJsonApiResource}: `extensions` lands on every operation the document emits for the
  * type (its exposed CRUD operations and its custom actions), and `operationExtensions` adds
- * members to one exposed CRUD operation, keyed by {@see Operation} case value and merged over
- * `extensions`. Every key must start with `x-`, the `x-oai-`/`x-oas-` prefixes are reserved,
+ * members to one operation, keyed by {@see Operation} case value or core operation name and
+ * merged over `extensions`. Every key must start with `x-`, the `x-oai-`/`x-oas-` prefixes are reserved,
  * and values must be scalars, `null` or arrays of them.
  *
  * `operationExamples` replaces or removes the type's generated OpenAPI operation examples,
@@ -57,7 +57,7 @@ final readonly class AsJsonApiSerializer
      * @param string|list<string>|null $server     the server name(s) exposing this type (null = the implicit `default`)
      * @param list<string>             $tags       the OpenAPI tag names this type is grouped under (empty = the humanized-type default)
      * @param array<string, mixed>     $extensions OpenAPI vendor extensions (`x-…`) stamped on every operation of this type, custom actions included
-     * @param array<string, array<string, mixed>> $operationExtensions per-CRUD-operation vendor extensions keyed by {@see Operation} case value, merged over `extensions`
+     * @param array<string, array<string, mixed>> $operationExtensions per-operation vendor extensions keyed by {@see Operation} case value or core operation name, merged over `extensions`
      * @param array<string, OperationExample|false|null> $operationExamples the OpenAPI example overrides keyed by operation name, as on {@see AsJsonApiResource}
      * @param array<string, list<string>>                $operationScopes   the OAuth scopes each named operation needs, as on {@see AsJsonApiResource}
      */

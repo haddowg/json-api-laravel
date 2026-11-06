@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionLinks;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresAlwaysCounted;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresNamedOperationExtensions;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationExamples;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationExtensions;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationScopes;
@@ -47,8 +48,13 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  * Through {@see DeclaresOperationScopes} it carries the attribute's `operationScopes`, and
  * through {@see DeclaresResourceClass} the class declaring the type, so a scope resolver can
  * read the application's own attributes off it.
+ *
+ * The attribute's `operationExtensions` map mixes two key forms. An {@see OperationType} case
+ * value such as `Create` answers {@see DeclaresOperationExtensions::operationExtensions()},
+ * and a core operation name such as `fetchRelated.agencies` answers
+ * {@see DeclaresNamedOperationExtensions::namedOperationExtensions()}.
  */
-final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresSingularName, DeclaresOperationExamples, DeclaresAlwaysCounted, DeclaresResourceLinks, DeclaresActionLinks, DeclaresOperationScopes, DeclaresResourceClass
+final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresNamedOperationExtensions, DeclaresSingularName, DeclaresOperationExamples, DeclaresAlwaysCounted, DeclaresResourceLinks, DeclaresActionLinks, DeclaresOperationScopes, DeclaresResourceClass
 {
     /**
      * @param list<FieldInterface>            $fields
@@ -64,7 +70,7 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
      * @param list<string>                    $includablePaths
      * @param array<string, list<array{status: int, jobType: string|null}>> $responses per-operation success-response overrides, keyed by {@see OperationType::value} → an ordered list of `{status, jobType}` scalar pairs; a missing key means "the operation's default" ({@see OperationResponses::defaultFor()})
      * @param array<string, mixed>          $extensions          vendor extensions stamped on every operation of the type
-     * @param array<string, array<string, mixed>> $operationExtensions per-CRUD-operation vendor extensions, keyed by {@see OperationType::value}
+     * @param array<string, array<string, mixed>> $operationExtensions per-operation vendor extensions, keyed by {@see OperationType::value} or by operation name
      * @param ?string                             $singularName        the declared singular noun for generated prose (null = inflected by core)
      * @param array<string, OperationExample|false|null> $operationExamples the example overrides keyed by operation name
      * @param bool                                $alwaysCounts        whether the resolved paginator counts on every request
@@ -149,6 +155,15 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
     public function operationExtensions(OperationType $operation): array
     {
         return $this->operationExtensions[$operation->value] ?? [];
+    }
+
+    public function namedOperationExtensions(): array
+    {
+        return \array_filter(
+            $this->operationExtensions,
+            static fn(string $key): bool => OperationType::tryFrom($key) === null,
+            \ARRAY_FILTER_USE_KEY,
+        );
     }
 
     public function type(): string

@@ -41,7 +41,7 @@ final readonly class ResourceDescriptor
      * @param array<string, list<array{status: int, jobType: string|null}>>      $responses  the per-operation OpenAPI success-response overrides, keyed by {@see Operation} case value → an ordered list of `{status, jobType}` scalar pairs (empty = each operation's default); kept as scalars so it round-trips through the discovery cache
      * @param array{restore: bool, forceDelete: bool, restoreAbility: string, forceAbility: string, restorePath: string, forcePath: string}|null $softDeletes the resolved {@see \haddowg\JsonApiLaravel\Attribute\SoftDeletes} config as scalars (null = not soft-deletable); the scanner reads it to synthesize the restore/force-delete actions
      * @param array<string, mixed>                                         $extensions          the OpenAPI vendor extensions (`x-…`) stamped on every operation of the type
-     * @param array<string, array<string, mixed>>                          $operationExtensions per-CRUD-operation vendor extensions keyed by {@see Operation} case value, merged over `$extensions`
+     * @param array<string, array<string, mixed>>                          $operationExtensions per-operation vendor extensions keyed by {@see Operation} case value or core operation name, merged over `$extensions`
      * @param string|null                                                  $singular            the declared singular noun for the generated OpenAPI prose (null = the resource hook, then core's inflection)
      */
     public function __construct(

@@ -95,8 +95,12 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * **OpenAPI vendor extensions.** `extensions` declares `x-` members stamped on every
  * operation the document emits for the type: its CRUD operations, its related and
  * relationship endpoints, and its custom actions. `operationExtensions` adds members to one
- * CRUD operation, keyed by {@see Operation} case value, merged over `extensions` (the
- * operation's value wins on a shared key). Every key must start with `x-`, and the
+ * operation, merged over `extensions` (the operation's value wins on a shared key). Its key is
+ * an {@see Operation} case value such as `Create`, or an operation name as `operationExamples`
+ * takes, such as `fetchRelated.agencies`. `Create` and `create` name the same operation, so
+ * naming it both ways is a constructor {@see \InvalidArgumentException}, as is an unknown name;
+ * a CRUD operation the type does not expose is a {@see \LogicException}, and core fails the
+ * projection for a relation the type does not have. Every key must start with `x-`, and the
  * `x-oai-`/`x-oas-` prefixes are reserved; values must be scalars, `null` or arrays of them
  * so they survive the discovery cache.
  *
@@ -163,7 +167,7 @@ final readonly class AsJsonApiResource
      * @param FetchOneResponse|list<FetchOneResponse>|null               $fetchOne        the fetch-one (`GET /{type}/{id}`) success response(s) (null = the default `200`); use {@see \haddowg\JsonApi\OpenApi\Metadata\SeeOther} for an async-completion `303`
      * @param FetchCollectionResponse|list<FetchCollectionResponse>|null $fetchCollection the fetch-collection (`GET /{type}`) success response(s) (null = the default `200`)
      * @param array<string, mixed>                                       $extensions      OpenAPI vendor extensions (`x-…`) stamped on every operation of this type, custom actions included
-     * @param array<string, array<string, mixed>>                        $operationExtensions per-CRUD-operation vendor extensions keyed by {@see Operation} case value, merged over `extensions`
+     * @param array<string, array<string, mixed>>                        $operationExtensions per-operation vendor extensions keyed by {@see Operation} case value or core operation name, merged over `extensions`
      * @param string|null                                                $singular        the noun the generated OpenAPI prose uses for one resource, as words without an article (null = inflected from the type name)
      * @param array<string, OperationExample|false|null>                $operationExamples the OpenAPI example overrides keyed by operation name: an {@see OperationExample} replaces the parts it names, `false` or `null` removes the example
      * @param array<string, list<string>>                                $operationScopes the OAuth scopes each named operation needs, keyed like `operationExamples`; `[]` declares none

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Attribute;
 
+use haddowg\JsonApi\OpenApi\Metadata\OperationKey;
+use haddowg\JsonApi\OpenApi\Metadata\OperationType;
 use haddowg\JsonApiLaravel\Operation\Operation;
 
 /**
@@ -17,7 +19,11 @@ final class VendorExtensions
     /**
      * Fails fast on a vendor extension the OpenAPI document can't carry: a key without the
      * `x-` prefix, a reserved `x-oai-`/`x-oas-` key, a value the discovery cache can't
-     * export, or a per-operation set for an unknown or unexposed operation.
+     * export, or a per-operation set for an unknown, unexposed or twice-named operation.
+     *
+     * An `operationExtensions` key is either an {@see Operation} case value or a core
+     * operation name ({@see OperationKey}). `Create` and `create` name the same operation, so
+     * declaring both is an error. Core checks a relation name when it projects the document.
      *
      * @param string                  $attribute           the declaring attribute's short name, for the messages
      * @param array<array-key, mixed> $extensions
@@ -34,16 +40,12 @@ final class VendorExtensions
     ): void {
         self::assertMap($attribute, $extensions, 'extensions');
 
+        $seen = [];
         foreach ($operationExtensions as $operation => $set) {
-            if (Operation::tryFrom((string) $operation) === null) {
-                throw new \InvalidArgumentException(\sprintf(
-                    '%s declares operationExtensions for "%s", which is not an operation; use a %s case value.',
-                    $attribute,
-                    $operation,
-                    Operation::class,
-                ));
-            }
-            if (!\in_array($operation, $exposed, true)) {
+            $operation = (string) $operation;
+            $key = self::operationKey($attribute, $operation);
+            $crud = $key->kind->operationType();
+            if ($crud !== null && !\in_array($crud->value, $exposed, true)) {
                 throw new \LogicException(\sprintf(
                     '%s declares operationExtensions for the %s operation, but it is not exposed; %s.',
                     $attribute,
@@ -51,6 +53,16 @@ final class VendorExtensions
                     $exposeHint,
                 ));
             }
+            $name = $key->name();
+            if (isset($seen[$name])) {
+                throw new \InvalidArgumentException(\sprintf(
+                    '%s declares operationExtensions for "%s" and "%s", which name the same operation; merge them under one key.',
+                    $attribute,
+                    $seen[$name],
+                    $operation,
+                ));
+            }
+            $seen[$name] = $operation;
             if (!\is_array($set)) {
                 throw new \InvalidArgumentException(\sprintf(
                     '%s operationExtensions for %s must be a map of "x-" keys to values.',
@@ -60,6 +72,21 @@ final class VendorExtensions
             }
             self::assertMap($attribute, $set, \sprintf('operationExtensions[%s]', $operation));
         }
+    }
+
+    private static function operationKey(string $attribute, string $operation): OperationKey
+    {
+        $case = Operation::tryFrom($operation);
+        if ($case !== null) {
+            return OperationKey::crud(OperationType::from($case->value));
+        }
+
+        return OperationKey::tryFromName($operation) ?? throw new \InvalidArgumentException(\sprintf(
+            '%s declares operationExtensions for "%s", which is not an operation; use a %s case value or an operation name such as fetchOne or fetchRelated.<relation>.',
+            $attribute,
+            $operation,
+            Operation::class,
+        ));
     }
 
     /**
