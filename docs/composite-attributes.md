@@ -39,7 +39,10 @@ vocabulary translates to native illuminate rules, and a violation points at the
 child: `/data/attributes/packaging/material`, `/data/attributes/format/rpm`. For a
 `OneOf`, only the **selected variant's** children are validated, and an unknown or
 missing discriminator is itself the violation — a `422` pointing at
-`/data/attributes/format/medium`. The cascade goes one level deep: a child that is itself an
+`/data/attributes/format/medium`. An undiscriminated `OneOf` (no `discriminator()`) selects
+its variant by the required member only that variant declares; a value carrying no
+variant's signature, or two, is a `422` at the field itself, and since every write
+replaces the whole value, a `PATCH` must carry every member the variant requires. The cascade goes one level deep: a child that is itself an
 `Obj` or `OneOf` is not descended into. A child that is a list of structured elements is the
 exception, covered next.
 

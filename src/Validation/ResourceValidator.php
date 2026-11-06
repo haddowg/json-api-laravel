@@ -853,8 +853,9 @@ final class ResourceValidator
 
     /**
      * The rule-sets for one element of a structured list: an {@see Obj}'s children, or the
-     * children of the {@see OneOf} variant its discriminator names. A discriminator naming
-     * no variant is reported at `<key>.<discriminator>`, as a {@see OneOf} attribute's is.
+     * children of the {@see OneOf} variant it selects. An element selecting no variant is
+     * reported at `<key>.<discriminator>`, or at `<key>` when undiscriminated, as a
+     * {@see OneOf} attribute's is.
      *
      * @param array<array-key, mixed> $item
      * @param list<Error>             $errors
@@ -867,10 +868,9 @@ final class ResourceValidator
             return $this->childRules($element->children(), $key, $item, $creating, $request, true, true, $errors);
         }
 
-        $discriminator = $element->discriminatorName();
-        $variant = $element->variantFor($item[$discriminator] ?? null);
+        $variant = $element->variantOf($item);
         if ($variant === null) {
-            $errors[] = $this->error(self::UNKNOWN_VARIANT, $key . '.' . $discriminator);
+            $errors[] = $this->error(self::UNKNOWN_VARIANT, $key . self::discriminatorKey($element));
 
             return [];
         }
@@ -879,12 +879,25 @@ final class ResourceValidator
     }
 
     /**
+     * Where a value selecting no variant is reported, below the union's own key: at its
+     * discriminator when it has one, otherwise at the value itself.
+     */
+    private static function discriminatorKey(OneOf $union): string
+    {
+        $discriminator = $union->discriminatorName();
+
+        return $discriminator === null ? '' : '.' . $discriminator;
+    }
+
+    /**
      * Validates each present {@see OneOf} attribute value-dependently: the incoming
-     * discriminator selects the variant, whose writable children are then validated
-     * through the same dot-notation rule map as a {@see Map}/{@see Obj} cascade (one
-     * level, same create/update presence resolution) — so a child violation maps to
-     * `/data/attributes/<field>/<child>`. An array value whose discriminator names no
-     * variant yields one error at `/data/attributes/<field>/<discriminator>`; the main
+     * value selects the variant, whose writable children are then validated through the
+     * same dot-notation rule map as a {@see Map}/{@see Obj} cascade (one level, same
+     * create/update presence resolution; an undiscriminated union is written whole, so a
+     * member its update requires must be present), so a child violation maps to
+     * `/data/attributes/<field>/<child>`. An array value selecting no variant yields one
+     * error at `/data/attributes/<field>/<discriminator>`, or at
+     * `/data/attributes/<field>` for an undiscriminated union; the main
      * pass's `array` rule already rejects a non-array value. Absent or explicit-null
      * values are the main pass's concern (presence / nullability), so they are skipped
      * here.
@@ -910,15 +923,16 @@ final class ResourceValidator
                 continue; // presence/nullability and the `array` rule are the main pass's concern
             }
 
-            $discriminator = $field->discriminatorName();
-            $variant = $field->variantFor($value[$discriminator] ?? null);
+            $variant = $field->variantOf($value);
             if ($variant === null) {
-                $errors[] = $this->error(self::UNKNOWN_VARIANT, $field->name() . '.' . $discriminator);
+                $errors[] = $this->error(self::UNKNOWN_VARIANT, $field->name() . self::discriminatorKey($field));
 
                 continue;
             }
 
-            $rules = $this->childRules($variant->children(), $field->name(), $value, $creating, $request, false, \array_key_exists($field->name(), $incoming), $errors);
+            // An undiscriminated union is written whole, so an update must carry
+            // everything the variant requires.
+            $rules = $this->childRules($variant->children(), $field->name(), $value, $creating, $request, $field->writesWhole(), \array_key_exists($field->name(), $incoming), $errors);
             if ($rules === []) {
                 continue;
             }

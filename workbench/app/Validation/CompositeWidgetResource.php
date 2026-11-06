@@ -68,6 +68,11 @@ final class CompositeWidgetResource extends AbstractResource
                         ->withRequired(['kind', 'number']),
                 )->discriminator('kind'),
             ),
+            // An undiscriminated union: the required member only one variant declares
+            // selects it, and every write replaces the whole value.
+            OneOf::make('shape')->nullable()
+                ->variant('circle', Integer::make('radius')->required()->min(1))
+                ->variant('rectangle', Integer::make('width')->required(), Integer::make('height')->required()),
         ];
     }
 }

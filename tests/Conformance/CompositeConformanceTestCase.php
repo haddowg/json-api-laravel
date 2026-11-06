@@ -96,6 +96,7 @@ abstract class CompositeConformanceTestCase extends Orchestra
             'block' => ['kind' => 'heading', 'text' => 'Hello', 'level' => 2, 'publishedAt' => '2024-07-01T12:30:00+00:00'],
             'schedule' => ['startsAt' => '2024-07-01T09:00:00+00:00', 'endsOn' => '2024-07-05'],
             'contact' => ['kind' => 'phone', 'number' => '+44 20 7946 0000'],
+            'shape' => ['width' => 2, 'height' => 3],
         ];
 
         $created = $this->writeJsonApi('POST', '/api/composites', [
@@ -188,6 +189,54 @@ abstract class CompositeConformanceTestCase extends Orchestra
         ]);
 
         self::assertContains('/data/attributes/block/kind', $this->pointers($response));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function aPatchToAnUndiscriminatedUnionReplacesTheWholeValue(): void
+    {
+        foreach ([['width' => 2, 'height' => 3], ['radius' => 4]] as $shape) {
+            $this->writeJsonApi('PATCH', '/api/composites/1', [
+                'data' => ['type' => 'composites', 'id' => '1', 'attributes' => ['shape' => $shape]],
+            ])->assertStatus(200);
+        }
+
+        $fetched = $this->getJson('/api/composites/1', ['Accept' => self::MEDIA_TYPE]);
+        $fetched->assertStatus(200);
+        self::assertSame(['radius' => 4], $fetched->json('data.attributes.shape'));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function anUndiscriminatedUpdateMustCarryTheWholeVariant(): void
+    {
+        $response = $this->writeJsonApi('PATCH', '/api/composites/1', [
+            'data' => ['type' => 'composites', 'id' => '1', 'attributes' => ['shape' => ['width' => 2]]],
+        ]);
+
+        self::assertContains('/data/attributes/shape/height', $this->pointers($response));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function anUndiscriminatedVariantChildPointsAtTheChild(): void
+    {
+        $response = $this->writeJsonApi('PATCH', '/api/composites/1', [
+            'data' => ['type' => 'composites', 'id' => '1', 'attributes' => ['shape' => ['radius' => 0]]],
+        ]);
+
+        self::assertContains('/data/attributes/shape/radius', $this->pointers($response));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function aValueCarryingTwoVariantsSignaturesIsRejectedAtTheField(): void
+    {
+        $response = $this->writeJsonApi('PATCH', '/api/composites/1', [
+            'data' => ['type' => 'composites', 'id' => '1', 'attributes' => ['shape' => ['radius' => 1, 'width' => 2, 'height' => 3]]],
+        ]);
+
+        self::assertContains('/data/attributes/shape', $this->pointers($response));
     }
 
     #[Test]

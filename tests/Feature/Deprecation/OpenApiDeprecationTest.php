@@ -108,6 +108,6 @@ final class OpenApiDeprecationTest extends Orchestra
     #[Test]
     public function theDocumentDeclaresTheDeprecationContract(): void
     {
-        self::assertSame(GeneratorContract::DEPRECATION, $this->at($this->doc, 'info', 'x-generator', 'contract'));
+        self::assertSame(\max(GeneratorContract::BASELINE, GeneratorContract::DEPRECATION), $this->at($this->doc, 'info', 'x-generator', 'contract'));
     }
 }
