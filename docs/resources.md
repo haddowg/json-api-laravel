@@ -48,7 +48,8 @@ final class AlbumResource extends AbstractResource { /* … */ }
 | `policy` | a dedicated API policy class ([authorization](authorization.md)) |
 | `abilities` | per-operation Gate ability override ([authorization](authorization.md)) |
 | `cacheHeaders` | declarative `Cache-Control`/`Vary` for GET reads (below) |
-| `deprecation` / `sunset` / `sunsetLink` | RFC 8594 deprecation headers (below) |
+| `deprecation` / `sunset` / `sunsetLink` | RFC 8594 deprecation headers, and the type's deprecation in the [OpenAPI document](openapi.md#deprecation) (below) |
+| `deprecatedOperations` | operations deprecated on their own, by name ([openapi](openapi.md#deprecation)) |
 | `tags` | OpenAPI tag names for the type's operations ([openapi](openapi.md)) |
 
 ### Restricting operations
@@ -212,6 +213,18 @@ final class DeviceResource extends AbstractResource { /* … */ }
 
 Each server sends the headers of the class it exposes the type through, see
 [multi-server](multi-server-and-testing.md#authorization-headers-and-tags-per-server).
+
+`deprecatedOperations` deprecates single operations by name instead of the whole type. A
+response to one of them carries `Deprecation: true`, plus the `Sunset` the type declares, and
+a response to any other operation of the type carries neither unless the type or a default
+declares them:
+
+```php
+#[AsJsonApiResource(deprecatedOperations: ['delete', 'fetchRelated.label'])]
+final class AlbumResource extends AbstractResource { /* … */ }
+```
+
+The same declarations mark the [OpenAPI document](openapi.md#deprecation).
 
 ## Object-aware `getType()` and the self-link opt-out
 

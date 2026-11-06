@@ -56,4 +56,16 @@ final class ActionDescriptorSnapshotTest extends TestCase
         self::assertNull($restored->summary);
         self::assertNull($restored->description);
     }
+
+    #[Test]
+    public function theDeprecationSurvivesTheDiscoverySnapshot(): void
+    {
+        $descriptor = new ActionDescriptor('albums', 'publish', ['POST'], ActionScope::Resource, ActionInput::None, 'albums', 'albums', [['kind' => 'meta', 'ref' => null]], null, MetaHandlerWithOutputMeta::class, 'default', deprecated: true);
+
+        self::assertTrue(ActionDescriptor::fromArray($descriptor->toArray())->deprecated);
+
+        $data = $descriptor->toArray();
+        unset($data['deprecated']);
+        self::assertFalse(ActionDescriptor::fromArray($data)->deprecated);
+    }
 }

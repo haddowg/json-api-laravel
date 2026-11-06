@@ -19,7 +19,8 @@ use Workbench\App\Models\User;
  * `Deprecation: true`. The `admin` server sets a sunset and its link and a 45s cache varying
  * on Accept-Language; `default` sets nothing. `labels` declares no headers on either server,
  * admin `notes` cache publicly for 600s with their own sunset, and admin `documents` cache
- * privately for 30s.
+ * privately for 30s and declare their own deprecation. Only what a type declares itself
+ * reaches the OpenAPI document.
  *
  * @internal
  */
@@ -139,10 +140,28 @@ abstract class ServerHeaderDefaultsTestCase extends Orchestra
     {
         foreach (['default', 'admin'] as $server) {
             $json = \json_encode($this->resolve(DocumentFactory::class)->forServer($server)->toArray(), \JSON_THROW_ON_ERROR);
-            self::assertStringNotContainsString('"deprecated":true', $json);
             self::assertStringNotContainsString('"Sunset"', $json);
             self::assertStringNotContainsString('"Deprecation"', $json);
         }
+    }
+
+    #[Test]
+    #[Group('openapi')]
+    public function onlyATypesOwnDeprecationMarksTheDocument(): void
+    {
+        $default = \json_encode($this->resolve(DocumentFactory::class)->forServer('default')->toArray(), \JSON_THROW_ON_ERROR);
+        self::assertStringNotContainsString('"deprecated":true', $default);
+        self::assertStringNotContainsString('sunset date', $default);
+
+        $admin = $this->resolve(DocumentFactory::class)->forServer('admin')->toArray();
+        self::assertTrue($this->at($admin, 'paths', '/documents/{id}', 'get', 'deprecated'));
+        self::assertNull($this->arrayAt($admin, 'paths', '/labels/{id}', 'get')['deprecated'] ?? null);
+        self::assertNull($this->arrayAt($admin, 'paths', '/notes/{id}', 'get')['deprecated'] ?? null);
+        self::assertStringEndsWith(
+            'This operation may stop responding on or after 2026-11-11, its sunset date.',
+            $this->stringAt($admin, 'paths', '/notes/{id}', 'get', 'description'),
+        );
+        self::assertStringNotContainsString('sunset date', $this->stringAt($admin, 'paths', '/labels/{id}', 'get', 'description'));
     }
 
     /**

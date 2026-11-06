@@ -338,6 +338,7 @@ final class DiscoveryScanner
             \array_values($attribute->tags),
             $attribute->extensions,
             $attribute->operationExtensions,
+            $attribute->deprecatedOperations,
         );
     }
 
@@ -434,6 +435,7 @@ final class DiscoveryScanner
             $attribute !== null ? $attribute->extensions : [],
             $attribute !== null ? $attribute->operationExtensions : [],
             $attribute?->singular !== null ? \trim($attribute->singular) : null,
+            $attribute !== null ? $attribute->deprecatedOperations : [],
         );
     }
 
@@ -672,6 +674,7 @@ final class DiscoveryScanner
             idempotent: $attribute->idempotent,
             extensions: $attribute->extensions,
             scopes: $attribute->scopes,
+            deprecated: $attribute->deprecated,
         );
     }
 

@@ -22,6 +22,7 @@ use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\ResourceDescriptor;
 use haddowg\JsonApiLaravel\Discovery\SerializerDescriptor;
+use haddowg\JsonApiLaravel\Http\SunsetDate;
 use haddowg\JsonApiLaravel\OpenApi\DocumentUrlProvider;
 use haddowg\JsonApiLaravel\Operation\Operation;
 use haddowg\JsonApiLaravel\Scope\ScopeTables;
@@ -344,6 +345,7 @@ final class MetadataSource
             operationExamples: $this->operationExamples($descriptor->class, AsJsonApiSerializer::class),
             operationScopes: $this->operationScopes($descriptor->class, AsJsonApiSerializer::class),
             resourceClass: $descriptor->class,
+            deprecatedOperations: $descriptor->deprecatedOperations,
         );
     }
 
@@ -413,7 +415,32 @@ final class MetadataSource
             operationScopes: $this->operationScopes($descriptor->class, AsJsonApiResource::class),
             resourceClass: $descriptor->class,
             actionLinks: $resource?->allActionLinks() ?? [],
+            deprecated: self::declaresDeprecation($descriptor),
+            sunset: self::sunset($descriptor),
+            deprecatedOperations: $descriptor->deprecatedOperations,
         );
+    }
+
+    /**
+     * Whether the type's own `#[AsJsonApiResource(deprecation:)]` deprecates it: `true` or a
+     * date. The `jsonapi.defaults` layered under it for the headers do not reach the document.
+     */
+    private static function declaresDeprecation(ResourceDescriptor $descriptor): bool
+    {
+        $deprecation = $descriptor->headers['deprecation']['deprecation'] ?? null;
+
+        return $deprecation === true || (\is_string($deprecation) && $deprecation !== '');
+    }
+
+    /**
+     * The date in the type's own `#[AsJsonApiResource(sunset:)]`, or `null` when it declares
+     * none or the value is not a date the document can name.
+     */
+    private static function sunset(ResourceDescriptor $descriptor): ?\DateTimeImmutable
+    {
+        $sunset = $descriptor->headers['deprecation']['sunset'] ?? null;
+
+        return SunsetDate::parse(\is_string($sunset) ? $sunset : null);
     }
 
     /**

@@ -47,7 +47,9 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  *
  * `operationExamples` replaces or removes the type's generated OpenAPI operation examples,
  * as on {@see AsJsonApiResource}, and `operationScopes` names the OAuth scopes an operation
- * needs, as on {@see AsJsonApiResource}.
+ * needs, as on {@see AsJsonApiResource}. `deprecatedOperations` deprecates single operations by
+ * name, as on {@see AsJsonApiResource}: the document marks them and a response to one carries
+ * `Deprecation: true`.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final readonly class AsJsonApiSerializer
@@ -60,6 +62,7 @@ final readonly class AsJsonApiSerializer
      * @param array<string, array<string, mixed>> $operationExtensions per-operation vendor extensions keyed by {@see Operation} case value or core operation name, merged over `extensions`
      * @param array<string, OperationExample|false|null> $operationExamples the OpenAPI example overrides keyed by operation name, as on {@see AsJsonApiResource}
      * @param array<string, list<string>>                $operationScopes   the OAuth scopes each named operation needs, as on {@see AsJsonApiResource}
+     * @param list<string>                               $deprecatedOperations the operations deprecated on their own, as on {@see AsJsonApiResource}
      */
     public function __construct(
         public string $type,
@@ -70,10 +73,12 @@ final readonly class AsJsonApiSerializer
         public array $operationExtensions = [],
         public array $operationExamples = [],
         public array $operationScopes = [],
+        public array $deprecatedOperations = [],
     ) {
         $exposed = \array_map(static fn(Operation $op): string => $op->value, $operations);
         VendorExtensions::assertValid('AsJsonApiSerializer', $extensions, $operationExtensions, $exposed, 'add it to `operations`');
         OperationExamples::assertValid('AsJsonApiSerializer', $operationExamples, $exposed, 'add it to `operations`');
         OperationScopes::assertValid('AsJsonApiSerializer', $operationScopes, $exposed, 'add it to `operations`');
+        DeprecatedOperations::assertValid('AsJsonApiSerializer', $deprecatedOperations, $exposed, 'add it to `operations`');
     }
 }

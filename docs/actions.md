@@ -166,6 +166,7 @@ that has a body must still match `accepts`.
 | `readOnly` / `destructive` / `idempotent` | how safe the action is to call, projected as the operation's `x-safety`; each `null` (default) stays undeclared ([below](#operation-ids-safety-and-extensions)) |
 | `extensions` | OpenAPI vendor extensions for the action's operation, keyed by `x-` name, merged over the mount type's `extensions` |
 | `scopes` | the [OAuth scopes](scopes.md) every method of the action needs; `[]` for none, `null` (default) asks the scope resolver |
+| `deprecated` | marks every method of the action `deprecated` in the [OpenAPI document](openapi.md#deprecation) and sends `Deprecation: true` on its responses |
 
 > [!NOTE]
 > `asLink` visibility matches invocation **exactly**: `Authorizer::allowsAction()` (which

@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Http;
 
+use haddowg\JsonApi\OpenApi\Metadata\OperationKey;
+use haddowg\JsonApi\OpenApi\Metadata\OperationKind;
 use haddowg\JsonApi\Operation\Target;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
 use haddowg\JsonApiLaravel\Server\ServerNames;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -22,7 +25,8 @@ use Symfony\Component\HttpFoundation\Response;
  *
  *  - **deprecation + sunset** — the resolved {@see DeprecationHeaders} on **every**
  *    response for the type (reads and writes alike — a deprecated endpoint is
- *    deprecated regardless of method).
+ *    deprecated regardless of method). An operation or action deprecated on its own adds
+ *    `Deprecation: true` to its responses only.
  *  - **HTTP cache headers** — the resolved {@see CacheHeaders} (resource-level +
  *    per-operation override, over the global default) on a **safe (`GET`) successful**
  *    read only; a write or an error document never gets a `Cache-Control`.
@@ -58,7 +62,7 @@ final class ResponseHeadersMiddleware
 
         // Deprecation/Sunset are emitted on every response for the type, reads and
         // writes alike (each header is only written when the app has not set it).
-        $this->registry->deprecationFor($type, $server)?->applyTo($response);
+        $this->registry->deprecationFor($type, $server, self::operationName($request, $target))?->applyTo($response);
 
         // Cache headers apply only to a safe (GET) successful read — never a write
         // verb and never an error document (2xx only).
@@ -77,6 +81,45 @@ final class ResponseHeadersMiddleware
         $this->registry->cacheFor($type, ResponseHeaderOperation::fromTarget($target), $server)?->applyTo($response);
 
         return $response;
+    }
+
+    /**
+     * The core operation name the request performs, as `deprecatedOperations` lists it: a
+     * CRUD, related or relationship operation name, or `action.<path>.<method>` for a custom
+     * action. A `HEAD` is named as the `GET` it mirrors.
+     */
+    private static function operationName(Request $request, Target $target): ?string
+    {
+        $method = $request->getMethod() === 'HEAD' ? 'GET' : $request->getMethod();
+
+        $route = $request->route();
+        $action = $route instanceof Route ? ($route->defaults[JsonApiController::ACTION_ATTRIBUTE] ?? null) : null;
+        if (\is_string($action)) {
+            return 'action.' . $action . '.' . \strtolower($method);
+        }
+
+        if ($target->relationship === null) {
+            $kind = match ($method) {
+                'GET' => $target->id !== null ? OperationKind::FetchOne : OperationKind::FetchCollection,
+                'POST' => OperationKind::Create,
+                'PATCH' => OperationKind::Update,
+                'DELETE' => OperationKind::Delete,
+                default => null,
+            };
+
+            return $kind !== null ? OperationKey::crud($kind)->name() : null;
+        }
+
+        $kind = match (true) {
+            !$target->isRelationshipEndpoint => $method === 'GET' ? OperationKind::FetchRelated : null,
+            $method === 'GET' => OperationKind::FetchRelationship,
+            $method === 'PATCH' => OperationKind::UpdateRelationship,
+            $method === 'POST' => OperationKind::AddRelationship,
+            $method === 'DELETE' => OperationKind::RemoveRelationship,
+            default => null,
+        };
+
+        return $kind !== null ? OperationKey::relation($kind, $target->relationship)->name() : null;
     }
 
     /**
