@@ -55,3 +55,4 @@ parameters:
             paths:
                 - src/OpenApi/DocumentUrlProvider.php
                 - src/OpenApi/DocumentRouteLocator.php
+                - src/OpenApi/OpenApiDocumentUrls.php

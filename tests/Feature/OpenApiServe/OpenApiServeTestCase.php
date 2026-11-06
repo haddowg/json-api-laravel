@@ -18,6 +18,7 @@ use Illuminate\Contracts\Config\Repository;
 use Illuminate\Routing\Router;
 use Illuminate\Testing\TestResponse;
 use Opis\JsonSchema\Validator;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Shared scaffolding for the serve-time customisation suites: each subclass
@@ -158,6 +159,25 @@ abstract class OpenApiServeTestCase extends TestCase
 
         /** @var array<string, mixed> $decoded */
         return $decoded;
+    }
+
+    /**
+     * Asserts `$yaml` is the `application/yaml` copy of `$json`: parsed back, it encodes to
+     * the same JSON, so an empty object stays a map and a string never turns into a number
+     * or a boolean.
+     *
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $yaml
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $json
+     */
+    protected function assertYamlOf(TestResponse $yaml, TestResponse $json): void
+    {
+        $yaml->assertOk()->assertHeader('Content-Type', 'application/yaml');
+        $flags = \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_PRESERVE_ZERO_FRACTION;
+
+        $this->assertSame(
+            \json_encode(\json_decode((string) $json->getContent(), false, 512, \JSON_THROW_ON_ERROR), $flags),
+            \json_encode(Yaml::parse((string) $yaml->getContent(), Yaml::PARSE_OBJECT_FOR_MAP), $flags),
+        );
     }
 
     /**

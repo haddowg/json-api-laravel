@@ -299,9 +299,16 @@ return [
     | byte-compatible with the Symfony bundle's for an identical domain, so a
     | `json-api-ts` codegen consumes either backend unchanged.
     |
-    | The HTTP routes (`/docs.json`, `/schemas.json`, `/docs`) are registered only
-    | when `app.debug` is true OR `expose_in_prod` is true; the CLI export commands
-    | (`jsonapi:openapi:export`, `jsonapi:jsonschema:export`) are always available.
+    | The HTTP routes (`/docs.json`, `/docs.yaml`, `/schemas.json`, `/docs`) are
+    | registered only when `app.debug` is true OR `expose_in_prod` is true; the CLI
+    | export commands (`jsonapi:openapi:export`, `jsonapi:jsonschema:export`) are
+    | always available.
+    |
+    | `yaml`: serves the same document as `json`, decorated the same way, as
+    | `application/yaml` at `path` (default `/docs.yaml`), plus `/{server}/docs.yaml`
+    | per named server in separate mode. `enabled` null (the default) serves it when
+    | symfony/yaml is installed; true without symfony/yaml fails the boot. The ReDoc
+    | viewer offers it as a download beside the JSON.
     |
     | `multi_server`: `separate` emits one document per server (+ per-server routes);
     | `combined` emits a single document unioning every server (requires
@@ -329,10 +336,11 @@ return [
     | `combined` in combined mode. Null (the default) uses the path of the route
     | serving the document, host-relative and including any prefix it is served under.
     |
-    | `cache_control`: the `Cache-Control` header for the served `docs.json` and
-    | `schemas.json`, e.g. `public, max-age=60, s-maxage=300`. Both always carry
-    | an `ETag` and answer a matching `If-None-Match` with a 304. Null (the
-    | default) sends no header of its own, which leaves the response private.
+    | `cache_control`: the `Cache-Control` header for the served `docs.json`,
+    | `docs.yaml` and `schemas.json`, e.g. `public, max-age=60, s-maxage=300`.
+    | Each always carries an `ETag` of its own and answers a matching
+    | `If-None-Match` with a 304. Null (the default) sends no header of its own,
+    | which leaves the response private.
     |
     | `serve_allowed_classes`: classes a document's example, default or extension
     | values may hold and still be served to per-request decorators from the
@@ -362,6 +370,11 @@ return [
 
         'json' => [
             'path' => '/docs.json',
+        ],
+
+        'yaml' => [
+            'enabled' => null,
+            'path' => '/docs.yaml',
         ],
 
         'json_schema' => [

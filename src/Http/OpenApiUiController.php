@@ -6,6 +6,9 @@ namespace haddowg\JsonApiLaravel\Http;
 
 use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiUiConfig;
 use haddowg\JsonApiLaravel\OpenApi\Config\OpenApiUiRenderer;
+use haddowg\JsonApiLaravel\OpenApi\DocumentUrls;
+use haddowg\JsonApiLaravel\OpenApi\OpenApiDocumentUrls;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 /**
@@ -17,9 +20,10 @@ use Illuminate\Http\Response;
  * The page is a **plain HTML string** (no Blade), so the viewer adds zero
  * dependencies. It is **CDN-linked**: it loads the renderer's assets from a pinned
  * public CDN by default, and `jsonapi.openapi.ui.cdn` swaps that origin for a
- * self-hosted/air-gapped mirror. The spec URL it targets is resolved from the docs.json
- * route via the router (so it honours any routing prefix / sub-path mount), falling back
- * to the configured json path only when that route is absent.
+ * self-hosted/air-gapped mirror. The spec URL it targets comes from
+ * {@see OpenApiDocumentUrls}: the docs.json route on the request's host (so it honours
+ * any routing prefix / sub-path mount), falling back to the configured json path only
+ * when that route is absent.
  *
  * The route is registered only when `ui.enabled` is true **and** the expose gate passes
  * (`app.debug` or `expose_in_prod`), so this controller never re-checks exposure. The
@@ -31,6 +35,11 @@ use Illuminate\Http\Response;
  * `<script type="module">` and renders `disable-telemetry="true"` on the tag unless
  * `ui.redoc_telemetry` opts in. `ui.redoc_version` set to an exact 2.x release switches to
  * the classic global-script loader, which has no telemetry.
+ *
+ * Both Redoc lines get a `downloadUrls` option listing the JSON document and, when it is
+ * served, the YAML one. Redoc 3.x JSON-parses it from the tag's `download-urls`
+ * attribute. Redoc 2.x reads tag attributes only as strings, so the 2.x page leaves
+ * `spec-url` off the tag and calls `Redoc.init()` with the options itself.
  */
 final class OpenApiUiController
 {
@@ -58,15 +67,20 @@ final class OpenApiUiController
      */
     public const string DOCUMENT_ROUTE = 'jsonapi.openapi.json';
 
+    /**
+     * The route name of the default-server / combined OpenAPI document as YAML.
+     */
+    public const string YAML_DOCUMENT_ROUTE = 'jsonapi.openapi.yaml';
+
     private const SWAGGER_CDN = 'https://cdn.jsdelivr.net/npm/swagger-ui-dist@' . self::SWAGGER_UI_VERSION;
 
-    public function __invoke(): Response
+    public function __invoke(Request $request): Response
     {
-        $specUrl = $this->specUrl();
+        $urls = app(OpenApiDocumentUrls::class)->forRequest($request);
 
         $html = $this->renderer() === OpenApiUiRenderer::Redoc
-            ? $this->redocPage($specUrl)
-            : $this->swaggerPage($specUrl);
+            ? $this->redocPage($urls)
+            : $this->swaggerPage($urls->json);
 
         $response = new Response($html, Response::HTTP_OK, ['Content-Type' => 'text/html; charset=UTF-8']);
 
@@ -76,24 +90,6 @@ final class OpenApiUiController
         }
 
         return $response;
-    }
-
-    /**
-     * The spec URL the page fetches — generated from the docs.json route so it honours
-     * any routing prefix. Falls back to the configured json path only when that route is
-     * not registered (e.g. an app that suppressed the docs routes).
-     */
-    private function specUrl(): string
-    {
-        $router = app('router');
-        if ($router instanceof \Illuminate\Routing\Router && $router->has(self::DOCUMENT_ROUTE)) {
-            return route(self::DOCUMENT_ROUTE);
-        }
-
-        $path = config('jsonapi.openapi.json.path');
-        $path = \is_string($path) && $path !== '' ? $path : '/docs.json';
-
-        return url('/' . \ltrim($path, '/'));
     }
 
     private function renderer(): OpenApiUiRenderer
@@ -147,17 +143,18 @@ final class OpenApiUiController
             HTML;
     }
 
-    private function redocPage(string $specUrl): string
+    private function redocPage(DocumentUrls $urls): string
     {
         $version = OpenApiUiConfig::redocVersion(config('jsonapi.openapi.ui.redoc_version'));
         $base = $this->assetBase('https://cdn.jsdelivr.net/npm/redoc@' . $version . '/bundles');
         $js = $this->attr($base . '/redoc.standalone.js');
-        $spec = $this->attr($specUrl);
 
         if (\str_starts_with($version, '2.')) {
-            return $this->redoc2Page($js, $spec);
+            return $this->redoc2Page($js, $urls);
         }
 
+        $spec = $this->attr($urls->json);
+        $downloads = $this->attr((string) \json_encode($urls->downloadUrls(), \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES));
         $telemetry = config('jsonapi.openapi.ui.redoc_telemetry') === true ? '' : ' disable-telemetry="true"';
 
         return <<<HTML
@@ -170,15 +167,18 @@ final class OpenApiUiController
               <style>body { margin: 0; padding: 0; }</style>
             </head>
             <body>
-              <redoc spec-url="{$spec}"{$telemetry}></redoc>
+              <redoc spec-url="{$spec}" download-urls="{$downloads}"{$telemetry}></redoc>
               <script type="module" src="{$js}" crossorigin></script>
             </body>
             </html>
             HTML;
     }
 
-    private function redoc2Page(string $js, string $spec): string
+    private function redoc2Page(string $js, DocumentUrls $urls): string
     {
+        $spec = $this->json($urls->json);
+        $options = $this->json(['downloadUrls' => $urls->downloadUrls()]);
+
         return <<<HTML
             <!DOCTYPE html>
             <html lang="en">
@@ -189,8 +189,11 @@ final class OpenApiUiController
               <style>body { margin: 0; padding: 0; }</style>
             </head>
             <body>
-              <redoc spec-url="{$spec}"></redoc>
+              <redoc></redoc>
               <script src="{$js}" crossorigin></script>
+              <script>
+                Redoc.init({$spec}, {$options}, document.querySelector('redoc'));
+              </script>
             </body>
             </html>
             HTML;
@@ -209,7 +212,7 @@ final class OpenApiUiController
      * JSON-encode a value for safe inline embedding in a `<script>` (escapes the closing
      * tag sequence so a path can never break out of the script context).
      */
-    private function json(string $value): string
+    private function json(mixed $value): string
     {
         return (string) \json_encode($value, \JSON_THROW_ON_ERROR | \JSON_HEX_TAG | \JSON_HEX_APOS | \JSON_HEX_QUOT | \JSON_HEX_AMP | \JSON_UNESCAPED_SLASHES);
     }

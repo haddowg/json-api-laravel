@@ -13,7 +13,7 @@ use haddowg\JsonApiLaravel\OpenApi\Metadata\ServerDocumentConfig;
  * package's OpenAPI wiring.
  *
  * It is a plain immutable carrier of the document-generation settings (enabled,
- * exposure, multi-server mode, enum-description mode, json path, public path, the
+ * exposure, multi-server mode, enum-description mode, json and yaml paths, public path, the
  * {@see OpenApiUiConfig} viewer settings) and the per-server {@see ServerDocumentConfig}
  * map (info / servers / security / tags) the
  * {@see \haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource} folds in.
@@ -39,5 +39,7 @@ final readonly class OpenApiConfig
         public ?string $documentUrl = null,
         public ?string $cacheControl = null,
         public array $serveAllowedClasses = [],
+        public bool $yamlEnabled = false,
+        public string $yamlPath = '/docs.yaml',
     ) {}
 }

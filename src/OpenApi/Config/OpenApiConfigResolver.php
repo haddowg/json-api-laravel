@@ -15,6 +15,7 @@ use haddowg\JsonApi\OpenApi\SecurityScheme;
 use haddowg\JsonApi\OpenApi\Server;
 use haddowg\JsonApi\OpenApi\Tag;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\ServerDocumentConfig;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Resolves the `jsonapi.openapi.*` configuration array into a typed
@@ -80,7 +81,27 @@ final class OpenApiConfigResolver
             documentUrl: $this->scalarOrNull($openapi, 'document_url'),
             cacheControl: $this->scalarOrNull($openapi, 'cache_control'),
             serveAllowedClasses: $this->serveAllowedClasses($openapi),
+            yamlEnabled: self::yamlEnabled(\is_array($openapi['yaml'] ?? null) ? ($openapi['yaml']['enabled'] ?? null) : null, \class_exists(Yaml::class)),
+            yamlPath: $this->yamlPath($openapi),
         );
+    }
+
+    /**
+     * Whether the document is served as YAML: `jsonapi.openapi.yaml.enabled` when it is a
+     * bool, else whether symfony/yaml is installed.
+     *
+     * @param mixed $enabled       `jsonapi.openapi.yaml.enabled`
+     * @param bool  $yamlInstalled whether symfony/yaml is installed
+     *
+     * @throws \LogicException when YAML is enabled explicitly without symfony/yaml
+     */
+    public static function yamlEnabled(mixed $enabled, bool $yamlInstalled): bool
+    {
+        if ($enabled === true && !$yamlInstalled) {
+            throw new \LogicException('jsonapi.openapi.yaml.enabled is true, but serving the OpenAPI document as YAML needs symfony/yaml. Install it with "composer require symfony/yaml", or set jsonapi.openapi.yaml.enabled to null or false.');
+        }
+
+        return \is_bool($enabled) ? $enabled : $yamlInstalled;
     }
 
     /**
@@ -381,6 +402,17 @@ final class OpenApiConfigResolver
     {
         $json = \is_array($openapi['json'] ?? null) ? $openapi['json'] : [];
         $path = $this->scalarOrNull($json, 'path') ?? '/docs.json';
+
+        return '/' . \ltrim($path, '/');
+    }
+
+    /**
+     * @param array<string, mixed> $openapi
+     */
+    private function yamlPath(array $openapi): string
+    {
+        $yaml = \is_array($openapi['yaml'] ?? null) ? $openapi['yaml'] : [];
+        $path = $this->scalarOrNull($yaml, 'path') ?? '/docs.yaml';
 
         return '/' . \ltrim($path, '/');
     }

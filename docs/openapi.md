@@ -274,6 +274,8 @@ package serves — API-wide, not under a server prefix:
 | --- | --- |
 | `GET /docs.json` | the default server's OpenAPI document |
 | `GET /{server}/docs.json` | a named server's document (e.g. `/admin/docs.json`) |
+| `GET /docs.yaml` | the default server's document as YAML, when symfony/yaml is installed |
+| `GET /{server}/docs.yaml` | a named server's document as YAML |
 | `GET /schemas.json` | the standalone JSON Schema documents |
 | `GET /docs` | the viewer UI (Swagger UI by default; ReDoc optional) |
 
@@ -281,6 +283,60 @@ Configure the paths, the renderer, and the prod gate under `jsonapi.openapi` —
 [configuration](configuration.md#openapi). While the document is served, every link the
 package builds points at its operation in it; see
 [links and `describedby`](#links-and-describedby).
+
+### The YAML document {#the-yaml-document}
+
+```php
+'yaml' => [
+    'enabled' => null,     // null: on when symfony/yaml is installed
+    'path' => '/docs.yaml',
+],
+```
+
+The YAML route serves the JSON document re-encoded, so it carries everything the JSON one
+does: the same serve decorators, pruning, `Cache-Control` and 304 handling. Its
+`Content-Type` is `application/yaml` (RFC 9512). Its ETag is computed the same way as the
+JSON one with the format folded in, so a JSON tag never matches the YAML document. In
+combined mode `/docs.yaml` serves the combined document and there is no per-server route.
+
+symfony/yaml isn't a Laravel dependency, so install it to get the route:
+
+```bash
+composer require symfony/yaml
+```
+
+With `enabled` left null the route appears once the package is installed. `false` turns it
+off. `true` without symfony/yaml fails the boot with a message telling you to install it.
+
+An app that routes the documents itself routes `OpenApiYamlController` the way it routes
+`OpenApiController`, with a `server` default naming the server. It answers 404 while YAML
+is off:
+
+```php
+use haddowg\JsonApiLaravel\Http\OpenApiYamlController;
+
+Route::get('/api/v5/docs.yaml', OpenApiYamlController::class)
+    ->defaults('server', 'v5')
+    ->name('api.v5.docs.yaml');
+```
+
+`OpenApiDocumentUrls` resolves where a server's document is served, as absolute URLs on a
+request's host: the package's named routes first, then a named app route to the format's
+controller. Its YAML URL is null when YAML is off or no route serves it, and
+`downloadUrls()` returns the list Redoc's `downloadUrls` option takes. Use it when you
+render your own viewer page:
+
+```php
+use haddowg\JsonApiLaravel\OpenApi\OpenApiDocumentUrls;
+
+$urls = app(OpenApiDocumentUrls::class)->forRequest($request, 'v5');
+$urls->json;            // https://api.example.test/api/v5/docs.json
+$urls->yaml;            // https://api.example.test/api/v5/docs.yaml, or null
+$urls->downloadUrls();  // [['title' => 'JSON', 'url' => ...], ['title' => 'YAML', 'url' => ...]]
+```
+
+The CLI export and the static `public_path` files write their own YAML and never run serve
+decorators.
 
 ### The viewer {#the-viewer}
 
@@ -305,6 +361,14 @@ attribute off and let ReDoc send it.
 (the `OpenApiUiController::REDOC_VERSION_2` constant) switches the page to the 2.x
 loader, a classic `<script>` that defines the `Redoc` global. ReDoc 2 has no telemetry,
 so `redoc_telemetry` does nothing there. Any other value fails the boot.
+
+ReDoc's download button offers the document as JSON and, while the
+[YAML route](#the-yaml-document) is on, as YAML, through its `downloadUrls` option. The URLs
+come from `OpenApiDocumentUrls`, on the host the page was requested from. ReDoc 3 parses the
+option from the tag's `download-urls` attribute as JSON. ReDoc 2 reads tag attributes only
+as strings, so the 2.x page leaves `spec-url` off the tag and calls
+`Redoc.init(specUrl, { downloadUrls }, element)` itself. Swagger UI has no such option and
+its page is unchanged.
 
 `ui.cdn` replaces the directory the assets load from. For Swagger UI that's the
 `swagger-ui-dist` package root. For ReDoc it's the package's `bundles/` directory, the
@@ -731,7 +795,7 @@ that client.
 
 ### Caching at the edge {#caching-at-the-edge}
 
-Both `docs.json` and `schemas.json` always send an `ETag` and answer a matching
+`docs.json`, `docs.yaml` and `schemas.json` always send an `ETag` and answer a matching
 `If-None-Match` with a `304`. The comparison is weak, so the `W/` prefix a CDN adds when it
 compresses the body still matches. How the ETag is computed depends on the decorators:
 
@@ -740,6 +804,9 @@ compresses the body still matches. How the ETag is computed depends on the decor
 | none | the warmed artifact's hash, stored beside it | one 32-byte file read |
 | all implement `OpenApiServeCacheKeyInterface` | a hash of the artifact hash and every key, in decorator order | that read plus your `cacheKey()` calls |
 | any without a key | a hash of the final body | a full decorate and serialise |
+
+The YAML document's ETag is a hash of the JSON one's and the format name, so the two never
+share a tag and a 304 for YAML costs the same as one for JSON.
 
 A partial key would let two different documents share an ETag, so one keyless decorator
 switches that document kind to the body hash. The key mixes in each decorator's class name,
@@ -758,7 +825,7 @@ Set `Cache-Control` for the document, schemas and viewer routes with `cache_cont
 It is off by default, which leaves the response `private`. The docs routes are often behind
 authentication in production, and a `public` default would let a shared cache hand an
 authenticated document to anyone. The responses carry no `Vary` header: the routes don't
-negotiate (always JSON), and a CDN already keys on the host. If a decorator reads anything
+negotiate (each route has one format), and a CDN already keys on the host. If a decorator reads anything
 other than the host, such as a cookie or an `Authorization` header, keep `cache_control`
 private.
 

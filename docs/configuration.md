@@ -359,15 +359,16 @@ The OpenAPI 3.1 generation + exposure block. Highlights:
 | Key | Purpose |
 | --- | --- |
 | `enabled` | master switch for generation |
-| `expose_in_prod` | serve the `/docs.json`, `/schemas.json`, `/docs` routes when `app.debug` is false |
+| `expose_in_prod` | serve the `/docs.json`, `/docs.yaml`, `/schemas.json`, `/docs` routes when `app.debug` is false |
 | `multi_server` | `separate` (one document per server) or `combined` (one union document) |
 | `enum_value_descriptions` | how backed-enum values render — `both` / `extensions` / `description` |
 | `public_path` | when set, `optimize` also writes static `.json`/`.yaml` for a CDN |
 | `cache_path` | the directory the warmed OpenAPI artifacts are stored in (null = `storage/framework/cache/jsonapi-openapi`) |
 | `json.path` / `json_schema.enabled` / `json_schema.path` | the document route (default `/docs.json`), and whether and where the JSON Schema route is served (default `/schemas.json`) |
+| `yaml.enabled` / `yaml.path` | serve the same document as `application/yaml` (default `/docs.yaml`, plus `/{server}/docs.yaml`); null, the default, serves it when symfony/yaml is installed, and `true` without it fails the boot; see [the YAML document](openapi.md#the-yaml-document) |
 | `describedby` | give each built link object and each document a `describedby` naming its operation in the served document (only when a route serves the document, or `document_url` is set); see [links and `describedby`](openapi.md#links-and-describedby) |
 | `document_url` | the URL `describedby` points into, used as given with `{server}` replaced by the server name; null uses the path of the route serving the document |
-| `cache_control` | the `Cache-Control` header for `/docs.json` and `/schemas.json` (null = none of its own, so the response stays private); see [caching at the edge](openapi.md#caching-at-the-edge) |
+| `cache_control` | the `Cache-Control` header for `/docs.json`, `/docs.yaml` and `/schemas.json` (null = none of its own, so the response stays private); see [caching at the edge](openapi.md#caching-at-the-edge) |
 | `ui.enabled` / `ui.renderer` / `ui.path` | serve the viewer page, pick `swagger` (default) or `redoc`, and mount it (default `/docs`) |
 | `ui.cdn` | the directory the viewer's assets load from: the `swagger-ui-dist` root, or ReDoc's `bundles/` directory holding `redoc.standalone.js` (null = the pinned jsDelivr URL) |
 | `ui.redoc_version` | the exact ReDoc release the `redoc` renderer loads (default `3.0.1`); a 2.x release such as `2.5.4` switches to the classic global script, and anything else fails the boot; see [the viewer](openapi.md#the-viewer) |

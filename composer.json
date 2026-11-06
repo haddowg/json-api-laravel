@@ -49,6 +49,7 @@
         "symfony/intl": "^7.0"
     },
     "suggest": {
+        "symfony/yaml": "Serves the OpenAPI document as YAML at /docs.yaml and offers it as a ReDoc download, and enables jsonapi:openapi:export --format=yaml and the .yaml files optimize writes to openapi.public_path.",
         "opis/json-schema": "Enables the testing kit's SchemaConformanceTrait (validate real responses against the generated OpenAPI component schemas in your test suite) and the TestResponse::assertJsonApiSpecCompliant() macro / the optional schema_validation document linter (^2.6)."
     },
     "autoload": {
