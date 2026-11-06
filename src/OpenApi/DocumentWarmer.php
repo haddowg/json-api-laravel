@@ -154,7 +154,7 @@ final class DocumentWarmer
         // YAML is emitted only when symfony/yaml is installed (a soft, suggested
         // dependency, gated like the export command's --format=yaml).
         if (\class_exists(Yaml::class)) {
-            $yaml = Yaml::dump($document->toArray(), 16, 2, Yaml::DUMP_OBJECT_AS_MAP);
+            $yaml = \haddowg\JsonApiLaravel\OpenApi\Serve\DocumentFormat::Yaml->encode($document->toJsonString(true));
             \file_put_contents($base . '/' . $this->safe($server) . '.yaml', $yaml);
         }
     }
