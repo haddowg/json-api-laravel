@@ -195,6 +195,14 @@ JsonApi::constraintTranslator(\App\JsonApi\Validation\MyConstraintTranslator::cl
 When a constraint has no natural Laravel rule, ship it as an invokable
 `ValidationRule` and translate to that.
 
+A constraint that neither the built-in vocabulary nor a registered translator handles
+throws a `LogicException` naming its class. The one exception is a composite you author
+on core's
+[`ProvidesJsonSchema`](https://github.com/haddowg/json-api/blob/main/docs/constraints.md#rolling-your-own-composite-constraint),
+whose `contribute()` adds a `oneOf`, `anyOf` or `allOf`: with no translator it documents
+its shape in the OpenAPI document and validates nothing. For a value-validated composite,
+use the built-in [`Shape`](composite-attributes.md).
+
 ### Native Laravel rules without a translator: `LaravelRules`
 
 For a one-off Laravel-native rule, skip the bespoke VO + translator and wrap the raw

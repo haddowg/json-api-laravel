@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Validation;
 
+use haddowg\JsonApi\OpenApi\Schema;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Constraint\After;
 use haddowg\JsonApi\Resource\Constraint\AtLeastOneOf;
@@ -27,6 +28,7 @@ use haddowg\JsonApi\Resource\Constraint\MinProperties;
 use haddowg\JsonApi\Resource\Constraint\MultipleOf;
 use haddowg\JsonApi\Resource\Constraint\NotIn;
 use haddowg\JsonApi\Resource\Constraint\Pattern;
+use haddowg\JsonApi\Resource\Constraint\ProvidesJsonSchema;
 use haddowg\JsonApi\Resource\Constraint\Sequentially;
 use haddowg\JsonApi\Resource\Constraint\SlugFormat;
 use haddowg\JsonApi\Resource\Constraint\UlidFormat;
@@ -248,7 +250,8 @@ final class ConstraintTranslator
 
     /**
      * Delegates a constraint outside the built-in vocabulary to the first registered
-     * {@see ConstraintTranslatorInterface} that supports it.
+     * {@see ConstraintTranslatorInterface} that supports it. An authored composite no
+     * translator supports documents its shape and translates to nothing.
      *
      * @return list<string|\Stringable|\Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\Rule>
      */
@@ -260,11 +263,30 @@ final class ConstraintTranslator
             }
         }
 
+        if (self::isComposite($constraint)) {
+            return [];
+        }
+
         throw new \LogicException(\sprintf(
             'No translator is registered for the JSON:API constraint %s. Implement a %s and register it, or use a built-in constraint.',
             $constraint::class,
             ConstraintTranslatorInterface::class,
         ));
+    }
+
+    /**
+     * Whether the constraint contributes a `oneOf`/`anyOf`/`allOf` of raw JSON Schema,
+     * which no Laravel rule can express.
+     */
+    private static function isComposite(ConstraintInterface $constraint): bool
+    {
+        if (!$constraint instanceof ProvidesJsonSchema) {
+            return false;
+        }
+
+        $keywords = $constraint->contribute(Schema::create())->toArray();
+
+        return isset($keywords['oneOf']) || isset($keywords['anyOf']) || isset($keywords['allOf']);
     }
 
     private function url(UrlFormat $constraint): string
