@@ -292,8 +292,9 @@ its own `sunset` keeps it, and still inherits the server's `sunset_link` unless 
 
 The `default` server takes a block too, since it is configured under `servers` like any
 other. A server block fails the boot on the same bad values as the global one. The OpenAPI
-document describes none of these headers on any server, so a server block doesn't change
-it.
+document describes none of these headers on any server, and a `deprecation` or `sunset` set
+here marks nothing in it, so a server block doesn't change the document. Only a type's own
+declaration [deprecates it in the document](openapi.md#deprecation).
 
 ### Prefixes and the base
 

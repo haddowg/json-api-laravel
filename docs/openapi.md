@@ -142,6 +142,69 @@ An action can also carry its own vendor extensions, and an action with more than
 gets one operation id per method. [Custom actions](actions.md#operation-ids-safety-and-extensions)
 covers the ids and the declarations discovery rejects.
 
+## Deprecation {#deprecation}
+
+The declarations that send the `Deprecation` and `Sunset` headers also mark the document.
+Like the headers, the markers change nothing else: a deprecated operation, field, filter or
+sort keeps working exactly as before.
+
+A type declared `#[AsJsonApiResource(deprecation: true)]`, or deprecated on a date, marks
+every operation the document emits for it `deprecated: true`. That covers its CRUD
+operations, its related and relationship endpoints and its custom actions. A `sunset` adds a
+sentence naming the date to the end of each of those operations' descriptions:
+
+```php
+#[AsJsonApiResource(deprecation: true, sunset: 'Sat, 31 Dec 2050 23:59:59 GMT')]
+final class DeviceResource extends AbstractResource { /* … */ }
+```
+
+```json
+"/devices": {
+  "get": {
+    "description": "…\n\nThis operation may stop responding on or after 2050-12-31, its sunset date.",
+    "deprecated": true
+  }
+}
+```
+
+The sunset is read as an HTTP-date, a structured-field date such as `@2556143999`, or an ISO
+8601 date. A value that is none of these still goes out in the `Sunset` header verbatim, but
+the document names no date for it. A sunset marks nothing deprecated on its own.
+
+Only what the type's class declares reaches the document. A `deprecation` or `sunset` from
+`jsonapi.defaults` or a server's own `defaults` block still adds the headers to every
+response, but marks nothing.
+
+`deprecatedOperations` marks single operations, named the way
+[`operationExamples`](#operation-examples) keys them: `fetchCollection`, `fetchOne`,
+`create`, `update`, `delete`, or `fetchRelated`, `fetchRelationship`, `updateRelationship`,
+`addRelationship` or `removeRelationship` with a dot and the relation name.
+`#[AsJsonApiSerializer]` takes it too.
+
+```php
+#[AsJsonApiResource(deprecatedOperations: ['delete', 'fetchRelated.label'])]
+final class AlbumResource extends AbstractResource { /* … */ }
+```
+
+The boot fails on an entry that isn't an operation name, an operation case value such as
+`Delete`, a CRUD operation the type doesn't expose, or a relationship mutation on a type that
+doesn't expose `Update`. Core fails the projection for a relation the type doesn't have.
+
+An action is deprecated on its own declaration, `#[AsJsonApiAction(deprecated: true)]`, which
+marks each of its methods.
+
+Fields, relations, filters and sorts are deprecated where they are declared, with
+`->deprecated()`. A relation gets `deprecated: true` on its property under `relationships`,
+and its related and relationship endpoints stay unmarked unless `deprecatedOperations` names
+them. Core's docs cover [fields](https://github.com/haddowg/json-api/blob/main/docs/fields.md#deprecation-deprecated),
+[filters](https://github.com/haddowg/json-api/blob/main/docs/filters.md) and
+[sorts](https://github.com/haddowg/json-api/blob/main/docs/sorts.md#deprecating-a-sort), and
+[how the document carries each marker](https://github.com/haddowg/json-api/blob/main/docs/openapi.md#deprecation).
+
+A document that carries any marker declares the deprecation tier in its `x-generator`
+contract stamp, so an older generator is warned that it may drop them. A document without
+one, including one whose only declaration is a sunset, keeps its usual stamp.
+
 ## The singular noun in generated prose {#singular-noun}
 
 The generated summaries and descriptions name one resource with the singular of its type

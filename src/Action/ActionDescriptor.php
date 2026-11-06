@@ -39,7 +39,8 @@ use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
  *
  * `readOnly`, `destructive` and `idempotent` are the action's declared safety flags, `null`
  * when undeclared, `extensions` its own OpenAPI vendor extensions, and `scopes` the OAuth
- * scopes it declares, `null` when the scope resolver decides.
+ * scopes it declares, `null` when the scope resolver decides. `deprecated` says whether the
+ * action is declared deprecated.
  *
  * It carries only scalars + lists (enums by case name), so a set of descriptors
  * round-trips through {@see toArray()} / {@see fromArray()} to a `var_export`-able
@@ -60,6 +61,7 @@ final readonly class ActionDescriptor
      * @param array<string, string>                           $accepts      the accepted request media types, lowercased, each mapped to the {@see ActionInput} case name it is read in (empty = what the input mode implies)
      * @param array<string, mixed>                            $extensions   the action operation's own OpenAPI vendor extensions, keyed by `x-` name
      * @param list<string>|null                               $scopes       the OAuth scopes the action declares (null = ask the scope resolver)
+     * @param bool                                            $deprecated   whether the action is declared deprecated
      * @param bool                                            $conditionallyLinked the handler is {@see ConditionallyLinked}, so its `asLink` link is further gated per rendered entity by `shouldLink()` (recorded here so the link contributor resolves the handler only when it matters)
      */
     public function __construct(
@@ -87,6 +89,7 @@ final readonly class ActionDescriptor
         public ?bool $idempotent = null,
         public array $extensions = [],
         public ?array $scopes = null,
+        public bool $deprecated = false,
     ) {}
 
     /**
@@ -142,7 +145,7 @@ final readonly class ActionDescriptor
     }
 
     /**
-     * @return array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null, description?: string|null, mediaType?: string|null}>, ability: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name: ?string, tags: list<string>, asLink: bool, resolvesTrashed: bool, conditionallyLinked: bool, summary: ?string, description: ?string, accepts: array<string, string>, readOnly: ?bool, destructive: ?bool, idempotent: ?bool, extensions: array<string, mixed>, scopes: list<string>|null}
+     * @return array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null, description?: string|null, mediaType?: string|null}>, ability: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name: ?string, tags: list<string>, asLink: bool, resolvesTrashed: bool, conditionallyLinked: bool, summary: ?string, description: ?string, accepts: array<string, string>, readOnly: ?bool, destructive: ?bool, idempotent: ?bool, extensions: array<string, mixed>, scopes: list<string>|null, deprecated: bool}
      */
     public function toArray(): array
     {
@@ -171,11 +174,12 @@ final readonly class ActionDescriptor
             'idempotent' => $this->idempotent,
             'extensions' => $this->extensions,
             'scopes' => $this->scopes,
+            'deprecated' => $this->deprecated,
         ];
     }
 
     /**
-     * @param array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null, description?: string|null, mediaType?: string|null}>, ability?: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name?: ?string, tags?: list<string>, asLink?: bool, resolvesTrashed?: bool, conditionallyLinked?: bool, summary?: ?string, description?: ?string, accepts?: array<string, string>, readOnly?: ?bool, destructive?: ?bool, idempotent?: ?bool, extensions?: array<string, mixed>, scopes?: list<string>|null} $data
+     * @param array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null, description?: string|null, mediaType?: string|null}>, ability?: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name?: ?string, tags?: list<string>, asLink?: bool, resolvesTrashed?: bool, conditionallyLinked?: bool, summary?: ?string, description?: ?string, accepts?: array<string, string>, readOnly?: ?bool, destructive?: ?bool, idempotent?: ?bool, extensions?: array<string, mixed>, scopes?: list<string>|null, deprecated?: bool} $data
      */
     public static function fromArray(array $data): self
     {
@@ -204,6 +208,7 @@ final readonly class ActionDescriptor
             $data['idempotent'] ?? null,
             $data['extensions'] ?? [],
             $data['scopes'] ?? null,
+            $data['deprecated'] ?? false,
         );
     }
 }

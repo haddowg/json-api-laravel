@@ -36,6 +36,7 @@ final readonly class SerializerDescriptor
      * @param list<string>                                                  $tags       the explicit OpenAPI tag names the type's operations are grouped under (empty = the humanized-type default)
      * @param array<string, mixed>                                          $extensions          the OpenAPI vendor extensions (`x-…`) stamped on every operation of the type
      * @param array<string, array<string, mixed>>                           $operationExtensions per-operation vendor extensions keyed by {@see Operation} case value or core operation name, merged over `$extensions`
+     * @param list<string>                                                  $deprecatedOperations the operations deprecated on their own, by core operation name
      */
     public function __construct(
         public string $class,
@@ -46,6 +47,7 @@ final readonly class SerializerDescriptor
         public array $tags = [],
         public array $extensions = [],
         public array $operationExtensions = [],
+        public array $deprecatedOperations = [],
     ) {}
 
     /**
@@ -65,7 +67,7 @@ final readonly class SerializerDescriptor
     }
 
     /**
-     * @return array{class: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>, type: string, uriType: string, servers: list<string>, operations: list<string>, tags: list<string>, extensions: array<string, mixed>, operationExtensions: array<string, array<string, mixed>>}
+     * @return array{class: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>, type: string, uriType: string, servers: list<string>, operations: list<string>, tags: list<string>, extensions: array<string, mixed>, operationExtensions: array<string, array<string, mixed>>, deprecatedOperations: list<string>}
      */
     public function toArray(): array
     {
@@ -78,11 +80,12 @@ final readonly class SerializerDescriptor
             'tags' => $this->tags,
             'extensions' => $this->extensions,
             'operationExtensions' => $this->operationExtensions,
+            'deprecatedOperations' => $this->deprecatedOperations,
         ];
     }
 
     /**
-     * @param array{class: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>, type: string, uriType: string, servers: list<string>, operations: list<string>, tags?: list<string>, extensions?: array<string, mixed>, operationExtensions?: array<string, array<string, mixed>>} $data
+     * @param array{class: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>, type: string, uriType: string, servers: list<string>, operations: list<string>, tags?: list<string>, extensions?: array<string, mixed>, operationExtensions?: array<string, array<string, mixed>>, deprecatedOperations?: list<string>} $data
      */
     public static function fromArray(array $data): self
     {
@@ -95,6 +98,7 @@ final readonly class SerializerDescriptor
             $data['tags'] ?? [],
             $data['extensions'] ?? [],
             $data['operationExtensions'] ?? [],
+            $data['deprecatedOperations'] ?? [],
         );
     }
 }

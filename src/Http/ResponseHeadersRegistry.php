@@ -13,7 +13,7 @@ use haddowg\JsonApiLaravel\Server\ServerRegistry;
  * defaults from `jsonapi.defaults.cache_headers` / `jsonapi.defaults.deprecation` /
  * `…sunset`.
  *
- * Built from a plain scalar `type → {cache, cache_operations, deprecation}` map the
+ * Built from a plain scalar `type → {cache, cache_operations, deprecation, deprecated_operations}` map the
  * service provider projects from each discovered resource's `#[AsJsonApiResource(cacheHeaders: …)]`
  * attribute params (kept as scalars so the discovery snapshot stays cacheable). The
  * global defaults arrive as the same scalar shape from config.
@@ -24,6 +24,9 @@ use haddowg\JsonApiLaravel\Server\ServerRegistry;
  * a server replaces only the global values it sets. Each server reads only what its own
  * resource class declares for a type, so a server whose class declares nothing gets the
  * defaults.
+ * `deprecated_operations` lists the operations a type deprecates on their own, by core
+ * operation name, its deprecated actions included as `action.<path>.<method>`. A response to
+ * one of them gets `Deprecation: true` even when the type itself is not deprecated.
  * The {@see \haddowg\JsonApiLaravel\Http\ResponseHeadersMiddleware} queries it per
  * request.
  */
@@ -42,6 +45,9 @@ final class ResponseHeadersRegistry
     /** @var array<string, array<string, DeprecationHeaders>> */
     private array $deprecationByType = [];
 
+    /** @var array<string, array<string, array<string, true>>> */
+    private array $deprecatedOperationsByType = [];
+
     /** @var array<string, CacheHeaders> each server's defaults, already layered over the global ones */
     private array $serverCache = [];
 
@@ -53,6 +59,7 @@ final class ResponseHeadersRegistry
      *     cache?: array<string, mixed>,
      *     cache_operations?: array<string, array<string, mixed>>,
      *     deprecation?: array<string, mixed>,
+     *     deprecated_operations?: list<string>,
      * }> $byType the `default` server's per-type scalar config
      * @param array<string, mixed> $defaultCache the global `cache_headers` default
      * @param array<string, mixed> $defaultDeprecation the global `deprecation`/`sunset` default
@@ -60,6 +67,7 @@ final class ResponseHeadersRegistry
      *     cache?: array<string, mixed>,
      *     cache_operations?: array<string, array<string, mixed>>,
      *     deprecation?: array<string, mixed>,
+     *     deprecated_operations?: list<string>,
      * }>> $byServer the per-type scalar config keyed by server name, then type, as the service provider projected it from discovery; an entry for `default` here replaces `$byType`
      * @param array<string, array{
      *     cache?: array<string, mixed>,
@@ -100,6 +108,10 @@ final class ResponseHeadersRegistry
                     $deprecation = $config['deprecation'];
                     $this->deprecationByType[$server][$type] = DeprecationHeaders::fromArray($deprecation);
                 }
+
+                foreach ($config['deprecated_operations'] ?? [] as $operation) {
+                    $this->deprecatedOperationsByType[$server][$type][$operation] = true;
+                }
             }
         }
     }
@@ -128,13 +140,22 @@ final class ResponseHeadersRegistry
     /**
      * The resolved {@see DeprecationHeaders} for `$type` on `$server` (null is `default`):
      * the resource-level value layered over the server's defaults layered over the global
-     * default, field by field. Returns `null` when the
+     * default, field by field. When `$operation` names an operation the type deprecates on
+     * its own, an unset or `false` deprecation becomes `true`. Returns `null` when the
      * result is empty (no deprecation/sunset anywhere).
+     *
+     * @param string|null $operation the request's core operation name, such as `fetchOne` or `action.publish.post`
      */
-    public function deprecationFor(string $type, ?string $server = null): ?DeprecationHeaders
+    public function deprecationFor(string $type, ?string $server = null, ?string $operation = null): ?DeprecationHeaders
     {
         $server ??= ServerRegistry::DEFAULT_SERVER;
         $resolved = ($this->deprecationByType[$server][$type] ?? new DeprecationHeaders())->mergeOver($this->serverDeprecation[$server] ?? $this->defaultDeprecation);
+
+        if ($operation !== null
+            && isset($this->deprecatedOperationsByType[$server][$type][$operation])
+            && ($resolved->deprecation === null || $resolved->deprecation === false)) {
+            $resolved = new DeprecationHeaders(true, $resolved->sunset, $resolved->sunsetLink);
+        }
 
         return $resolved->isEmpty() ? null : $resolved;
     }

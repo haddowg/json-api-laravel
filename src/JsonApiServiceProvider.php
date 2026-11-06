@@ -312,7 +312,8 @@ final class JsonApiServiceProvider extends ServiceProvider
      * cache + deprecation/sunset config projected off the discovered
      * {@see \haddowg\JsonApiLaravel\Discovery\ResourceDescriptor}s (a discovery-time
      * projection, like the Authorizer config), layered over each server's own
-     * `jsonapi.servers.<name>.defaults` and then the global `jsonapi.defaults.*`. The {@see \haddowg\JsonApiLaravel\Http\ResponseHeadersMiddleware}
+     * `jsonapi.servers.<name>.defaults` and then the global `jsonapi.defaults.*`, plus the
+     * operations and actions each type deprecates on their own. The {@see \haddowg\JsonApiLaravel\Http\ResponseHeadersMiddleware}
      * queries it per request.
      */
     private function registerResponseHeaders(): void
@@ -327,6 +328,22 @@ final class JsonApiServiceProvider extends ServiceProvider
                 if ($descriptor->headers !== []) {
                     foreach ($descriptor->servers as $server) {
                         $byServer[$server][$descriptor->type] = $descriptor->headers;
+                    }
+                }
+            }
+
+            foreach ([...$discovery->resources(), ...$discovery->serializers()] as $descriptor) {
+                if ($descriptor->deprecatedOperations !== []) {
+                    foreach ($descriptor->servers as $server) {
+                        $byServer[$server][$descriptor->type]['deprecated_operations'] = $descriptor->deprecatedOperations;
+                    }
+                }
+            }
+
+            foreach ($discovery->actions() as $action) {
+                if ($action->deprecated) {
+                    foreach ($action->methods as $method) {
+                        $byServer[$action->server][$action->type]['deprecated_operations'][] = 'action.' . $action->path . '.' . \strtolower($method);
                     }
                 }
             }

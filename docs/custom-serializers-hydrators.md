@@ -63,6 +63,13 @@ per-operation set can only name an operation the `operations` list exposes, so a
 serialize-only type takes type-wide `extensions` alone (they still reach any custom action
 mounted on it).
 
+It also takes `operationExamples`, `operationScopes` and `deprecatedOperations` as
+`#[AsJsonApiResource]` does, each limited to the operations the `operations` list exposes.
+A `deprecatedOperations` entry marks the operation in the
+[OpenAPI document](openapi.md#deprecation) and sends `Deprecation: true` on its responses.
+The serializer attribute has no `deprecation` or `sunset`, so a resource-less type can't be
+deprecated as a whole.
+
 ## A standalone hydrator
 
 The write twin: `#[AsJsonApiHydrator(type: …)]` on a class implementing core's
