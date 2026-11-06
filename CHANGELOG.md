@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.27.0](https://github.com/haddowg/json-api-laravel/compare/v1.26.0...v1.27.0) (2026-11-06)
+
+
+### Features
+
+* serve the OpenAPI document as YAML ([#201](https://github.com/haddowg/json-api-laravel/issues/201)) ([aff2893](https://github.com/haddowg/json-api-laravel/commit/aff2893af14276fba1f86ee0d69f8e5347614edf))
+
+
+### Bug Fixes
+
+* keep empty lists as lists in exported yaml ([#203](https://github.com/haddowg/json-api-laravel/issues/203)) ([45181f1](https://github.com/haddowg/json-api-laravel/commit/45181f1867d12834f2a922af9f5d97a6beeec7ff))
+* let an authored composite constraint skip the translator ([#205](https://github.com/haddowg/json-api-laravel/issues/205)) ([ff7862c](https://github.com/haddowg/json-api-laravel/commit/ff7862c81d9af79ba4104ae86149a7924048bea9))
+
 ## [1.26.0](https://github.com/haddowg/json-api-laravel/compare/v1.25.3...v1.26.0) (2026-11-06)
 
 
