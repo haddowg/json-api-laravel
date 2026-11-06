@@ -120,8 +120,11 @@ default.
 ```
 
 When `true` (default), an unrecognized top-level query-parameter family is rejected with a
-`400`, so a client typo surfaces cleanly instead of being silently dropped. Set `false` for
-the tolerant (silent-ignore) behaviour.
+`400`, so a client typo surfaces cleanly instead of being silently dropped. The same gate
+rejects a `fields[type]` member that names no declared field of a registered type, with a
+`400` `FIELDSET_MEMBER_UNRECOGNIZED`. A profile's family, such as the Countable profile's
+`withCount`, is recognized only when the profile is registered and the client negotiated
+it in `Accept`. Set `false` for the tolerant (silent-ignore) behaviour.
 
 ## `max_include_depth`
 

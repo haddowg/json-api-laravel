@@ -530,7 +530,8 @@ php artisan jsonapi:openapi:export --compact --output=build/openapi.min.json
 ```
 
 `--server` selects the server (default `default`); `--format` is `json` (default) or `yaml`;
-`--output` writes to a file/directory (omit for stdout). The document renders byte-clean
+`--output` writes to a file/directory (omit for stdout). `jsonapi:jsonschema:export` also
+takes `--type` to export one type, written to stdout or to the `--output` file. The document renders byte-clean
 (`toJsonString(true)."\n"`).
 
 Both commands pretty-print JSON by default. `--compact` writes each document on a single line

@@ -95,6 +95,9 @@ GET /api/users/1?include=playlists.owner
   excluded paths from the OpenAPI `include` parameter.
 - **Per-relation opt-out** — `cannotBeIncluded()` keeps `?include=favoritable` a `400` while
   the related/relationship endpoints still render (the example's `favorites.favoritable`).
+  Pass it a `fn($model, $request): bool` closure to decide per request instead. The closure
+  runs as each resource renders, so it applies only to requests that render the relation,
+  and the OpenAPI document still lists the path.
 
 ## `?withCount` (the Countable profile)
 
