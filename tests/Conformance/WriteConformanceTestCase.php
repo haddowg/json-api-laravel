@@ -165,11 +165,11 @@ abstract class WriteConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:crud')]
-    public function anUndeclaredAttributeInAWriteBodyIsSilentlyIgnored(): void
+    public function anUndeclaredAttributeInAWriteBodyIsRefused(): void
     {
-        // Allow-list hydration: an attribute the resource did not declare (the classic
-        // mass-assignment over-post) is dropped — never written, and the declared-only
-        // resource the engine renders never surfaces it.
+        // The attributes object is closed: an attribute the resource did not declare
+        // (the classic mass-assignment over-post) is a 400 naming each member, and
+        // nothing is written.
         $response = $this->writeJsonApi('PATCH', '/api/albums/1', [
             'data' => [
                 'type' => 'albums',
@@ -182,13 +182,12 @@ abstract class WriteConformanceTestCase extends Orchestra
             ],
         ]);
 
-        $response->assertStatus(200);
-        $response->assertJsonPath('data.attributes.title', 'Edited Via Allow-List');
+        $response->assertStatus(400);
+        $response->assertJsonPath('errors.0.code', 'ATTRIBUTE_MEMBER_UNRECOGNIZED');
+        $response->assertJsonPath('errors.0.source.pointer', '/data/attributes/isAdmin');
+        $response->assertJsonPath('errors.1.source.pointer', '/data/attributes/undeclared');
 
-        /** @var array<string, mixed> $attributes */
-        $attributes = $response->json('data.attributes');
-        self::assertArrayNotHasKey('isAdmin', $attributes);
-        self::assertArrayNotHasKey('undeclared', $attributes);
+        self::assertNotSame('Edited Via Allow-List', $this->readJsonApi('/api/albums/1')->json('data.attributes.title'));
     }
 
     #[Test]

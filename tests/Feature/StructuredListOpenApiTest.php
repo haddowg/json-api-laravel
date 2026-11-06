@@ -77,7 +77,7 @@ final class StructuredListOpenApiTest extends Orchestra
     public function the_document_carries_the_structured_list_contract(): void
     {
         self::assertSame(
-            ['contract' => GeneratorContract::STRUCTURED_LIST_ELEMENTS],
+            ['contract' => \max(GeneratorContract::BASELINE, GeneratorContract::STRUCTURED_LIST_ELEMENTS)],
             $this->arrayAt($this->document(), 'info', 'x-generator'),
         );
     }
