@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.26.0](https://github.com/haddowg/json-api-laravel/compare/v1.25.3...v1.26.0) (2026-11-06)
+
+
+### Features
+
+* key operation extensions by operation name ([#199](https://github.com/haddowg/json-api-laravel/issues/199)) ([66b2d77](https://github.com/haddowg/json-api-laravel/commit/66b2d771e4eea399e4232738f7d5b63e60253e86))
+
 ## [1.25.3](https://github.com/haddowg/json-api-laravel/compare/v1.25.2...v1.25.3) (2026-11-05)
 
 
