@@ -62,10 +62,38 @@ final class AgencyResource extends AbstractResource { /* ... */ }
 
 `extensions` lands on every operation the document emits for the type: the CRUD operations,
 the related and relationship endpoints of its relations, and its [custom actions](actions.md).
-`operationExtensions` adds members to one CRUD operation, keyed by the `Operation` case value
-(`FetchCollection`, `FetchOne`, `Create`, `Update`, `Delete`), and is merged over `extensions`,
-so the operation's value wins on a shared key. Here `DELETE /agencies/{id}` carries
+`operationExtensions` adds members to one operation and is merged over `extensions`, so the
+operation's value wins on a shared key. Here `DELETE /agencies/{id}` carries
 `x-feature: agency-admin` and every other operation `x-feature: agency`.
+
+An `operationExtensions` key takes one of two forms. An `Operation` case value
+(`FetchCollection`, `FetchOne`, `Create`, `Update`, `Delete`) names a CRUD operation. A core
+operation name, the same names [`operationExamples`](#operation-examples) and
+[`operationScopes`](scopes.md) use, reaches any operation that isn't an action:
+`fetchCollection`, `fetchOne`, `create`, `update` and `delete`, or `fetchRelated`,
+`fetchRelationship`, `updateRelationship`, `addRelationship` or `removeRelationship` followed
+by a dot and the relation name. That lets one related endpoint carry its own set without
+tagging the whole type:
+
+```php
+#[AsJsonApiResource(
+    operationExtensions: [
+        'fetchRelated.agencies' => ['x-mcp' => false],
+    ],
+)]
+final class ClientResource extends AbstractResource { /* ... */ }
+```
+
+[`@haddowg/json-api-mcp`](https://github.com/haddowg/json-api-ts/blob/main/docs/mcp.md) reads
+`x-mcp` when it turns the document into tools. `x-mcp: false` leaves that operation's tool
+out, and an object with `name`, `title` or `description` overrides those parts of the tool.
+Relationship endpoints never become tools, so it ignores `x-mcp` on one. Here
+`GET /clients/{id}/agencies` gets no tool and every other operation of the type keeps its own.
+
+The two spellings of a CRUD operation, `Create` and `create`, name the same operation, so a
+map may use only one of them for it. Each operation's set is built in layers, a later one
+winning on a shared key: `extensions`, then the set for that operation, then an action's own
+extensions.
 
 Discovery checks the declaration, so a mistake fails at boot rather than in the document:
 
@@ -73,11 +101,16 @@ Discovery checks the declaration, so a mistake fails at boot rather than in the 
 - `x-oai-` and `x-oas-` are reserved by the OpenAPI Initiative and rejected;
 - a value is a scalar, `null`, or an array of them, since it is stored in the
   [discovery cache](optimize.md);
-- an `operationExtensions` key must be an `Operation` case the type exposes.
+- an `operationExtensions` key must be an `Operation` case value or an operation name, a CRUD
+  operation it names must be one the type exposes, and no operation may be named twice.
+
+The attribute can't see the type's relations, so a name for a relation the type doesn't have,
+such as `fetchRelated.nope`, passes discovery and fails when the document is built, with an
+`\InvalidArgumentException` naming the operations the type does expose.
 
 A resource-less type declared with `#[AsJsonApiSerializer]` takes the same two arguments,
-checked the same way. Its `operationExtensions` keys must be operations in its `operations`
-list:
+checked the same way. A CRUD operation its `operationExtensions` names must be in its
+`operations` list:
 
 ```php
 #[AsJsonApiSerializer(

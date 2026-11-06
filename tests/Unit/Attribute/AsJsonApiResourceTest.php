@@ -192,4 +192,71 @@ final class AsJsonApiResourceTest extends TestCase
 
         new AsJsonApiResource(readOnly: true, operationExtensions: ['Create' => ['x-feature' => 'agency']]);
     }
+
+    public function test_it_accepts_core_operation_names_beside_case_values(): void
+    {
+        $declared = [
+            'Create' => ['x-feature' => 'agency-write'],
+            'fetchOne' => ['x-cache' => ['ttl' => 60]],
+            'fetchRelated.agencies' => ['x-mcp' => false],
+            'removeRelationship.agencies' => ['x-mcp' => ['name' => 'unlink_agency']],
+        ];
+
+        $attribute = new AsJsonApiResource(operationExtensions: $declared);
+
+        self::assertSame($declared, $attribute->operationExtensions);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function malformedOperationNames(): iterable
+    {
+        yield 'a relation kind without a relation' => ['fetchRelated'];
+        yield 'an empty relation' => ['fetchRelated.'];
+        yield 'a CRUD kind with a relation' => ['fetchOne.agencies'];
+        yield 'the wrong case' => ['FetchRelated.agencies'];
+        yield 'an action name' => ['action.publish.post'];
+        yield 'the atomic endpoint' => ['atomic'];
+    }
+
+    #[DataProvider('malformedOperationNames')]
+    public function test_it_rejects_a_malformed_operation_name(string $name): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage(\sprintf('"%s"', $name));
+
+        new AsJsonApiResource(operationExtensions: [$name => ['x-mcp' => false]]);
+    }
+
+    public function test_it_rejects_a_core_name_for_an_unexposed_operation(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('create operation, but it is not exposed');
+
+        new AsJsonApiResource(readOnly: true, operationExtensions: ['create' => ['x-feature' => 'agency']]);
+    }
+
+    public function test_it_rejects_an_operation_named_twice(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('"Delete" and "delete", which name the same operation');
+
+        new AsJsonApiResource(operationExtensions: [
+            'Delete' => ['x-danger' => true],
+            'delete' => ['x-mcp' => false],
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $extensions
+     */
+    #[DataProvider('invalidExtensions')]
+    public function test_it_rejects_an_invalid_named_operation_extension(array $extensions): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('operationExtensions[fetchRelated.agencies]');
+
+        new AsJsonApiResource(operationExtensions: ['fetchRelated.agencies' => $extensions]);
+    }
 }

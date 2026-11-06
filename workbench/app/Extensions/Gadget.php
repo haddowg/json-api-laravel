@@ -10,5 +10,6 @@ final class Gadget
         public string $id = '',
         public string $name = '',
         public ?Maker $maker = null,
+        public ?Maker $designer = null,
     ) {}
 }
