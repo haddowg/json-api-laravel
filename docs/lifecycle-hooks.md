@@ -70,7 +70,9 @@ you need.
 
 Every hook receives a `HookContext` carrying the operation's request, server name, and type —
 the same context the events expose, so a hook can branch on the request (e.g. an authed-only
-side effect).
+side effect). It is a readonly value object with public properties, not getters:
+`$context->request`, `$context->serverName`, `$context->type`, and for the relationship
+hooks `$context->relation`, `$context->linkage` and `$context->mode`.
 
 ## Hooks vs events vs model events
 
