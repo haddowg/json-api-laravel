@@ -91,6 +91,33 @@ trait InteractsWithOpenApiDocument
     }
 
     /**
+     * The name of the error shape component in `$schemas` cataloguing `$code`: the one whose
+     * narrowing (`allOf[1]`) carries `$code` as a `const` branch of its `code` `anyOf`, or
+     * null when no shape does.
+     *
+     * @param array<array-key, mixed> $schemas
+     */
+    protected function errorShapeFor(array $schemas, string $code): ?string
+    {
+        foreach ($schemas as $name => $schema) {
+            $branches = $schema;
+            foreach (['allOf', 1, 'properties', 'code', 'anyOf'] as $key) {
+                $branches = \is_array($branches) ? ($branches[$key] ?? null) : null;
+            }
+            if (!\is_array($branches)) {
+                continue;
+            }
+            foreach ($branches as $branch) {
+                if (\is_array($branch) && ($branch['const'] ?? null) === $code) {
+                    return (string) $name;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * The `name` values of the OpenAPI parameters at `paths.{path}.{method}.parameters`.
      *
      * @param array<string, mixed> $doc
