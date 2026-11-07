@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/haddowg/json-api-laravel/compare/v2.0.0...v2.1.0) (2026-11-07)
+
+
+### Features
+
+* catalogue tagged error sources and scope error codes to the operations that raise them ([#210](https://github.com/haddowg/json-api-laravel/issues/210)) ([fcbb573](https://github.com/haddowg/json-api-laravel/commit/fcbb57320565f729e4060956ea2d175ebc7fae89))
+
 ## [2.0.0](https://github.com/haddowg/json-api-laravel/compare/v1.28.0...v2.0.0) (2026-11-07)
 
 
