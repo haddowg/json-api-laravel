@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/haddowg/json-api-laravel/compare/v1.28.0...v2.0.0) (2026-11-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* the package now requires haddowg/json-api ^2.0. An undeclared attribute in a write body is rejected rather than ignored, and a OneOf that relied on the implicit `type` discriminator must name it.
+
+### Features
+
+* require haddowg/json-api 2.0 ([#208](https://github.com/haddowg/json-api-laravel/issues/208)) ([13908ff](https://github.com/haddowg/json-api-laravel/commit/13908ff9d4da5ff40cb9d3375bee2a9ae6204391))
+
 ## [1.28.0](https://github.com/haddowg/json-api-laravel/compare/v1.27.0...v1.28.0) (2026-11-06)
 
 
