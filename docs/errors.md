@@ -134,9 +134,11 @@ an exception without decorating the whole renderer.
 
 ## Documenting your own error codes
 
-Core catalogues its own error codes in the generated OpenAPI document: one named schema
-variant per code, offered from `ErrorDocument.errors.items` by an `anyOf` a generated
-client can dispatch on. Your application's codes join them when you say where they are.
+Core catalogues its own error codes in the generated OpenAPI document: the codes at one
+status sharing a `source` member and declared `meta` form one named shape (`Error404`,
+`Error400Parameter`), each code a `const` branch of the shape's `code`, and
+`ErrorDocument.errors.items` offers the shapes by an `anyOf` a generated client can dispatch
+on. Your application's codes join them when you say where they are.
 
 An error that wants a place in the catalogue implements core's `DescribedErrorInterface`,
 which reads the code, status and title off the class — nothing is constructed to describe
@@ -201,6 +203,66 @@ last-one-wins: a `code` is what a client dispatches on, so publishing one class'
 and title under another's would be a lie. The catalogue stays **open** either way — the
 `anyOf` leads with the generic `Error`, so an error carrying a code you never declared is
 still a valid error object.
+
+### Scoping a code to the operations that raise it
+
+A catalogued code is offered by every operation's error response for its status. When only
+some operations raise it, scope it, and the document offers it on those operations alone:
+each points its response for the code's status at one narrowed to the scoped code (a
+`ConflictWithArticleLocked` carrying `ErrorDocument409WithArticleLocked`), gaining that
+status if it did not advertise it, while every other operation keeps the shared response.
+
+For an error you own, declare the scope on its descriptor. A discovered or registered class
+keeps the scope its descriptor declares:
+
+```php
+use haddowg\JsonApi\Exception\ErrorScope;
+
+public static function describe(): ErrorDescriptor
+{
+    return new ErrorDescriptor(
+        code: 'ARTICLE_LOCKED',
+        status: 409,
+        title: 'Article locked',
+        scope: ErrorScope::on('articles', 'update', 'delete'),
+    );
+}
+```
+
+`ErrorScope::on()` names operations of one type (`update`, `fetchRelated.author`,
+`action.publish.post`), or all of them when it names none; `ErrorScope::kinds()` covers
+operations of a kind on every type, and `and()` combines scopes.
+
+For an error you do not own, such as one a package ships unscoped, catalogue it through
+core's `ScopedErrorSource`, whose scope replaces the descriptor's. Bind it in a service
+provider's `register()` and tag it `jsonapi.error_source`
+(`JsonApiServiceProvider::ERROR_SOURCE_TAG`):
+
+```php
+use haddowg\JsonApi\Exception\ErrorScope;
+use haddowg\JsonApi\Exception\ScopedErrorSource;
+use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+
+public function register(): void
+{
+    $this->app->singleton(
+        'app.jsonapi.card_declined',
+        static fn(): ScopedErrorSource => new ScopedErrorSource(
+            ErrorScope::on('orders', 'action.purchase.post'),
+            \Acme\Billing\Exception\CardDeclined::class,
+        ),
+    );
+    $this->app->tag('app.jsonapi.card_declined', JsonApiServiceProvider::ERROR_SOURCE_TAG);
+}
+```
+
+The tag takes any core `ErrorCatalogSourceInterface`, so a source of your own that computes
+its class list works the same way. Tagged sources join the catalogue after the discovered
+errors, in registration order, and on every server. They are objects the container builds,
+not discovery data, so `jsonapi:optimize` snapshots none of them and they are read on each
+build of the document. See core's
+[scoping a code to the operations that raise it](https://github.com/haddowg/json-api/blob/main/docs/openapi.md#scoping-a-code-to-the-operations-that-raise-it)
+for the projection in full.
 
 ## Content negotiation and query errors
 
