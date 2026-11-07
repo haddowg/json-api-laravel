@@ -28,7 +28,7 @@ use Workbench\App\MusicCatalog\Support\CatalogConfig;
  *
  * This runs in the normal suite as a guarantee that the full-domain schema document always
  * builds cleanly for every server on every matrix cell; the byte-compat diff itself (which
- * needs the sibling bundle checkout) lives in `composer byte-compat` and the `byte-compat`
+ * needs the bundle's published documents) lives in `composer byte-compat` and the `byte-compat`
  * CI job, both of which re-run this exporter to refresh the Laravel side.
  *
  * @internal
