@@ -87,6 +87,7 @@ final class MetadataSource
      * @param string                               $atomicPath     the path the per-server atomic endpoint is served at (`jsonapi.atomic_operations.path`)
      * @param list<string>|null                    $atomicScopes   the OAuth scopes the atomic endpoint needs (`jsonapi.atomic_operations.scopes`; null asks the scope resolver)
      * @param ScopeTables|null                     $scopes         the scope tables each server's metadata hands the projector; null declares none
+     * @param iterable<mixed>                      $taggedErrorSources the application's own {@see ErrorCatalogSourceInterface} instances (the bindings tagged {@see \haddowg\JsonApiLaravel\JsonApiServiceProvider::ERROR_SOURCE_TAG}), appended after the discovered errors; read once, on first use
      */
     public function __construct(
         private readonly ServerRegistry $servers,
@@ -104,10 +105,15 @@ final class MetadataSource
         private readonly ?DocumentUrlProvider $documentUrls = null,
         private readonly ?array $atomicScopes = null,
         private readonly ?ScopeTables $scopes = null,
+        private readonly iterable $taggedErrorSources = [],
     ) {}
 
     /**
-     * The application's described-error sources, built once off discovery.
+     * The application's described-error sources, built once: the discovered errors first,
+     * then the tagged sources in registration order, as the Symfony bundle orders its scanned
+     * and tagged sources. A tagged source is a runtime object, so it is never part of the
+     * discovery snapshot; a {@see \haddowg\JsonApi\Exception\ScopedErrorSource} among them
+     * scopes a class however it reached the catalogue.
      *
      * Every server gets the same set: an exception class carries no server affinity the
      * way a resource does, and the Symfony bundle makes the same call, so a document
@@ -119,7 +125,19 @@ final class MetadataSource
     {
         if ($this->errorSources === null) {
             $errors = $this->discovery->errors();
-            $this->errorSources = $errors === [] ? [] : [new ClassListErrorSource(...$errors)];
+            $sources = $errors === [] ? [] : [new ClassListErrorSource(...$errors)];
+            foreach ($this->taggedErrorSources as $source) {
+                if (!$source instanceof ErrorCatalogSourceInterface) {
+                    throw new \LogicException(\sprintf(
+                        'A binding tagged "%s" must implement %s, got %s.',
+                        \haddowg\JsonApiLaravel\JsonApiServiceProvider::ERROR_SOURCE_TAG,
+                        ErrorCatalogSourceInterface::class,
+                        \get_debug_type($source),
+                    ));
+                }
+                $sources[] = $source;
+            }
+            $this->errorSources = $sources;
         }
 
         return $this->errorSources;
