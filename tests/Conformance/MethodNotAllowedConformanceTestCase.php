@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Tests\Conformance;
 use haddowg\JsonApi\Atomic\AtomicExtension;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
+use haddowg\JsonApiLaravel\Tests\Support\InteractsWithOpenApiDocument;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\Group;
@@ -23,6 +24,8 @@ use PHPUnit\Framework\Attributes\Test;
  */
 abstract class MethodNotAllowedConformanceTestCase extends Orchestra
 {
+    use InteractsWithOpenApiDocument;
+
     private const string MEDIA_TYPE = 'application/vnd.api+json';
 
     private const string ATOMIC = 'application/vnd.api+json; ext="' . AtomicExtension::URI . '"';
@@ -191,7 +194,7 @@ abstract class MethodNotAllowedConformanceTestCase extends Orchestra
         self::assertIsArray($components);
         $schemas = $components['schemas'] ?? null;
         self::assertIsArray($schemas);
-        self::assertArrayHasKey('MethodNotAllowedError', $schemas);
+        self::assertNotNull($this->errorShapeFor($schemas, 'METHOD_NOT_ALLOWED'));
 
         $paths = $document['paths'] ?? null;
         self::assertIsArray($paths);

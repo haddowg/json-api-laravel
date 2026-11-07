@@ -160,6 +160,15 @@ final class JsonApiServiceProvider extends ServiceProvider
     public const string JSON_SCHEMA_SERVE_DECORATOR_TAG = 'jsonapi.json_schema_serve_decorator';
 
     /**
+     * The container tag a {@see \haddowg\JsonApi\Exception\ErrorCatalogSourceInterface}
+     * binding carries to join the OpenAPI error catalogue after the discovered errors, in
+     * registration order. Tag a {@see \haddowg\JsonApi\Exception\ScopedErrorSource} to offer
+     * an error only on the operations that raise it, or a
+     * {@see \haddowg\JsonApi\Exception\ClassListErrorSource} to catalogue classes no scan reaches.
+     */
+    public const string ERROR_SOURCE_TAG = 'jsonapi.error_source';
+
+    /**
      * The container tag an {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentFilterArmInterface}
      * binding carries to join the auto-registered reference Eloquent provider —
      * the push-down seam for a custom `FilterInterface` without hand-wiring the provider.
@@ -1157,6 +1166,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(DocumentUrlProvider::class),
                 $atomicScopes,
                 $app->make(ScopeTables::class),
+                $app->tagged(self::ERROR_SOURCE_TAG),
             );
         });
 

@@ -354,7 +354,7 @@ abstract class WriteConformanceTestCase extends Orchestra
 
         $response->assertStatus(415);
         $response->assertJsonPath('errors.0.code', 'MEDIA_TYPE_UNSUPPORTED');
-        $response->assertJsonPath('errors.0.source.parameter', 'content-type');
+        $response->assertJsonPath('errors.0.source.header', 'Content-Type');
 
         // Rejected before persist: no new album was written.
         $this->readJsonApi('/api/albums')->assertJsonCount(2, 'data');
@@ -375,7 +375,7 @@ abstract class WriteConformanceTestCase extends Orchestra
 
         $response->assertStatus(406);
         $response->assertJsonPath('errors.0.code', 'MEDIA_TYPE_UNACCEPTABLE');
-        $response->assertJsonPath('errors.0.source.parameter', 'accept');
+        $response->assertJsonPath('errors.0.source.header', 'Accept');
 
         $this->readJsonApi('/api/albums')->assertJsonCount(2, 'data');
     }

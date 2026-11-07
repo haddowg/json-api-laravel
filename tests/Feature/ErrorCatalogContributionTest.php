@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature;
 
-use haddowg\JsonApi\OpenApi\ErrorCatalogProjector;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
@@ -19,7 +18,7 @@ use Workbench\App\Providers\WorkbenchServiceProvider;
 
 /**
  * The application-contributed error catalogue: an app's own described
- * errors reach the projected document as named schema variants beside core's. Discovery
+ * errors reach the projected document as `const` branches of the error shapes beside core's. Discovery
  * finds them under the configured paths, and `JsonApi::register()` names the ones no
  * scan reaches.
  *
@@ -39,13 +38,16 @@ final class ErrorCatalogContributionTest extends TestCase
     public function an_error_under_a_scanned_path_is_catalogued(): void
     {
         $schemas = $this->schemas();
-        $component = ErrorCatalogProjector::componentName(QuotaExceeded::describe()->code);
+        $component = $this->errorShapeFor($schemas, QuotaExceeded::describe()->code);
 
-        $this->assertArrayHasKey($component, $schemas);
+        $this->assertNotNull($component, 'QUOTA_EXCEEDED is not catalogued');
 
-        // The variant narrows the shared `Error` with the two members a client dispatches
-        // on, so both are readable off `allOf[1]`.
-        $this->assertSame('QUOTA_EXCEEDED', $this->at($schemas, $component, 'allOf', 1, 'properties', 'code', 'const'));
+        // The shape narrows the shared `Error` with the two members a client dispatches
+        // on, so both are readable off `allOf[1]`: the code as one of its `const` branches.
+        $this->assertContains(
+            'QUOTA_EXCEEDED',
+            \array_column($this->arrayAt($schemas, $component, 'allOf', 1, 'properties', 'code', 'anyOf'), 'const'),
+        );
         $this->assertSame('429', $this->at($schemas, $component, 'allOf', 1, 'properties', 'status', 'const'));
 
         $this->assertContains(
@@ -58,10 +60,7 @@ final class ErrorCatalogContributionTest extends TestCase
     #[Group('openapi')]
     public function an_error_outside_the_scanned_paths_is_not_catalogued(): void
     {
-        $this->assertArrayNotHasKey(
-            ErrorCatalogProjector::componentName(SubscriptionRequired::describe()->code),
-            $this->schemas(),
-        );
+        $this->assertNull($this->errorShapeFor($this->schemas(), SubscriptionRequired::describe()->code));
     }
 
     #[Test]
@@ -69,9 +68,9 @@ final class ErrorCatalogContributionTest extends TestCase
     public function an_error_outside_the_scanned_paths_is_catalogued_when_registered_explicitly(): void
     {
         $schemas = $this->schemas();
-        $component = ErrorCatalogProjector::componentName(TenantSuspended::describe()->code);
+        $component = $this->errorShapeFor($schemas, TenantSuspended::describe()->code);
 
-        $this->assertArrayHasKey($component, $schemas);
+        $this->assertNotNull($component, 'TENANT_SUSPENDED is not catalogued');
         $this->assertContains(
             ['$ref' => '#/components/schemas/' . $component],
             $this->errorBranches($schemas),
@@ -83,7 +82,7 @@ final class ErrorCatalogContributionTest extends TestCase
     public function cores_own_codes_are_still_catalogued(): void
     {
         // The contribution joins core's catalogue; it never replaces it.
-        $this->assertArrayHasKey('ResourceNotFoundError', $this->schemas());
+        $this->assertNotNull($this->errorShapeFor($this->schemas(), 'RESOURCE_NOT_FOUND'));
     }
 
     #[Test]
