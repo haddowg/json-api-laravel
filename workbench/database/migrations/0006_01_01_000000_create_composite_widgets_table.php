@@ -25,6 +25,7 @@ return new class extends Migration {
             $table->json('settings')->nullable();
             $table->json('steps')->nullable();
             $table->json('checks')->nullable();
+            $table->json('shape')->nullable();
         });
     }
 

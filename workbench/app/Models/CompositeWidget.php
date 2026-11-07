@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property array<string, mixed>|null $contact
  * @property list<mixed>|null          $steps
  * @property list<mixed>|null          $checks
+ * @property array<string, mixed>|null $shape
  */
 final class CompositeWidget extends Model
 {
@@ -44,5 +45,6 @@ final class CompositeWidget extends Model
         'settings' => 'array',
         'steps' => 'array',
         'checks' => 'array',
+        'shape' => 'array',
     ];
 }
