@@ -911,9 +911,10 @@ The example uses `separate` and exports both the `default` and `admin` documents
 Because both integrations implement core's `Metadata/*` contract, the projected document for an
 identical domain is byte-identical (bar the `info` block and advertised server URLs, which are
 platform-legitimate). The music-catalog workbench exists to prove it: `composer byte-compat`
-exports both twins' `default` + `admin` documents, normalizes `info`/`servers[].url`, and diffs
-them — the diff must be empty. The CI job runs it against the sibling bundle checkout. See
-[workbench](workbench.md).
+exports this package's `default` + `admin` documents, normalizes `info`/`servers[].url`, and diffs
+them — the diff must be empty. The bundle's documents come from the
+`@haddowg/json-api-symfony-specs` npm package each bundle release publishes. See
+[workbench](workbench.md#byte-compatibility).
 
 ## Warming for production
 

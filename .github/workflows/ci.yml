@@ -106,22 +106,64 @@ jobs:
       - name: Check coding standards
         run: composer cs-check
 
+  specs-pin:
+    name: Check the @haddowg/json-api-symfony-specs pin
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: read # npm view on GitHub Packages
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      # A feature pull request may pin a bundle pull request's prerelease while it waits for
+      # the bundle to release; main and release pull requests must pin a bundle release.
+      - name: Check the pin
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ALLOW_PRERELEASE: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-please--') }}
+        run: |
+          export NPM_CONFIG_USERCONFIG="$("$GITHUB_WORKSPACE/.github/scripts/npm-auth")"
+          if [ "$ALLOW_PRERELEASE" = "true" ]; then
+            node bin/check-specs-pin --allow-prerelease
+          else
+            node bin/check-specs-pin
+          fi
+
   byte-compat:
     name: OpenAPI + JSON Schema byte-compatibility
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
-    env:
-      # The music-catalog example documents (OpenAPI + standalone JSON Schema) exported
-      # from the sibling bundle are diffed against this package's; each MUST be
-      # byte-identical.
-      JSON_API_SYMFONY_PATH: ${{ github.workspace }}/../json-api-symfony
+      packages: read # npm ci from GitHub Packages
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      # The Symfony bundle's music-catalog documents (OpenAPI + standalone JSON Schema), as
+      # the @haddowg/json-api-symfony-specs version package.json pins.
+      - name: Install the bundle documents
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          export NPM_CONFIG_USERCONFIG="$("$GITHUB_WORKSPACE/.github/scripts/npm-auth")"
+          npm ci --no-audit --no-fund
 
       - name: Set up PHP
         uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # 2.37.1
@@ -130,15 +172,16 @@ jobs:
           coverage: none
           tools: composer:v2
 
-      - name: Install dependencies (this package)
+      # Diffing against documents another core projected would be spurious, so install the
+      # haddowg/json-api the bundle documents name; byte-compat checks the two agree.
+      - name: Pin haddowg/json-api to the bundle documents' core
+        run: |
+          core="$(jq -r '."haddowg/json-api"' node_modules/@haddowg/json-api-symfony-specs/versions.json)"
+          echo "The bundle documents were projected by haddowg/json-api ${core}."
+          composer require --no-update --no-interaction "haddowg/json-api:${core#v}"
+
+      - name: Install dependencies
         uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
-
-      - name: Clone the Symfony bundle (default branch)
-        run: git clone --depth 1 https://github.com/haddowg/json-api-symfony.git "${JSON_API_SYMFONY_PATH}"
-
-      - name: Install the bundle's dependencies (resolves the example app + core)
-        working-directory: ${{ env.JSON_API_SYMFONY_PATH }}
-        run: composer install --no-interaction --no-progress
 
       - name: Diff the projected OpenAPI + JSON Schema documents (must be byte-identical)
         run: composer byte-compat

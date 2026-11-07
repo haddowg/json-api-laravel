@@ -12,3 +12,6 @@ coverage.xml
 # Docs site build artifacts (mkdocs)
 /site/
 __pycache__/
+
+# npm devDependencies (the bundle documents byte-compat diffs against)
+/node_modules/

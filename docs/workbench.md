@@ -71,9 +71,62 @@ document is byte-identical to the Symfony bundle's. Run the diff locally:
 composer byte-compat
 ```
 
-It exports both twins' `default` + `admin` documents, normalizes `info`/`servers[].url`, and
-diffs — the diff must be empty. The `byte-compat` CI job runs it against a fresh sibling bundle
-checkout, guarding that both trees resolve the same core commit. See [openapi](openapi.md).
+It exports this package's `default` + `admin` documents, normalizes `info`/`servers[].url`, and
+diffs them against the bundle's — the diff must be empty. See [openapi](openapi.md).
+
+The bundle's side is not booted from a checkout. Each bundle release publishes its music-catalog
+documents as the npm package `@haddowg/json-api-symfony-specs` on GitHub Packages, and
+`package.json` pins one exact version of it as a dev dependency, so `npm ci` installs it into
+`node_modules/`. Reading GitHub Packages needs a token, even for a public package. Locally:
+
+```bash
+gh auth refresh -s read:packages      # once
+export NODE_AUTH_TOKEN="$(gh auth token)"
+export NPM_CONFIG_USERCONFIG="$(.github/scripts/npm-auth)"
+npm ci
+```
+
+The package's `versions.json` names the `haddowg/json-api` version that projected it, and
+`composer byte-compat` fails before diffing unless that is the version installed here: documents
+from two different cores would differ for reasons that have nothing to do with this package. A
+leading `v` is ignored, and a development version (`dev-main`) passes with a warning, because a
+branch name doesn't pin a commit. The `byte-compat` CI job installs the core the documents name
+before it runs, so a core release doesn't fail it while the pinned bundle release still uses the
+previous core.
+
+To diff against bundle code that isn't published, export its documents from a bundle checkout
+and point the check at them:
+
+```bash
+(cd ../json-api-symfony && php bin/export-specs.php /tmp/bundle-specs)
+JSON_API_SYMFONY_SPECS_PATH=/tmp/bundle-specs composer byte-compat
+```
+
+Both checkouts must then resolve the same core, for example by symlinking the same sibling
+`../json-api`.
+
+The two conformance suites also share response documents
+(`tests/Fixtures/IdentifiedMorphMany/documents` here). The package carries the bundle's copy under
+`conformance/identified-morph-many`, and `composer byte-compat` diffs the two as well.
+
+### Pinning the bundle documents
+
+Pin a bundle release with an exact version, and commit `package.json` and `package-lock.json`:
+
+```bash
+npm i -DE @haddowg/json-api-symfony-specs@<release>
+```
+
+While a change waits for a bundle pull request, pin that pull request's prerelease instead,
+`0.0.0-pr.<number>.<sha7>`, which the bundle's CI names in a comment on it. Each prerelease is
+deleted when its pull request closes, so re-pin to the bundle release once it's out.
+
+`bin/check-specs-pin` (`npm run check:specs-pin`) guards the pin: it must be an exact version in
+`devDependencies`, `package-lock.json` must lock the same version (from GitHub Packages when it
+records where from), and the registry must have it. A prerelease fails unless the guard is passed
+`--allow-prerelease`. CI passes it on feature pull requests, and not on `main` or on a
+release-please pull request, so a feature pull request can build against a bundle prerelease but
+a release can't ship one.
 
 ## Running it
 

@@ -1,0 +1,12 @@
+{
+  "name": "json-api-laravel-dev",
+  "private": true,
+  "description": "Development-only npm dependencies: the Symfony bundle's published documents that composer byte-compat diffs against.",
+  "license": "MIT",
+  "scripts": {
+    "check:specs-pin": "node bin/check-specs-pin"
+  },
+  "devDependencies": {
+    "@haddowg/json-api-symfony-specs": "2.1.1"
+  }
+}

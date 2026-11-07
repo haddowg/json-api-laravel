@@ -21,7 +21,7 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * The documents under `tests/Fixtures/IdentifiedMorphMany/documents` are the exact response
  * bodies the Symfony bundle's twin suite renders, byte for byte; `composer byte-compat` checks
- * the two copies match. Set `UPDATE_MTM_DOCUMENTS=1` to rewrite them, and read the diff.
+ * the two copies match when it finds a bundle checkout. Set `UPDATE_MTM_DOCUMENTS=1` to rewrite them, and read the diff.
  *
  * @internal
  */

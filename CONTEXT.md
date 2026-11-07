@@ -115,7 +115,8 @@ A document `optimize` pre-builds and stores so the docs controllers serve it wit
 
 **Byte-compat**:
 The guarantee that this package and the Symfony bundle project byte-identical OpenAPI documents
-for an identical domain, checked by `composer byte-compat`.
+for an identical domain, checked by `composer byte-compat` against the bundle's published
+documents.
 _Avoid_: parity check
 
 **Workbench**:
