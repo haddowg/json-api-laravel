@@ -126,15 +126,6 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * declares that it needs none. `fetchOne` and `fetchCollection` may be named even when the type
  * does not expose them, because an `?include` reaching the type is checked against them.
  *
- * **Operation errors.** `operationErrors` names the described error classes (each implementing
- * {@see \haddowg\JsonApi\Exception\DescribedErrorInterface}) only some operations raise, keyed
- * like `operationExamples`, by an action's `action.<path>.<method>` name, or by `*` for every
- * operation of the type. The OpenAPI document offers each code only on those operations. An
- * unknown name, a CRUD operation the type does not expose, or a value other than a non-empty
- * list of described error classes is a constructor {@see \LogicException}; core fails the
- * projection for a relation or action the type does not have. An action declares its own
- * through {@see AsJsonApiAction}'s `errors`.
- *
  * **Deprecation.** `deprecation` marks the whole type deprecated in the OpenAPI document as well
  * as in the headers: every operation of the type, its custom actions included, carries
  * `deprecated: true`. A `sunset` adds a sentence naming the date to each operation's
@@ -191,7 +182,6 @@ final readonly class AsJsonApiResource
      * @param array<string, OperationExample|false|null>                $operationExamples the OpenAPI example overrides keyed by operation name: an {@see OperationExample} replaces the parts it names, `false` or `null` removes the example
      * @param array<string, list<string>>                                $operationScopes the OAuth scopes each named operation needs, keyed like `operationExamples`; `[]` declares none
      * @param list<string>                                               $deprecatedOperations the operations deprecated on their own, named like the `operationExamples` keys
-     * @param array<string, list<class-string<\haddowg\JsonApi\Exception\DescribedErrorInterface>>> $operationErrors the described errors only the named operations raise, keyed like `operationExamples` or `*` for every operation of the type
      * @param bool|SoftDeletes                                           $softDeletes     opt this type into first-class soft deletes: `true` (or a configured {@see SoftDeletes}) synthesizes the `restore`/`force-delete` actions (`DELETE` stays a recoverable soft delete); `false` (the default) leaves the type unaffected
      */
     public function __construct(
@@ -221,7 +211,6 @@ final readonly class AsJsonApiResource
         public array $operationExamples = [],
         public array $operationScopes = [],
         public array $deprecatedOperations = [],
-        public array $operationErrors = [],
     ) {
         if ($singular !== null && \trim($singular) === '') {
             throw new \LogicException(
@@ -268,12 +257,6 @@ final readonly class AsJsonApiResource
         DeprecatedOperations::assertValid(
             'AsJsonApiResource',
             $this->deprecatedOperations,
-            self::exposedOperations($operations, $readOnly),
-            'add it to `operations` (or drop `readOnly`)',
-        );
-        OperationErrors::assertValid(
-            'AsJsonApiResource',
-            $this->operationErrors,
             self::exposedOperations($operations, $readOnly),
             'add it to `operations` (or drop `readOnly`)',
         );

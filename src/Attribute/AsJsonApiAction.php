@@ -107,12 +107,6 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
  * application's {@see \haddowg\JsonApi\Scope\OperationScopeResolverInterface}. `[]`
  * declares that it needs none, and `null` leaves the resolver to decide.
  *
- * `errors` lists the described error classes (each implementing
- * {@see \haddowg\JsonApi\Exception\DescribedErrorInterface}) the action raises and the rest of
- * its mount type's operations do not. They join the type's `operationErrors` under each of the
- * action's `action.<path>.<method>` names, so the OpenAPI document offers each code only on the
- * action.
- *
  * `deprecated` marks every method of the action `deprecated: true` in the OpenAPI document, and
  * a response to it carries `Deprecation: true` and any `Sunset` the mount type declares. An
  * action on a type declared deprecated is marked either way.
@@ -144,7 +138,6 @@ final readonly class AsJsonApiAction
      * @param array<string, mixed>                               $extensions  OpenAPI vendor extensions for the action's operation, keyed by `x-` name
      * @param list<string>|null                                  $scopes      the OAuth scopes the action needs (`[]` for none, null to ask the scope resolver)
      * @param bool                                               $deprecated  whether the action is deprecated
-     * @param list<class-string<\haddowg\JsonApi\Exception\DescribedErrorInterface>> $errors the described errors only this action raises (empty = none)
      */
     public function __construct(
         public string $type,
@@ -169,7 +162,6 @@ final readonly class AsJsonApiAction
         public array $extensions = [],
         public ?array $scopes = null,
         public bool $deprecated = false,
-        public array $errors = [],
     ) {
         // Normalise the declaration: a single response object → a one-element list; an
         // omitted declaration → a `200` document of the mount type (the historical default).
@@ -235,8 +227,6 @@ final readonly class AsJsonApiAction
         if ($scopes !== null) {
             OperationScopes::assertList(\sprintf('AsJsonApiAction "%s" on type "%s" scopes', $path, $type), $scopes);
         }
-
-        OperationErrors::assertList(\sprintf('AsJsonApiAction "%s" on type "%s" errors', $path, $type), $errors);
 
         foreach ($accepts as $key => $value) {
             $valid = \is_string($key)

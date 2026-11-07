@@ -183,15 +183,4 @@ final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAccep
     {
         return $this->descriptor->deprecated;
     }
-
-    /**
-     * The described error classes only this action raises, which the {@see MetadataSource}
-     * merges into its mount type's {@see TypeMetadata::operationErrors()}.
-     *
-     * @return list<class-string<\haddowg\JsonApi\Exception\DescribedErrorInterface>>
-     */
-    public function errors(): array
-    {
-        return $this->descriptor->errors;
-    }
 }

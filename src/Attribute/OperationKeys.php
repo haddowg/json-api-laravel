@@ -8,9 +8,9 @@ use haddowg\JsonApi\OpenApi\Metadata\OperationKey;
 use haddowg\JsonApi\OpenApi\Metadata\OperationKind;
 
 /**
- * Parses the operation names `operationExamples`, `operationScopes` and `operationErrors` are
- * keyed by, and that `deprecatedOperations` lists, through core's {@see OperationKey}, so all
- * four share one grammar.
+ * Parses the operation names `operationExamples` and `operationScopes` are keyed by, and that
+ * `deprecatedOperations` lists, through core's {@see OperationKey}, so all three share one
+ * grammar.
  *
  * @internal
  */
