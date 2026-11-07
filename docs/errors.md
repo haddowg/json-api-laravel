@@ -202,6 +202,44 @@ and title under another's would be a lie. The catalogue stays **open** either wa
 `anyOf` leads with the generic `Error`, so an error carrying a code you never declared is
 still a valid error object.
 
+### Scoping a code to the operations that raise it {#scoping-a-code-to-the-operations-that-raise-it}
+
+A code discovery or `JsonApi::register()` catalogues is offered by every operation's error
+response for its status. When only some operations raise it, declare it on the type instead,
+with `operationErrors` on `#[AsJsonApiResource]` (or `#[AsJsonApiSerializer]`). The map is
+keyed like [`operationExamples`](openapi.md#operation-examples) and
+[`operationScopes`](scopes.md), with `*` for every operation of the type:
+
+```php
+#[AsJsonApiResource(operationErrors: [
+    'update' => [AlbumLocked::class],
+    'delete' => [AlbumLocked::class],
+])]
+final class AlbumResource extends AbstractResource { /* ... */ }
+```
+
+An action declares the codes it raises with `errors`, and they join its mount type's map under
+the action's `action.<path>.<method>` name:
+
+```php
+#[AsJsonApiAction(type: 'albums', path: 'publish', errors: [PaymentRequired::class])]
+final readonly class PublishAlbum implements ActionHandlerInterface { /* ... */ }
+```
+
+Only those operations offer the code: each one's error response for its status narrows to the
+codes every operation raises plus the declared ones (`ConflictWithAlbumLocked`), and gains
+that status if it did not already advertise it. Core's
+[scoping section](https://github.com/haddowg/json-api/blob/main/docs/openapi.md#scoping-a-code-to-the-operations-that-raise-it)
+describes the projection.
+
+Each value is a non-empty list of classes implementing `DescribedErrorInterface`. An unknown
+operation name, a CRUD operation the type does not expose, or any other value fails the
+attribute's constructor; a relation or action the type does not have fails the projection.
+
+Declare a code one way or the other. A class discovery also finds, or one you register, is
+catalogued for every operation and ignores its scope, so keep a scoped exception outside the
+`discovery.paths`.
+
 ## Content negotiation and query errors
 
 The request layer rejects a bad request before your code runs, all as JSON:API errors: a

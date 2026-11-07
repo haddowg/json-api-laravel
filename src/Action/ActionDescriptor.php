@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Action;
 
+use haddowg\JsonApi\Exception\DescribedErrorInterface;
 use haddowg\JsonApi\OpenApi\Metadata\Accepted;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResource;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResponse;
@@ -40,7 +41,8 @@ use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
  * `readOnly`, `destructive` and `idempotent` are the action's declared safety flags, `null`
  * when undeclared, `extensions` its own OpenAPI vendor extensions, and `scopes` the OAuth
  * scopes it declares, `null` when the scope resolver decides. `deprecated` says whether the
- * action is declared deprecated.
+ * action is declared deprecated, and `errors` lists the described error classes only the action
+ * raises.
  *
  * It carries only scalars + lists (enums by case name), so a set of descriptors
  * round-trips through {@see toArray()} / {@see fromArray()} to a `var_export`-able
@@ -62,6 +64,7 @@ final readonly class ActionDescriptor
      * @param array<string, mixed>                            $extensions   the action operation's own OpenAPI vendor extensions, keyed by `x-` name
      * @param list<string>|null                               $scopes       the OAuth scopes the action declares (null = ask the scope resolver)
      * @param bool                                            $deprecated   whether the action is declared deprecated
+     * @param list<class-string<DescribedErrorInterface>>     $errors       the described errors only this action raises
      * @param bool                                            $conditionallyLinked the handler is {@see ConditionallyLinked}, so its `asLink` link is further gated per rendered entity by `shouldLink()` (recorded here so the link contributor resolves the handler only when it matters)
      */
     public function __construct(
@@ -90,6 +93,7 @@ final readonly class ActionDescriptor
         public array $extensions = [],
         public ?array $scopes = null,
         public bool $deprecated = false,
+        public array $errors = [],
     ) {}
 
     /**
@@ -145,7 +149,7 @@ final readonly class ActionDescriptor
     }
 
     /**
-     * @return array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null, description?: string|null, mediaType?: string|null}>, ability: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name: ?string, tags: list<string>, asLink: bool, resolvesTrashed: bool, conditionallyLinked: bool, summary: ?string, description: ?string, accepts: array<string, string>, readOnly: ?bool, destructive: ?bool, idempotent: ?bool, extensions: array<string, mixed>, scopes: list<string>|null, deprecated: bool}
+     * @return array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null, description?: string|null, mediaType?: string|null}>, ability: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name: ?string, tags: list<string>, asLink: bool, resolvesTrashed: bool, conditionallyLinked: bool, summary: ?string, description: ?string, accepts: array<string, string>, readOnly: ?bool, destructive: ?bool, idempotent: ?bool, extensions: array<string, mixed>, scopes: list<string>|null, deprecated: bool, errors: list<class-string<DescribedErrorInterface>>}
      */
     public function toArray(): array
     {
@@ -175,11 +179,12 @@ final readonly class ActionDescriptor
             'extensions' => $this->extensions,
             'scopes' => $this->scopes,
             'deprecated' => $this->deprecated,
+            'errors' => $this->errors,
         ];
     }
 
     /**
-     * @param array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null, description?: string|null, mediaType?: string|null}>, ability?: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name?: ?string, tags?: list<string>, asLink?: bool, resolvesTrashed?: bool, conditionallyLinked?: bool, summary?: ?string, description?: ?string, accepts?: array<string, string>, readOnly?: ?bool, destructive?: ?bool, idempotent?: ?bool, extensions?: array<string, mixed>, scopes?: list<string>|null, deprecated?: bool} $data
+     * @param array{type: string, path: string, methods: list<string>, scope: string, input: string, inputType: string, outputType: string, responds: non-empty-list<array{kind: string, ref: string|null, description?: string|null, mediaType?: string|null}>, ability?: ?string, handlerClass: class-string<ActionHandlerInterface>, server: string, name?: ?string, tags?: list<string>, asLink?: bool, resolvesTrashed?: bool, conditionallyLinked?: bool, summary?: ?string, description?: ?string, accepts?: array<string, string>, readOnly?: ?bool, destructive?: ?bool, idempotent?: ?bool, extensions?: array<string, mixed>, scopes?: list<string>|null, deprecated?: bool, errors?: list<class-string<DescribedErrorInterface>>} $data
      */
     public static function fromArray(array $data): self
     {
@@ -209,6 +214,7 @@ final readonly class ActionDescriptor
             $data['extensions'] ?? [],
             $data['scopes'] ?? null,
             $data['deprecated'] ?? false,
+            $data['errors'] ?? [],
         );
     }
 }

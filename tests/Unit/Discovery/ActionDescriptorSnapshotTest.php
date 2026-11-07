@@ -8,6 +8,7 @@ use haddowg\JsonApiLaravel\Action\ActionDescriptor;
 use haddowg\JsonApiLaravel\Action\ActionInput;
 use haddowg\JsonApiLaravel\Action\ActionScope;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Action\MetaHandlerWithOutputMeta;
+use haddowg\JsonApiLaravel\Tests\Fixtures\OperationErrors\DepositRequired;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -67,5 +68,17 @@ final class ActionDescriptorSnapshotTest extends TestCase
         $data = $descriptor->toArray();
         unset($data['deprecated']);
         self::assertFalse(ActionDescriptor::fromArray($data)->deprecated);
+    }
+
+    #[Test]
+    public function theErrorsSurviveTheDiscoverySnapshot(): void
+    {
+        $descriptor = new ActionDescriptor('lockers', 'open', ['POST'], ActionScope::Resource, ActionInput::None, 'lockers', 'lockers', [['kind' => 'meta', 'ref' => null]], null, MetaHandlerWithOutputMeta::class, 'default', errors: [DepositRequired::class]);
+
+        self::assertSame([DepositRequired::class], ActionDescriptor::fromArray($descriptor->toArray())->errors);
+
+        $data = $descriptor->toArray();
+        unset($data['errors']);
+        self::assertSame([], ActionDescriptor::fromArray($data)->errors);
     }
 }

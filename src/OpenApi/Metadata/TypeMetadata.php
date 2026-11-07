@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
+use haddowg\JsonApi\Exception\DescribedErrorInterface;
 use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionLinks;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresAlwaysCounted;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresDeprecation;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresNamedOperationExtensions;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationErrors;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationExamples;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationExtensions;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationScopes;
@@ -48,7 +50,9 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  * since they hold closures the discovery snapshot can't.
  * Through {@see DeclaresOperationScopes} it carries the attribute's `operationScopes`, and
  * through {@see DeclaresResourceClass} the class declaring the type, so a scope resolver can
- * read the application's own attributes off it.
+ * read the application's own attributes off it. Through {@see DeclaresOperationErrors} it
+ * carries the attribute's `operationErrors` merged with each of its actions' `errors`, so the
+ * document offers a code only on the operations declared to raise it.
  *
  * The attribute's `operationExtensions` map mixes two key forms. An {@see OperationType} case
  * value such as `Create` answers {@see DeclaresOperationExtensions::operationExtensions()},
@@ -59,7 +63,7 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  * declaration and its `deprecatedOperations`, the same declaration the response headers come
  * from.
  */
-final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresNamedOperationExtensions, DeclaresSingularName, DeclaresOperationExamples, DeclaresAlwaysCounted, DeclaresResourceLinks, DeclaresActionLinks, DeclaresOperationScopes, DeclaresResourceClass, DeclaresDeprecation
+final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresNamedOperationExtensions, DeclaresSingularName, DeclaresOperationExamples, DeclaresAlwaysCounted, DeclaresResourceLinks, DeclaresActionLinks, DeclaresOperationScopes, DeclaresOperationErrors, DeclaresResourceClass, DeclaresDeprecation
 {
     /**
      * @param list<FieldInterface>            $fields
@@ -86,6 +90,7 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
      * @param bool                                $deprecated          whether the whole type is declared deprecated
      * @param \DateTimeInterface|null             $sunset              the type's declared sunset date
      * @param list<string>                        $deprecatedOperations the operations deprecated on their own, by operation name
+     * @param array<string, list<class-string<DescribedErrorInterface>>> $operationErrors the described errors only the named operations raise, keyed by operation name or `*`
      */
     public function __construct(
         private string $type,
@@ -121,6 +126,7 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
         private bool $deprecated = false,
         private ?\DateTimeInterface $sunset = null,
         private array $deprecatedOperations = [],
+        private array $operationErrors = [],
     ) {}
 
     public function isDeprecated(): bool
@@ -141,6 +147,11 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
     public function operationScopes(): array
     {
         return $this->operationScopes;
+    }
+
+    public function operationErrors(): array
+    {
+        return $this->operationErrors;
     }
 
     public function resourceClass(): ?string

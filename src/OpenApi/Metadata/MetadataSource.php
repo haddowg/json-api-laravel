@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
 use haddowg\JsonApi\Exception\ClassListErrorSource;
+use haddowg\JsonApi\Exception\DescribedErrorInterface;
 use haddowg\JsonApi\Exception\ErrorCatalogSourceInterface;
+use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
+use haddowg\JsonApi\OpenApi\Metadata\OperationKey;
 use haddowg\JsonApi\OpenApi\Metadata\OperationType;
 use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\TypeMetadataInterface;
@@ -318,6 +321,7 @@ final class MetadataSource
     {
         $type = $descriptor->type;
         $operations = $this->operations($descriptor->operations);
+        $actions = $this->actions?->forServerType($serverName, $type) ?? [];
 
         return new TypeMetadata(
             type: $type,
@@ -335,7 +339,7 @@ final class MetadataSource
             countable: false,
             filters: [],
             sorts: [],
-            actions: $this->actions?->forServerType($serverName, $type) ?? [],
+            actions: $actions,
             tags: $this->typeTags($descriptor->tags, $type),
             description: null,
             operationDescriptions: [],
@@ -346,6 +350,7 @@ final class MetadataSource
             operationScopes: $this->operationScopes($descriptor->class, AsJsonApiSerializer::class),
             resourceClass: $descriptor->class,
             deprecatedOperations: $descriptor->deprecatedOperations,
+            operationErrors: self::withActionErrors($this->operationErrors($descriptor->class, AsJsonApiSerializer::class), $actions),
         );
     }
 
@@ -418,6 +423,7 @@ final class MetadataSource
             deprecated: self::declaresDeprecation($descriptor),
             sunset: self::sunset($descriptor),
             deprecatedOperations: $descriptor->deprecatedOperations,
+            operationErrors: self::withActionErrors($this->operationErrors($descriptor->class, AsJsonApiResource::class), $actions),
         );
     }
 
@@ -493,6 +499,52 @@ final class MetadataSource
         }
 
         return [];
+    }
+
+    /**
+     * The `operationErrors` a type's `#[AsJsonApiResource]` or `#[AsJsonApiSerializer]`
+     * declares, read off the class as its `operationExamples` are.
+     *
+     * @param class-string<AsJsonApiResource|AsJsonApiSerializer> $attribute
+     *
+     * @return array<string, list<class-string<DescribedErrorInterface>>>
+     */
+    private function operationErrors(string $class, string $attribute): array
+    {
+        if (!\class_exists($class)) {
+            return [];
+        }
+
+        foreach ((new \ReflectionClass($class))->getAttributes($attribute) as $declared) {
+            return $declared->newInstance()->operationErrors;
+        }
+
+        return [];
+    }
+
+    /**
+     * The type's declared `operationErrors` with each of its actions' `errors` added under
+     * every method's `action.<path>.<method>` name, a class listed once per operation.
+     *
+     * @param array<string, list<class-string<DescribedErrorInterface>>> $declared
+     * @param list<ActionMetadataInterface>                                $actions
+     *
+     * @return array<string, list<class-string<DescribedErrorInterface>>>
+     */
+    private static function withActionErrors(array $declared, array $actions): array
+    {
+        foreach ($actions as $action) {
+            if (!$action instanceof ActionMetadata || $action->errors() === []) {
+                continue;
+            }
+
+            foreach ($action->methods() as $method) {
+                $name = OperationKey::forAction($action, $method)->name();
+                $declared[$name] = \array_values(\array_unique([...$declared[$name] ?? [], ...$action->errors()]));
+            }
+        }
+
+        return $declared;
     }
 
     private function nonBlank(?string $value): ?string

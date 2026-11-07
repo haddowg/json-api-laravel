@@ -167,6 +167,7 @@ that has a body must still match `accepts`.
 | `extensions` | OpenAPI vendor extensions for the action's operation, keyed by `x-` name, merged over the mount type's `extensions` |
 | `scopes` | the [OAuth scopes](scopes.md) every method of the action needs; `[]` for none, `null` (default) asks the scope resolver |
 | `deprecated` | marks every method of the action `deprecated` in the [OpenAPI document](openapi.md#deprecation) and sends `Deprecation: true` on its responses |
+| `errors` | the described error classes only this action raises; the OpenAPI document offers their codes on the action alone ([errors](errors.md#scoping-a-code-to-the-operations-that-raise-it)) |
 
 > [!NOTE]
 > `asLink` visibility matches invocation **exactly**: `Authorizer::allowsAction()` (which
