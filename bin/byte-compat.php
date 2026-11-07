@@ -24,15 +24,13 @@ declare(strict_types=1);
  * before diffing unless it is the version installed here: two different cores would make any
  * diff spurious.
  *
- * When a sibling bundle checkout is present, it also diffs the response documents the two
- * conformance suites share; the published package does not carry them.
+ * It also diffs the response documents the two conformance suites share, which the package
+ * carries under conformance/.
  *
  * Env:
  *   JSON_API_SYMFONY_SPECS_PATH  a directory holding the bundle documents instead of the
  *                                installed package, e.g. one the bundle's
  *                                `bin/export-specs.php` wrote from unreleased bundle code
- *   JSON_API_SYMFONY_PATH        the sibling bundle checkout for the shared response
- *                                documents (default ../json-api-symfony; skipped if absent)
  *
  * Usage:  php bin/byte-compat.php
  */
@@ -42,7 +40,6 @@ use Composer\InstalledVersions;
 $repoRoot = \dirname(__DIR__);
 $buildDir = $repoRoot . '/build';
 $specsPath = \rtrim(\getenv('JSON_API_SYMFONY_SPECS_PATH') ?: $repoRoot . '/node_modules/@haddowg/json-api-symfony-specs', '/');
-$bundlePath = \rtrim(\getenv('JSON_API_SYMFONY_PATH') ?: $repoRoot . '/../json-api-symfony', '/');
 // Each server's documents, by the name the package files them under.
 $servers = ['default' => 'music-catalog', 'admin' => 'music-catalog-admin'];
 
@@ -124,15 +121,13 @@ diffFamily('JSON-Schema', __DIR__ . '/normalize-json-schema.php', $buildDir, $sp
 
 // --- The shared response documents both conformance suites assert against -------------
 // Each suite compares its responses to its own copy byte for byte, so the copies must match.
-// The published package does not carry them, so they are diffed only against a checkout.
-foreach ([['IdentifiedMorphMany', 'tests/Fixtures/IdentifiedMorphMany/documents', 'tests/Functional/App/IdentifiedMorphMany/documents']] as [$label, $laravelDir, $bundleDir]) {
-    if (!\is_dir("{$bundlePath}/{$bundleDir}")) {
-        step("skipping the shared {$label} response documents: no bundle checkout at {$bundlePath} (set JSON_API_SYMFONY_PATH).");
-        continue;
+foreach ([['IdentifiedMorphMany', 'tests/Fixtures/IdentifiedMorphMany/documents', 'conformance/identified-morph-many']] as [$label, $laravelDir, $bundleDir]) {
+    if (!\is_dir("{$specsPath}/{$bundleDir}")) {
+        fail("the bundle documents in {$specsPath} have no {$bundleDir}/.");
     }
 
     step("diffing the shared {$label} response documents");
-    $diff = shellDiff("{$repoRoot}/{$laravelDir}", "{$bundlePath}/{$bundleDir}", true);
+    $diff = shellDiff("{$repoRoot}/{$laravelDir}", "{$specsPath}/{$bundleDir}", true);
     if ($diff === '') {
         step("  {$label} documents: EMPTY DIFF — byte-compatible.");
         continue;

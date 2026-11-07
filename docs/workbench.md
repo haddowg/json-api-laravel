@@ -106,9 +106,8 @@ Both checkouts must then resolve the same core, for example by symlinking the sa
 `../json-api`.
 
 The two conformance suites also share response documents
-(`tests/Fixtures/IdentifiedMorphMany/documents` here). The package doesn't carry them, so
-`composer byte-compat` diffs them only when it finds a bundle checkout at `../json-api-symfony`
-(or `JSON_API_SYMFONY_PATH`), and skips them otherwise, which includes CI.
+(`tests/Fixtures/IdentifiedMorphMany/documents` here). The package carries the bundle's copy under
+`conformance/identified-morph-many`, and `composer byte-compat` diffs the two as well.
 
 ### Pinning the bundle documents
 

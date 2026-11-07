@@ -4,4 +4,4 @@
 
 ## Consequences
 
-The response documents the two conformance suites share aren't in the package, so they are diffed only when a bundle checkout is present, which CI no longer has.
+The response documents the two conformance suites share travel in the same package, under `conformance/`, so they are diffed against the same bundle release.
