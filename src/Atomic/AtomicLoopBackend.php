@@ -34,6 +34,7 @@ use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
+use haddowg\JsonApiLaravel\Http\JsonApiController;
 use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\ObjectAttributes;
@@ -104,6 +105,13 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
      */
     private ?array $objectOperations = null;
 
+    /**
+     * The target each `href`-addressed operation resolves to, keyed by operation index.
+     *
+     * @var array<int, Target>
+     */
+    private array $hrefTargets = [];
+
     private readonly LoggerInterface $logger;
 
     /**
@@ -128,6 +136,13 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         // would write a type in a way its HTTP surface forbids (the per-type operation
         // allow-list the router gates direct calls with), then resolve every participating
         // type's persister and refuse if ANY is not transactional.
+        // Every href is resolved and shape-checked first, so a bad one is refused with a
+        // pointer to it before anything is written.
+        foreach ($this->descriptors as $descriptor) {
+            if ($descriptor->href !== null) {
+                $this->hrefTargets[$descriptor->index] = $this->targetFromHref($descriptor);
+            }
+        }
         $targets = [];
         foreach ($this->descriptors as $descriptor) {
             $targets[$descriptor->index] = $this->targetOf($descriptor);
@@ -170,7 +185,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         // `data.type`.
         $target = match (true) {
             $ref !== null => $this->targetFromRef($ref),
-            $op->href !== null => $this->targetFromHref($op->href),
+            $op->href !== null => $this->hrefTargets[$op->index] ?? $this->targetFromHref($op),
             default => new Target($this->createTypeFromData($op->data)),
         };
 
@@ -347,17 +362,9 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         }
 
         if ($descriptor->href !== null) {
-            $match = $this->matchHref($descriptor->href);
-            $type = $match['_jsonapi_type'] ?? null;
-            if (!\is_string($type) || $type === '') {
-                throw new AtomicHrefUnresolvable($descriptor->href);
-            }
-            $segment = $match['relationship'] ?? null;
-            $relationship = \is_string($segment) && $segment !== ''
-                ? ($this->types->relationAtUriSegment($this->server, $type, $segment)?->name() ?? $segment)
-                : null;
+            $target = $this->hrefTargets[$descriptor->index];
 
-            return [$type, OperationKey::forAtomicOperation($descriptor->opCode, $relationship)];
+            return [$target->type, OperationKey::forAtomicOperation($descriptor->opCode, $target->relationship)];
         }
 
         return [$this->createTypeFromData($descriptor->data), OperationKey::forAtomicOperation($descriptor->opCode)];
@@ -406,7 +413,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         foreach ($this->descriptors as $descriptor) {
             $type = match (true) {
                 $descriptor->ref !== null => $descriptor->ref->type,
-                $descriptor->href !== null => $this->typeFromHref($descriptor->href),
+                $descriptor->href !== null => $this->hrefTargets[$descriptor->index]->type,
                 default => $this->createTypeFromData($descriptor->data),
             };
 
@@ -540,45 +547,52 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
     /**
      * Builds the {@see Target} from an `href` by matching it against Laravel's router: the
      * matched route's `_jsonapi_*` defaults give the type, id, relationship name, and
-     * whether it is the relationship-linkage endpoint.
+     * whether it is the relationship-linkage endpoint. An href matching no JSON:API route
+     * is unresolvable; one whose route the operation cannot target is invalid. Both point
+     * at the operation's `href`.
      */
-    private function targetFromHref(string $href): Target
+    private function targetFromHref(OperationDescriptor $op): Target
     {
-        $match = $this->matchHref($href);
+        $href = (string) $op->href;
+        $pointer = '/' . AtomicExtension::OPERATIONS_MEMBER . '/' . $op->index . '/href';
+
+        if (\str_contains($href, '?') || \str_contains($href, '#')) {
+            throw new AtomicHrefInvalid($href, 'must not carry a query string or fragment', $pointer);
+        }
+
+        $match = $this->matchHref($href, $pointer);
 
         $type = $match['_jsonapi_type'] ?? null;
         if (!\is_string($type) || $type === '') {
-            throw new AtomicHrefUnresolvable($href);
+            throw new AtomicHrefUnresolvable($href, $pointer);
+        }
+        if ($match['_jsonapi_action'] !== null) {
+            throw new AtomicHrefInvalid($href, 'addresses a custom action, which an atomic operation cannot target', $pointer);
         }
 
         $id = $match['id'] ?? null;
+        $id = \is_string($id) ? $id : null;
         $relationship = $match['relationship'] ?? null;
         $relationship = \is_string($relationship) && $relationship !== '' ? $relationship : null;
+        $isRelationshipEndpoint = ($match['_jsonapi_relationship_endpoint'] ?? null) === true;
+
+        if ($relationship !== null && !$isRelationshipEndpoint) {
+            throw new AtomicHrefInvalid($href, 'addresses a related resource; a relationship operation targets its /relationships/ URL', $pointer);
+        }
+        if ($relationship === null && $id === null && $op->opCode !== AtomicOperationCode::Add) {
+            throw new AtomicHrefInvalid($href, \sprintf("addresses a collection; an '%s' targets a single resource or a relationship", $op->opCode->value), $pointer);
+        }
+        if ($relationship === null && $id !== null && $op->opCode === AtomicOperationCode::Add) {
+            throw new AtomicHrefInvalid($href, "addresses a single resource; an 'add' targets the collection or a relationship", $pointer);
+        }
+
         // The href names the relation by its URI segment; the Target carries its name.
         // An unknown segment stays as it is and answers 404.
         if ($relationship !== null) {
             $relationship = $this->types->relationAtUriSegment($this->server, $type, $relationship)?->name() ?? $relationship;
         }
 
-        return new Target(
-            $type,
-            \is_string($id) ? $id : null,
-            $relationship,
-            isRelationshipEndpoint: ($match['_jsonapi_relationship_endpoint'] ?? null) === true,
-        );
-    }
-
-    /**
-     * The primary `_jsonapi_type` an `href` resolves to, for the pre-flight persister scan.
-     */
-    private function typeFromHref(string $href): string
-    {
-        $type = $this->matchHref($href)['_jsonapi_type'] ?? null;
-        if (!\is_string($type) || $type === '') {
-            throw new AtomicHrefUnresolvable($href);
-        }
-
-        return $type;
+        return new Target($type, $id, $relationship, isRelationshipEndpoint: $isRelationshipEndpoint);
     }
 
     /**
@@ -593,7 +607,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
      *
      * @return array<string, mixed>
      */
-    private function matchHref(string $href): array
+    private function matchHref(string $href, string $pointer): array
     {
         $path = (string) \parse_url($href, \PHP_URL_PATH);
         if ($path === '') {
@@ -603,7 +617,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         try {
             $route = $this->router->getRoutes()->match(Request::create($path, 'GET'));
         } catch (NotFoundHttpException | MethodNotAllowedHttpException) {
-            throw new AtomicHrefUnresolvable($href);
+            throw new AtomicHrefUnresolvable($href, $pointer);
         }
 
         /** @var array<string, mixed> $defaults */
@@ -612,6 +626,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         return [
             '_jsonapi_type' => $defaults['_jsonapi_type'] ?? null,
             '_jsonapi_relationship_endpoint' => $defaults['_jsonapi_relationship_endpoint'] ?? null,
+            '_jsonapi_action' => $defaults[JsonApiController::ACTION_ATTRIBUTE] ?? null,
             'id' => $route->parameter('id'),
             'relationship' => $route->parameter('relationship'),
         ];

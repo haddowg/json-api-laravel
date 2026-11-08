@@ -42,6 +42,15 @@ Accept:       application/vnd.api+json; ext="https://jsonapi.org/ext/atomic"
 }
 ```
 
+An operation can name its target by `href` instead of `ref`. An `href` names one target, so
+the package checks every `href` before it writes anything. An `add` takes a collection URL, an
+`update` or `remove` takes a single resource URL, and any op can take a `/relationships/` URL.
+Any other `href` refuses the whole batch with a `400` pointed at that operation's `href` member.
+This covers an `href` with a query string or fragment, a related-resource URL, a custom action
+URL, and a collection URL on an `update` or `remove`, so `remove` at `/api/albums?filter[...]`
+can't delete a filtered set. These answer `ATOMIC_HREF_INVALID`. An `href` that matches no
+JSON:API route answers `ATOMIC_HREF_UNRESOLVABLE`.
+
 ## Local ids (`lid`)
 
 A `lid` (local id) lets one operation reference a resource created earlier **in the same

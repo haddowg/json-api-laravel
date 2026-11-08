@@ -195,13 +195,86 @@ abstract class AtomicConformanceTestCase extends Orchestra
     #[Group('spec:atomic')]
     public function anUnresolvableHrefIsRefused(): void
     {
-        // An `href` that matches no JSON:API route cannot resolve a target — the batch is
-        // refused in pre-flight (a 400) rather than silently no-op'ing.
+        $this->assertBadHref(['op' => 'remove', 'href' => '/api/no-such-type/1'], 'ATOMIC_HREF_UNRESOLVABLE');
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function aRemoveAtAFilteredCollectionHrefIsRefused(): void
+    {
+        $this->assertBadHref(['op' => 'remove', 'href' => '/api/albums?filter[title]=x'], 'ATOMIC_HREF_INVALID');
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function aRemoveAtACollectionHrefIsRefused(): void
+    {
+        $this->assertBadHref(['op' => 'remove', 'href' => '/api/albums'], 'ATOMIC_HREF_INVALID');
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function anUpdateAtACollectionHrefIsRefused(): void
+    {
+        $this->assertBadHref(['op' => 'update', 'href' => '/api/albums', 'data' => ['type' => 'albums', 'id' => '1', 'attributes' => ['title' => 'Nope']]], 'ATOMIC_HREF_INVALID');
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function anHrefWithAQueryStringIsRefused(): void
+    {
+        $this->assertBadHref(['op' => 'remove', 'href' => '/api/albums/1?include=artist'], 'ATOMIC_HREF_INVALID');
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function anAddAtASingleResourceHrefIsRefused(): void
+    {
+        $this->assertBadHref(['op' => 'add', 'href' => '/api/artists/1', 'data' => ['type' => 'artists', 'attributes' => ['name' => 'Nope', 'slug' => 'nope']]], 'ATOMIC_HREF_INVALID');
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function anUpdateAtARelatedEndpointHrefIsRefused(): void
+    {
+        $this->assertBadHref(['op' => 'update', 'href' => '/api/albums/1/artist', 'data' => ['type' => 'artists', 'id' => '1']], 'ATOMIC_HREF_INVALID');
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function anAddAtACollectionHrefCreates(): void
+    {
         $this->atomic([
-            ['op' => 'remove', 'href' => '/api/no-such-type/1'],
+            ['op' => 'add', 'href' => '/api/artists', 'data' => ['type' => 'artists', 'attributes' => ['name' => 'Via href', 'slug' => 'via-href']]],
+        ])
+            ->assertOk()
+            ->assertJsonPath('atomic:results.0.data.attributes.name', 'Via href');
+    }
+
+    /**
+     * A bad href in the second operation refuses the batch at that href before anything
+     * is written: the first operation's artist never exists and album 1 survives.
+     *
+     * @param array<string, mixed> $operation
+     */
+    private function assertBadHref(array $operation, string $code): void
+    {
+        $before = $this->readJsonApi('/api/artists')->json('data');
+        $this->assertIsArray($before);
+
+        $this->atomic([
+            ['op' => 'add', 'data' => ['type' => 'artists', 'attributes' => ['name' => 'Ghost', 'slug' => 'ghost']]],
+            $operation,
         ])
             ->assertStatus(400)
-            ->assertJsonPath('errors.0.code', 'ATOMIC_HREF_UNRESOLVABLE');
+            ->assertJsonCount(1, 'errors')
+            ->assertJsonPath('errors.0.code', $code)
+            ->assertJsonPath('errors.0.source.pointer', '/atomic:operations/1/href');
+
+        $after = $this->readJsonApi('/api/artists')->json('data');
+        $this->assertIsArray($after);
+        $this->assertCount(\count($before), $after);
+        $this->readJsonApi('/api/albums/1')->assertOk();
     }
 
     #[Test]
