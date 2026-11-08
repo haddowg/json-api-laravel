@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Action;
 
 use haddowg\JsonApi\OpenApi\Metadata\Accepted;
+use haddowg\JsonApi\OpenApi\Metadata\ActionCreated;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResource;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResponse;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResponses;
@@ -29,13 +30,14 @@ use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
  * `responds` is the declared success-response set the OpenAPI projection advertises, each
  * element a scalar `{kind, ref}` pair round-tripping the atomic core response objects
  * ({@see \haddowg\JsonApi\OpenApi\Metadata\ActionResource} etc.): `kind` is `resource`
- * (a `200` document, `ref` = the resource type), `accepted` (a `202`, `ref` = the job
+ * (a `200` document, `ref` = the resource type), `created` (a `201` document, `ref` = the
+ * created type), `accepted` (a `202`, `ref` = the job
  * type), `meta` (a `200` meta document), `nocontent` (a `204`), or `seeother` (a `303`,
  * also carrying its `description` and `mediaType`; a `mediaType` opts the action in to
  * answering with a URL).
  * `outputType` is the resolved serializer type every {@see \haddowg\JsonApi\Response\DataResponse}
  * the handler returns renders through — the `resource` response's type when one is declared,
- * else the mount `type`.
+ * else the `created` response's type, else the mount `type`.
  *
  * `readOnly`, `destructive` and `idempotent` are the action's declared safety flags, `null`
  * when undeclared, `extensions` its own OpenAPI vendor extensions, and `scopes` the OAuth
@@ -120,6 +122,7 @@ final readonly class ActionDescriptor
         foreach ($this->responds as $response) {
             $responses[] = match ($response['kind']) {
                 'resource' => new ActionResource((string) $response['ref']),
+                'created' => new ActionCreated((string) $response['ref']),
                 'accepted' => new Accepted((string) $response['ref']),
                 'meta' => new MetaResult(),
                 'nocontent' => new NoContent(),

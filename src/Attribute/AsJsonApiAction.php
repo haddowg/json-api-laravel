@@ -44,6 +44,11 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
  * ({@see ActionResource}). The atomic responses:
  *  - {@see ActionResource}(`type`) — a `200` whose body is that type's resource document
  *    (the handler returns a {@see \haddowg\JsonApi\Response\DataResponse}).
+ *  - {@see \haddowg\JsonApi\OpenApi\Metadata\ActionCreated}(`type`) — a `201` whose body is
+ *    that type's resource document, with an optional `Location`, for an action that
+ *    creates the resource it returns. The handler returns a `DataResponse`; core's dispatch
+ *    sends it as `201` unless an {@see ActionResource} is declared too, when the handler
+ *    picks with `withStatus(201)`.
  *  - {@see \haddowg\JsonApi\OpenApi\Metadata\MetaResult} — a `200` meta-only document
  *    ({@see \haddowg\JsonApi\Response\MetaResponse}).
  *  - {@see \haddowg\JsonApi\OpenApi\Metadata\NoContent} — a `204` ({@see \haddowg\JsonApi\Response\NoContentResponse}).
@@ -53,9 +58,10 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
  *    ({@see \haddowg\JsonApi\Response\SeeOtherResponse}).
  * The set is validated at declaration time ({@see ActionResponses::validate()}: non-empty,
  * unique status codes) and affects only the generated document — the runtime response is
- * whatever the handler returns. When a `200`-document {@see ActionResource} is declared,
- * its type is also the serializer every {@see \haddowg\JsonApi\Response\DataResponse} the
- * handler returns renders through; otherwise the mount type's serializer is used.
+ * whatever the handler returns, apart from the `201` an `ActionCreated` implies. When a
+ * `200`-document {@see ActionResource} is declared, its type is also the serializer every
+ * {@see \haddowg\JsonApi\Response\DataResponse} the handler returns renders through; failing
+ * one, an `ActionCreated`'s type is; otherwise the mount type's serializer is used.
  *
  * `server` names the server this action is exposed on (a single server name, or `null`
  * for the implicit `default` server).

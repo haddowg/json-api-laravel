@@ -38,6 +38,33 @@ POST /api/albums/1/-actions/reissue
 `input: ActionInput::Document` parses + validates + hydrates a JSON:API document into the mount
 type before `handle()`.
 
+## An action that creates a resource
+
+An action that creates the resource it returns, such as duplicating an album, declares
+`ActionCreated`. The handler returns `$context->data(...)` as usual and the response is sent
+as `201 Created`, so the status cannot drift from the declaration:
+
+```php
+use haddowg\JsonApi\OpenApi\Metadata\ActionCreated;
+
+#[AsJsonApiAction(type: 'albums', path: 'duplicate', responds: [new ActionCreated('albums')])]
+final readonly class DuplicateAlbum implements ActionHandlerInterface
+{
+    public function handle(ActionContext $context): DataResponse
+    {
+        $copy = $context->entity()->replicate();
+        $copy->save();
+
+        return $context->data($copy)->withHeader('Location', url('/api/albums/' . $copy->getKey()));
+    }
+}
+```
+
+The `Location` header is optional. The OpenAPI document advertises a `201` with the type's
+document and the header. An action that can also answer with an existing resource declares
+both `new ActionResource('albums')` and `new ActionCreated('albums')`; its response then stays
+`200` unless the handler calls `->withStatus(201)`.
+
 ## A collection-scoped, meta-only action
 
 `scope: ActionScope::Collection` mounts `POST /{type}/-actions/{path}` with no id;
@@ -220,7 +247,7 @@ that has a body must still match `accepts`.
 | `methods` | HTTP verb allow-list (default `['POST']`) |
 | `input` | `None` (default) / `Document` (parse + validate + hydrate) / `Raw` (relaxed negotiation) |
 | `inputType` | decouple the **request** document type from the mount type |
-| `responds` | the advertised success response(s): a single object or a list of `new ActionResource('type')` (`200` document — default is the mount type), `new MetaResult()` (`200` meta), `new NoContent()` (`204`), `new Accepted('job-type')` (`202`), `new SeeOther()` (`303`, or a URL with a `mediaType`, [below](#a-download-action-answering-with-a-url)), `new RawResult('text/csv')` (a non-JSON:API body, [below](#a-raw-response-csv-pdf-and-other-bodies)), from `haddowg\JsonApi\OpenApi\Metadata` |
+| `responds` | the advertised success response(s): a single object or a list of `new ActionResource('type')` (`200` document — default is the mount type), `new ActionCreated('type')` (`201` document, [below](#an-action-that-creates-a-resource)), `new MetaResult()` (`200` meta), `new NoContent()` (`204`), `new Accepted('job-type')` (`202`), `new SeeOther()` (`303`, or a URL with a `mediaType`, [below](#a-download-action-answering-with-a-url)), `new RawResult('text/csv')` (a non-JSON:API body, [below](#a-raw-response-csv-pdf-and-other-bodies)), from `haddowg\JsonApi\OpenApi\Metadata` |
 | `ability` | the Gate ability checked before the handler ([authorization](authorization.md)) |
 | `server` / `name` / `tags` | server exposure, route-name override, OpenAPI tags |
 | `asLink` | expose the action as an ability-aware `links` member on the mount type's resources (resource scope only); a resource's [`ActionLink`](#showing-an-action-link-only-in-some-states) does the same with a condition |
