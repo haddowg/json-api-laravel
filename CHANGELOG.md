@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.0](https://github.com/haddowg/json-api-laravel/compare/v2.2.1...v2.3.0) (2026-11-08)
+
+
+### Features
+
+* let an action declare that it answers 201 Created ([#217](https://github.com/haddowg/json-api-laravel/issues/217)) ([f70d2a5](https://github.com/haddowg/json-api-laravel/commit/f70d2a5499e6a1a2db89257886833a994d6a6e2b))
+
 ## [2.2.1](https://github.com/haddowg/json-api-laravel/compare/v2.2.0...v2.2.1) (2026-11-08)
 
 
