@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Discovery;
 use haddowg\JsonApi\Exception\DescribedErrorInterface;
 use haddowg\JsonApi\Hydrator\HydratorInterface;
 use haddowg\JsonApi\OpenApi\Metadata\Accepted;
+use haddowg\JsonApi\OpenApi\Metadata\ActionCreated;
 use haddowg\JsonApi\OpenApi\Metadata\ActionDeclarations;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResource;
 use haddowg\JsonApi\OpenApi\Metadata\MetaResult;
@@ -613,7 +614,8 @@ final class DiscoveryScanner
      * attribute left it null, the declared `responds` set is flattened to its cacheable
      * `{kind, ref}` scalar form, and `outputType` is resolved to the serializer type the
      * handler's responses render through — the declared `resource` (200-document)
-     * response's type when one is present, else the mount type.
+     * response's type when one is present, else the `created` (201-document) one's, else
+     * the mount type.
      *
      * @param \ReflectionClass<object> $reflection
      */
@@ -624,12 +626,16 @@ final class DiscoveryScanner
 
         $this->guardActionHandlerOutput($reflection, $attribute);
 
-        $serializerType = $attribute->type;
+        $serializerType = null;
+        $createdType = null;
         $responds = [];
         foreach ($attribute->responds as $response) {
             if ($response instanceof ActionResource) {
                 $serializerType = $response->bodyType();
                 $responds[] = ['kind' => 'resource', 'ref' => $response->bodyType()];
+            } elseif ($response instanceof ActionCreated) {
+                $createdType ??= $response->bodyType();
+                $responds[] = ['kind' => 'created', 'ref' => $response->bodyType()];
             } elseif ($response instanceof Accepted) {
                 $responds[] = ['kind' => 'accepted', 'ref' => $response->jobType()];
             } elseif ($response instanceof MetaResult) {
@@ -646,6 +652,7 @@ final class DiscoveryScanner
             }
         }
         \assert($responds !== []);
+        $serializerType ??= $createdType ?? $attribute->type;
 
         /** @var class-string<ActionHandlerInterface> $handlerClass */
         $handlerClass = $reflection->getName();
