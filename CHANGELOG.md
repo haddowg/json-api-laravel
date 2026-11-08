@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0](https://github.com/haddowg/json-api-laravel/compare/v2.1.0...v2.2.0) (2026-11-08)
+
+
+### Features
+
+* let collection actions take their type's filters ([#213](https://github.com/haddowg/json-api-laravel/issues/213)) ([eb9bb26](https://github.com/haddowg/json-api-laravel/commit/eb9bb26444bb6653d9a15d5f15221e76cbf24ee6))
+
 ## [2.1.0](https://github.com/haddowg/json-api-laravel/compare/v2.0.0...v2.1.0) (2026-11-07)
 
 
