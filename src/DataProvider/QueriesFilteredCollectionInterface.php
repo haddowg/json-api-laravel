@@ -15,9 +15,9 @@ use Illuminate\Database\Eloquent\Model;
  * {@see CriteriaApplier::applyFilters()}, so the defaults and the matching are the
  * collection fetch's own.
  *
- * A provider without it still serves {@see \haddowg\JsonApiLaravel\Action\FilteredCollection::each()},
- * from one unwindowed {@see DataProviderInterface::fetchCollection()}, and its
- * {@see \haddowg\JsonApiLaravel\Action\FilteredCollection::query()} is null.
+ * A collection action that takes filters needs its type's provider to implement it;
+ * {@see \haddowg\JsonApiLaravel\Action\ActionContext::filtered()} throws a
+ * LogicException otherwise.
  */
 interface QueriesFilteredCollectionInterface
 {

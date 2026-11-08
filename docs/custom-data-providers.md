@@ -208,8 +208,8 @@ undeclared key the same way a collection fetch does. Start from the query your
 `fetchCollection()` starts from, so the action sees exactly the rows a client could list. The
 Eloquent and in-memory providers both implement it.
 
-A provider without the interface still serves the action: `each()` reads the rows through one
-`fetchCollection()` with no window, and `query()` returns `null`.
+A provider without the interface can't serve a filtered action: `filtered()` throws a
+`LogicException` naming the type and the interface.
 
 ## Custom filters and sorts
 

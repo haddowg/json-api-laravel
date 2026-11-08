@@ -68,7 +68,8 @@ final class ActionContext
      * The mount type's rows the request's validated `filter[...]` parameters select, for a
      * collection-scope action declaring `filters`. Built on first call.
      *
-     * @throws \LogicException when the action takes no filters
+     * @throws \LogicException when the action takes no filters, or the type's provider does not
+     *                         implement {@see \haddowg\JsonApiLaravel\DataProvider\QueriesFilteredCollectionInterface}
      */
     public function filtered(): FilteredCollection
     {

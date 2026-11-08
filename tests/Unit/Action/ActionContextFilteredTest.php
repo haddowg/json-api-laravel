@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Unit\Action;
 
+use haddowg\JsonApi\Collection\CollectionResult;
 use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Server\ResolvingServerInterface;
@@ -12,8 +13,10 @@ use haddowg\JsonApiLaravel\Action\ActionDescriptor;
 use haddowg\JsonApiLaravel\Action\ActionInput;
 use haddowg\JsonApiLaravel\Action\ActionScope;
 use haddowg\JsonApiLaravel\Action\FilteredCollection;
+use haddowg\JsonApiLaravel\DataProvider\AbstractDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
+use haddowg\JsonApiLaravel\DataProvider\QueriesFilteredCollectionInterface;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ActionFilters\CountGadgetsAction;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -62,6 +65,36 @@ final class ActionContextFilteredTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
 
         $filtered->each(0);
+    }
+
+    public function test_a_provider_without_batched_reads_is_refused(): void
+    {
+        $provider = new class extends AbstractDataProvider {
+            public function supports(string $type): bool
+            {
+                return $type === 'gadgets';
+            }
+
+            public function fetchOne(string $type, string $id): ?object
+            {
+                return null;
+            }
+
+            public function fetchCollection(string $type, CollectionCriteria $criteria): CollectionResult
+            {
+                return new CollectionResult([]);
+            }
+        };
+        $context = $this->context(static fn(): FilteredCollection => new FilteredCollection(
+            $provider,
+            'gadgets',
+            new CollectionCriteria(new QueryParameters([], [], [], [], [])),
+        ));
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('for JSON:API type "gadgets" does not implement ' . QueriesFilteredCollectionInterface::class);
+
+        $context->filtered();
     }
 
     /**

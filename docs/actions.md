@@ -123,8 +123,8 @@ discovery. A listed key the type doesn't declare fails when the routes register,
 `jsonapi:optimize` reports it too, for an application that serves cached routes.
 
 A [custom data provider](custom-data-providers.md#filtered-collections-for-actions) gives
-`filtered()` its rows by implementing `QueriesFilteredCollectionInterface`. One that doesn't
-still works, with `each()` reading every row in one fetch and `query()` returning `null`.
+`filtered()` its rows by implementing `QueriesFilteredCollectionInterface`. Without it,
+`filtered()` throws a `LogicException` naming the type and the interface.
 
 ## A raw-input, `204` action
 

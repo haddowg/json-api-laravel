@@ -20,16 +20,32 @@ use Illuminate\Database\Eloquent\Model;
  */
 final readonly class FilteredCollection
 {
+    private QueriesFilteredCollectionInterface $provider;
+
     /**
      * @param DataProviderInterface<object> $provider
+     *
+     * @throws \LogicException when the provider cannot read a filtered collection
      *
      * @internal built by the {@see ActionInvoker}
      */
     public function __construct(
-        private DataProviderInterface $provider,
+        DataProviderInterface $provider,
         private string $type,
         private CollectionCriteria $criteria,
-    ) {}
+    ) {
+        if (!$provider instanceof QueriesFilteredCollectionInterface) {
+            throw new \LogicException(\sprintf(
+                'The data provider %s for JSON:API type "%s" does not implement %s, so a collection action cannot read '
+                . 'the type\'s filtered rows. Implement it on the provider, or drop filters from the action.',
+                $provider::class,
+                $type,
+                QueriesFilteredCollectionInterface::class,
+            ));
+        }
+
+        $this->provider = $provider;
+    }
 
     /**
      * A fresh Eloquent query on each call, with the filters applied and the type's global
@@ -40,14 +56,11 @@ final readonly class FilteredCollection
      */
     public function query(): ?Builder
     {
-        return $this->provider instanceof QueriesFilteredCollectionInterface
-            ? $this->provider->queryFiltered($this->type, $this->criteria)
-            : null;
+        return $this->provider->queryFiltered($this->type, $this->criteria);
     }
 
     /**
-     * Every filtered row, in ascending id order, read `$batch` rows at a time. A provider
-     * without {@see QueriesFilteredCollectionInterface} reads them in one fetch.
+     * Every filtered row, in ascending id order, read `$batch` rows at a time.
      *
      * @return iterable<object>
      */
@@ -57,10 +70,6 @@ final readonly class FilteredCollection
             throw new \InvalidArgumentException(\sprintf('The batch size must be at least 1, %d given.', $batch));
         }
 
-        if ($this->provider instanceof QueriesFilteredCollectionInterface) {
-            return $this->provider->eachFiltered($this->type, $this->criteria, $batch);
-        }
-
-        return $this->provider->fetchCollection($this->type, $this->criteria)->items;
+        return $this->provider->eachFiltered($this->type, $this->criteria, $batch);
     }
 }
