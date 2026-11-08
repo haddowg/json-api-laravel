@@ -110,6 +110,13 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
  * `deprecated` marks every method of the action `deprecated: true` in the OpenAPI document, and
  * a response to it carries `Deprecation: true` and any `Sunset` the mount type declares. An
  * action on a type declared deprecated is marked either way.
+ *
+ * `filters` lets a collection-scope action take the `filter[<key>]` query parameters its mount
+ * type declares for its collection: `true` takes every one, a list takes the named keys, and
+ * `false` takes none. The invoker validates them as the collection fetch does and the handler
+ * reads the filtered rows through {@see \haddowg\JsonApiLaravel\Action\ActionContext::filtered()}.
+ * Discovery rejects filters on a resource-scope action, and route registration rejects a
+ * listed key the type does not declare.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final readonly class AsJsonApiAction
@@ -138,6 +145,7 @@ final readonly class AsJsonApiAction
      * @param array<string, mixed>                               $extensions  OpenAPI vendor extensions for the action's operation, keyed by `x-` name
      * @param list<string>|null                                  $scopes      the OAuth scopes the action needs (`[]` for none, null to ask the scope resolver)
      * @param bool                                               $deprecated  whether the action is deprecated
+     * @param bool|list<string>                                  $filters     the mount type's filters the action takes: `true` for all, a list of keys, or `false` for none
      */
     public function __construct(
         public string $type,
@@ -162,6 +170,7 @@ final readonly class AsJsonApiAction
         public array $extensions = [],
         public ?array $scopes = null,
         public bool $deprecated = false,
+        public bool|array $filters = false,
     ) {
         // Normalise the declaration: a single response object → a one-element list; an
         // omitted declaration → a `200` document of the mount type (the historical default).
@@ -223,6 +232,15 @@ final readonly class AsJsonApiAction
         }
 
         VendorExtensions::assertMap(\sprintf('AsJsonApiAction "%s" on type "%s"', $path, $type), $extensions, 'extensions');
+
+        if (\is_array($filters) && (!\array_is_list($filters) || \array_filter($filters, static fn(mixed $key): bool => !\is_string($key) || $key === '') !== [])) {
+            throw new \LogicException(\sprintf(
+                'The JSON:API action "%s" on type "%s" declares filters that are not a list of filter keys; use true, '
+                . 'false or a list of the type\'s filter keys.',
+                $path,
+                $type,
+            ));
+        }
 
         if ($scopes !== null) {
             OperationScopes::assertList(\sprintf('AsJsonApiAction "%s" on type "%s" scopes', $path, $type), $scopes);

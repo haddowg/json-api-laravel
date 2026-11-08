@@ -25,11 +25,14 @@ use Psr\Http\Message\StreamInterface;
  * {@see JsonApiRequestInterface} (always — the raw body + uploaded files for a Raw-input
  * action) and the {@see QueryParameters}.
  *
+ * {@see filtered()} reads the rows the request's filters select, for a collection action
+ * that takes its type's filters.
+ *
  * {@see serializer()} resolves the `outputType` serializer once, and the convenience
  * factories {@see data()}/{@see meta()}/{@see noContent()} pre-wire it, so the handler
  * returns a response in one call.
  */
-final readonly class ActionContext
+final class ActionContext
 {
     /**
      * The request attribute carrying the {@see ActionInput} case name the body was read in.
@@ -45,15 +48,41 @@ final readonly class ActionContext
      */
     public const string MEDIA_TYPE_ATTRIBUTE = '_jsonapi_request_media_type';
 
+    private ?FilteredCollection $filtered = null;
+
+    /**
+     * @param (\Closure(): FilteredCollection)|null $filteredFactory builds the action's filtered rows on first use; null when the action takes no filters
+     */
     public function __construct(
-        private ResolvingServerInterface $server,
-        private ActionDescriptor $descriptor,
-        private ?object $entity,
-        private ?object $input,
-        private JsonApiRequestInterface $request,
-        private QueryParameters $queryParameters,
-        private string $responseMediaType = 'application/vnd.api+json',
+        private readonly ResolvingServerInterface $server,
+        private readonly ActionDescriptor $descriptor,
+        private readonly ?object $entity,
+        private readonly ?object $input,
+        private readonly JsonApiRequestInterface $request,
+        private readonly QueryParameters $queryParameters,
+        private readonly string $responseMediaType = 'application/vnd.api+json',
+        private readonly ?\Closure $filteredFactory = null,
     ) {}
+
+    /**
+     * The mount type's rows the request's validated `filter[...]` parameters select, for a
+     * collection-scope action declaring `filters`. Built on first call.
+     *
+     * @throws \LogicException when the action takes no filters
+     */
+    public function filtered(): FilteredCollection
+    {
+        if ($this->filteredFactory === null) {
+            throw new \LogicException(\sprintf(
+                'The JSON:API action "%s" on type "%s" takes no filters, so it has no filtered collection. Declare '
+                . 'filters on its #[AsJsonApiAction] to take the type\'s filters.',
+                $this->descriptor->path,
+                $this->descriptor->type,
+            ));
+        }
+
+        return $this->filtered ??= ($this->filteredFactory)();
+    }
 
     /**
      * The media type the response must use, picked from the action's declared responses by

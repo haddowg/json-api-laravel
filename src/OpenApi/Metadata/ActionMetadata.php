@@ -12,6 +12,7 @@ use haddowg\JsonApi\OpenApi\Metadata\DeclaresAcceptedBodies;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionDeprecation;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionExample;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionExtensions;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionFilters;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionLink;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionSafety;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionScopes;
@@ -35,7 +36,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
  * tags fall back to the mount type's default tag) so the projected document matches the
  * bundle's for an identical action.
  */
-final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAcceptedBodies, DeclaresActionExample, DeclaresActionSafety, DeclaresActionExtensions, DeclaresActionScopes, DeclaresActionDeprecation
+final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAcceptedBodies, DeclaresActionExample, DeclaresActionSafety, DeclaresActionExtensions, DeclaresActionScopes, DeclaresActionDeprecation, DeclaresActionFilters
 {
     /**
      * @param list<string> $tags the OpenAPI tag names (already resolved against the mount type's default)
@@ -182,5 +183,10 @@ final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAccep
     public function isDeprecated(): bool
     {
         return $this->descriptor->deprecated;
+    }
+
+    public function filters(): bool|array
+    {
+        return $this->descriptor->filters;
     }
 }

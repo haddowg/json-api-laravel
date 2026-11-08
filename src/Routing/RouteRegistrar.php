@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Routing;
 
+use haddowg\JsonApi\OpenApi\Metadata\ActionDeclarations;
 use haddowg\JsonApiLaravel\Action\ActionDescriptor;
 use haddowg\JsonApiLaravel\Action\ActionScope;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
@@ -11,6 +12,7 @@ use haddowg\JsonApiLaravel\Discovery\ResourceDescriptor;
 use haddowg\JsonApiLaravel\Discovery\SerializerDescriptor;
 use haddowg\JsonApiLaravel\Http\JsonApiController;
 use haddowg\JsonApiLaravel\Http\ResponseHeadersMiddleware;
+use haddowg\JsonApiLaravel\OpenApi\Metadata\ActionMetadata;
 use haddowg\JsonApiLaravel\Operation\Operation;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
@@ -69,6 +71,7 @@ final class RouteRegistrar
     /**
      * @param array<string, array{prefix?: string, middleware?: list<string>|string, domain?: string|null, route_defaults?: array<string, string>, base_uri?: string|null, output_timezone?: string|null}> $servers the per-server route config
      * @param (\Closure(class-string): ?string)|null                                                         $idPatternResolver resolves a resource class to its {@see Id} field's declared route pattern (null when unconstrained); null disables the lookup (the single-segment default)
+     * @param (\Closure(class-string): ?list<string>)|null                                                   $filterKeysResolver resolves a resource class to its filter keys (null when it cannot be read); null skips checking the filters a collection action lists
      */
     public function __construct(
         private readonly Discovery $discovery,
@@ -76,6 +79,7 @@ final class RouteRegistrar
         private readonly bool $atomicEnabled = false,
         private readonly string $atomicPath = '/operations',
         private readonly ?\Closure $idPatternResolver = null,
+        private readonly ?\Closure $filterKeysResolver = null,
     ) {}
 
     /**
@@ -397,11 +401,37 @@ final class RouteRegistrar
                 ->middleware(ResponseHeadersMiddleware::class)
                 ->name(self::actionRouteName($action));
 
+            $this->guardActionFilters($server, $action);
+
             if ($resourceScope) {
                 // The resource-scope action's `{id}` carries the mount type's own declared Id
                 // route pattern, so a malformed id 404s consistently with the CRUD routes.
                 $route->where('id', $this->idRequirementFor($this->classFor($server, $action->type)));
             }
+        }
+    }
+
+    /**
+     * Fails registration when a collection action lists a filter its mount type does not
+     * declare. Discovery has already rejected filters on a resource-scope action, but it
+     * reads no resource, so the keys are checked here.
+     */
+    private function guardActionFilters(string $server, ActionDescriptor $action): void
+    {
+        if ($this->filterKeysResolver === null || !\is_array($action->filters) || $action->filters === []) {
+            return;
+        }
+
+        $class = $this->classFor($server, $action->type);
+        $keys = $class !== null ? ($this->filterKeysResolver)($class) : [];
+        if ($keys === null) {
+            return;
+        }
+
+        try {
+            ActionDeclarations::validate($action->type, [new ActionMetadata($action, [])], $keys);
+        } catch (\LogicException $e) {
+            throw new \LogicException(\sprintf('The JSON:API action handler %s is declared incorrectly. %s', $action->handlerClass, $e->getMessage()), 0, $e);
         }
     }
 

@@ -191,6 +191,26 @@ A to-many replace changes only the members the client can see: the persister is 
 hidden current members as well, so they stay attached with their pivot rows untouched. The
 response to a relationship write lists the members the relationship endpoint would.
 
+## Filtered collections for actions
+
+A [collection action that takes its type's filters](actions.md#a-collection-action-that-takes-the-types-filters)
+reads its rows through the type's provider. Implement `QueriesFilteredCollectionInterface` to
+serve them your own way:
+
+- `queryFiltered($type, $criteria)` returns a fresh Eloquent builder with the criteria's filters
+  applied, or `null` when your store has no builder;
+- `eachFiltered($type, $criteria, $batch)` yields the filtered rows in ascending id order,
+  reading `$batch` rows at a time.
+
+The criteria carry only the filters the action takes, with no sorts and no window. Apply them
+with `CriteriaApplier::applyFilters()`, which folds in the declared defaults and rejects an
+undeclared key the same way a collection fetch does. Start from the query your
+`fetchCollection()` starts from, so the action sees exactly the rows a client could list. The
+Eloquent and in-memory providers both implement it.
+
+A provider without the interface still serves the action: `each()` reads the rows through one
+`fetchCollection()` with no window, and `query()` returns `null`.
+
 ## Custom filters and sorts
 
 A `DataProviderInterface` owns how it translates core's filter/sort vocabulary for its store:

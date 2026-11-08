@@ -74,6 +74,10 @@ The set of CRUD operations a type exposes, which decides the routes registered f
 **Mount type**:
 The type an action's URL hangs off, and its default request and response type.
 
+**Filtered collection**:
+The mount type's rows a collection action's validated `filter[...]` parameters select, read
+through `ActionContext::filtered()` with no sort or page window.
+
 **Servability**:
 Whether every discovered type can actually be served against its data layer: its columns,
 relation methods, morph maps, provider and persister all resolve. `jsonapi:optimize` checks it.
