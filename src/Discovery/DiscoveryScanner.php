@@ -675,6 +675,7 @@ final class DiscoveryScanner
             extensions: $attribute->extensions,
             scopes: $attribute->scopes,
             deprecated: $attribute->deprecated,
+            filters: $attribute->filters,
         );
     }
 

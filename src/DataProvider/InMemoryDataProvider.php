@@ -24,6 +24,7 @@ use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortArmInterface;
 use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortHandler;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * An in-memory read provider: a test double and conformance witness. It reads from a
@@ -57,7 +58,7 @@ use haddowg\JsonApi\Resource\Sort\SortDirective;
  *
  * @extends AbstractDataProvider<object>
  */
-final class InMemoryDataProvider extends AbstractDataProvider implements FetchesManyInterface, AdmitsIdsInterface
+final class InMemoryDataProvider extends AbstractDataProvider implements FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface
 {
     private readonly InMemoryStore $store;
 
@@ -154,6 +155,31 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
     public function admitIds(string $type, array $ids): array
     {
         return \array_values(\array_filter($ids, fn(string $id): bool => $this->store->find($id) !== null));
+    }
+
+    /**
+     * Null: the in-memory rows have no query builder.
+     */
+    public function queryFiltered(string $type, CollectionCriteria $criteria): ?Builder
+    {
+        return null;
+    }
+
+    /**
+     * @param positive-int $batch
+     *
+     * @return \Generator<int, object, mixed, void>
+     */
+    public function eachFiltered(string $type, CollectionCriteria $criteria, int $batch): \Generator
+    {
+        /** @var list<object> $rows */
+        $rows = $this->applier->applyFilters($criteria, $this->store->all(), $this->filterHandler);
+
+        // Id order, as the Eloquent provider's keyset batches read.
+        \usort($rows, fn(object $a, object $b): int => Accessor::get($a, $this->idColumn) <=> Accessor::get($b, $this->idColumn));
+
+        // The rows are already in memory, so the batch size changes nothing here.
+        yield from $rows;
     }
 
     /**

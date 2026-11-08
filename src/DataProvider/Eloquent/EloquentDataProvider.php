@@ -28,6 +28,7 @@ use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\CriteriaApplier;
 use haddowg\JsonApiLaravel\DataProvider\FetchesManyInterface;
 use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
+use haddowg\JsonApiLaravel\DataProvider\QueriesFilteredCollectionInterface;
 use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelatedBatch;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
@@ -95,7 +96,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
  *
  * @extends AbstractDataProvider<object>
  */
-final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface
+final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface
 {
     private readonly CriteriaApplier $applier;
 
@@ -302,6 +303,30 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
                 (clone $builder)->offset($offset)->limit($limit)->get()->all(),
             ),
         );
+    }
+
+    /**
+     * @return Builder<Model>
+     */
+    public function queryFiltered(string $type, CollectionCriteria $criteria): Builder
+    {
+        return $this->applier->applyFilters($criteria, $this->newQuery($type), $this->filterHandler);
+    }
+
+    /**
+     * @param positive-int $batch
+     *
+     * @return \Generator<int, Model, mixed, void>
+     */
+    public function eachFiltered(string $type, CollectionCriteria $criteria, int $batch): \Generator
+    {
+        $builder = $this->queryFiltered($type, $criteria);
+        $model = $builder->getModel();
+
+        // Qualified, so a filter that joins another table cannot make the key ambiguous.
+        foreach ($builder->lazyById($batch, $model->getQualifiedKeyName(), $model->getKeyName()) as $row) {
+            yield $row;
+        }
     }
 
     /**

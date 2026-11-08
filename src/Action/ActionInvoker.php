@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Action;
 
+use haddowg\JsonApi\Exception\FilterParamUnrecognized;
 use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\Negotiation\AcceptNegotiator;
 use haddowg\JsonApi\Operation\CustomActionOperation;
+use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Request\MediaType;
+use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Response\AcceptedResponse;
 use haddowg\JsonApi\Response\DataResponse;
 use haddowg\JsonApi\Response\ErrorResponse;
@@ -19,12 +22,15 @@ use haddowg\JsonApi\Response\SeeOtherResponse;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
+use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
 use haddowg\JsonApiLaravel\Event\AfterActionEvent;
 use haddowg\JsonApiLaravel\Event\BeforeActionEvent;
+use haddowg\JsonApiLaravel\Operation\Operation;
 use haddowg\JsonApiLaravel\Server\ServerNames;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
+use haddowg\JsonApiLaravel\Validation\FilterValueValidator;
 use haddowg\JsonApiLaravel\Validation\ReadOnlyAttributes;
 use haddowg\JsonApiLaravel\Validation\ResourceValidator;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -45,6 +51,11 @@ use Illuminate\Contracts\Events\Dispatcher;
  * `403` exactly as the CRUD arms — builds the {@see ActionContext}, calls the handler, and
  * returns the handler's response value object.
  *
+ * A collection action that takes its type's filters has them checked as the collection fetch
+ * checks them, before the handler runs: an undeclared or untaken key is a `400`, a bad value
+ * is the {@see FilterValueValidator}'s `400`, and the type's `viewAny` gate runs as well as
+ * the action's own ability. The handler reads the rows through {@see ActionContext::filtered()}.
+ *
  * The request-wide serving gate and strict-query validation are inherited for free from
  * `Server::dispatch()` (the operation is a first-class JSON:API operation), so this invoker
  * owns only the per-action concerns.
@@ -63,6 +74,7 @@ final readonly class ActionInvoker
         // programmatic wiring → the dispatches are no-ops.
         private ?Dispatcher $dispatcher = null,
         private ?ServerNames $serverNames = null,
+        private ?FilterValueValidator $filterValidator = null,
     ) {}
 
     public function invoke(CustomActionOperation $operation): DataResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|ErrorResponse|RawResponse
@@ -113,11 +125,25 @@ final readonly class ActionInvoker
             $input = $this->resolveAndHydrateInput($server, $descriptor, $handler, $body);
         }
 
+        // A collection action taking its type's filters: the requested keys and values are
+        // checked as the collection fetch checks them, so a 400 precedes any 403.
+        $filters = $scope === ActionScope::Collection ? $this->effectiveFilters($server, $type, $descriptor) : [];
+        $requestedFilter = $operation->queryParameters()->filter;
+        if ($filters !== []) {
+            $this->validateFilter($requestedFilter, $filters);
+        }
+
         // The before-action lifecycle event: fired after entity
         // resolution + input validation and before the ability gate + handler. A listener
         // that throws a JsonApiException aborts. The subject is the resolved entity
         // (resource scope) or null (collection scope); the declared ability rides along.
         $this->dispatcher?->dispatch(new BeforeActionEvent($type, $operation->action(), $entity, $descriptor->ability));
+
+        if ($filters !== []) {
+            // Reading the type's filtered rows needs what listing the collection needs.
+            $listSubject = $this->persisters->supportsType($type) ? $this->persisters->forType($type)->instantiate($type) : null;
+            $this->authorizer->authorize($type, Operation::FetchCollection, $listSubject, $serverName);
+        }
 
         // The per-action ability gate: enforced AFTER input validation so
         // a 422 precedes a 403 (the CRUD ordering). The subject is the resolved entity
@@ -135,6 +161,15 @@ final readonly class ActionInvoker
             $this->request($operation),
             $operation->queryParameters(),
             $responseMediaType,
+            $filters === [] ? null : fn(): FilteredCollection => new FilteredCollection(
+                $this->providers->forType($type),
+                $type,
+                new CollectionCriteria(
+                    new QueryParameters(fields: [], includes: [], sort: [], filter: $requestedFilter, pagination: []),
+                    $filters,
+                    request: $this->request($operation),
+                ),
+            ),
         );
 
         $response = $handler->handle($context);
@@ -155,6 +190,46 @@ final readonly class ActionInvoker
         $this->dispatcher?->dispatch(new AfterActionEvent($type, $operation->action(), $entity));
 
         return $response;
+    }
+
+    /**
+     * The mount type's filters the action takes, in the type's order, by the rule core's
+     * `ActionDeclarations::filters()` applies for the OpenAPI document: all of them for
+     * `true`, the named ones for a list, none otherwise.
+     *
+     * @return list<FilterInterface>
+     */
+    private function effectiveFilters(Server $server, string $type, ActionDescriptor $descriptor): array
+    {
+        $declared = $descriptor->filters;
+        if ($declared === false || $declared === [] || !$server->hasResourceFor($type)) {
+            return [];
+        }
+
+        $filters = $server->resourceFor($type)->allFilters();
+
+        return $declared === true
+            ? $filters
+            : \array_values(\array_filter($filters, static fn(FilterInterface $filter): bool => \in_array($filter->key(), $declared, true)));
+    }
+
+    /**
+     * Rejects a requested key the action does not take, then the values its filters
+     * reject.
+     *
+     * @param array<string, mixed>  $requested
+     * @param list<FilterInterface> $filters
+     */
+    private function validateFilter(array $requested, array $filters): void
+    {
+        $keys = \array_map(static fn(FilterInterface $filter): string => $filter->key(), $filters);
+        foreach (\array_keys($requested) as $key) {
+            if (!\in_array((string) $key, $keys, true)) {
+                throw new FilterParamUnrecognized((string) $key);
+            }
+        }
+
+        $this->filterValidator?->validate($requested, $filters);
     }
 
     /**

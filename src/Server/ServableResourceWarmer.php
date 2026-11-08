@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Server;
 
+use haddowg\JsonApi\OpenApi\Metadata\ActionDeclarations;
 use haddowg\JsonApi\OpenApi\ProjectedTypes;
 use haddowg\JsonApi\OpenApi\RelatedTypeNotRegistered;
 use haddowg\JsonApi\Resource\AbstractResource;
@@ -77,6 +78,9 @@ use Illuminate\Database\Eloquent\Model;
  *    links also throws core's own declaration errors: two action links for one path, or a
  *    declared link named like an action link.
  *
+ *  - **A collection action may list only filters its mount type declares.** Core's
+ *    action-declaration check, run with the type's filter keys.
+ *
  * Standalone-serializer types are validated too — a
  * fetch-opened standalone type without a provider is exactly the deploy-time
  * misconfiguration this warmer exists to catch. Gating is on the per-type operation
@@ -143,6 +147,7 @@ final class ServableResourceWarmer
             }
 
             $this->guardRelatedEndpointTargets($serverName, $problems);
+            $this->guardActionFilters($serverName, $problems);
         }
 
         return $problems;
@@ -184,6 +189,26 @@ final class ServableResourceWarmer
                             $relatedType,
                         ))->getMessage();
                     }
+                }
+            }
+        }
+    }
+
+    /**
+     * Reports a collection action listing a filter its mount type does not declare, in the
+     * words core's OpenAPI projection would refuse the document with. Route registration
+     * makes the same check, but a cached route table skips it.
+     *
+     * @param list<string> $problems
+     */
+    private function guardActionFilters(string $serverName, array &$problems): void
+    {
+        foreach ($this->metadata->forServer($serverName)->types() as $type) {
+            try {
+                ActionDeclarations::validateType($type);
+            } catch (\LogicException $e) {
+                if (!\in_array($e->getMessage(), $problems, true)) {
+                    $problems[] = $e->getMessage();
                 }
             }
         }

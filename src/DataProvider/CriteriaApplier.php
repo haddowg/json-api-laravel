@@ -79,14 +79,19 @@ final class CriteriaApplier
     }
 
     /**
+     * Applies only the criteria's requested filters, with the declared defaults folded in,
+     * and never its sorts. A collection action's filtered query starts here.
+     *
      * @template TQuery
      *
      * @param TQuery                                       $query
      * @param FilterHandlerInterface<contravariant TQuery> $handler
      *
      * @return TQuery
+     *
+     * @throws FilterParamUnrecognized when a requested filter key is not declared
      */
-    private function applyFilters(CollectionCriteria $criteria, mixed $query, FilterHandlerInterface $handler): mixed
+    public function applyFilters(CollectionCriteria $criteria, mixed $query, FilterHandlerInterface $handler): mixed
     {
         // Fold each declared filter's default into the requested map first: an
         // absent key takes its filter's declared default, a requested key wins.

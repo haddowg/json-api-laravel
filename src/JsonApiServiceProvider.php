@@ -245,7 +245,23 @@ final class JsonApiServiceProvider extends ServiceProvider
                 }
             };
 
-            return new RouteRegistrar($app->make(Discovery::class), $servers, $atomicEnabled, $atomicPath, $idPatternResolver);
+            // Resolves a resource class to its filter keys, so a collection action listing a
+            // filter its type lacks fails the boot. A resource that cannot be built here is
+            // left to the optimize check and the OpenAPI projection.
+            $filterKeysResolver = static function (string $class) use ($app): ?array {
+                try {
+                    $resource = $app->make($class);
+                    if (!$resource instanceof \haddowg\JsonApi\Resource\AbstractResource) {
+                        return null;
+                    }
+
+                    return \array_map(static fn(\haddowg\JsonApi\Resource\Filter\FilterInterface $filter): string => $filter->key(), $resource->allFilters());
+                } catch (\Throwable) {
+                    return null;
+                }
+            };
+
+            return new RouteRegistrar($app->make(Discovery::class), $servers, $atomicEnabled, $atomicPath, $idPatternResolver, $filterKeysResolver);
         });
     }
 

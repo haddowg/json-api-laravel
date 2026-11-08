@@ -62,6 +62,70 @@ final class SummarizeAlbums implements ActionHandlerInterface
 POST /api/albums/-actions/summary
 ```
 
+## A collection action that takes the type's filters
+
+A collection action can take the `filter[...]` parameters its mount type declares for
+`GET /{type}`. Set `filters: true` to take all of them, or list the keys it takes. The
+handler then reads the matching rows through `$context->filtered()`:
+
+```php
+#[AsJsonApiAction(
+    type: 'albums',
+    path: 'archive',
+    scope: ActionScope::Collection,
+    responds: [new MetaResult()],
+    ability: 'archiveAlbums',
+    filters: ['genre', 'releasedRange'],
+)]
+final class ArchiveAlbums implements ActionHandlerInterface
+{
+    public function handle(ActionContext $context): MetaResponse
+    {
+        $archived = 0;
+        foreach ($context->filtered()->each() as $album) {
+            $album->update(['archived' => true]);
+            ++$archived;
+        }
+
+        return $context->meta(['archived' => $archived]);
+    }
+}
+```
+
+```
+POST /api/albums/-actions/archive?filter[genre]=jazz
+```
+
+The request's filters go through the same checks as the collection fetch, before the handler
+runs. A key the type doesn't declare is a `400`, and so is a declared key the action doesn't
+list. A value the filter's constraints reject is the same `400 FILTER_VALUE_INVALID` the
+collection gives, and a filter with a default applies it when the request leaves the key
+out. Only the filters the action takes apply their defaults.
+
+Taking filters also means reading the type's collection, so the invoker runs the type's
+`viewAny` gate as `GET /{type}` does, then the action's own `ability`. A caller who couldn't
+list the collection gets a `403`.
+
+`filtered()` returns a `FilteredCollection` with two methods:
+
+| Method | Returns |
+| --- | --- |
+| `query()` | a fresh Eloquent builder on each call, with the filters applied and the model's global scopes in place, and no sort or limit; `null` when the type's provider has no query builder |
+| `each(int $batch = 500)` | every matching row in ascending id order, read `$batch` rows at a time with `lazyById()` |
+
+Both start from the same root query the collection fetch uses, so whatever scope limits
+`GET /{type}` limits the action too. Use `query()` for a bulk statement such as
+`$context->filtered()->query()?->update([...])`, and `each()` when each row needs its own work.
+Calling `filtered()` on an action that takes no filters throws a `LogicException`.
+
+Only a collection action can take filters, so `filters` on a resource-scope action fails
+discovery. A listed key the type doesn't declare fails when the routes register, and
+`jsonapi:optimize` reports it too, for an application that serves cached routes.
+
+A [custom data provider](custom-data-providers.md#filtered-collections-for-actions) gives
+`filtered()` its rows by implementing `QueriesFilteredCollectionInterface`. Without it,
+`filtered()` throws a `LogicException` naming the type and the interface.
+
 ## A raw-input, `204` action
 
 `input: ActionInput::Raw` relaxes content-type negotiation for a non-JSON:API upload;
@@ -167,6 +231,7 @@ that has a body must still match `accepts`.
 | `extensions` | OpenAPI vendor extensions for the action's operation, keyed by `x-` name, merged over the mount type's `extensions` |
 | `scopes` | the [OAuth scopes](scopes.md) every method of the action needs; `[]` for none, `null` (default) asks the scope resolver |
 | `deprecated` | marks every method of the action `deprecated` in the [OpenAPI document](openapi.md#deprecation) and sends `Deprecation: true` on its responses |
+| `filters` | the mount type's filters a collection action takes: `true` for all, a list of keys, or `false` (default) for none ([above](#a-collection-action-that-takes-the-types-filters)) |
 
 > [!NOTE]
 > `asLink` visibility matches invocation **exactly**: `Authorizer::allowsAction()` (which
@@ -335,6 +400,7 @@ OpenAPI projection so the generated document matches what the handler returns.
 | `server()` | the resolving core server the request was dispatched to |
 | `descriptor()` | the action's resolved declaration |
 | `serializer()` | the serializer for the action's response type (the mount type unless `responds` names another) |
+| `filtered()` | the rows the request's filters select, for an action declaring `filters` ([above](#a-collection-action-that-takes-the-types-filters)) |
 
 And the response builders:
 
@@ -353,8 +419,10 @@ A handler may also return core's `ErrorResponse` to render a JSON:API error docu
 
 Each action projects an operation under its mount type's tag (or its own `tags`). A secured
 action carries its security requirement; its `responds` set becomes the advertised success
-responses (a `200` document or meta, `204`, `202`, `303`). Its `summary` and `description`
-are generated from the path and mount type unless the attribute sets them:
+responses (a `200` document or meta, `204`, `202`, `303`). An action that takes its type's
+filters lists their `filter[...]` parameters exactly as the collection fetch does. Its
+`summary` and `description` are generated from the path and mount type unless the attribute
+sets them:
 
 ```php
 #[AsJsonApiAction(
