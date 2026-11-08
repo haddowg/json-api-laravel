@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.1](https://github.com/haddowg/json-api-laravel/compare/v2.2.0...v2.2.1) (2026-11-08)
+
+
+### Bug Fixes
+
+* **atomic:** refuse an href the operation cannot target ([#215](https://github.com/haddowg/json-api-laravel/issues/215)) ([b7e3925](https://github.com/haddowg/json-api-laravel/commit/b7e3925aac46d27ece8cacb1b7eb852e0985d971))
+
 ## [2.2.0](https://github.com/haddowg/json-api-laravel/compare/v2.1.0...v2.2.0) (2026-11-08)
 
 
