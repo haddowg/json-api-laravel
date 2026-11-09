@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.4.0](https://github.com/haddowg/json-api-laravel/compare/v2.3.1...v2.4.0) (2026-11-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **actions:** require an inputType for document input
+
+### Features
+
+* **actions:** require an inputType for document input ([1ceabcb](https://github.com/haddowg/json-api-laravel/commit/1ceabcbd1cb13dce7222f5bdd30a80a5edd4d293))
+* **openapi:** project the identifier meta a relation declares ([#224](https://github.com/haddowg/json-api-laravel/issues/224)) ([d72907e](https://github.com/haddowg/json-api-laravel/commit/d72907e0a881e84765ab3c1fa11c4000ae1c9e0a))
+* **pivot:** render computed pivot fields without pivot columns ([#225](https://github.com/haddowg/json-api-laravel/issues/225)) ([c91b0f1](https://github.com/haddowg/json-api-laravel/commit/c91b0f16c87b32b1c923d876211412d5bff01eeb))
+* **resources:** add relatedOnly types ([1ceabcb](https://github.com/haddowg/json-api-laravel/commit/1ceabcbd1cb13dce7222f5bdd30a80a5edd4d293))
+* support list filters and filter families ([#222](https://github.com/haddowg/json-api-laravel/issues/222)) ([e778026](https://github.com/haddowg/json-api-laravel/commit/e77802648f085a14c8ed74c3227d9c6d2bda2c28))
+* validate the members of open objects ([#227](https://github.com/haddowg/json-api-laravel/issues/227)) ([4ecebaa](https://github.com/haddowg/json-api-laravel/commit/4ecebaadc36a4beb2720d6882bb2f33a22a518d9))
+
 ## [2.3.1](https://github.com/haddowg/json-api-laravel/compare/v2.3.0...v2.3.1) (2026-11-09)
 
 
