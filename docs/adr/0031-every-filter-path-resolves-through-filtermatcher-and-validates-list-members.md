@@ -1,0 +1,3 @@
+# Every filter path resolves through FilterMatcher and validates list members one by one
+
+Filter keys are matched by core's `FilterMatcher` everywhere a filter applies: the collection, related and relationship endpoints, `relatedQuery`, counts, cursor pages and collection actions. Each path used to compare exact keys itself, and a family needs the request and the longest-prefix rule, so a second matcher would let one path accept a key another rejects. A list filter's value is read strictly by `ListValue::values()` and each member is validated against the illuminate rules on its own, so an array-only list refuses a single string with the same `400` the bundle gives instead of reading it as one member.

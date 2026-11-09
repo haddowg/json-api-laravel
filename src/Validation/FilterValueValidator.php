@@ -5,8 +5,12 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Validation;
 
 use haddowg\JsonApi\Exception\FilterValueInvalid;
+use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\Filter\AcceptsList;
 use haddowg\JsonApi\Resource\Filter\DateRange;
+use haddowg\JsonApi\Resource\Filter\FilterFamilyInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Filter\Range;
 use Illuminate\Contracts\Validation\Factory as ValidationFactory;
 
@@ -44,32 +48,36 @@ final class FilterValueValidator
      * matching declared filter's value constraints, throwing on the first filter whose
      * value violates them.
      *
-     * A requested key with no matching declared filter is left untouched (the
-     * unrecognised-key `400` is the provider's concern, raised later in the
+     * Requested keys resolve through core's {@see FilterMatcher}, so a filter family's key
+     * validates against the rules of the filter it resolves to. A requested key with no
+     * matching declared filter is left untouched (the unrecognised-key `400` is the
+     * provider's concern, raised later in the
      * {@see \haddowg\JsonApiLaravel\DataProvider\CriteriaApplier}); a filter that declares
-     * no constraints is skipped, so it costs nothing.
+     * no constraints and no list is skipped, so it costs nothing.
      *
-     * @param array<string, mixed>  $requested the request's raw `filter[<key>]` map
-     * @param list<FilterInterface> $filters   the declared filter vocabulary to match against
+     * @param array<array-key, mixed>  $requested the request's raw `filter[<key>]` map
+     * @param list<FilterInterface>    $filters   the declared filter vocabulary to match against
+     * @param ?JsonApiRequestInterface $request   the request a filter family resolves a key against
      *
-     * @throws FilterValueInvalid when a client-supplied value violates its filter's constraints
+     * @throws FilterValueInvalid when a client-supplied value violates its filter's constraints, or a list filter's value is not a list it accepts
      */
-    public function validate(array $requested, array $filters): void
+    public function validate(array $requested, array $filters, ?JsonApiRequestInterface $request = null): void
     {
-        foreach ($filters as $filter) {
-            $key = $filter->key();
-
-            // Only a value the client actually sent is validated — a defaulted key
-            // (absent from the request) is trusted; the default is folded in later.
-            if (!\array_key_exists($key, $requested)) {
-                continue;
-            }
+        foreach ($this->matched($requested, $filters, $request) as [$key, $filter]) {
+            $value = $requested[$key];
+            $list = $filter instanceof AcceptsList ? $filter->listValue() : null;
 
             $rules = $this->rules($filter);
 
+            // A declared list is read strictly, so a wrongly shaped value is a 400 even
+            // when the filter declares no rules, and each member is validated on its own.
+            $members = $list !== null
+                ? \array_values(\array_filter($list->values($key, $value), static fn(mixed $member): bool => $member !== null))
+                : null;
+
             $messages = [];
             if ($rules !== []) {
-                foreach ($this->members($filter, $requested[$key]) as $member) {
+                foreach ($members ?? $this->members($filter, $value) as $member) {
                     $validator = $this->validatorFactory->make(['value' => $member], ['value' => $rules]);
                     foreach ($validator->errors()->all() as $message) {
                         $messages[] = $message;
@@ -81,12 +89,46 @@ final class FilterValueValidator
             // admits `1997-13-99`), so a present bound is additionally checked for
             // temporal validity — an unparseable date is a clean 400 here rather than a
             // silent, provider-divergent non-match in the data layer.
-            $messages = [...$messages, ...$this->dateRangeMessages($filter, $requested[$key])];
+            $messages = [...$messages, ...$this->dateRangeMessages($filter, $value)];
 
             if ($messages !== []) {
                 throw new FilterValueInvalid($key, $messages);
             }
         }
+    }
+
+    /**
+     * The requested keys that match a declared filter, paired with it: exact keys in
+     * declaration order, then the keys a filter family resolved, in request order. Only a
+     * value the client actually sent is matched; a defaulted key is trusted and folded in
+     * later.
+     *
+     * @param array<array-key, mixed> $requested
+     * @param list<FilterInterface>   $filters
+     *
+     * @return list<array{string, FilterInterface}>
+     */
+    private function matched(array $requested, array $filters, ?JsonApiRequestInterface $request): array
+    {
+        $positions = [];
+        foreach ($filters as $position => $filter) {
+            if (!$filter instanceof FilterFamilyInterface) {
+                $positions[$filter->key()] ??= $position;
+            }
+        }
+
+        $matched = [];
+        foreach (\array_keys($requested) as $key) {
+            $key = (string) $key;
+            $filter = FilterMatcher::match($filters, $key, $request);
+            if ($filter !== null) {
+                $matched[] = [$positions[$key] ?? \PHP_INT_MAX, $key, $filter];
+            }
+        }
+
+        \usort($matched, static fn(array $a, array $b): int => $a[0] <=> $b[0]);
+
+        return \array_map(static fn(array $entry): array => [$entry[1], $entry[2]], $matched);
     }
 
     /**

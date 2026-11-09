@@ -17,6 +17,7 @@ use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Request\RelatedQuery;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
 use haddowg\JsonApi\Resource\Sort\SortMatcher;
 use haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile;
@@ -248,7 +249,7 @@ final class RelationshipWindowBatcher
         // Validate the relatedQuery filter VALUE against the per-relation merged vocabulary
         // before the batched window fetch, so a mistyped value on the include/linkage path is
         // the endpoint's same 400. RAW client input only (RelatedQuery::filter).
-        $this->filterValues->validate($relatedQuery->filter, $criteria->filters);
+        $this->filterValues->validate($relatedQuery->filter, $criteria->filters, $criteria->request);
 
         // ONE batched fetch for the whole page, driven through the PRIMARY type's provider — so
         // the provider keys each parent's page by the parent's own WIRE id. The per-parent
@@ -439,15 +440,15 @@ final class RelationshipWindowBatcher
             // The mistyped-VALUE check rides the same path as the windowed fetch: a links-only
             // relation validates its raw filter values too, so a bad value is the endpoint's
             // same `400` here as well.
-            $this->filterValues->validate($relatedQuery->filter, $criteria->filters);
+            $this->filterValues->validate($relatedQuery->filter, $criteria->filters, $criteria->request);
         }
     }
 
     /**
      * Throws the related-collection endpoint's same `400` for an unrecognised relatedQuery
      * filter/sort key, mirroring {@see CriteriaApplier}'s key recognition exactly (so the gated
-     * links-only path and the fetched windowed path agree): each requested filter key must name
-     * a declared {@see FilterInterface}; each requested sort field (with any leading `-`
+     * links-only path and the fetched windowed path agree): each requested filter key must match
+     * a declared {@see FilterInterface} through {@see FilterMatcher}; each requested sort field (with any leading `-`
      * stripped) must match a declared {@see SortInterface} through {@see SortMatcher}, and a sort requested against a
      * relation that declares none is {@see SortingUnsupported}.
      *
@@ -459,7 +460,7 @@ final class RelationshipWindowBatcher
     {
         foreach (\array_keys($relatedQuery->filter) as $key) {
             $key = (string) $key;
-            if (!$this->declaresFilter($criteria->filters, $key)) {
+            if (FilterMatcher::match($criteria->filters, $key, $criteria->request) === null) {
                 throw new FilterParamUnrecognized($key);
             }
         }
@@ -479,22 +480,6 @@ final class RelationshipWindowBatcher
                 throw new SortParamUnrecognized($key);
             }
         }
-    }
-
-    /**
-     * Whether the criteria's declared filters carry one keyed `$key`.
-     *
-     * @param list<FilterInterface> $filters
-     */
-    private function declaresFilter(array $filters, string $key): bool
-    {
-        foreach ($filters as $filter) {
-            if ($filter->key() === $key) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -570,7 +555,7 @@ final class RelationshipWindowBatcher
             // Validate the relatedQuery filter VALUE against the per-relation merged vocabulary
             // before the batched match runs, so a mistyped value on the include/linkage path is
             // the endpoint's same 400. RAW client input only (RelatedQuery::filter).
-            $this->filterValues->validate($request->getRelatedQuery($relation->name())->filter, $criteria->filters);
+            $this->filterValues->validate($request->getRelatedQuery($relation->name())->filter, $criteria->filters, $request);
 
             $matches = $this->providers->forType($type)
                 ->relatedToOneMatchesBatch($type, $parents, $relation, $criteria, $request);

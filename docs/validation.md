@@ -209,6 +209,9 @@ relation that is read-only for the caller.
 Filter values are validated too: a `filter[releasedAt][min]=banana` is a clean `400`, not a
 database error. Declared filters carry their expected type (`->integer()`, `->boolean()`,
 date-aware filters), and a value that fails coercion is rejected before it reaches the query.
+A [list filter](eloquent.md#list-filters) validates each member on its own, and rejects a value
+that isn't a list it accepts. A [filter family](eloquent.md#filter-families) key is validated by
+the rules of the filter it resolves to.
 
 ## Custom constraints
 

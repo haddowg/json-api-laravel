@@ -113,6 +113,7 @@ declare, and the provider translates:
 | --- | --- |
 | `Where::make('slug')` | `where('slug', …)` (operator via the 3rd ctor arg, e.g. `'like'`, `'>'`) |
 | `WhereIn::make('genres')` | `whereIn(...)` |
+| `WhereIn::make('genres')->acceptsList()` | `whereIn(...)` over the members of `filter[genres][]=a&filter[genres][]=b` or `filter[genres]=a,b` |
 | `Contains::make('title')` | `where('title', 'like', "%…%")` |
 | `Range::make('rating', 'average_rating')` | a `>=`/`<=` bound pair |
 | `DateRange::make('releasedAt', 'released_at')` | a datetime bound pair, in the app timezone (see [below](#date-times-and-the-app-timezone)) |
@@ -120,6 +121,61 @@ declare, and the provider translates:
 | `WhereThrough::make('artist.name')` | a dotted-path correlated `EXISTS` |
 | `WhereAll` / `WhereAny` | a nested `where(fn ($q) => …)` combining the children with `AND` / `orWhere` |
 | `Where…->fixed($value)` | the same `where` predicate with its value pinned server-side (no arm needed) |
+
+### List filters
+
+`acceptsList()` on a set filter declares its value a list. The array form
+`filter[genres][]=rock&filter[genres][]=jazz` always works, and so does the comma form
+`filter[genres]=rock,jazz` unless you pass `delimited: false`. Use that when a member can contain
+a comma: `filter[columns][]=last,first` asks for the one column named `last,first`, and a single
+`filter[columns]=…` string is a `400 FILTER_VALUE_INVALID`. So is a member keyed by name, such
+as `filter[genres][first]=rock`. Each member is validated on its own against the filter's
+constraints, so `WhereIn::make('ids')->integer()->acceptsList()` rejects
+`filter[ids][]=1&filter[ids][]=x`. Without `acceptsList()` a set filter reads both forms
+leniently, as it always has.
+
+### Filter families
+
+Some filter keys are data, the filter twin of a [sort family](#sort-families). Core's
+[`FilterFamily`](https://github.com/haddowg/json-api/blob/main/docs/filters.md#filter-families-keys-matched-by-prefix)
+answers every `<prefix>.<suffix>` key and resolves the suffix, with the request, to an ordinary
+filter keyed by the full key:
+
+```php
+use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\Filter\FilterFamily;
+use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Filter\Where;
+use haddowg\JsonApi\Resource\Filter\WhereIn;
+
+public function filters(): array
+{
+    return [
+        FilterFamily::make('attr', fn(string $suffix, JsonApiRequestInterface $request): ?FilterInterface
+            => \in_array($suffix, ['title', 'genre'], true) ? Where::make('attr.' . $suffix, $suffix)->build() : null)
+            ->withSuffixPattern('[a-z]+'),
+        FilterFamily::make('in', fn(string $suffix, JsonApiRequestInterface $request): ?FilterInterface
+            => \in_array($suffix, ['title', 'genre'], true) ? WhereIn::make('in.' . $suffix, $suffix)->acceptsList()->build() : null)
+            ->acceptsList(),
+    ];
+}
+```
+
+`?filter[attr.genre]=jazz&filter[in.title][]=Kid A` then applies both resolved filters. The
+rules are the sort family's: an exact key wins over a family, the longest matching prefix
+decides between families, and the bare prefix (`filter[attr]`) or a suffix the resolver returns
+`null` for is the usual `400 FILTERING_UNRECOGNIZED`. A family that takes a list must resolve to
+filters that take the same list. The resolved filter's constraints validate the value, so a
+family resolving to `Where::make(…)->integer()` rejects a non-integer.
+
+Both providers match keys through core's `FilterMatcher`, on the primary collection, related
+and relationship endpoints, a relation's own `filters()`, the Relationship Queries profile's
+`relatedQuery[<path>][filter]`, relationship counts, cursor pages and a
+[collection action's filters](actions.md#a-collection-action-that-takes-the-types-filters). A
+family resolving to a built-in filter needs nothing more; one resolving to a custom filter needs
+an [arm](#custom-filters-and-sorts-the-arm-seam) on each provider, as any custom filter does.
+The OpenAPI `filter` parameter lists each family under `x-filter-families`, and a list filter
+gets its own `filter[<key>][]` parameter.
 
 ### Date-times and the app timezone
 

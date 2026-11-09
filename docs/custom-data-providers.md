@@ -223,6 +223,13 @@ for a custom `FilterInterface` / `SortInterface` and the reference provider push
 without you replacing the provider. See
 [the Eloquent arm seam](eloquent.md#custom-filters-and-sorts-the-arm-seam).
 
+Match requested filter keys with core's `FilterMatcher` in the same way.
+`FilterMatcher::directives($requested, $criteria->filters, $criteria->request)`, with the
+declared defaults already folded into `$requested`, resolves [filter families](eloquent.md#filter-families),
+throws `FilterParamUnrecognized` for an unknown key, and hands a [list filter](eloquent.md#list-filters)
+its value as the list of members. A handler for a set filter reads members with
+`$filter->list?->members($value)` so an array-only list keeps a comma inside a member.
+
 Match requested sort keys with core's `SortMatcher` rather than comparing keys yourself, passing
 the criteria's `$request`, so [sort families](eloquent.md#sort-families) resolve the same way on
 every provider. `SortMatcher::directives($criteria->queryParameters->sort, $criteria->sorts, $criteria->request)`

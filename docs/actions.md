@@ -129,6 +129,11 @@ list. A value the filter's constraints reject is the same `400 FILTER_VALUE_INVA
 collection gives, and a filter with a default applies it when the request leaves the key
 out. Only the filters the action takes apply their defaults.
 
+A [filter family](eloquent.md#filter-families) the action takes answers its
+`filter[<prefix>.<suffix>]` keys here as on the collection, and a
+[list filter](eloquent.md#list-filters) takes its array and comma forms. To list a family by
+name, give its prefix.
+
 Taking filters also means reading the type's collection, so the invoker runs the type's
 `viewAny` gate as `GET /{type}` does, then the action's own `ability`. A caller who couldn't
 list the collection gets a `403`.

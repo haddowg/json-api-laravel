@@ -12,6 +12,7 @@ use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Filter\TargetsColumn;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
@@ -80,7 +81,8 @@ final class RelationCriteriaFactory
      * `/{relatedType}` collection.
      *
      * On a key clash the relation wins over the related resource, preserving the merge
-     * order `[...resourceFilters, ...relationFilters]` then keyed by `->key()`.
+     * order `[...resourceFilters, ...relationFilters]`; core's {@see FilterMatcher::merge()}
+     * keeps a filter family and an exact filter of the same key apart.
      * `defaultSort` is the related resource's default order (empty for a polymorphic
      * to-many); the merged vocabulary rides the criteria so both providers' existing
      * handlers apply it unchanged (core's docs/sorts.md).
@@ -95,7 +97,7 @@ final class RelationCriteriaFactory
      * field sorts. A cursor window gets the pivot filters but not the pivot sorts: the keyset
      * reads its columns off the related model, never the join.
      *
-     * `$request` rides onto the criteria so a sort family can resolve a requested key.
+     * `$request` rides onto the criteria so a filter or sort family can resolve a requested key.
      */
     public function criteriaFor(
         QueryParameters $queryParameters,
@@ -117,7 +119,7 @@ final class RelationCriteriaFactory
 
         return new CollectionCriteria(
             $queryParameters,
-            $this->mergeFilters($relatedResource?->allFilters() ?? [], $relationFilters),
+            FilterMatcher::merge($relatedResource?->allFilters() ?? [], $relationFilters),
             SortMatcher::merge($relatedResource?->allSorts() ?? [], $relationSorts),
             $window,
             $relatedResource?->defaultSort() ?? [],
@@ -155,26 +157,5 @@ final class RelationCriteriaFactory
         };
 
         return \str_starts_with($column, self::PIVOT_PREFIX);
-    }
-
-    /**
-     * Merges two filter vocabularies, keyed by {@see FilterInterface::key()} so a clash
-     * resolves to the later list's declaration (the more specific scope wins). The order
-     * `[...$resourceFilters, ...$relationFilters]` is preserved before
-     * the dedup; returned as a list for the {@see CollectionCriteria}.
-     *
-     * @param list<FilterInterface> $resourceFilters
-     * @param list<FilterInterface> $relationFilters
-     *
-     * @return list<FilterInterface>
-     */
-    private function mergeFilters(array $resourceFilters, array $relationFilters): array
-    {
-        $merged = [];
-        foreach ([...$resourceFilters, ...$relationFilters] as $filter) {
-            $merged[$filter->key()] = $filter;
-        }
-
-        return \array_values($merged);
     }
 }

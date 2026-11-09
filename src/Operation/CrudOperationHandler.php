@@ -416,7 +416,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // `filter[trackRange][min]=banana`, or a calendar-invalid DateRange bound) is a
         // clean `400` FILTER_VALUE_INVALID rather than a silent non-match or a driver
         // error. The raw requested map is validated (never the author-set defaults).
-        $this->filterValidator->validate($operation->queryParameters()->filter, $filters);
+        $this->filterValidator->validate($operation->queryParameters()->filter, $filters, $request);
 
         // The `viewAny` policy gate authorizes the collection BEFORE the query runs, on
         // a blank instance minted for the type's class (so a policy's `viewAny($user)` is
@@ -658,7 +658,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
             // Validate a client-supplied filter value against the merged vocabulary (related
             // resource ⊕ relation-scoped), so a mistyped value is the same 400 as elsewhere.
-            $this->filterValidator->validate($operation->queryParameters()->filter, $criteria->filters);
+            $this->filterValidator->validate($operation->queryParameters()->filter, $criteria->filters, $request);
 
             // A relation over several types reaching a scoped type is read off the parent and
             // narrowed per member type before the page is cut, so the page stays full.
@@ -789,7 +789,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                     null,
                     request: $request,
                 );
-                $this->filterValidator->validate($filter, $criteria->filters);
+                $this->filterValidator->validate($filter, $criteria->filters, $request);
 
                 if (!$this->providers->forType($relatedType)->relatedToOneMatches($relatedType, $related, $relation, $criteria, $request)) {
                     $related = null;
@@ -1008,7 +1008,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             includePivotFields: $this->pivotQueryingProvider($parent, $relation) !== null,
             request: $request,
         );
-        $this->filterValidator->validate($queryParameters->filter, $criteria->filters);
+        $this->filterValidator->validate($queryParameters->filter, $criteria->filters, $request);
 
         $result = $this->providers->forType($relatedType)->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
         $items = $this->materialize($result);

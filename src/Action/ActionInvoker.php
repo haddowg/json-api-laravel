@@ -12,6 +12,7 @@ use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Request\MediaType;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Response\AcceptedResponse;
 use haddowg\JsonApi\Response\DataResponse;
 use haddowg\JsonApi\Response\ErrorResponse;
@@ -130,7 +131,7 @@ final readonly class ActionInvoker
         $filters = $scope === ActionScope::Collection ? $this->effectiveFilters($server, $type, $descriptor) : [];
         $requestedFilter = $operation->queryParameters()->filter;
         if ($filters !== []) {
-            $this->validateFilter($requestedFilter, $filters);
+            $this->validateFilter($requestedFilter, $filters, $this->request($operation));
         }
 
         // The before-action lifecycle event: fired after entity
@@ -215,21 +216,21 @@ final readonly class ActionInvoker
 
     /**
      * Rejects a requested key the action does not take, then the values its filters
-     * reject.
+     * reject. A key matches through core's {@see FilterMatcher}, so a filter family the
+     * action takes answers its keys here as it does on the collection.
      *
      * @param array<string, mixed>  $requested
      * @param list<FilterInterface> $filters
      */
-    private function validateFilter(array $requested, array $filters): void
+    private function validateFilter(array $requested, array $filters, JsonApiRequestInterface $request): void
     {
-        $keys = \array_map(static fn(FilterInterface $filter): string => $filter->key(), $filters);
         foreach (\array_keys($requested) as $key) {
-            if (!\in_array((string) $key, $keys, true)) {
+            if (FilterMatcher::match($filters, (string) $key, $request) === null) {
                 throw new FilterParamUnrecognized((string) $key);
             }
         }
 
-        $this->filterValidator?->validate($requested, $filters);
+        $this->filterValidator?->validate($requested, $filters, $request);
     }
 
     /**

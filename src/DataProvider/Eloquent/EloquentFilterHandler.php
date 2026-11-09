@@ -136,10 +136,10 @@ final class EloquentFilterHandler implements FilterHandlerInterface
             $filter instanceof WhereAll => $this->whereAll($query, $filter, $value),
             $filter instanceof WhereAny => $this->whereAny($query, $filter, $value),
             $filter instanceof Where => $this->where($filter, $query, $value),
-            $filter instanceof WhereIn => $this->whereIn($query, $filter->column, $this->toList($value, $filter->delimiter), false),
-            $filter instanceof WhereNotIn => $this->whereIn($query, $filter->column, $this->toList($value, $filter->delimiter), true),
-            $filter instanceof WhereIdIn => $this->whereIn($query, $filter->column, $this->toList($value, $filter->delimiter), false),
-            $filter instanceof WhereIdNotIn => $this->whereIn($query, $filter->column, $this->toList($value, $filter->delimiter), true),
+            $filter instanceof WhereIn => $this->whereIn($query, $filter->column, $this->members($filter, $value), false),
+            $filter instanceof WhereNotIn => $this->whereIn($query, $filter->column, $this->members($filter, $value), true),
+            $filter instanceof WhereIdIn => $this->whereIn($query, $filter->column, $this->members($filter, $value), false),
+            $filter instanceof WhereIdNotIn => $this->whereIn($query, $filter->column, $this->members($filter, $value), true),
             $filter instanceof WhereNull => $query->whereNull($this->qualify($query, $filter->column)),
             $filter instanceof WhereNotNull => $query->whereNotNull($this->qualify($query, $filter->column)),
             $filter instanceof WhereThrough => $this->whereThrough($query, $filter, $value),
@@ -477,6 +477,17 @@ final class EloquentFilterHandler implements FilterHandlerInterface
         } else {
             $query->whereIn($qualified, $values);
         }
+    }
+
+    /**
+     * A set filter's members: a declared list reads them through its {@see \haddowg\JsonApi\Resource\Filter\ListValue},
+     * so an array-only list keeps a delimiter inside a member; any other set filter splits leniently.
+     *
+     * @return list<mixed>
+     */
+    private function members(WhereIn|WhereNotIn|WhereIdIn|WhereIdNotIn $filter, mixed $value): array
+    {
+        return $filter->list?->members($value) ?? $this->toList($value, $filter->delimiter);
     }
 
     /**
