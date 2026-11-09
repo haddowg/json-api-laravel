@@ -13,7 +13,9 @@ use haddowg\JsonApi\Resource\Constraint\CompareField;
 use haddowg\JsonApi\Resource\Constraint\Comparison;
 use haddowg\JsonApi\Resource\Constraint\ConstraintInterface;
 use haddowg\JsonApi\Resource\Constraint\MaxItems;
+use haddowg\JsonApi\Resource\Constraint\MaxProperties;
 use haddowg\JsonApi\Resource\Constraint\MinItems;
+use haddowg\JsonApi\Resource\Constraint\MinProperties;
 use haddowg\JsonApi\Resource\Constraint\Nullable;
 use haddowg\JsonApi\Resource\Constraint\Required;
 use haddowg\JsonApi\Resource\Constraint\Shape;
@@ -29,6 +31,8 @@ use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\Obj;
 use haddowg\JsonApi\Resource\Field\OneOf;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\ObjectValue;
+use haddowg\JsonApi\Resource\ObjectValues;
 use haddowg\JsonApi\Schema\Error\Error;
 use haddowg\JsonApi\Schema\Error\ErrorSource;
 use haddowg\JsonApi\Validation\SchemaValueValidator;
@@ -70,6 +74,12 @@ use Illuminate\Validation\Rule;
  * client sent at its index (`steps.2.params.find`), as its {@see Obj} or {@see OneOf}
  * would be validated as an attribute written whole.
  *
+ * An {@see Obj} open to undeclared members, or bounding how many it carries, is checked
+ * wherever it sits by a document-level pass over core's {@see ObjectValues}: its member
+ * count at the object, and each undeclared member validated on its own against the
+ * member field, at a pointer built from its key, since a dot-notation key cannot carry a
+ * header holding `.` or `*`.
+ *
  * {@see CompareField} (a cross-field rule) is evaluated at the **document** level, after
  * the per-field pass, because the comparison needs the sibling field's value. The
  * built-in {@see UniqueEntity} folds into a pre-hydration `Rule::unique` on the owning
@@ -79,6 +89,11 @@ use Illuminate\Validation\Rule;
 final class ResourceValidator
 {
     private const string UNKNOWN_VARIANT = 'This value is not one of the allowed types.';
+
+    /**
+     * The key one open-object member or object is validated under on its own.
+     */
+    private const string VALUE = 'value';
 
     public function __construct(
         private readonly ValidationFactory $validatorFactory,
@@ -218,6 +233,10 @@ final class ResourceValidator
                     $errors[] = $this->error($detail, $owner);
                 }
             }
+        }
+
+        foreach ($this->objectValueErrors($resource, $incoming, $creating, $request) as $error) {
+            $errors[] = $error;
         }
 
         // The composite passes also run document-level: a OneOf's variant is selected by
@@ -863,6 +882,9 @@ final class ResourceValidator
             if ($constraint instanceof Required || $constraint instanceof Nullable) {
                 continue; // resolved by fieldRules()
             }
+            if ($field instanceof Obj && ($constraint instanceof MinProperties || $constraint instanceof MaxProperties)) {
+                continue; // counted wherever the object sits, by objectValueErrors()
+            }
             if ($constraint instanceof CompareField) {
                 continue; // cross-field; document-level
             }
@@ -1000,6 +1022,107 @@ final class ResourceValidator
         $discriminator = $union->discriminatorName();
 
         return $discriminator === null ? '' : '.' . $discriminator;
+    }
+
+    /**
+     * Validates every {@see Obj} value core's {@see ObjectValues} finds in the attributes
+     * the client sent: its member count against its `minProperties()` /
+     * `maxProperties()` at the object, then each undeclared member of an open object
+     * against the member field at `<object>/<key>`, the key escaped as a JSON Pointer
+     * token. Each value is validated on its own under a placeholder key, so a header
+     * holding `.` or `*` never reaches Laravel's dot notation, and its violations are
+     * moved under the real pointer.
+     *
+     * @param array<string, mixed> $incoming the attributes the client sent
+     *
+     * @return list<Error>
+     */
+    private function objectValueErrors(AbstractResource $resource, array $incoming, bool $creating, JsonApiRequestInterface $request): array
+    {
+        $errors = [];
+        foreach (ObjectValues::in($resource->allFields(), $incoming, $creating, $request) as $object) {
+            $counts = [];
+            foreach ($object->memberCounts($creating) as $count) {
+                foreach ($this->translator->translate($count, $request) as $rule) {
+                    $counts[] = $rule;
+                }
+            }
+            if ($counts !== []) {
+                $errors = [...$errors, ...$this->valueErrors($object->value, [self::VALUE => $counts], $object->shape->name(), $object->pointer)];
+            }
+
+            foreach ($this->memberRules($object, $creating, $request) as $key => [$rules, $memberErrors]) {
+                $pointer = $object->memberPointer($key);
+                foreach ($memberErrors as $error) {
+                    $errors[] = $this->errorAt($error->detail, $this->underMember($error->source->pointer ?? '', $pointer));
+                }
+                $errors = [...$errors, ...$this->valueErrors($object->additional[$key], $rules, $key, $pointer)];
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * The placeholder rule map for each undeclared member of an open object, keyed by the
+     * member's key, with the variant errors no rule can carry: the member field's own
+     * rules, and its children or elements when it is structured.
+     *
+     * @return array<string, array{array<string, list<string|\Stringable|\Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\Rule>>, list<Error>}>
+     */
+    private function memberRules(ObjectValue $object, bool $creating, JsonApiRequestInterface $request): array
+    {
+        $field = $object->memberField;
+        if ($field === null) {
+            return [];
+        }
+
+        $members = [];
+        foreach ($object->additional as $key => $member) {
+            $memberErrors = [];
+            $rules = [self::VALUE => $this->fieldRules($field, $creating, $request, $member, true)];
+            $nested = match (true) {
+                $field instanceof ArrayList => $this->listElementRules($field, self::VALUE, $member, $creating, $request, $memberErrors),
+                !\is_array($member) || ($member !== [] && \array_is_list($member)) => [],
+                $field instanceof Obj, $field instanceof Map => $this->childRules($field->children(), self::VALUE, $member, $creating, $request, true, true, $memberErrors),
+                $field instanceof OneOf => $this->elementRules($field, self::VALUE, $member, $creating, $request, $memberErrors),
+                default => [],
+            };
+            $members[$key] = [[...$rules, ...$nested], $memberErrors];
+        }
+
+        return $members;
+    }
+
+    /**
+     * Validates one value under the placeholder key and reports each violation below
+     * `$pointer`, naming the value `$attribute` in the messages.
+     *
+     * @param array<string, list<string|\Stringable|\Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\Rule>> $rules
+     *
+     * @return list<Error>
+     */
+    private function valueErrors(mixed $value, array $rules, string $attribute, string $pointer): array
+    {
+        $errors = [];
+        $bag = $this->validatorFactory->make([self::VALUE => $value], $rules, [], [self::VALUE => $attribute])->errors();
+        foreach ($bag->keys() as $key) {
+            foreach ($bag->get($key) as $message) {
+                $errors[] = $this->errorAt(\is_string($message) ? $message : '', $this->underMember($this->pointers->forAttribute((string) $key), $pointer));
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Moves a pointer built under the placeholder key below the member's real pointer.
+     */
+    private function underMember(string $placeholderPointer, string $pointer): string
+    {
+        $prefix = $this->pointers->forAttribute(self::VALUE);
+
+        return $pointer . (\str_starts_with($placeholderPointer, $prefix) ? \substr($placeholderPointer, \strlen($prefix)) : '');
     }
 
     /**
@@ -1286,6 +1409,17 @@ final class ResourceValidator
             title: 'Unprocessable Entity',
             detail: $detail,
             source: ErrorSource::fromPointer($this->pointers->forRelationship($relation)),
+        );
+    }
+
+    private function errorAt(string $detail, string $pointer): Error
+    {
+        return new Error(
+            status: '422',
+            code: 'VALIDATION_FAILED',
+            title: 'Unprocessable Entity',
+            detail: $detail,
+            source: ErrorSource::fromPointer($pointer),
         );
     }
 

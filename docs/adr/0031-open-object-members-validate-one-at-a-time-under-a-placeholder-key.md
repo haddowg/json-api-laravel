@@ -1,0 +1,3 @@
+# Open object members validate one at a time under a placeholder key
+
+Each undeclared member of an open `Obj`, and each object's member count, is validated on its own under a placeholder key in a document-level pass over core's `ObjectValues`, and its errors are moved under a pointer built from the member's real key. Registering members in the dot-notation rule map instead would break on spreadsheet headers, since Laravel reads `.` as nesting and `*` as a wildcard. The pass reaches objects at any depth and reads only what the client sends, so a merging `PATCH` counts the members it sends rather than the merged result.
