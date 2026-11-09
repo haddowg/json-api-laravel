@@ -174,6 +174,36 @@ is a pre-hydration rule, so it doesn't run here either, and a constraint limited
 doesn't run. A resource whose stored data already breaks one of its entity-level
 constraints gets that `422` on every relationship write until the data is fixed.
 
+## To-many member counts
+
+A to-many relation's `minItems()` and `maxItems()` bound how many members a write may set.
+The validator checks them whenever a write supplies the whole member set:
+
+| Write | Pointer |
+| --- | --- |
+| a to-many in a create or update's `data.relationships` | `/data/relationships/<rel>/data` |
+| a `PATCH …/relationships/{rel}` full replacement | `/data` |
+
+Atomic operations run the same checks, with the operation's prefix on the pointer
+(`/atomic:operations/<n>/data/relationships/<rel>/data` or `/atomic:operations/<n>/data`).
+Each broken bound is one `422` carrying the `min:` or `max:` message a list attribute's
+`minItems()` or `maxItems()` gives:
+
+```php
+BelongsToMany::make('players', 'players')->minItems(1)->maxItems(2),
+
+// PATCH /squads/1/relationships/players with "data": []
+// → 422 VALIDATION_FAILED at /data:
+//   "The players field must have at least 1 items."
+```
+
+A repeated member counts once, because the write stores a deduplicated set. A `POST` or
+`DELETE` on `…/relationships/{rel}` adds or removes members rather than setting them, so the
+bounds don't apply there; declare an entity-level constraint
+([after a relationship write](#after-a-relationship-write)) when the resulting set must stay
+in range. A create that leaves the relationship out isn't checked either, and neither is a
+relation that is read-only for the caller.
+
 ## Filter-value validation
 
 Filter values are validated too: a `filter[releasedAt][min]=banana` is a clean `400`, not a

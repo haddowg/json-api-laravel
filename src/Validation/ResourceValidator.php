@@ -12,6 +12,8 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Constraint\CompareField;
 use haddowg\JsonApi\Resource\Constraint\Comparison;
 use haddowg\JsonApi\Resource\Constraint\ConstraintInterface;
+use haddowg\JsonApi\Resource\Constraint\MaxItems;
+use haddowg\JsonApi\Resource\Constraint\MinItems;
 use haddowg\JsonApi\Resource\Constraint\Nullable;
 use haddowg\JsonApi\Resource\Constraint\Required;
 use haddowg\JsonApi\Resource\Constraint\Shape;
@@ -233,6 +235,12 @@ final class ResourceValidator
             $errors[] = $ownIdError;
         }
 
+        // A to-many's linkage is its whole member set, so it must sit within the
+        // relation's minItems()/maxItems().
+        foreach ($this->resourceCardinalityErrors($resource, $data, $creating, $request) as $error) {
+            $errors[] = $error;
+        }
+
         if ($errors === []) {
             return;
         }
@@ -346,6 +354,18 @@ final class ResourceValidator
                     foreach ($this->memberPivotErrors($relation, $identifier->id, $this->pivotMetaIn($identifier->meta), $index, $existingPivot, $request, $embeddedRelationName) as $metaError) {
                         $errors[] = $metaError;
                     }
+                }
+            }
+
+            // Only an endpoint replace supplies the whole member set; an add or remove is a
+            // delta, and an embedded linkage is counted by validate().
+            if ($mode === Mode::Replace && $embeddedRelationName === null) {
+                $members = [];
+                foreach ($linkage->resourceIdentifiers as $identifier) {
+                    $members[] = $this->memberKey($identifier->type, $identifier->id, $identifier->lid);
+                }
+                foreach ($this->cardinalityErrors($relation, $members, false, '/data') as $error) {
+                    $errors[] = $error;
                 }
             }
         }
@@ -552,6 +572,99 @@ final class ResourceValidator
             detail: $detail,
             source: ErrorSource::fromPointer($this->linkageMetaPointer($embeddedRelationName, $field, $index)),
         );
+    }
+
+    /**
+     * The minItems()/maxItems() violations of each to-many linkage in a whole-resource
+     * write, pointed at `/data/relationships/<rel>/data`. A relation the body omits, or
+     * one that is read-only for this caller, is not checked.
+     *
+     * @param array<mixed> $data the write body's `data` member
+     *
+     * @return list<Error>
+     */
+    private function resourceCardinalityErrors(AbstractResource $resource, array $data, bool $creating, JsonApiRequestInterface $request): array
+    {
+        $relationships = $data['relationships'] ?? null;
+        if (!\is_array($relationships) || $relationships === []) {
+            return [];
+        }
+
+        $errors = [];
+        foreach ($resource->allFields() as $field) {
+            if (!$field instanceof RelationInterface || !$field->isToMany() || $field->isReadOnlyFor($creating, $request)) {
+                continue;
+            }
+
+            $relationship = $relationships[$field->name()] ?? null;
+            $linkage = \is_array($relationship) ? $relationship['data'] ?? null : null;
+            if (!\is_array($linkage)) {
+                continue;
+            }
+
+            $members = [];
+            foreach (\array_values($linkage) as $index => $member) {
+                $members[] = \is_array($member)
+                    ? $this->memberKey($member['type'] ?? null, $member['id'] ?? null, $member['lid'] ?? null)
+                    : "\0" . $index;
+            }
+
+            $pointer = $this->pointers->forRelationship($field->name()) . '/data';
+            foreach ($this->cardinalityErrors($field, $members, $creating, $pointer) as $error) {
+                $errors[] = $error;
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * One error per minItems()/maxItems() bound the supplied member set breaks. The
+     * write applies a deduplicated set, so a repeated member counts once.
+     *
+     * @param list<string> $members a key per supplied member
+     *
+     * @return list<Error>
+     */
+    private function cardinalityErrors(RelationInterface $relation, array $members, bool $creating, string $pointer): array
+    {
+        $rules = [];
+        foreach ($relation->constraints() as $constraint) {
+            if (!($constraint instanceof MinItems || $constraint instanceof MaxItems) || !$constraint->context()->appliesTo($creating)) {
+                continue;
+            }
+            foreach ($this->translator->translate($constraint) as $rule) {
+                $rules[] = $rule;
+            }
+        }
+
+        if ($rules === []) {
+            return [];
+        }
+
+        $name = $relation->name();
+        $bag = $this->validatorFactory->make([$name => \array_values(\array_unique($members))], [$name => $rules])->errors();
+
+        $errors = [];
+        foreach ($bag->get($name) as $message) {
+            $errors[] = new Error(
+                status: '422',
+                code: 'VALIDATION_FAILED',
+                title: 'Unprocessable Entity',
+                detail: \is_string($message) ? $message : '',
+                source: ErrorSource::fromPointer($pointer),
+            );
+        }
+
+        return $errors;
+    }
+
+    /**
+     * A key identifying one linkage member for the distinct-member count.
+     */
+    private function memberKey(mixed $type, mixed $id, mixed $lid): string
+    {
+        return \json_encode([$type, $id, $id === null ? $lid : null], \JSON_THROW_ON_ERROR);
     }
 
     /**
