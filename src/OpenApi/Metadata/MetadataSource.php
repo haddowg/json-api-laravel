@@ -415,7 +415,8 @@ final class MetadataSource
             // document must enumerate the same full set.
             sorts: $resource !== null ? \array_values($resource->allSorts()) : [],
             actions: $actions,
-            tags: $this->typeTags($descriptor->tags, $type),
+            // A related-only type has no operations to group, so it names no tag.
+            tags: $descriptor->relatedOnly ? [] : $this->typeTags($descriptor->tags, $type),
             // The resource's own description method hooks (no attribute-level
             // override); the projector supplies the generated default when null.
             description: $resource?->getDescription(),
