@@ -379,7 +379,7 @@ final class MetadataSource
 
         $relations = [];
         foreach ($this->types->relationsFor($server, $type) as $relation) {
-            $relations[] = $this->buildRelation($server, $relation);
+            $relations[] = $this->buildRelation($server, $relation, !$descriptor->relatedOnly);
         }
 
         $operations = $this->operations($descriptor->operations);
@@ -436,6 +436,7 @@ final class MetadataSource
             deprecated: self::declaresDeprecation($descriptor),
             sunset: self::sunset($descriptor),
             deprecatedOperations: $descriptor->deprecatedOperations,
+            relatedOnly: $descriptor->relatedOnly,
         );
     }
 
@@ -543,7 +544,7 @@ final class MetadataSource
         return $descriptions;
     }
 
-    private function buildRelation(Server $server, RelationInterface $relation): RelationMetadata
+    private function buildRelation(Server $server, RelationInterface $relation, bool $ownerServesEndpoints = true): RelationMetadata
     {
         // Only a to-many relation has a related collection to paginate. Its page schema comes
         // from the paginator the related and relationship endpoints serve, so the document
@@ -565,6 +566,7 @@ final class MetadataSource
             $pageSchema,
             $this->includePaths->relatedPathsFor($server, $relation),
             $alwaysCounts,
+            $ownerServesEndpoints,
         );
     }
 

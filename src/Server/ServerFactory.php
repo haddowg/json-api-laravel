@@ -72,6 +72,7 @@ final class ServerFactory
      * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Serializer\SerializerInterface>> $serializerOverrides per-resource serializer overrides keyed by resource class
      * @param array<class-string<AbstractResource>, class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>>     $hydratorOverrides   per-resource hydrator overrides keyed by resource class
      * @param list<ProfileInterface>                                                                                $profiles            the JSON:API profiles this server registers, in order (`jsonapi.profiles`; default {@see self::DEFAULT_PROFILES})
+     * @param list<string>                                                                                          $relatedOnlyTypes    the types this server serves only as related, included or action input types
      */
     public function __construct(
         private readonly ResponseFactoryInterface $responseFactory,
@@ -156,6 +157,7 @@ final class ServerFactory
         // It is called once the unenforced server is memoized, because resolving the scope
         // table builds this server's metadata, which reads the server back.
         private readonly ?\Closure $scopeEnforcer = null,
+        private readonly array $relatedOnlyTypes = [],
     ) {}
 
     /**
@@ -182,6 +184,9 @@ final class ServerFactory
             ->withRelationshipPagination($this->relationshipPagination)
             ->withRelationshipLinkage($this->relationshipLinkage)
             ->withResourceLinkContributor($this->resourceLinkContributor)
+            // Related-only types serve no endpoint of their own, so core renders no
+            // link to one on their resources or relationship objects.
+            ->withRelatedOnlyTypes(...$this->relatedOnlyTypes)
             ->withRelationAuthorizer($this->relationAuthorizer)
             // Localizes/overrides each error's title/detail per its stable code through
             // the Laravel translator; null renders core's inline English copy.

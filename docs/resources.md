@@ -44,6 +44,7 @@ final class AlbumResource extends AbstractResource { /* … */ }
 | `serializer` / `hydrator` | per-concern override classes ([custom-serializers-hydrators](custom-serializers-hydrators.md)) |
 | `operations` | the exposed operation allow-list (`Operation` cases); empty = all five |
 | `readOnly` | shorthand for the two fetch operations (mutually exclusive with `operations`) |
+| `relatedOnly` | the type serves no endpoint of its own, only as a related, included or action input type ([below](#related-only-types)) |
 | `create` / `update` / `delete` / `fetchOne` / `fetchCollection` | per-operation advertised response shape(s) — see [below](#declaring-response-shapes) |
 | `policy` | a dedicated API policy class ([authorization](authorization.md)) |
 | `abilities` | per-operation Gate ability override ([authorization](authorization.md)) |
@@ -64,6 +65,37 @@ use haddowg\JsonApiLaravel\Operation\Operation;
 
 Only the allowed operations get a route; the rest 404. The `public-profiles` type in the
 example is read-only this way.
+
+### Related-only types
+
+An empty `operations` list means all five, so it can't say "none". Some types need no
+endpoints of their own: they're reached only through another type's relationships and
+`?include`, or used as a [custom action's `inputType`](actions.md). Declare them
+`relatedOnly`:
+
+```php
+#[AsJsonApiResource(relatedOnly: true)]
+final class ImprintResource extends AbstractResource
+{
+    public static string $type = 'imprints';
+    // ...
+}
+```
+
+No CRUD route is registered for the type, and none of its own relationship or related
+routes, so `/api/imprints/...` doesn't exist. Everything that reaches it through another
+type works as before: `GET /api/records/1/imprint`, `?include=imprint`, and an action
+taking it as its request document. Its resources render no `self` link and its
+relationship objects no links, since those would point at routes that don't exist; a
+relationship object with no links carries its linkage `data` instead. In the
+[OpenAPI document](openapi.md) the type has no paths, its resource object's links
+component lists no `self`, and it still gets its create components when an action takes it
+as input.
+
+Declaring `relatedOnly: true` with a non-empty `operations` list or with `readOnly: true`
+is a constructor `\LogicException`, and mounting a custom action on a related-only type,
+including the soft-delete actions `softDeletes` synthesizes, fails discovery. A
+related-only type needs no provider or persister.
 
 ### Declaring response shapes
 

@@ -20,7 +20,9 @@ GET    /api/albums/{id}/{relationship}       …  # related + relationship read/
 ```
 
 Only the operations a resource allows are emitted (`readOnly`/`operations` — see
-[resources](resources.md#restricting-operations)); the rest simply don't exist.
+[resources](resources.md#restricting-operations)); the rest simply don't exist. A
+[`relatedOnly`](resources.md#related-only-types) type gets no route at all, not even its
+own relationship and related routes.
 
 ## Relation segments
 
