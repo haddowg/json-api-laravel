@@ -519,9 +519,9 @@ class EloquentDataPersister extends AbstractDataPersister implements Transaction
         // are checked against the scoped read first, and a replace keeps the hidden members.
         $hidden = $this->hiddenJoinedIds($eloquentRelation, $ids, $mode);
 
-        // A Remove carries no pivot meta, and a bare join has no pivot columns — the id-only
-        // sync/attach/detach form covers both.
-        if ($mode === Mode::Remove || !$relation instanceof PivotRelation || $relation->pivotFields() === []) {
+        // A Remove carries no pivot meta, and a bare join, or one whose pivot fields are all
+        // computed, has no pivot columns — the id-only sync/attach/detach form covers both.
+        if ($mode === Mode::Remove || !$relation instanceof PivotRelation || $relation->storedPivotFields() === []) {
             match ($mode) {
                 Mode::Replace => $eloquentRelation->sync([...$ids, ...$hidden]),
                 Mode::Add => $eloquentRelation->syncWithoutDetaching($ids),

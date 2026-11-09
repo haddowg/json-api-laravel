@@ -38,17 +38,19 @@ final class PivotFields
     }
 
     /**
-     * The sort vocabulary derived from `$relation`'s pivot fields: one
+     * The sort vocabulary derived from `$relation`'s stored pivot fields: one
      * {@see SortByField} per field, keyed by the field name and columned by its
      * declared column (defaulting to the name), so `?sort=position` orders by the pivot
-     * entity's backing column. Empty for a non-pivot relation.
+     * entity's backing column. A computed pivot field has no column, so it is not a sort
+     * key. Empty for a non-pivot relation.
      *
      * @return list<SortByField>
      */
     public static function sortsFor(RelationInterface $relation): array
     {
         $sorts = [];
-        foreach (self::declaredFor($relation) as $field) {
+        $stored = $relation instanceof BelongsToMany ? $relation->storedPivotFields() : [];
+        foreach ($stored as $field) {
             $sorts[] = SortByField::make($field->name(), $field->column() ?? $field->name());
         }
 

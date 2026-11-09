@@ -1116,15 +1116,16 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     }
 
     /**
-     * The Eloquent `belongsToMany` behind a pivot relation that declares pivot fields, or
-     * `null` for anything else (a non-pivot relation, no pivot fields, no such relation
-     * method, a non-model parent).
+     * The Eloquent `belongsToMany` behind a pivot relation that declares stored pivot fields,
+     * or `null` for anything else (a non-pivot relation, no stored pivot fields, no such
+     * relation method, a non-model parent). A relation whose pivot fields are all computed
+     * reads no pivot columns, so it needs none on the pivot model.
      *
      * @return EloquentBelongsToMany<Model, Model, *, *>|null
      */
     private function pivotRelation(object $parent, RelationInterface $relation): ?EloquentBelongsToMany
     {
-        if (!$parent instanceof Model || !$relation instanceof PivotRelation || $relation->pivotFields() === []) {
+        if (!$parent instanceof Model || !$relation instanceof PivotRelation || $relation->storedPivotFields() === []) {
             return null;
         }
 
@@ -1134,8 +1135,9 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     }
 
     /**
-     * `relatedId => [pivotField => value]` for the members carrying a loaded pivot, each field
-     * read off the pivot model by its `column ?? name`. Keyed by each member's WIRE id
+     * `relatedId => [pivotField => value]` for the members carrying a loaded pivot, each stored
+     * field read off the pivot model by its `column ?? name`. Computed fields are left to the
+     * serializer, which evaluates them per member. Keyed by each member's WIRE id
      * (encoded when the related type declares an id encoder), because callers match the map
      * to linkage members by wire id.
      *
@@ -1162,7 +1164,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             }
 
             $meta = [];
-            foreach ($relation->pivotFields() as $field) {
+            foreach ($relation->storedPivotFields() as $field) {
                 $meta[$field->name()] = $this->pivotValue($pivot, $field);
             }
 

@@ -186,7 +186,7 @@ a `DateTime` by default), and a `DateTime` follows the server's
 the column: one it leaves uncast is read the way a `datetime` cast would read it, in the
 app's timezone.
 
-Each pivot field is also a sort key (`?sort=-position`), and the declared pivot filters apply,
+Each stored pivot field is also a sort key (`?sort=-position`), and the declared pivot filters apply,
 on both the related endpoint and the relationship endpoint. Both page at the relation's
 paginator, and both read each member's pivot row in the same query as the page, so `meta.pivot`
 costs no extra query. The Eloquent provider resolves the `pivot.` prefix against the join table.
@@ -199,6 +199,34 @@ nothing to it — the prefix is this package's Eloquent convention — so a pivo
 one documents as the plain `string` every query parameter is on the wire, not as the integer
 or date its column really holds. The constraint buys both a `400` on a mistyped value and
 the narrower OpenAPI type.
+
+### Computed pivot fields
+
+A pivot field declared with `computed()`, `computedUsing()` or `extractUsing()` is computed:
+its value comes from the hook, not from a column, so it needs no `withPivot()` column and no
+pivot model. The hook receives core's `PivotEdge`, holding the parent model as `parent` and
+the related member as `related`:
+
+```php
+BelongsToMany::make('tracks', 'tracks')
+    ->fields(
+        Str::make('label')->computedUsing(
+            static fn(PivotEdge $edge): string => $edge->parent->title . ' / ' . $edge->related->title,
+        ),
+    ),
+```
+
+A relation whose pivot fields are all computed runs over any Eloquent `belongsToMany`, a bare
+join table included, and its `meta.pivot` renders on the related endpoint, the relationship
+endpoint and a mutation's linkage like a stored one. It renders on every provider, the
+in-memory one too, since nothing is read from storage. A relation mixing stored and computed
+fields reads the stored ones off the pivot model as before and computes the rest; on a provider
+that stores no pivot rows only the computed ones render.
+
+A computed pivot field is read-only. A write that sends it in linkage `meta` ignores it, as it
+ignores a `readOnly()` field, even when the field is not declared `readOnly()`, and the
+request pivot schema in the [OpenAPI document](openapi.md) leaves it out. It has no column, so
+it is not a sort key, and a pivot filter can't target it.
 
 ## Relationship mutations and prohibitions
 

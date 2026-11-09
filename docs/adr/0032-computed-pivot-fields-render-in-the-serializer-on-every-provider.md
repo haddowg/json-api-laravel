@@ -1,0 +1,3 @@
+# Computed pivot fields render in the serializer, on every provider
+
+A computed pivot field is evaluated by the pivot meta serializer from the parent and each rendered member, through core's `computedPivotValues()`, rather than by the data provider beside the stored pivot columns. The serializer already sees every member on the related endpoint, the relationship endpoint and a mutation's linkage, so one place covers them all, and because nothing is read from storage the in-memory provider renders computed fields too while it still renders no stored ones. The Eloquent provider reads, selects and sorts only the stored fields, and a relation with none needs no pivot columns and writes its join through the id-only sync.
