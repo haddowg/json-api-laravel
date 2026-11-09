@@ -31,6 +31,7 @@ use Workbench\App\MusicCatalog\JsonApi\LibraryResource;
 use Workbench\App\MusicCatalog\JsonApi\PlaylistResource;
 use Workbench\App\MusicCatalog\JsonApi\ProductResource;
 use Workbench\App\MusicCatalog\JsonApi\PublicProfileResource;
+use Workbench\App\MusicCatalog\JsonApi\ReissueResource;
 use Workbench\App\MusicCatalog\JsonApi\ReleaseResource;
 use Workbench\App\MusicCatalog\JsonApi\TrackResource;
 use Workbench\App\MusicCatalog\JsonApi\UserResource;
@@ -102,6 +103,7 @@ final class MusicCatalogEloquentServiceProvider extends ServiceProvider
             PlaylistResource::class,
             ProductResource::class,
             PublicProfileResource::class,
+            ReissueResource::class,
             ReleaseResource::class,
             TrackResource::class,
             UserResource::class,

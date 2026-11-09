@@ -644,8 +644,8 @@ final class DiscoveryScanner
 
     /**
      * Builds an {@see ActionDescriptor} from a custom-action handler's
-     * {@see AsJsonApiAction} attribute: `inputType` resolves to the mount `type` when the
-     * attribute left it null, the declared `responds` set is flattened to its cacheable
+     * {@see AsJsonApiAction} attribute: a Document action must name its `inputType`, any
+     * other mode reads the mount `type`, the declared `responds` set is flattened to its cacheable
      * `{kind, ref}` scalar form, and `outputType` is resolved to the serializer type the
      * handler's responses render through — the declared `resource` (200-document)
      * response's type when one is present, else the `created` (201-document) one's, else
@@ -690,6 +690,19 @@ final class DiscoveryScanner
 
         /** @var class-string<ActionHandlerInterface> $handlerClass */
         $handlerClass = $reflection->getName();
+
+        // A Document action names the type its request document holds; the mount type
+        // would validate the body as a full create of it.
+        if ($attribute->input === ActionInput::Document && ($attribute->inputType === null || $attribute->inputType === '')) {
+            throw new \LogicException(\sprintf(
+                'The JSON:API action "%s" on type "%s", handled by "%s", takes input: ActionInput::Document but '
+                . 'declares no inputType. Set inputType to the type its request document holds, for example a '
+                . 'type declared #[AsJsonApiResource(relatedOnly: true)].',
+                $attribute->path,
+                $attribute->type,
+                $handlerClass,
+            ));
+        }
 
         return new ActionDescriptor(
             $attribute->type,

@@ -112,8 +112,9 @@ abstract class DeclaredLinksTestCase extends Orchestra
     {
         $doc = $this->resolve(DocumentFactory::class)->forServer('default')->toArray();
 
-        // The deprecated `devices` type raises the catalogue to the deprecation tier.
-        self::assertSame(\max(GeneratorContract::BASELINE, GeneratorContract::DEPRECATION), $this->at($doc, 'info', 'x-generator', 'contract'));
+        // The related-only `reissues` type and the deprecated `devices` type each carry a
+        // tier above the baseline.
+        self::assertSame(\max(GeneratorContract::BASELINE, GeneratorContract::DEPRECATION, GeneratorContract::RELATED_ONLY), $this->at($doc, 'info', 'x-generator', 'contract'));
 
         foreach (['AlbumsResourceLinks', 'TracksResourceLinks'] as $name) {
             self::assertSame(['$ref' => '#/components/schemas/ResourceLinks'], $this->at($doc, 'components', 'schemas', $name, 'allOf', 0), $name);

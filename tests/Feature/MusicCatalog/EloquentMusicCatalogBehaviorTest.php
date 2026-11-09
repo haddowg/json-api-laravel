@@ -79,18 +79,18 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
 
     // --- the `reissue` album action (resource scope, Document input, ability-gated) --------
 
-    public function test_a_write_capable_user_reissues_an_album_and_the_status_persists(): void
+    public function test_a_write_capable_user_reissues_an_album_and_the_date_persists(): void
     {
         $this->actingAs($this->writer());
 
-        $this->writeJsonApi('POST', '/api/albums/1/-actions/reissue', $this->reissueDocument('withdrawn'))
+        $this->writeJsonApi('POST', '/api/albums/1/-actions/reissue', $this->reissueDocument('2001-10-01T00:00:00+00:00'))
             ->assertOk()
             ->assertJsonPath('data.type', 'albums')
             ->assertJsonPath('data.id', '1')
-            ->assertJsonPath('data.attributes.status', 'withdrawn');
+            ->assertJsonPath('data.attributes.releasedAt', '2001-10-01T00:00:00+00:00');
 
         // Persisted through the albums persister — a follow-up read sees it.
-        $this->readJsonApi('/api/albums/1')->assertJsonPath('data.attributes.status', 'withdrawn');
+        $this->readJsonApi('/api/albums/1')->assertJsonPath('data.attributes.releasedAt', '2001-10-01T00:00:00+00:00');
     }
 
     public function test_a_non_write_user_is_denied_the_reissue_action_with_a_403(): void
@@ -98,12 +98,12 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
         $this->actingAs($this->reader());
 
         // A valid document, so the 403 is the ability gate (validate-then-authorize), not a 422.
-        $this->writeJsonApi('POST', '/api/albums/1/-actions/reissue', $this->reissueDocument('withdrawn'))
+        $this->writeJsonApi('POST', '/api/albums/1/-actions/reissue', $this->reissueDocument('2001-10-01T00:00:00+00:00'))
             ->assertStatus(403)
             ->assertJsonPath('errors.0.status', '403')->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
 
-        // Denied before the handler ran: album 1 keeps its seeded status.
-        $this->readJsonApi('/api/albums/1')->assertJsonPath('data.attributes.status', 'released');
+        // Denied before the handler ran: album 1 keeps its seeded release date.
+        $this->readJsonApi('/api/albums/1')->assertJsonPath('data.attributes.releasedAt', '1997-05-21T00:00:00+00:00');
     }
 
     // --- the `summary` album action (collection scope, meta-only) --------------------------
@@ -263,22 +263,17 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
     }
 
     /**
-     * A valid `albums` document carrying the create-required fields (title/releasedAt) plus the
-     * target status — the reissue handler only reads `status`, but the action's Document input
-     * runs the create-context validation bridge, so the required fields must be present.
+     * A valid `reissues` document, the related-only type the reissue action reads, carrying
+     * the new release date.
      *
      * @return array<string, mixed>
      */
-    private function reissueDocument(string $status): array
+    private function reissueDocument(string $releasedAt): array
     {
         return [
             'data' => [
-                'type' => 'albums',
-                'attributes' => [
-                    'title' => 'OK Computer',
-                    'releasedAt' => '1997-05-21T00:00:00+00:00',
-                    'status' => $status,
-                ],
+                'type' => 'reissues',
+                'attributes' => ['releasedAt' => $releasedAt],
             ],
         ];
     }

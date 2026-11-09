@@ -13,18 +13,41 @@ entity before the handler runs:
 
 ```php
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
+use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Action\ActionContext;
 use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
 use haddowg\JsonApiLaravel\Action\ActionInput;
+use haddowg\JsonApiLaravel\Action\ActionInputFactoryInterface;
+use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Response\DataResponse;
 
-#[AsJsonApiAction(type: 'albums', path: 'reissue', input: ActionInput::Document, ability: 'reissueAlbum')]
-final readonly class ReissueAlbum implements ActionHandlerInterface
+#[AsJsonApiResource(relatedOnly: true)]
+final class ReissueResource extends AbstractResource
 {
+    public static string $type = 'reissues';
+
+    public function fields(): array
+    {
+        return [Id::make(), DateTime::make('releasedAt')->required()];
+    }
+}
+
+#[AsJsonApiAction(type: 'albums', path: 'reissue', input: ActionInput::Document, inputType: 'reissues', ability: 'reissueAlbum')]
+final readonly class ReissueAlbum implements ActionHandlerInterface, ActionInputFactoryInterface
+{
+    public function newInput(JsonApiRequestInterface $body): object
+    {
+        return new Reissue();              // the blank object the body is hydrated onto
+    }
+
     public function handle(ActionContext $context): DataResponse
     {
         $album = $context->entity();      // the resolved album
-        // … mutate + persist …
+        $input = $context->input();       // the hydrated Reissue from the request body
+
+        // input and entity are independent: apply one onto the other yourself
+        $album->released_at = $input->releasedAt;
+        // … persist …
         return $context->data($persisted); // rendered through the albums serializer
     }
 }
@@ -32,11 +55,26 @@ final readonly class ReissueAlbum implements ActionHandlerInterface
 
 ```
 POST /api/albums/1/-actions/reissue
+{"data": {"type": "reissues", "attributes": {"releasedAt": "2001-10-01T00:00:00+00:00"}}}
 ```
 
 `ability: 'reissueAlbum'` gates it through the package [authorizer](authorization.md#custom-actions).
-`input: ActionInput::Document` parses + validates + hydrates a JSON:API document into the mount
-type before `handle()`.
+`input: ActionInput::Document` parses + validates + hydrates a JSON:API document before
+`handle()`. A `Document` action must name its `inputType`: the type the request document
+holds. Leaving it out fails discovery, naming the action. The usual choice is a type that
+exists only to be that input, declared [`relatedOnly`](resources.md#related-only-types) so it
+gets no endpoints of its own, and the body is then validated against that type's fields
+alone. `inputType` may also be the mount type itself, which validates the body as a full
+create of it, required fields and all.
+
+The input and the resolved entity stay independent: the handler reads both and applies one
+onto the other. The input object comes from one of two places:
+
+1. if the handler implements `ActionInputFactoryInterface`
+   (`newInput(JsonApiRequestInterface $body): object`), that object is used, which is how a
+   type with no persister, such as a related-only one, supplies its blank instance;
+2. otherwise the package instantiates via the `inputType`'s persister, which exists when
+   `inputType` is a type with a create endpoint, such as the mount `type`.
 
 ## An action that creates a resource
 
@@ -246,12 +284,12 @@ that has a body must still match `accepts`.
 
 | Parameter | Purpose |
 | --- | --- |
-| `type` | the **mount type** — the URL segment the action hangs off, and the default request/response type |
+| `type` | the **mount type** — the URL segment the action hangs off, and the default response type |
 | `path` | the single `{action}` URL segment |
 | `scope` | `Resource` (default, resolves `{id}`) or `Collection` |
 | `methods` | HTTP verb allow-list (default `['POST']`) |
 | `input` | `None` (default) / `Document` (parse + validate + hydrate) / `Raw` (relaxed negotiation) |
-| `inputType` | decouple the **request** document type from the mount type |
+| `inputType` | the type a `Document` request holds: a `relatedOnly` resource, a standalone serializer/hydrator pair or the mount type; required for `Document`, unused otherwise |
 | `responds` | the advertised success response(s): a single object or a list of `new ActionResource('type')` (`200` document — default is the mount type), `new ActionCreated('type')` (`201` document, [below](#an-action-that-creates-a-resource)), `new MetaResult()` (`200` meta), `new NoContent()` (`204`), `new Accepted('job-type')` (`202`), `new SeeOther()` (`303`, or a URL with a `mediaType`, [below](#a-download-action-answering-with-a-url)), `new RawResult('text/csv')` (a non-JSON:API body, [below](#a-raw-response-csv-pdf-and-other-bodies)), from `haddowg\JsonApi\OpenApi\Metadata` |
 | `ability` | the Gate ability checked before the handler ([authorization](authorization.md)) |
 | `server` / `name` / `tags` | server exposure, route-name override, OpenAPI tags |
