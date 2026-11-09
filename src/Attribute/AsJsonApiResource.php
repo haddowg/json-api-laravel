@@ -49,13 +49,21 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  *
  * `operations` is the exposed operation allow-list: the {@see Operation} cases this
  * type serves, one route emitted per case. An empty array means the default — all
- * five operations.
+ * five operations. A type that serves none declares `relatedOnly` instead.
  *
  * `readOnly` is an intent-named shorthand for the common "suppress every write"
  * case: `readOnly: true` restricts the type to the two fetch operations
  * ({@see Operation::FetchCollection} and {@see Operation::FetchOne}) without
  * importing the enum. It is mutually exclusive with a non-empty `operations` list;
  * declaring both is a constructor {@see \LogicException}.
+ *
+ * `relatedOnly` declares a type that serves **no endpoint of its own**: it is reached only
+ * as another type's related or included resources, or as a custom action's `inputType`.
+ * No CRUD, relationship or related route is registered for it, its resources render no
+ * `self` link and its relationship objects no links, and the OpenAPI document gives it
+ * no paths. It still gets its write components when an action takes it as input.
+ * Combining it with a non-empty `operations` list or `readOnly` is a constructor
+ * {@see \LogicException}, and mounting a custom action on it fails discovery.
  *
  * **Authorization** (policy-first). By default a type is authorized
  * through the model's Gate-registered policy at each lifecycle point
@@ -183,6 +191,7 @@ final readonly class AsJsonApiResource
      * @param array<string, list<string>>                                $operationScopes the OAuth scopes each named operation needs, keyed like `operationExamples`; `[]` declares none
      * @param list<string>                                               $deprecatedOperations the operations deprecated on their own, named like the `operationExamples` keys
      * @param bool|SoftDeletes                                           $softDeletes     opt this type into first-class soft deletes: `true` (or a configured {@see SoftDeletes}) synthesizes the `restore`/`force-delete` actions (`DELETE` stays a recoverable soft delete); `false` (the default) leaves the type unaffected
+     * @param bool                                                       $relatedOnly     the type serves no endpoint of its own, only as a related, included or action input type; mutually exclusive with a non-empty `operations` and with `readOnly`
      */
     public function __construct(
         public ?string $type = null,
@@ -211,6 +220,7 @@ final readonly class AsJsonApiResource
         public array $operationExamples = [],
         public array $operationScopes = [],
         public array $deprecatedOperations = [],
+        public bool $relatedOnly = false,
     ) {
         if ($singular !== null && \trim($singular) === '') {
             throw new \LogicException(
@@ -225,6 +235,14 @@ final readonly class AsJsonApiResource
                 . 'they are mutually exclusive — drop one. Use readOnly for the two fetch operations, '
                 . 'or operations for a precise allow-list.',
             );
+        }
+
+        if ($relatedOnly && ($operations !== [] || $readOnly)) {
+            throw new \LogicException(\sprintf(
+                'AsJsonApiResource declares relatedOnly: true together with %s; a related-only type serves no '
+                . 'endpoint of its own, so drop one.',
+                $readOnly ? 'readOnly: true' : 'a non-empty operations list',
+            ));
         }
 
         $this->create = self::normalizeResponses(OperationType::Create, $create);
@@ -245,19 +263,19 @@ final readonly class AsJsonApiResource
         OperationExamples::assertValid(
             'AsJsonApiResource',
             $this->operationExamples,
-            self::exposedOperations($operations, $readOnly),
+            self::exposedOperations($operations, $readOnly, $this->relatedOnly),
             'add it to `operations` (or drop `readOnly`)',
         );
         OperationScopes::assertValid(
             'AsJsonApiResource',
             $this->operationScopes,
-            self::exposedOperations($operations, $readOnly),
+            self::exposedOperations($operations, $readOnly, $this->relatedOnly),
             'add it to `operations` (or drop `readOnly`)',
         );
         DeprecatedOperations::assertValid(
             'AsJsonApiResource',
             $this->deprecatedOperations,
-            self::exposedOperations($operations, $readOnly),
+            self::exposedOperations($operations, $readOnly, $this->relatedOnly),
             'add it to `operations` (or drop `readOnly`)',
         );
     }
@@ -271,7 +289,7 @@ final readonly class AsJsonApiResource
             'AsJsonApiResource',
             $this->extensions,
             $this->operationExtensions,
-            self::exposedOperations($operations, $readOnly),
+            self::exposedOperations($operations, $readOnly, $this->relatedOnly),
             'add it to `operations` (or drop `readOnly`)',
         );
     }
@@ -281,11 +299,13 @@ final readonly class AsJsonApiResource
      *
      * @return list<string>
      */
-    private static function exposedOperations(array $operations, bool $readOnly): array
+    private static function exposedOperations(array $operations, bool $readOnly, bool $relatedOnly): array
     {
-        return $readOnly
-            ? [Operation::FetchCollection->value, Operation::FetchOne->value]
-            : \array_map(static fn(Operation $op): string => $op->value, $operations !== [] ? $operations : Operation::cases());
+        return match (true) {
+            $relatedOnly => [],
+            $readOnly => [Operation::FetchCollection->value, Operation::FetchOne->value],
+            default => \array_map(static fn(Operation $op): string => $op->value, $operations !== [] ? $operations : Operation::cases()),
+        };
     }
 
     /**
@@ -331,7 +351,7 @@ final readonly class AsJsonApiResource
      */
     private function assertResponsesExposed(array $operations, bool $readOnly): void
     {
-        $exposed = self::exposedOperations($operations, $readOnly);
+        $exposed = self::exposedOperations($operations, $readOnly, $this->relatedOnly);
 
         foreach ([
             Operation::Create->value => $this->create,

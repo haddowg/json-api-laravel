@@ -200,6 +200,7 @@ final class DiscoveryScanner
             }
         }
 
+        self::guardRelatedOnlyMounts($resources, $actions);
         self::guardActionDeclarations($actions);
 
         // Class-name order (case-insensitive, so a longer name is not split by a shorter
@@ -220,6 +221,38 @@ final class DiscoveryScanner
             $hydrators,
             [...$scannedErrors, ...$registeredErrors],
         );
+    }
+
+    /**
+     * Refuses an action mounted on a related-only type, which serves no endpoint of its own.
+     *
+     * @param list<ResourceDescriptor> $resources
+     * @param list<ActionDescriptor>   $actions
+     */
+    private static function guardRelatedOnlyMounts(array $resources, array $actions): void
+    {
+        /** @var array<string, array<string, true>> $relatedOnly */
+        $relatedOnly = [];
+        foreach ($resources as $resource) {
+            if ($resource->relatedOnly) {
+                foreach ($resource->servers as $server) {
+                    $relatedOnly[$server][$resource->type] = true;
+                }
+            }
+        }
+
+        foreach ($actions as $action) {
+            if (isset($relatedOnly[$action->server][$action->type])) {
+                throw new \LogicException(\sprintf(
+                    'The JSON:API action "%s" on handler %s is mounted on type "%s", which is related-only and '
+                    . 'serves no endpoint of its own. Mount the action on another type, or drop relatedOnly from "%s".',
+                    $action->path,
+                    $action->handlerClass,
+                    $action->type,
+                    $action->type,
+                ));
+            }
+        }
     }
 
     /**
@@ -437,6 +470,7 @@ final class DiscoveryScanner
             $attribute !== null ? $attribute->operationExtensions : [],
             $attribute?->singular !== null ? \trim($attribute->singular) : null,
             $attribute !== null ? $attribute->deprecatedOperations : [],
+            $attribute !== null && $attribute->relatedOnly,
         );
     }
 
@@ -803,14 +837,19 @@ final class DiscoveryScanner
     }
 
     /**
-     * The exposed operations as {@see Operation} case-value strings: the attribute's
-     * `readOnly` shorthand (the two fetch operations), an explicit `operations`
+     * The exposed operations as {@see Operation} case-value strings: none for a
+     * `relatedOnly` type, the attribute's `readOnly` shorthand (the two fetch operations), an explicit `operations`
      * allow-list, or — the default — all five operations.
      *
      * @return list<string>
      */
     private function operations(?AsJsonApiResource $attribute): array
     {
+        // A related-only type serves no endpoint of its own, so it has no operations.
+        if ($attribute !== null && $attribute->relatedOnly) {
+            return [];
+        }
+
         if ($attribute !== null && $attribute->readOnly) {
             return [Operation::FetchCollection->value, Operation::FetchOne->value];
         }

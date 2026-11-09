@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Serializer;
 
+use haddowg\JsonApi\Resource\DeclaresRelatedOnlyTypesInterface;
 use haddowg\JsonApi\Resource\ProvidesOutputTimezoneInterface;
 use haddowg\JsonApi\Resource\ProvidesRelationAuthorizerInterface;
 use haddowg\JsonApi\Resource\RejectsReadOnlyAttributesInterface;
@@ -29,10 +30,11 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  * {@see PivotMetaSerializer} to the linkage, so each identifier carries its `meta.pivot` —
  * riding core's existing identifier-meta render path with no core change.
  *
- * It passes the inner resolver's output timezone and relation authorizer through, so the
- * linkage it builds renders in the server's zone and asks the server's authorizer.
+ * It passes the inner resolver's output timezone, relation authorizer and related-only
+ * types through, so the linkage it builds renders in the server's zone, asks the server's
+ * authorizer and links to no endpoint a related-only type lacks.
  */
-final class PivotSubstitutingResolver implements SerializerResolverInterface, ProvidesOutputTimezoneInterface, ProvidesRelationAuthorizerInterface, RejectsReadOnlyAttributesInterface
+final class PivotSubstitutingResolver implements SerializerResolverInterface, ProvidesOutputTimezoneInterface, ProvidesRelationAuthorizerInterface, RejectsReadOnlyAttributesInterface, DeclaresRelatedOnlyTypesInterface
 {
     public function __construct(
         private readonly SerializerResolverInterface $inner,
@@ -88,5 +90,10 @@ final class PivotSubstitutingResolver implements SerializerResolverInterface, Pr
     public function rejectsReadOnlyAttributes(): bool
     {
         return $this->inner instanceof RejectsReadOnlyAttributesInterface && $this->inner->rejectsReadOnlyAttributes();
+    }
+
+    public function isRelatedOnly(string $type): bool
+    {
+        return $this->inner instanceof DeclaresRelatedOnlyTypesInterface && $this->inner->isRelatedOnly($type);
     }
 }

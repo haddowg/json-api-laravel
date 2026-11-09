@@ -44,6 +44,7 @@ final readonly class ResourceDescriptor
      * @param array<string, array<string, mixed>>                          $operationExtensions per-operation vendor extensions keyed by {@see Operation} case value or core operation name, merged over `$extensions`
      * @param string|null                                                  $singular            the declared singular noun for the generated OpenAPI prose (null = the resource hook, then core's inflection)
      * @param list<string>                                                 $deprecatedOperations the operations deprecated on their own, by core operation name
+     * @param bool                                                         $relatedOnly         whether the type serves no endpoint of its own (no CRUD, relationship or related route)
      */
     public function __construct(
         public string $class,
@@ -64,6 +65,7 @@ final readonly class ResourceDescriptor
         public array $operationExtensions = [],
         public ?string $singular = null,
         public array $deprecatedOperations = [],
+        public bool $relatedOnly = false,
     ) {}
 
     /**
@@ -83,7 +85,7 @@ final readonly class ResourceDescriptor
     }
 
     /**
-     * @return array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy: class-string|null, abilities: array<string, string|bool>, headers: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags: list<string>, serializer: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null, hydrator: class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null, model: class-string<\Illuminate\Database\Eloquent\Model>|null, responses: array<string, list<array{status: int, jobType: string|null}>>, softDeletes: array{restore: bool, forceDelete: bool, restoreAbility: string, forceAbility: string, restorePath: string, forcePath: string}|null, extensions: array<string, mixed>, operationExtensions: array<string, array<string, mixed>>, singular: string|null, deprecatedOperations: list<string>}
+     * @return array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy: class-string|null, abilities: array<string, string|bool>, headers: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags: list<string>, serializer: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null, hydrator: class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null, model: class-string<\Illuminate\Database\Eloquent\Model>|null, responses: array<string, list<array{status: int, jobType: string|null}>>, softDeletes: array{restore: bool, forceDelete: bool, restoreAbility: string, forceAbility: string, restorePath: string, forcePath: string}|null, extensions: array<string, mixed>, operationExtensions: array<string, array<string, mixed>>, singular: string|null, deprecatedOperations: list<string>, relatedOnly: bool}
      */
     public function toArray(): array
     {
@@ -106,6 +108,7 @@ final readonly class ResourceDescriptor
             'operationExtensions' => $this->operationExtensions,
             'singular' => $this->singular,
             'deprecatedOperations' => $this->deprecatedOperations,
+            'relatedOnly' => $this->relatedOnly,
         ];
     }
 
@@ -115,7 +118,7 @@ final readonly class ResourceDescriptor
      * no response headers, no explicit tags, no serializer/hydrator override, no declared
      * model — the convention tier still applies at map-resolution time).
      *
-     * @param array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy?: class-string|null, abilities?: array<string, string|bool>, headers?: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags?: list<string>, serializer?: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null, hydrator?: class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null, model?: class-string<\Illuminate\Database\Eloquent\Model>|null, responses?: array<string, list<array{status: int, jobType: string|null}>>, softDeletes?: array{restore: bool, forceDelete: bool, restoreAbility: string, forceAbility: string, restorePath: string, forcePath: string}|null, extensions?: array<string, mixed>, operationExtensions?: array<string, array<string, mixed>>, singular?: string|null, deprecatedOperations?: list<string>} $data
+     * @param array{class: class-string<\haddowg\JsonApi\Resource\AbstractResource>, type: string, uriType: string, servers: list<string>, operations: list<string>, policy?: class-string|null, abilities?: array<string, string|bool>, headers?: array{cache?: array<string, mixed>, cache_operations?: array<string, array<string, mixed>>, deprecation?: array<string, mixed>}, tags?: list<string>, serializer?: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>|null, hydrator?: class-string<\haddowg\JsonApi\Hydrator\HydratorInterface>|null, model?: class-string<\Illuminate\Database\Eloquent\Model>|null, responses?: array<string, list<array{status: int, jobType: string|null}>>, softDeletes?: array{restore: bool, forceDelete: bool, restoreAbility: string, forceAbility: string, restorePath: string, forcePath: string}|null, extensions?: array<string, mixed>, operationExtensions?: array<string, array<string, mixed>>, singular?: string|null, deprecatedOperations?: list<string>, relatedOnly?: bool} $data
      */
     public static function fromArray(array $data): self
     {
@@ -138,6 +141,7 @@ final readonly class ResourceDescriptor
             $data['operationExtensions'] ?? [],
             $data['singular'] ?? null,
             $data['deprecatedOperations'] ?? [],
+            $data['relatedOnly'] ?? false,
         );
     }
 }
