@@ -89,6 +89,42 @@ sent for the list, or a list sent where an element belongs, is refused by core w
 
 Store the list in one `json` column with an `array` cast, like any other composite.
 
+## Open objects
+
+An `Obj` declaring `additionalProperties()` also takes members it does not declare, each one
+checked by that member field, as core's
+[field types](https://github.com/haddowg/json-api/blob/main/docs/field-types.md#open-members)
+describe. An inline spreadsheet import keyed by the user's column headers:
+
+```php
+ArrayList::make('rows')
+    ->of(Obj::make('row')
+        ->fields(Str::make('Key')->required())
+        ->additionalProperties(Str::make('*')->maxLength(200))
+        ->maxProperties(50))
+    ->maxItems(1000);
+```
+
+The validator checks each undeclared member against the member field's rules, with its
+presence and nullability, at the member's own pointer. The key is escaped as a JSON Pointer
+token, so a too-long value under the `Unit/Price` header of the fourth row is a `422` at
+`/data/attributes/rows/3/Unit~1Price`, and one under `a~b` at `.../a~0b`. Each member is
+validated on its own under a placeholder key and its errors moved under the real pointer,
+because Laravel's dot notation would misread a header holding `.` or `*`: `Unit.Cost` reports
+at `/data/attributes/rows/3/Unit.Cost`. `minProperties()` and `maxProperties()` count every
+member the object carries and report at the object. A member field that is itself structured
+validates its children under the member's pointer.
+
+This holds wherever the object sits: an attribute, a child of an `Obj`, `Map` or `OneOf`
+variant at any depth, a list element, or a member of another open object. Core's
+`ObjectValues` walk finds each one. Only what the client sends is checked, so a `PATCH` that
+merges members onto a stored object counts the members it sends. A member field read-only
+for the caller leaves its members unchecked, since core's hydration ignores them, and a
+closed object still refuses an undeclared member with a `400` `ATTRIBUTE_MEMBER_UNRECOGNIZED`.
+
+The undeclared members are stored beside the declared children in the object's `json`
+column.
+
 ## Storage: one `json` column
 
 A composite attribute is **one value** — the natural Eloquent mapping is a single
