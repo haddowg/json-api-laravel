@@ -696,9 +696,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // witness returns none, so the wrap is a no-op there).
             if (!$polymorphic) {
                 $pivotMap = $this->pivotMap($server, $type, $parent, $relation, $items);
-                if ($pivotMap !== []) {
+                if ($this->rendersPivotMeta($relation, $pivotMap)) {
                     \assert($relation instanceof BelongsToMany);
-                    $serializer = new PivotMetaSerializer($serializer, $pivotMap, $relation);
+                    $serializer = new PivotMetaSerializer($serializer, $pivotMap, $relation, $parent, $server->outputTimezone());
                 }
             }
 
@@ -1443,7 +1443,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $serializer = $server->serializerFor($type);
 
         $pivotMap ??= $this->pivotMap($server, $type, $parent, $relation);
-        if ($pivotMap === []) {
+        if (!$this->rendersPivotMeta($relation, $pivotMap)) {
             return $serializer;
         }
 
@@ -1454,13 +1454,24 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $relationshipName,
             $relation,
             $server,
-            new PivotMetaSerializer($server->serializerFor($relatedType), $pivotMap, $relation instanceof BelongsToMany ? $relation : null),
+            new PivotMetaSerializer($server->serializerFor($relatedType), $pivotMap, $relation instanceof BelongsToMany ? $relation : null, $parent, $server->outputTimezone()),
         );
     }
 
     /**
+     * Whether a relation's members carry `meta.pivot`: the provider stored some, or the
+     * relation declares computed pivot fields, which render on any provider.
+     *
+     * @param array<string, array<string, mixed>> $pivotMap
+     */
+    private function rendersPivotMeta(RelationInterface $relation, array $pivotMap): bool
+    {
+        return $pivotMap !== [] || ($relation instanceof BelongsToMany && $relation->computedPivotFields() !== []);
+    }
+
+    /**
      * The stored per-member pivot map (`relatedId => [field => value]`) for a `belongsToMany`
-     * relation declaring pivot fields, read through the parent's provider seam
+     * relation declaring stored pivot fields, read through the parent's provider seam
      * ({@see \haddowg\JsonApiLaravel\DataProvider\DataProviderInterface::fetchRelationshipPivot()}),
      * or `[]` when the relation is not a pivot relation / declares no pivot fields / the
      * provider stores none (the in-memory boundary — pivot READ is Eloquent-only).
@@ -1480,7 +1491,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      */
     private function pivotMap(Server $server, string $type, object $parent, RelationInterface $relation, ?array $members = null): array
     {
-        if (!$relation instanceof BelongsToMany || $relation->pivotFields() === []) {
+        if (!$relation instanceof BelongsToMany || $relation->storedPivotFields() === []) {
             return [];
         }
 

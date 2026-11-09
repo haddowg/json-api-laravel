@@ -35,6 +35,12 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  * response pivot schema's `required` promises. The map itself keeps write-only values,
  * because the validator reads them when it merges a partial pivot update.
  *
+ * A field read through a hook, a computed one or a stored one with `extractUsing()`, renders
+ * from {@see BelongsToMany::hookedPivotValues()}: given the parent, this serializer evaluates
+ * it per member with the member's stored values, so the hook sees a `PivotEdge` and never the
+ * pivot model. A computed field is not in the map, so it renders with no pivot model behind
+ * it. A member with no stored row renders only its computed fields.
+ *
  * The `pivot` key keeps the values namespaced so they never collide with the member
  * resource's own meta, and so a client can tell pivot data from intrinsic meta.
  */
@@ -43,12 +49,16 @@ final class PivotMetaSerializer implements SerializerInterface, IncludeControlsI
     /**
      * @param SerializerInterface                 $inner    the related type's real serializer
      * @param array<string, array<string, mixed>> $pivotMap `memberId => [pivotField => typed value]`
-     * @param BelongsToMany|null                  $relation the pivot relation whose fields decide what renders; without it the map renders as given
+     * @param BelongsToMany|null                  $relation       the pivot relation whose fields decide what renders; without it the map renders as given
+     * @param object|null                         $parent         the parent whose relation renders, which computed pivot fields read; without it they render nothing
+     * @param string|null                         $outputTimezone the server's default output zone for computed date fields
      */
     public function __construct(
         private readonly SerializerInterface $inner,
         private readonly array $pivotMap,
         private readonly ?BelongsToMany $relation = null,
+        private readonly ?object $parent = null,
+        private readonly ?string $outputTimezone = null,
     ) {}
 
     public function getType(mixed $object): string
@@ -66,10 +76,17 @@ final class PivotMetaSerializer implements SerializerInterface, IncludeControlsI
         $meta = $this->inner->getMeta($object, $request);
 
         $pivot = $this->pivotMap[$this->inner->getId($object)] ?? null;
-        if ($pivot !== null && $this->relation !== null) {
+        $computes = $this->relation !== null && $this->parent !== null && $this->relation->computedPivotFields() !== [];
+        if ($this->relation !== null && ($pivot !== null || $computes)) {
+            $stored = $pivot !== null;
+            $values = $this->parent !== null
+                ? [...($pivot ?? []), ...$this->relation->hookedPivotValues($this->parent, $object, $pivot ?? [], $request, $this->outputTimezone)]
+                : ($pivot ?? []);
             $readable = [];
             foreach ($this->relation->readablePivotFieldsFor($request, $object) as $field) {
-                $readable[$field->name()] = $pivot[$field->name()] ?? null;
+                if ($stored || BelongsToMany::isComputedPivotField($field)) {
+                    $readable[$field->name()] = $values[$field->name()] ?? null;
+                }
             }
             $pivot = $readable;
         }
