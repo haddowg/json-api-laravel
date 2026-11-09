@@ -33,17 +33,21 @@ use haddowg\JsonApi\Resource\Field\OneOf;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\ObjectValue;
 use haddowg\JsonApi\Resource\ObjectValues;
+use haddowg\JsonApi\Resource\ValueTypeMismatch;
+use haddowg\JsonApi\Resource\ValueTypes;
 use haddowg\JsonApi\Schema\Error\Error;
 use haddowg\JsonApi\Schema\Error\ErrorSource;
 use haddowg\JsonApi\Validation\SchemaValueValidator;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\Validation\Constraint\UniqueEntity;
+use haddowg\JsonApiLaravel\Validation\Rules\JsonType;
 use haddowg\JsonApiLaravel\Validation\Rules\NotNull;
 use haddowg\JsonApiLaravel\Validation\Rules\ParsableDate;
 use haddowg\JsonApiLaravel\Validation\Rules\RequiredOrNull;
 use haddowg\JsonApiLaravel\Validation\Rules\StoredRowsUnique;
 use Illuminate\Contracts\Validation\Factory as ValidationFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -260,11 +264,91 @@ final class ResourceValidator
             $errors[] = $error;
         }
 
+        $errors = $this->withTypeMismatches($errors, ValueTypes::mismatchesIn($resource->allFields(), $incoming, $creating, $request));
+
         if ($errors === []) {
             return;
         }
 
         throw new ValidationFailed($errors);
+    }
+
+    /**
+     * Folds core's JSON type check into the violations, so a value of the wrong type has
+     * one error at its pointer, in place of whatever the field's other rules made of it or
+     * of anything inside it. A `null` the nullability rules already reported keeps the first of
+     * those errors.
+     *
+     * @param list<Error>             $errors
+     * @param list<ValueTypeMismatch> $mismatches
+     *
+     * @return list<Error>
+     */
+    private function withTypeMismatches(array $errors, array $mismatches): array
+    {
+        if ($mismatches === []) {
+            return $errors;
+        }
+
+        $reported = [];
+        foreach ($errors as $error) {
+            $reported[$error->source->pointer ?? ''] = true;
+        }
+
+        // Each error a mismatch covers gives way to one error for it, placed where the
+        // first of them was, so the order stays the document's.
+        $merged = [];
+        $placed = [];
+        foreach ($errors as $error) {
+            $pointer = $error->source->pointer ?? '';
+            foreach ($mismatches as $index => $mismatch) {
+                if (!$mismatch->covers($pointer)) {
+                    continue;
+                }
+                if (!isset($placed[$index])) {
+                    $placed[$index] = true;
+                    $merged = [...$merged, ...($mismatch->isNull() ? [$error] : $this->typeErrors($mismatch))];
+                }
+
+                continue 2;
+            }
+            $merged[] = $error;
+        }
+        foreach ($mismatches as $index => $mismatch) {
+            if (!isset($placed[$index]) && !($mismatch->isNull() && isset($reported[$mismatch->pointer]))) {
+                $merged = [...$merged, ...$this->typeErrors($mismatch)];
+            }
+        }
+
+        return $merged;
+    }
+
+    /**
+     * The error for one mismatch, worded by Laravel's own rule for the type and naming the
+     * value as Laravel names a nested attribute, by its dot path below `data.attributes`,
+     * or by its field elsewhere.
+     *
+     * @return list<Error>
+     */
+    private function typeErrors(ValueTypeMismatch $mismatch): array
+    {
+        $prefix = '/data/attributes/';
+        $segments = \str_starts_with($mismatch->pointer, $prefix)
+            ? \array_map(
+                static fn(string $segment): string => \str_replace(['~1', '~0'], ['/', '~'], $segment),
+                \explode('/', \substr($mismatch->pointer, \strlen($prefix))),
+            )
+            : [$mismatch->field->name()];
+        $name = \implode('.', \array_map(static fn(string $segment): string => \str_replace('_', ' ', Str::snake($segment)), $segments));
+        $rule = $mismatch->isNull() ? new NotNull() : new JsonType($mismatch->expected);
+
+        $errors = [];
+        $bag = $this->validatorFactory->make([self::VALUE => $mismatch->value], [self::VALUE => [$rule]], [], [self::VALUE => $name])->errors();
+        foreach ($bag->get(self::VALUE) as $message) {
+            $errors[] = $this->errorAt(\is_string($message) ? $message : '', $mismatch->pointer);
+        }
+
+        return $errors;
     }
 
     /**
@@ -574,7 +658,16 @@ final class ResourceValidator
             }
         }
 
-        return $errors;
+        // Only the values the member sent are type-checked; a stored row was valid when written.
+        $mismatches = [];
+        foreach ($writable as $field) {
+            if (\array_key_exists($field->name(), $incoming)) {
+                $pointer = $this->linkageMetaPointer($embeddedRelationName, $field->name(), $index);
+                $mismatches = [...$mismatches, ...ValueTypes::mismatchesOf($field, $incoming[$field->name()], $pointer, $creating, $request)];
+            }
+        }
+
+        return $this->withTypeMismatches($errors, $mismatches);
     }
 
     /**

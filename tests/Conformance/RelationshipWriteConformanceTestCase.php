@@ -167,6 +167,40 @@ abstract class RelationshipWriteConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:updating-relationships')]
+    public function aPivotValueOfTheWrongJsonTypeIs422(): void
+    {
+        // "5" is a string, not the integer `position` takes: one 422 at the linkage meta,
+        // never cast to 5.
+        $response = $this->writeManyRel('POST', '/api/playlists/2/relationships/orderedTracks', [
+            ['type' => 'tracks', 'id' => '4', 'meta' => ['pivot' => ['position' => '5', 'weight' => 6]]],
+        ]);
+
+        $response->assertStatus(422);
+        self::assertCount(1, (array) $response->json('errors'));
+        self::assertSame('VALIDATION_FAILED', $response->json('errors.0.code'));
+        self::assertSame('/data/0/meta/pivot/position', $response->json('errors.0.source.pointer'));
+    }
+
+    #[Test]
+    #[Group('spec:updating-resources')]
+    public function anEmbeddedPivotValueOfTheWrongJsonTypeIs422(): void
+    {
+        $response = $this->writeJsonApi('PATCH', '/api/playlists/2', [
+            'data' => [
+                'type' => 'playlists',
+                'id' => '2',
+                'relationships' => ['orderedTracks' => ['data' => [
+                    ['type' => 'tracks', 'id' => '4', 'meta' => ['pivot' => ['position' => true, 'weight' => 6]]],
+                ]]],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        self::assertSame('/data/relationships/orderedTracks/data/0/meta/pivot/position', $response->json('errors.0.source.pointer'));
+    }
+
+    #[Test]
+    #[Group('spec:updating-relationships')]
     public function aPivotWeightBelowThePositionIs422(): void
     {
         // The cross-pivot-field rule `weight >= position` rejects an inverted pair over the

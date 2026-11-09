@@ -61,6 +61,20 @@ map can't be empty, and a boolean or number only has to be non-null, so `false` 
 are valid. A field that is both required and nullable also accepts an explicit `null`, on
 create and on update, and still rejects a blank value.
 
+### A value of the wrong JSON type
+
+Laravel's `boolean`, `integer` and `numeric` rules accept strings such as `"1"`, so they
+can't hold a value to the JSON type the write schema documents. Core's
+`ValueTypes::mismatchesIn()` does that instead: a string for `Str` and the date fields, a
+boolean for `Boolean`, an integer for `Integer`, a number for `Decimal`, a list for
+`ArrayList` and an object for `Obj`, `OneOf`, `Map` and `ArrayHash`, at any depth. Each
+value without its type is the only error at its pointer, worded by Laravel's own message
+for the type, such as `The options.notify publishers field must be true or false.` or
+`The rows.0.key field must be a string.`. An object uses the `array` message and a list
+the `list` message. An explicit `null` on a field that is not nullable keeps the first
+error Laravel's rules gave it. A pivot field's value in a linkage member's `meta` is
+checked the same way.
+
 ### Empty and whitespace-only strings
 
 Laravel skips every rule except `required` and its relatives for an empty or
