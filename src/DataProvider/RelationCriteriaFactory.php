@@ -11,7 +11,9 @@ use haddowg\JsonApi\Pagination\WindowInterface;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Filter\FilterFamilyInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Filter\TargetsColumn;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
@@ -39,9 +41,9 @@ use haddowg\JsonApiLaravel\OpenApi\PivotFields;
  * derived from each declared pivot field (`?sort=position`), columned `pivot.<column>`. Both
  * reach the criteria only when the caller passes `includePivotFields` (a provider that can
  * query the join, see {@see QueriesPivotColumnsInterface}); otherwise every `pivot.`-columned
- * filter is dropped, so the key is an unrecognised `400` rather than a query against a
- * column the provider cannot reach. The Eloquent handlers resolve the `pivot.` prefix to the
- * relation's join table.
+ * filter is dropped, including one a filter family resolves, so the key is an unrecognised
+ * `400` rather than a query against a column the provider cannot reach. The Eloquent
+ * handlers resolve the `pivot.` prefix to the relation's join table, whichever key matched.
  */
 final class RelationCriteriaFactory
 {
@@ -80,7 +82,8 @@ final class RelationCriteriaFactory
      * `/{relatedType}` collection.
      *
      * On a key clash the relation wins over the related resource, preserving the merge
-     * order `[...resourceFilters, ...relationFilters]` then keyed by `->key()`.
+     * order `[...resourceFilters, ...relationFilters]`; core's {@see FilterMatcher::merge()}
+     * keeps a filter family and an exact filter of the same key apart.
      * `defaultSort` is the related resource's default order (empty for a polymorphic
      * to-many); the merged vocabulary rides the criteria so both providers' existing
      * handlers apply it unchanged (core's docs/sorts.md).
@@ -95,7 +98,7 @@ final class RelationCriteriaFactory
      * field sorts. A cursor window gets the pivot filters but not the pivot sorts: the keyset
      * reads its columns off the related model, never the join.
      *
-     * `$request` rides onto the criteria so a sort family can resolve a requested key.
+     * `$request` rides onto the criteria so a filter or sort family can resolve a requested key.
      */
     public function criteriaFor(
         QueryParameters $queryParameters,
@@ -106,9 +109,7 @@ final class RelationCriteriaFactory
         bool $includePivotFields = false,
         ?JsonApiRequestInterface $request = null,
     ): CollectionCriteria {
-        $relationFilters = $includePivotFields
-            ? $relation->allFilters()
-            : \array_values(\array_filter($relation->allFilters(), static fn(FilterInterface $filter): bool => !self::targetsPivot($filter)));
+        $relationFilters = $includePivotFields ? $relation->allFilters() : self::withoutPivotFilters($relation->allFilters());
 
         $relationSorts = $relation->sorts();
         if ($includePivotFields && !$window instanceof CursorWindow) {
@@ -117,7 +118,7 @@ final class RelationCriteriaFactory
 
         return new CollectionCriteria(
             $queryParameters,
-            $this->mergeFilters($relatedResource?->allFilters() ?? [], $relationFilters),
+            FilterMatcher::merge($relatedResource?->allFilters() ?? [], $relationFilters),
             SortMatcher::merge($relatedResource?->allSorts() ?? [], $relationSorts),
             $window,
             $relatedResource?->defaultSort() ?? [],
@@ -143,6 +144,28 @@ final class RelationCriteriaFactory
     }
 
     /**
+     * The filters minus those comparing a `pivot.` column. A family can't be judged until it
+     * resolves a key, so it is narrowed to answer only the keys resolving to a non-pivot filter.
+     *
+     * @param list<FilterInterface> $filters
+     *
+     * @return list<FilterInterface>
+     */
+    private static function withoutPivotFilters(array $filters): array
+    {
+        $kept = [];
+        foreach ($filters as $filter) {
+            if ($filter instanceof FilterFamilyInterface) {
+                $kept[] = new NarrowedFilterFamily($filter, static fn(FilterInterface $resolved): bool => !self::targetsPivot($resolved));
+            } elseif (!self::targetsPivot($filter)) {
+                $kept[] = $filter;
+            }
+        }
+
+        return $kept;
+    }
+
+    /**
      * Whether a filter compares a `pivot.`-prefixed column. A filter with no single column
      * (an existence or dotted-path filter, a custom filter) never targets the pivot.
      */
@@ -155,26 +178,5 @@ final class RelationCriteriaFactory
         };
 
         return \str_starts_with($column, self::PIVOT_PREFIX);
-    }
-
-    /**
-     * Merges two filter vocabularies, keyed by {@see FilterInterface::key()} so a clash
-     * resolves to the later list's declaration (the more specific scope wins). The order
-     * `[...$resourceFilters, ...$relationFilters]` is preserved before
-     * the dedup; returned as a list for the {@see CollectionCriteria}.
-     *
-     * @param list<FilterInterface> $resourceFilters
-     * @param list<FilterInterface> $relationFilters
-     *
-     * @return list<FilterInterface>
-     */
-    private function mergeFilters(array $resourceFilters, array $relationFilters): array
-    {
-        $merged = [];
-        foreach ([...$resourceFilters, ...$relationFilters] as $filter) {
-            $merged[$filter->key()] = $filter;
-        }
-
-        return \array_values($merged);
     }
 }

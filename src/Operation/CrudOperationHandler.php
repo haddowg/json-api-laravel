@@ -53,6 +53,7 @@ use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Field\Time;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Filter\SupportsSingular;
 use haddowg\JsonApi\Resource\ResolvesCompletionRedirect;
 use haddowg\JsonApi\Response\AcceptedResponse;
@@ -416,7 +417,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // `filter[trackRange][min]=banana`, or a calendar-invalid DateRange bound) is a
         // clean `400` FILTER_VALUE_INVALID rather than a silent non-match or a driver
         // error. The raw requested map is validated (never the author-set defaults).
-        $this->filterValidator->validate($operation->queryParameters()->filter, $filters);
+        $this->filterValidator->validate($operation->queryParameters()->filter, $filters, $request);
 
         // The `viewAny` policy gate authorizes the collection BEFORE the query runs, on
         // a blank instance minted for the type's class (so a policy's `viewAny($user)` is
@@ -430,7 +431,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // A singular filter the client applied collapses the collection to a
         // zero-to-one response — a single resource (the first match) or null, never
         // an array, and never paginated (core's docs/filters.md).
-        $singular = $this->appliesSingularFilter($filters, $operation->queryParameters());
+        $singular = $this->appliesSingularFilter($filters, $operation->queryParameters(), $request);
 
         // The resource's pagination() return is the single source of truth:
         // used verbatim, with `null` meaning *no pagination* (fetch-all). The base
@@ -658,7 +659,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
             // Validate a client-supplied filter value against the merged vocabulary (related
             // resource ⊕ relation-scoped), so a mistyped value is the same 400 as elsewhere.
-            $this->filterValidator->validate($operation->queryParameters()->filter, $criteria->filters);
+            $this->filterValidator->validate($operation->queryParameters()->filter, $criteria->filters, $request);
 
             // A relation over several types reaching a scoped type is read off the parent and
             // narrowed per member type before the page is cut, so the page stays full.
@@ -789,7 +790,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                     null,
                     request: $request,
                 );
-                $this->filterValidator->validate($filter, $criteria->filters);
+                $this->filterValidator->validate($filter, $criteria->filters, $request);
 
                 if (!$this->providers->forType($relatedType)->relatedToOneMatches($relatedType, $related, $relation, $criteria, $request)) {
                     $related = null;
@@ -1008,7 +1009,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             includePivotFields: $this->pivotQueryingProvider($parent, $relation) !== null,
             request: $request,
         );
-        $this->filterValidator->validate($queryParameters->filter, $criteria->filters);
+        $this->filterValidator->validate($queryParameters->filter, $criteria->filters, $request);
 
         $result = $this->providers->forType($relatedType)->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
         $items = $this->materialize($result);
@@ -2504,16 +2505,17 @@ final class CrudOperationHandler implements OperationHandlerInterface
     /**
      * Whether the client applied a filter the resource declares
      * {@see SupportsSingular singular} — the trigger to collapse the collection to a
-     * zero-to-one ({@see DataResponse::fromResource()}) response.
+     * zero-to-one ({@see DataResponse::fromResource()}) response. A requested key resolves
+     * through {@see FilterMatcher}, so a filter family's key is singular when the filter it
+     * resolves to is.
      *
      * @param list<FilterInterface> $filters
      */
-    private function appliesSingularFilter(array $filters, QueryParameters $queryParameters): bool
+    private function appliesSingularFilter(array $filters, QueryParameters $queryParameters, ?JsonApiRequestInterface $request): bool
     {
-        foreach ($filters as $filter) {
-            if ($filter instanceof SupportsSingular
-                && $filter->isSingular()
-                && \array_key_exists($filter->key(), $queryParameters->filter)) {
+        foreach (\array_keys($queryParameters->filter) as $key) {
+            $filter = FilterMatcher::match($filters, (string) $key, $request);
+            if ($filter instanceof SupportsSingular && $filter->isSingular()) {
                 return true;
             }
         }

@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\DataProvider;
 
 use haddowg\JsonApi\Exception\FilterParamUnrecognized;
+use haddowg\JsonApi\Exception\FilterValueInvalid;
 use haddowg\JsonApi\Exception\SortingUnsupported;
 use haddowg\JsonApi\Exception\SortParamUnrecognized;
 use haddowg\JsonApi\Resource\Filter\FilterDefaults;
 use haddowg\JsonApi\Resource\Filter\FilterHandlerInterface;
-use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApi\Resource\Sort\SortHandlerInterface;
 use haddowg\JsonApi\Resource\Sort\SortMatcher;
@@ -64,6 +65,7 @@ final class CriteriaApplier
      * @return TQuery
      *
      * @throws FilterParamUnrecognized when a requested filter key is not declared
+     * @throws FilterValueInvalid      when a list filter's value is not a list it accepts
      * @throws SortingUnsupported      when sorting is requested but no sorts are declared
      * @throws SortParamUnrecognized   when a requested sort field is not declared
      */
@@ -90,22 +92,20 @@ final class CriteriaApplier
      * @return TQuery
      *
      * @throws FilterParamUnrecognized when a requested filter key is not declared
+     * @throws FilterValueInvalid      when a list filter's value is not a list it accepts
      */
     public function applyFilters(CollectionCriteria $criteria, mixed $query, FilterHandlerInterface $handler): mixed
     {
         // Fold each declared filter's default into the requested map first: an
         // absent key takes its filter's declared default, a requested key wins.
         // A defaulted key is always declared (the default came from a declared
-        // filter), so the unrecognised-key guard below only ever fires for a
-        // genuinely undeclared requested key.
+        // filter), so the matcher's unrecognised-key 400 only ever fires for a
+        // genuinely undeclared requested key. The matcher resolves filter families and
+        // reads a list filter's value as its members.
         $requested = FilterDefaults::apply($criteria->queryParameters->filter, $criteria->filters);
 
-        foreach ($requested as $key => $value) {
-            $key = (string) $key;
-            $filter = $this->filterFor($criteria->filters, $key)
-                ?? throw new FilterParamUnrecognized($key);
-
-            $query = $handler->apply($filter, $query, $value);
+        foreach (FilterMatcher::directives($requested, $criteria->filters, $criteria->request) as $directive) {
+            $query = $handler->apply($directive->filter, $query, $directive->value);
         }
 
         return $query;
@@ -171,19 +171,5 @@ final class CriteriaApplier
         }
 
         return $criteria->defaultSort;
-    }
-
-    /**
-     * @param list<FilterInterface> $filters
-     */
-    private function filterFor(array $filters, string $key): ?FilterInterface
-    {
-        foreach ($filters as $filter) {
-            if ($filter->key() === $key) {
-                return $filter;
-            }
-        }
-
-        return null;
     }
 }
