@@ -14,7 +14,9 @@ parameters (filter / sort / page / fields / include), request/response schemas,
 A relation's related and relationship paths are keyed by its URI field name (see
 [routing](routing.md#relation-segments)), and a write-only relation carries `writeOnly: true`
 in the create and update bodies. A `belongsToMany` with pivot fields gets a response pivot
-schema (`<Type><Rel>Pivot`) and a request one (`<Type><Rel>WritePivot`). A
+schema (`<Type><Rel>Pivot`) and a request one (`<Type><Rel>WritePivot`), and a relation whose
+[`identifierMeta()`](relationships.md#identifier-meta) declares its `fields:` gets a
+`<Type><Rel>IdentifierMeta` schema typing each response linkage identifier's `meta`. A
 backed-enum field (`status->enum(AlbumStatus::class)`) projects a reusable
 `#/components/schemas/AlbumStatus` with described cases. [Custom actions](actions.md) and the
 [atomic](atomic-operations.md) endpoint project too.
