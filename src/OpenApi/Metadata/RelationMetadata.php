@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresAlwaysCounted;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresDeprecatedRelation;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresIdentifiedMembers;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresIdentifierMeta;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresPolymorphicRelation;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresRelationExampleId;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresRelationUriFieldName;
@@ -31,7 +32,7 @@ use haddowg\JsonApiLaravel\OpenApi\PivotFields;
  * {@see \haddowg\JsonApi\Server\Server} fallback chain + the relation graph) and
  * passed in.
  */
-final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, DeclaresRelationUriFieldName, DeclaresRelationExampleId, DeclaresAlwaysCounted, DeclaresPolymorphicRelation, DeclaresIdentifiedMembers, DeclaresDeprecatedRelation
+final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, DeclaresRelationUriFieldName, DeclaresRelationExampleId, DeclaresAlwaysCounted, DeclaresPolymorphicRelation, DeclaresIdentifiedMembers, DeclaresDeprecatedRelation, DeclaresIdentifierMeta
 {
     /**
      * @param list<string> $relatedIncludablePaths the related type's includable paths (resolved by the source)
@@ -48,6 +49,11 @@ final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, Decl
     public function exampleId(): ?string
     {
         return $this->relation instanceof ExemplifiedRelationInterface ? $this->relation->exampleId() : null;
+    }
+
+    public function identifierMetaFields(): array
+    {
+        return $this->relation instanceof AbstractRelationValue ? $this->relation->identifierMetaFields() : [];
     }
 
     public function alwaysCounts(): bool
