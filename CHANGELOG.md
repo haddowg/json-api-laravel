@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.1](https://github.com/haddowg/json-api-laravel/compare/v2.4.0...v2.4.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **validation:** require the core release that validates write-hooked values ([#229](https://github.com/haddowg/json-api-laravel/issues/229)) ([53e1493](https://github.com/haddowg/json-api-laravel/commit/53e14930ae5ff4a04db8f9da86dbab05a27eb6eb))
+
 ## [2.4.0](https://github.com/haddowg/json-api-laravel/compare/v2.3.1...v2.4.0) (2026-11-09)
 
 
