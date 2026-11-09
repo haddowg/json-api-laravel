@@ -23,11 +23,13 @@ final class PivotFieldsTest extends TestCase
         $relation = BelongsToMany::make('tracks', 'tracks')->fields(
             Integer::make('position')->storedAs('pos'),
             Str::make('label')->computedUsing(static fn(): string => 'x'),
-            Integer::make('rank')->extractUsing(static fn(): int => 1),
+            Integer::make('rank')->computed(),
+            // An extract hook changes only how a stored field is read.
+            Integer::make('weight')->extractUsing(static fn(): int => 1),
         )->build();
 
         self::assertSame(
-            [['position', 'pos']],
+            [['position', 'pos'], ['weight', 'weight']],
             \array_map(static fn(SortByField $sort): array => [$sort->key, $sort->column], PivotFields::sortsFor($relation)),
         );
         self::assertSame([], PivotFields::sortsFor(HasMany::make('tracks', 'tracks')->build()));

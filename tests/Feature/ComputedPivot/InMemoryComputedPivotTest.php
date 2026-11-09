@@ -11,7 +11,8 @@ use Workbench\App\Providers\ConformanceInMemoryServiceProvider;
 
 /**
  * {@see ComputedPivotTestCase} on the in-memory witness. It stores no pivot row, so a relation
- * mixing a stored and a computed field renders only the computed one there.
+ * mixing stored and computed fields renders only its computed ones there, never a stored one,
+ * even a stored one read through an extract hook.
  *
  * @internal
  */
@@ -34,8 +35,11 @@ final class InMemoryComputedPivotTest extends ComputedPivotTestCase
 
     public function test_a_mixed_relation_renders_only_its_computed_field(): void
     {
-        $response = $this->read('/api/crates/1/relationships/mixedTracks')->assertOk();
+        foreach (['/api/crates/1/mixedTracks', '/api/crates/1/relationships/mixedTracks'] as $uri) {
+            $response = $this->read($uri)->assertOk();
 
-        self::assertSame(['label' => 'Best Of / Karma Police'], $this->pivotOf($response, '3'));
+            // Neither the stored position nor the stored, hook-read weight renders.
+            self::assertSame(['label' => 'Best Of / Karma Police'], $this->pivotOf($response, '3'), $uri);
+        }
     }
 }
