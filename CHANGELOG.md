@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.2](https://github.com/haddowg/json-api-laravel/compare/v2.4.1...v2.4.2) (2026-11-09)
+
+
+### Bug Fixes
+
+* **validation:** reject write values whose JSON type does not match the field ([#231](https://github.com/haddowg/json-api-laravel/issues/231)) ([aba8267](https://github.com/haddowg/json-api-laravel/commit/aba82670dc6e3903d1d889b9d10e9e9e23667f78))
+
 ## [2.4.1](https://github.com/haddowg/json-api-laravel/compare/v2.4.0...v2.4.1) (2026-11-09)
 
 
