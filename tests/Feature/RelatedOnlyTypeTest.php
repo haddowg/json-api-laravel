@@ -86,6 +86,9 @@ final class RelatedOnlyTypeTest extends Orchestra
         self::assertIsArray($paths);
         self::assertSame([], \array_values(\array_filter(\array_keys($paths), static fn(string $path): bool => \str_starts_with($path, '/imprints'))));
         self::assertArrayHasKey('/records/{id}/imprint', $paths);
+        $tags = self::dig($document, 'tags');
+        self::assertIsArray($tags);
+        self::assertNotContains('Imprints', \array_column($tags, 'name'));
 
         self::assertSame('#/components/schemas/ImprintsResourceLinks', self::dig($document, 'components', 'schemas', 'ImprintsResource', 'properties', 'links', '$ref'));
         self::assertNull(self::dig($document, 'components', 'schemas', 'ImprintsResourceLinks', 'properties', 'self'));
