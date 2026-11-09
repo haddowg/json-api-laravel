@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.1](https://github.com/haddowg/json-api-laravel/compare/v2.3.0...v2.3.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **actions:** hide action links the token lacks scopes for ([#220](https://github.com/haddowg/json-api-laravel/issues/220)) ([c5199d7](https://github.com/haddowg/json-api-laravel/commit/c5199d772859fc5d4a364f7c3415bf7f69791c9b))
+* **validation:** enforce to-many minItems and maxItems ([#219](https://github.com/haddowg/json-api-laravel/issues/219)) ([4cc4584](https://github.com/haddowg/json-api-laravel/commit/4cc458467649f073ffedd230f80aea8e1bb40fdb))
+
 ## [2.3.0](https://github.com/haddowg/json-api-laravel/compare/v2.2.1...v2.3.0) (2026-11-08)
 
 
