@@ -264,8 +264,15 @@ that has a body must still match `accepts`.
 > `asLink` visibility matches invocation **exactly**: `Authorizer::allowsAction()` (which
 > decides whether to render the link) simply wraps `authorizeAction()` (which enforces it) in
 > a try/catch, so both pass when the action declares no ability. A declared ability that no
-> policy or `Gate::define()` answers denies both the call and the link. A client never sees a link to an action it could
-> not invoke, and never loses a link to one it could.
+> policy or `Gate::define()` answers denies both the call and the link. The scope check reads
+> the same scope table as invocation, so a client never sees a link to an action it could not
+> invoke, and never loses a link to one it could.
+
+When the server enforces [OAuth scopes](scopes.md), the link also needs the request's grant
+to cover every scope the action requires, checked for the method the link names. A token
+missing one of them doesn't see the link, just as invoking the action would get a `403`. A
+request with no grant isn't checked for scopes, and without a bound
+`GrantedScopesProviderInterface` nothing changes.
 
 An `asLink` link's href sits on the same base as the resource's `self` link. That's the
 server's `base_uri` when one is configured, or the request host plus the server's route
@@ -273,7 +280,7 @@ prefix when it's empty.
 
 ### Showing an action link only in some states
 
-`asLink` renders the link whenever the ability passes. A link that belongs only to some
+`asLink` renders the link whenever the ability and scopes pass. A link that belongs only to some
 states, such as completing an upload only while the file is pending, shouldn't move that
 state into the ability. The gate would then answer an out-of-state call with a plain `403`
 instead of the handler's own error. Declare the link on the resource instead, with core's
@@ -298,7 +305,7 @@ final class AlbumResource extends AbstractResource
 
 `ActionLink::for()` names a resource-scope action of the resource's own type. The package
 still builds the href, the method and the `describedby` from the action, on the server's
-link base. It checks the action's `ability` first, then a
+link base. It checks the action's `ability` and scopes first, then a
 [`ConditionallyLinked`](soft-deletes.md#discoverable-restore-link) handler's
 `shouldLink()`, then `when()` with the rendered model and the request, and renders the link
 only when all of them pass. `when()` is optional. Prefer it to `ConditionallyLinked` when
