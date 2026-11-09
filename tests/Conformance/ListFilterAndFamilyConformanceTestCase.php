@@ -19,7 +19,8 @@ use PHPUnit\Framework\Attributes\Test;
  * ({@see EloquentListFilterAndFamilyConformanceTest}) over the same
  * {@see FilterFamiliesServiceProvider::books()} seed, on every path a filter reaches: the
  * collection, a cursor walk, the related and relationship endpoints, a `relatedQuery`
- * include and count, and a collection action.
+ * include and count, a collection action, a singular collapse and a pivot relation. Reading
+ * list 1 ranks book 2 first, book 4 second and book 1 third on its `rank` pivot column.
  *
  * Shelf 1 holds 1 "Hello, World" fiction 120, 2 Dune scifi 600 and 3 Emma classic 400; shelf
  * 2 holds 4 Hyperion scifi 480, 5 Persuasion classic 250 and 6 Neuromancer scifi 270.
@@ -38,6 +39,14 @@ abstract class ListFilterAndFamilyConformanceTestCase extends Orchestra
      * `eloquent` or `memory`.
      */
     abstract protected function store(): string;
+
+    /**
+     * Whether the provider filters a pivot relation over its join table.
+     */
+    protected function queriesPivotColumns(): bool
+    {
+        return $this->store() === 'eloquent';
+    }
 
     /**
      * @param \Illuminate\Foundation\Application $app
@@ -182,6 +191,23 @@ abstract class ListFilterAndFamilyConformanceTestCase extends Orchestra
         $this->assertUnrecognized($this->request('/api/books?filter[in][]=scifi'), 'in');
     }
 
+    #[Test]
+    #[Group('spec:fetching-filtering')]
+    public function aFamilyResolvingToASingularFilterCollapsesTheResponse(): void
+    {
+        $exact = $this->request('/api/books?filter[title]=Dune');
+        $exact->assertOk();
+        self::assertSame('2', $exact->json('data.id'));
+
+        $family = $this->request('/api/books?filter[one.title]=Dune');
+        $family->assertOk();
+        self::assertSame($exact->json('data'), $family->json('data'));
+        self::assertNull($family->json('links.next'));
+
+        self::assertSame('1', $this->request('/api/books?filter[one.genre]=fiction')->assertOk()->json('data.id'));
+        self::assertNull($this->request('/api/books?filter[one.title]=Nope')->assertOk()->json('data'));
+    }
+
     // --- related and relationship endpoints -----------------------------------
 
     #[Test]
@@ -207,6 +233,47 @@ abstract class ListFilterAndFamilyConformanceTestCase extends Orchestra
         self::assertSame(['6'], $this->ids('/api/shelves/2/relationships/books?filter[attr.pages]=270'));
 
         $this->assertValueInvalid($this->request('/api/shelves/2/relationships/books?filter[pageCounts][]=lots'), 'pageCounts');
+    }
+
+    // --- pivot filters behind a family ------------------------------------------
+
+    #[Test]
+    #[Group('spec:fetching-filtering')]
+    #[Group('spec:fetching-relationships')]
+    public function aFamilyResolvingToAPivotFilterBehavesLikeTheExactPivotFilter(): void
+    {
+        foreach (['/api/readingLists/1/rankedBooks', '/api/readingLists/1/relationships/rankedBooks'] as $endpoint) {
+            $exact = $this->request($endpoint . '?filter[rank]=2');
+            $family = $this->request($endpoint . '?filter[join.rank]=2');
+
+            if ($this->queriesPivotColumns()) {
+                $exact->assertOk();
+                self::assertSame(['4'], $this->dataIds($exact), $endpoint);
+                self::assertSame($exact->json('data'), $family->assertOk()->json('data'), $endpoint);
+                self::assertSame(['2'], $this->ids($endpoint . '?filter[join.rank]=1'), $endpoint);
+
+                $this->assertValueInvalid($this->request($endpoint . '?filter[rank]=first'), 'rank');
+                $this->assertValueInvalid($this->request($endpoint . '?filter[join.rank]=first'), 'join.rank');
+            } else {
+                // A provider without the pivot join drops the pivot filter, whichever key named it.
+                $this->assertUnrecognized($exact, 'rank');
+                $this->assertUnrecognized($family, 'join.rank');
+            }
+
+            $this->assertUnrecognized($this->request($endpoint . '?filter[join.position]=2'), 'join.position');
+        }
+    }
+
+    #[Test]
+    #[Group('spec:profiles')]
+    #[Group('spec:fetching-filtering')]
+    public function aRelatedQueryDropsAFamilysPivotFilterLikeTheExactOne(): void
+    {
+        foreach (['rank', 'join.rank'] as $key) {
+            $response = $this->get('/api/readingLists/1?include=rankedBooks&relatedQuery[rankedBooks][filter][' . $key . ']=1', $this->profileHeaders(self::RELATIONSHIP_QUERIES_PROFILE));
+
+            $this->assertUnrecognized($response, $key);
+        }
     }
 
     // --- relationship queries ------------------------------------------------
@@ -309,7 +376,7 @@ abstract class ListFilterAndFamilyConformanceTestCase extends Orchestra
         self::assertContains('filter[titles][]', $names);
         self::assertNotContains('filter[titles]', $names);
         self::assertIsArray($families);
-        self::assertSame(['attr', 'in'], \array_column($families, 'prefix'));
+        self::assertSame(['attr', 'one', 'in'], \array_column($families, 'prefix'));
     }
 
     // --- helpers ------------------------------------------------------------------

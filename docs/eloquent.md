@@ -165,8 +165,12 @@ public function filters(): array
 rules are the sort family's: an exact key wins over a family, the longest matching prefix
 decides between families, and the bare prefix (`filter[attr]`) or a suffix the resolver returns
 `null` for is the usual `400 FILTERING_UNRECOGNIZED`. A family that takes a list must resolve to
-filters that take the same list. The resolved filter's constraints validate the value, so a
-family resolving to `Where::make(…)->integer()` rejects a non-integer.
+filters that take the same list. A family key behaves exactly like the filter it resolves to.
+That filter's constraints validate the value, so a family resolving to
+`Where::make(…)->integer()` rejects a non-integer, and one resolving to a `singular()` filter
+collapses the collection to one resource. On a relation, a family resolving to a
+`pivot.`-columned filter compares the join table wherever an exact pivot filter does, and is
+the same unrecognized `400` wherever an exact pivot filter is dropped.
 
 Both providers match keys through core's `FilterMatcher`, on the primary collection, related
 and relationship endpoints, a relation's own `filters()`, the Relationship Queries profile's

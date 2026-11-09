@@ -24,7 +24,8 @@ use haddowg\JsonApi\Resource\Filter\WhereIn;
  * array-only one so a comma stays inside a title, and `pageCounts` validates each member as
  * an integer. `attr.<column>` resolves to an equality filter on one column, except
  * `attr.title`, which the exact `Contains` filter answers, and `in.<column>` to a list
- * filter on one column. Pagination offers page and cursor strategies, defaulting to page.
+ * filter on one column. `title` and the `one.<column>` keys are singular, collapsing the
+ * response to one resource. Pagination offers page and cursor strategies, defaulting to page.
  */
 final class BookResource extends AbstractResource
 {
@@ -52,6 +53,10 @@ final class BookResource extends AbstractResource
                 'pages' => Where::make('attr.pages', 'pages')->integer()->build(),
                 default => null,
             })->withSuffixPattern('[a-z]+'),
+            Where::make('title')->singular(),
+            FilterFamily::make('one', static fn(string $suffix, JsonApiRequestInterface $request): ?FilterInterface => \in_array($suffix, ['title', 'genre'], true)
+                ? Where::make('one.' . $suffix, $suffix)->singular()->build()
+                : null),
             FilterFamily::make('in', static fn(string $suffix, JsonApiRequestInterface $request): ?FilterInterface => \in_array($suffix, ['title', 'genre'], true)
                 ? WhereIn::make('in.' . $suffix, $suffix)->acceptsList()->build()
                 : null)

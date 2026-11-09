@@ -11,6 +11,7 @@ use haddowg\JsonApi\Pagination\WindowInterface;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Filter\FilterFamilyInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Filter\TargetsColumn;
@@ -40,9 +41,9 @@ use haddowg\JsonApiLaravel\OpenApi\PivotFields;
  * derived from each declared pivot field (`?sort=position`), columned `pivot.<column>`. Both
  * reach the criteria only when the caller passes `includePivotFields` (a provider that can
  * query the join, see {@see QueriesPivotColumnsInterface}); otherwise every `pivot.`-columned
- * filter is dropped, so the key is an unrecognised `400` rather than a query against a
- * column the provider cannot reach. The Eloquent handlers resolve the `pivot.` prefix to the
- * relation's join table.
+ * filter is dropped, including one a filter family resolves, so the key is an unrecognised
+ * `400` rather than a query against a column the provider cannot reach. The Eloquent
+ * handlers resolve the `pivot.` prefix to the relation's join table, whichever key matched.
  */
 final class RelationCriteriaFactory
 {
@@ -108,9 +109,7 @@ final class RelationCriteriaFactory
         bool $includePivotFields = false,
         ?JsonApiRequestInterface $request = null,
     ): CollectionCriteria {
-        $relationFilters = $includePivotFields
-            ? $relation->allFilters()
-            : \array_values(\array_filter($relation->allFilters(), static fn(FilterInterface $filter): bool => !self::targetsPivot($filter)));
+        $relationFilters = $includePivotFields ? $relation->allFilters() : self::withoutPivotFilters($relation->allFilters());
 
         $relationSorts = $relation->sorts();
         if ($includePivotFields && !$window instanceof CursorWindow) {
@@ -142,6 +141,28 @@ final class RelationCriteriaFactory
         }
 
         return $sorts;
+    }
+
+    /**
+     * The filters minus those comparing a `pivot.` column. A family can't be judged until it
+     * resolves a key, so it is narrowed to answer only the keys resolving to a non-pivot filter.
+     *
+     * @param list<FilterInterface> $filters
+     *
+     * @return list<FilterInterface>
+     */
+    private static function withoutPivotFilters(array $filters): array
+    {
+        $kept = [];
+        foreach ($filters as $filter) {
+            if ($filter instanceof FilterFamilyInterface) {
+                $kept[] = new NarrowedFilterFamily($filter, static fn(FilterInterface $resolved): bool => !self::targetsPivot($resolved));
+            } elseif (!self::targetsPivot($filter)) {
+                $kept[] = $filter;
+            }
+        }
+
+        return $kept;
     }
 
     /**

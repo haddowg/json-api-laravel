@@ -49,6 +49,20 @@ final class EloquentListFilterAndFamilyConformanceTest extends ListFilterAndFami
             $table->unsignedInteger('pages');
         });
 
+        Schema::create('ff_reading_lists', static function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('name');
+        });
+        Schema::create('ff_reading_list_book', static function (Blueprint $table): void {
+            $table->unsignedInteger('reading_list_id');
+            $table->unsignedInteger('book_id');
+            $table->unsignedInteger('rank');
+        });
+
+        DB::table('ff_reading_lists')->insert(['id' => 1, 'name' => 'Favourites']);
+        foreach (FilterFamiliesServiceProvider::ranks() as $bookId => $rank) {
+            DB::table('ff_reading_list_book')->insert(['reading_list_id' => 1, 'book_id' => $bookId, 'rank' => $rank]);
+        }
         foreach (FilterFamiliesServiceProvider::shelves() as $id => $name) {
             DB::table('ff_shelves')->insert(['id' => $id, 'name' => $name]);
         }

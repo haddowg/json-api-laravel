@@ -53,6 +53,7 @@ use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Field\Time;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Filter\SupportsSingular;
 use haddowg\JsonApi\Resource\ResolvesCompletionRedirect;
 use haddowg\JsonApi\Response\AcceptedResponse;
@@ -430,7 +431,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // A singular filter the client applied collapses the collection to a
         // zero-to-one response — a single resource (the first match) or null, never
         // an array, and never paginated (core's docs/filters.md).
-        $singular = $this->appliesSingularFilter($filters, $operation->queryParameters());
+        $singular = $this->appliesSingularFilter($filters, $operation->queryParameters(), $request);
 
         // The resource's pagination() return is the single source of truth:
         // used verbatim, with `null` meaning *no pagination* (fetch-all). The base
@@ -2504,16 +2505,17 @@ final class CrudOperationHandler implements OperationHandlerInterface
     /**
      * Whether the client applied a filter the resource declares
      * {@see SupportsSingular singular} — the trigger to collapse the collection to a
-     * zero-to-one ({@see DataResponse::fromResource()}) response.
+     * zero-to-one ({@see DataResponse::fromResource()}) response. A requested key resolves
+     * through {@see FilterMatcher}, so a filter family's key is singular when the filter it
+     * resolves to is.
      *
      * @param list<FilterInterface> $filters
      */
-    private function appliesSingularFilter(array $filters, QueryParameters $queryParameters): bool
+    private function appliesSingularFilter(array $filters, QueryParameters $queryParameters, ?JsonApiRequestInterface $request): bool
     {
-        foreach ($filters as $filter) {
-            if ($filter instanceof SupportsSingular
-                && $filter->isSingular()
-                && \array_key_exists($filter->key(), $queryParameters->filter)) {
+        foreach (\array_keys($queryParameters->filter) as $key) {
+            $filter = FilterMatcher::match($filters, (string) $key, $request);
+            if ($filter instanceof SupportsSingular && $filter->isSingular()) {
                 return true;
             }
         }

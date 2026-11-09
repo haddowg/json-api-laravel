@@ -11,7 +11,7 @@ use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
 
 /**
- * Wires `shelves`, `books` and the `count` collection action over the store named by
+ * Wires `shelves`, `books`, `readingLists` and the `count` collection action over the store named by
  * `filter_families.store`, `eloquent` or `memory`, both seeded from {@see self::books()}.
  *
  * @internal
@@ -43,12 +43,22 @@ final class FilterFamiliesServiceProvider extends ServiceProvider
         return [1 => 'North', 2 => 'South'];
     }
 
+    /**
+     * Reading list 1 Favourites ranks book 2 first, book 4 second and book 1 third.
+     *
+     * @return array<int, int>
+     */
+    public static function ranks(): array
+    {
+        return [2 => 1, 4 => 2, 1 => 3];
+    }
+
     public function register(): void
     {
-        JsonApi::register([ShelfResource::class, BookResource::class, CountBooksAction::class]);
+        JsonApi::register([ShelfResource::class, BookResource::class, ReadingListResource::class, CountBooksAction::class]);
 
         if (config('filter_families.store') !== 'memory') {
-            JsonApi::provider(new EloquentDataProvider(['shelves' => Shelf::class, 'books' => Book::class]), priority: -128);
+            JsonApi::provider(new EloquentDataProvider(['shelves' => Shelf::class, 'books' => Book::class, 'readingLists' => ReadingList::class]), priority: -128);
 
             return;
         }
@@ -72,5 +82,13 @@ final class FilterFamiliesServiceProvider extends ServiceProvider
 
         JsonApi::provider(new InMemoryDataProvider('books', $books, identify: $identify));
         JsonApi::provider(new InMemoryDataProvider('shelves', $shelves, identify: $identify));
+
+        $favourites = new ReadingListRecord('1', 'Favourites');
+        foreach ($books as $book) {
+            if (\array_key_exists((int) $book->id, self::ranks())) {
+                $favourites->rankedBooks[] = $book;
+            }
+        }
+        JsonApi::provider(new InMemoryDataProvider('readingLists', ['1' => $favourites], identify: $identify));
     }
 }
