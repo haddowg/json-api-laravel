@@ -22,6 +22,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
     type: 'albums',
     path: 'import',
     scope: ActionScope::Collection,
+    inputType: 'albums',
     responds: [new MetaResult()],
     accepts: ['application/vnd.api+json' => ActionInput::Document, 'text/csv' => ActionInput::Raw],
 )]

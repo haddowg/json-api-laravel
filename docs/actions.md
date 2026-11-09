@@ -237,13 +237,16 @@ action can take a JSON:API document or a CSV file:
     type: 'albums',
     path: 'import',
     scope: ActionScope::Collection,
+    inputType: 'album-imports',                                 // the type a JSON:API body holds
     responds: [new MetaResult()],
     accepts: ['application/vnd.api+json' => ActionInput::Document, 'text/csv' => ActionInput::Raw],
 )]
 ```
 
 The request's `Content-Type` picks the entry. A document entry is validated and hydrated into
-`$context->input()` as usual; a raw entry leaves the body on `$context->request()`.
+`$context->input()` as usual; a raw entry leaves the body on `$context->request()`. An action
+that reads any media type as a `Document` must name its `inputType`, as a `Document` action
+does; leaving it out fails discovery, naming the action and the media type.
 `$context->requestMediaType()` returns the media type the body was sent as, lowercased and
 without parameters, such as `text/csv`. Wildcards such as `image/*` match, but never one of
 the three form types above. A type the action doesn't list is a `415`.

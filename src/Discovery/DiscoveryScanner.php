@@ -693,7 +693,8 @@ final class DiscoveryScanner
 
         // A Document action names the type its request document holds; the mount type
         // would validate the body as a full create of it.
-        if ($attribute->input === ActionInput::Document && ($attribute->inputType === null || $attribute->inputType === '')) {
+        $declaresInputType = $attribute->inputType !== null && $attribute->inputType !== '';
+        if ($attribute->input === ActionInput::Document && !$declaresInputType) {
             throw new \LogicException(\sprintf(
                 'The JSON:API action "%s" on type "%s", handled by "%s", takes input: ActionInput::Document but '
                 . 'declares no inputType. Set inputType to the type its request document holds, for example a '
@@ -704,13 +705,30 @@ final class DiscoveryScanner
             ));
         }
 
+        // A media type read as a Document names its type the same way.
+        if (!$declaresInputType) {
+            foreach ($attribute->acceptedInputs() as $mediaType => $input) {
+                if ($input === ActionInput::Document) {
+                    throw new \LogicException(\sprintf(
+                        'The JSON:API action "%s" on type "%s", handled by "%s", reads "%s" bodies as '
+                        . 'ActionInput::Document but declares no inputType. Set inputType to the type its request '
+                        . 'document holds, for example a type declared #[AsJsonApiResource(relatedOnly: true)].',
+                        $attribute->path,
+                        $attribute->type,
+                        $handlerClass,
+                        $mediaType,
+                    ));
+                }
+            }
+        }
+
         return new ActionDescriptor(
             $attribute->type,
             $attribute->path,
             $attribute->methods,
             $attribute->scope,
             $attribute->input,
-            $attribute->input === ActionInput::Document ? ($attribute->inputType ?? $attribute->type) : $attribute->type,
+            $declaresInputType ? (string) $attribute->inputType : $attribute->type,
             $serializerType,
             $responds,
             $attribute->ability,
