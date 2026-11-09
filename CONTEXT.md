@@ -68,6 +68,11 @@ A serializer registered for a type with `#[AsJsonApiSerializer]` and no resource
 hydrator** is its write-side counterpart.
 _Avoid_: resource-less resource
 
+**Related-only type**:
+A type declared `#[AsJsonApiResource(relatedOnly: true)]`: it serves no endpoint of its own and is
+reached only as another type's related or included resources, or as a custom action's `inputType`.
+_Avoid_: embedded type, endpointless type
+
 **Operation allow-list**:
 The set of CRUD operations a type exposes, which decides the routes registered for it.
 

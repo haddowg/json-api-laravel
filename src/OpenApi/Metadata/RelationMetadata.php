@@ -35,12 +35,14 @@ final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, Decl
 {
     /**
      * @param list<string> $relatedIncludablePaths the related type's includable paths (resolved by the source)
+     * @param bool         $ownerServesEndpoints   false when the owning type is related-only, so neither endpoint exists
      */
     public function __construct(
         private RelationInterface $relation,
         private ?Schema $pageSchema,
         private array $relatedIncludablePaths,
         private bool $alwaysCounts = false,
+        private bool $ownerServesEndpoints = true,
     ) {}
 
     public function exampleId(): ?string
@@ -108,12 +110,12 @@ final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, Decl
 
     public function exposesRelatedEndpoint(): bool
     {
-        return $this->relation->exposesRelatedEndpoint();
+        return $this->ownerServesEndpoints && $this->relation->exposesRelatedEndpoint();
     }
 
     public function exposesRelationshipEndpoint(): bool
     {
-        return $this->relation->exposesRelationshipEndpoint();
+        return $this->ownerServesEndpoints && $this->relation->exposesRelationshipEndpoint();
     }
 
     public function allowsReplace(): bool

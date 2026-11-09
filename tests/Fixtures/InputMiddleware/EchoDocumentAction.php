@@ -18,7 +18,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
  *
  * @internal
  */
-#[AsJsonApiAction(type: 'albums', path: 'echo-document', scope: ActionScope::Collection, input: ActionInput::Document, responds: [new MetaResult()])]
+#[AsJsonApiAction(type: 'albums', path: 'echo-document', scope: ActionScope::Collection, input: ActionInput::Document, inputType: 'albums', responds: [new MetaResult()])]
 final class EchoDocumentAction implements ActionHandlerInterface
 {
     public function handle(ActionContext $context): MetaResponse

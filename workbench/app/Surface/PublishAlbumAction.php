@@ -30,6 +30,7 @@ use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
     type: 'albums',
     path: 'publish',
     input: ActionInput::Document,
+    inputType: 'albums',
     ability: 'publish',
     asLink: true,
     summary: 'Publish an album',

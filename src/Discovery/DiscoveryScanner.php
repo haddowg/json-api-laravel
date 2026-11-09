@@ -200,6 +200,7 @@ final class DiscoveryScanner
             }
         }
 
+        self::guardRelatedOnlyMounts($resources, $actions);
         self::guardActionDeclarations($actions);
 
         // Class-name order (case-insensitive, so a longer name is not split by a shorter
@@ -220,6 +221,38 @@ final class DiscoveryScanner
             $hydrators,
             [...$scannedErrors, ...$registeredErrors],
         );
+    }
+
+    /**
+     * Refuses an action mounted on a related-only type, which serves no endpoint of its own.
+     *
+     * @param list<ResourceDescriptor> $resources
+     * @param list<ActionDescriptor>   $actions
+     */
+    private static function guardRelatedOnlyMounts(array $resources, array $actions): void
+    {
+        /** @var array<string, array<string, true>> $relatedOnly */
+        $relatedOnly = [];
+        foreach ($resources as $resource) {
+            if ($resource->relatedOnly) {
+                foreach ($resource->servers as $server) {
+                    $relatedOnly[$server][$resource->type] = true;
+                }
+            }
+        }
+
+        foreach ($actions as $action) {
+            if (isset($relatedOnly[$action->server][$action->type])) {
+                throw new \LogicException(\sprintf(
+                    'The JSON:API action "%s" on handler %s is mounted on type "%s", which is related-only and '
+                    . 'serves no endpoint of its own. Mount the action on another type, or drop relatedOnly from "%s".',
+                    $action->path,
+                    $action->handlerClass,
+                    $action->type,
+                    $action->type,
+                ));
+            }
+        }
     }
 
     /**
@@ -437,6 +470,7 @@ final class DiscoveryScanner
             $attribute !== null ? $attribute->operationExtensions : [],
             $attribute?->singular !== null ? \trim($attribute->singular) : null,
             $attribute !== null ? $attribute->deprecatedOperations : [],
+            $attribute !== null && $attribute->relatedOnly,
         );
     }
 
@@ -610,8 +644,8 @@ final class DiscoveryScanner
 
     /**
      * Builds an {@see ActionDescriptor} from a custom-action handler's
-     * {@see AsJsonApiAction} attribute: `inputType` resolves to the mount `type` when the
-     * attribute left it null, the declared `responds` set is flattened to its cacheable
+     * {@see AsJsonApiAction} attribute: a Document action must name its `inputType`, any
+     * other mode reads the mount `type`, the declared `responds` set is flattened to its cacheable
      * `{kind, ref}` scalar form, and `outputType` is resolved to the serializer type the
      * handler's responses render through — the declared `resource` (200-document)
      * response's type when one is present, else the `created` (201-document) one's, else
@@ -657,13 +691,44 @@ final class DiscoveryScanner
         /** @var class-string<ActionHandlerInterface> $handlerClass */
         $handlerClass = $reflection->getName();
 
+        // A Document action names the type its request document holds; the mount type
+        // would validate the body as a full create of it.
+        $declaresInputType = $attribute->inputType !== null && $attribute->inputType !== '';
+        if ($attribute->input === ActionInput::Document && !$declaresInputType) {
+            throw new \LogicException(\sprintf(
+                'The JSON:API action "%s" on type "%s", handled by "%s", takes input: ActionInput::Document but '
+                . 'declares no inputType. Set inputType to the type its request document holds, for example a '
+                . 'type declared #[AsJsonApiResource(relatedOnly: true)].',
+                $attribute->path,
+                $attribute->type,
+                $handlerClass,
+            ));
+        }
+
+        // A media type read as a Document names its type the same way.
+        if (!$declaresInputType) {
+            foreach ($attribute->acceptedInputs() as $mediaType => $input) {
+                if ($input === ActionInput::Document) {
+                    throw new \LogicException(\sprintf(
+                        'The JSON:API action "%s" on type "%s", handled by "%s", reads "%s" bodies as '
+                        . 'ActionInput::Document but declares no inputType. Set inputType to the type its request '
+                        . 'document holds, for example a type declared #[AsJsonApiResource(relatedOnly: true)].',
+                        $attribute->path,
+                        $attribute->type,
+                        $handlerClass,
+                        $mediaType,
+                    ));
+                }
+            }
+        }
+
         return new ActionDescriptor(
             $attribute->type,
             $attribute->path,
             $attribute->methods,
             $attribute->scope,
             $attribute->input,
-            $attribute->input === ActionInput::Document ? ($attribute->inputType ?? $attribute->type) : $attribute->type,
+            $declaresInputType ? (string) $attribute->inputType : $attribute->type,
             $serializerType,
             $responds,
             $attribute->ability,
@@ -803,14 +868,19 @@ final class DiscoveryScanner
     }
 
     /**
-     * The exposed operations as {@see Operation} case-value strings: the attribute's
-     * `readOnly` shorthand (the two fetch operations), an explicit `operations`
+     * The exposed operations as {@see Operation} case-value strings: none for a
+     * `relatedOnly` type, the attribute's `readOnly` shorthand (the two fetch operations), an explicit `operations`
      * allow-list, or — the default — all five operations.
      *
      * @return list<string>
      */
     private function operations(?AsJsonApiResource $attribute): array
     {
+        // A related-only type serves no endpoint of its own, so it has no operations.
+        if ($attribute !== null && $attribute->relatedOnly) {
+            return [];
+        }
+
         if ($attribute !== null && $attribute->readOnly) {
             return [Operation::FetchCollection->value, Operation::FetchOne->value];
         }

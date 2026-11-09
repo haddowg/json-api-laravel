@@ -895,8 +895,12 @@ final class JsonApiServiceProvider extends ServiceProvider
                 // overridden concern wins while the other stays field-driven.
                 $serializerOverrides = [];
                 $hydratorOverrides = [];
+                $relatedOnlyTypes = [];
                 foreach ($discovery->resourcesFor($server) as $descriptor) {
                     $resourceClasses[] = $descriptor->class;
+                    if ($descriptor->relatedOnly) {
+                        $relatedOnlyTypes[] = $descriptor->type;
+                    }
                     if ($descriptor->serializer !== null) {
                         $serializerOverrides[$descriptor->class] = $descriptor->serializer;
                     }
@@ -968,6 +972,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $app->bound(GrantedScopesProviderInterface::class)
                         ? static fn(): ScopeEnforcer => self::scopeEnforcer($app, $server)
                         : null,
+                    $relatedOnlyTypes,
                 );
             }
 

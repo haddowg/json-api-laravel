@@ -19,7 +19,8 @@ use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
  * {@see \haddowg\JsonApiLaravel\Attribute\AsJsonApiAction} metadata flattened into the
  * values the {@see ActionInvoker}, the route registrar and the OpenAPI metadata source
  * consume, with the decoupled-document defaults already applied: `inputType` resolves to
- * the mount `type` when the attribute left it `null`.
+ * the mount `type` when the attribute left it `null`, which a `Document` action's
+ * `inputType` never is.
  *
  * `handlerClass` is the class-string of the {@see ActionHandlerInterface} that handles
  * the action, resolved lazily through the container by the {@see ActionRegistry} so a

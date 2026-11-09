@@ -35,8 +35,11 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
  * body; {@see ActionInput::Document} parses + validates + hydrates a JSON:API document
  * into an `inputType` instance; {@see ActionInput::Raw} relaxes request content-type
  * negotiation for a non-JSON:API upload. The request document is **decoupled from the
- * mount type**: it defaults to it, but `inputType` (Document mode only) may point at any
- * other registered type. A `null` `inputType` resolves to `type`.
+ * mount type**: a Document action names the type its body holds in `inputType`, which may
+ * be any registered type — a `relatedOnly` resource or a standalone serializer/hydrator
+ * pair, both types with no endpoints of their own, or the mount type itself. An action that
+ * reads any body as a Document, through `input` or an `accepts` entry, and leaves
+ * `inputType` `null` fails discovery.
  *
  * `responds` declares the action's success-response set the generated OpenAPI advertises,
  * as a list of the `new`-constructable atomic response objects (a single object is

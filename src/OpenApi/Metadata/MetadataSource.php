@@ -379,7 +379,7 @@ final class MetadataSource
 
         $relations = [];
         foreach ($this->types->relationsFor($server, $type) as $relation) {
-            $relations[] = $this->buildRelation($server, $relation);
+            $relations[] = $this->buildRelation($server, $relation, !$descriptor->relatedOnly);
         }
 
         $operations = $this->operations($descriptor->operations);
@@ -415,7 +415,8 @@ final class MetadataSource
             // document must enumerate the same full set.
             sorts: $resource !== null ? \array_values($resource->allSorts()) : [],
             actions: $actions,
-            tags: $this->typeTags($descriptor->tags, $type),
+            // A related-only type has no operations to group, so it names no tag.
+            tags: $descriptor->relatedOnly ? [] : $this->typeTags($descriptor->tags, $type),
             // The resource's own description method hooks (no attribute-level
             // override); the projector supplies the generated default when null.
             description: $resource?->getDescription(),
@@ -436,6 +437,7 @@ final class MetadataSource
             deprecated: self::declaresDeprecation($descriptor),
             sunset: self::sunset($descriptor),
             deprecatedOperations: $descriptor->deprecatedOperations,
+            relatedOnly: $descriptor->relatedOnly,
         );
     }
 
@@ -543,7 +545,7 @@ final class MetadataSource
         return $descriptions;
     }
 
-    private function buildRelation(Server $server, RelationInterface $relation): RelationMetadata
+    private function buildRelation(Server $server, RelationInterface $relation, bool $ownerServesEndpoints = true): RelationMetadata
     {
         // Only a to-many relation has a related collection to paginate. Its page schema comes
         // from the paginator the related and relationship endpoints serve, so the document
@@ -565,6 +567,7 @@ final class MetadataSource
             $pageSchema,
             $this->includePaths->relatedPathsFor($server, $relation),
             $alwaysCounts,
+            $ownerServesEndpoints,
         );
     }
 
