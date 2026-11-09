@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Action;
 
 use haddowg\JsonApi\OpenApi\Metadata\ActionScope as OpenApiActionScope;
+use haddowg\JsonApi\OpenApi\Metadata\OperationKey;
 use haddowg\JsonApi\OpenApi\OperationReference;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Link\ActionLink;
 use haddowg\JsonApi\Schema\Link\OperationLink;
+use haddowg\JsonApi\Scope\ScopeEnforcer;
 use haddowg\JsonApi\Serializer\ResourceLinkContributorInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApi\Serializer\UriTypeAwareInterface;
+use haddowg\JsonApi\Server\ServerInterface;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
 
 /**
@@ -33,14 +36,19 @@ use haddowg\JsonApiLaravel\Authorization\Authorizer;
  * An action with no ability always renders its link; a declared ability nothing defines
  * denies, hiding the link, so link visibility matches invocation exactly.
  *
+ * It is **scope-aware** too: when the server enforces OAuth scopes, the link renders only
+ * when the request's grant covers every scope the action's method requires, the same check
+ * core's {@see ScopeEnforcer} makes before invoking it. A request with no grant is not
+ * checked, as it is not when invoking.
+ *
  * It is also **state-aware** when the action's handler is {@see ConditionallyLinked}: the link
  * additionally renders only when the handler's `shouldLink()` accepts the rendered entity (the
  * synthesized soft-delete `restore` link renders only on a trashed resource). The handler is
  * resolved lazily — and only for a `conditionallyLinked` descriptor — through the injected
  * resolver, and memoized per class (handlers are stateless).
  *
- * A declared {@see ActionLink} adds its own `when()` condition, run after the ability gate
- * with the rendered object and the request. It wins over `asLink`, so its condition applies
+ * A declared {@see ActionLink} adds its own `when()` condition, run after the ability and
+ * scope gates with the rendered object and the request. It wins over `asLink`, so its condition applies
  * even when the action also sets `asLink`.
  *
  * The href is the action route's path relative to the server, `/{uriType}/{id}/-actions/{path}`,
@@ -72,6 +80,7 @@ final class ActionLinkContributor implements ResourceLinkContributorInterface
      * @param \Closure(string): SerializerInterface                                  $serializerResolver  resolves a type's serializer lazily at render time (avoids a build-time cycle with the Server)
      * @param \Closure(class-string<ActionHandlerInterface>): ActionHandlerInterface $handlerResolver     resolves a conditionally-linked action's handler lazily at render time
      * @param (\Closure(string): list<ActionLink>)|null                              $actionLinksResolver resolves a type's declared action links lazily at render time; null declares none
+     * @param (\Closure(): ServerInterface)|null                                     $serverResolver      resolves this server lazily at render time, for its scope enforcer; null checks no scopes
      */
     public function __construct(
         private readonly array $linksByType,
@@ -79,6 +88,7 @@ final class ActionLinkContributor implements ResourceLinkContributorInterface
         private readonly Authorizer $authorizer,
         private readonly \Closure $handlerResolver,
         private readonly ?\Closure $actionLinksResolver = null,
+        private readonly ?\Closure $serverResolver = null,
     ) {}
 
     public function linksFor(mixed $object, string $type, JsonApiRequestInterface $request): array
@@ -107,9 +117,17 @@ final class ActionLinkContributor implements ResourceLinkContributorInterface
 
         $uriType = $serializer instanceof UriTypeAwareInterface && $serializer->uriType() !== '' ? $serializer->uriType() : $type;
 
+        $scopes = $this->serverResolver === null ? null : ScopeEnforcer::forServer(($this->serverResolver)());
+        $granted = $scopes?->grantedFor($request);
+
         $links = [];
         foreach ($descriptors as $descriptor) {
+            $method = $descriptor->methods[0] ?? 'POST';
             if ($descriptor->ability !== null && !$this->authorizer->allowsAction($type, $descriptor->ability, \is_object($object) ? $object : null, $descriptor->server)) {
+                continue;
+            }
+            if ($scopes !== null && $granted !== null
+                && $scopes->missing($granted, $scopes->required($type, OperationKey::action($descriptor->path, OpenApiActionScope::Resource, $method))) !== []) {
                 continue;
             }
 
@@ -127,7 +145,7 @@ final class ActionLinkContributor implements ResourceLinkContributorInterface
             // projection does, so the link can carry a `describedby`.
             $links[$descriptor->path] = new OperationLink(
                 '/' . $uriType . '/' . $id . '/-actions/' . $descriptor->path,
-                OperationReference::action($uriType, $descriptor->path, OpenApiActionScope::Resource, $descriptor->methods[0] ?? 'POST'),
+                OperationReference::action($uriType, $descriptor->path, OpenApiActionScope::Resource, $method),
             );
         }
 

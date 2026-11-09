@@ -1124,6 +1124,7 @@ final class JsonApiServiceProvider extends ServiceProvider
             $app->make(Authorizer::class),
             $handlerResolver,
             $actionLinksResolver,
+            static fn(): \haddowg\JsonApi\Server\ServerInterface => $app->make(ServerRegistry::class)->get($server),
         );
     }
 

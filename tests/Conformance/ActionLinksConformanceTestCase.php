@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
+use haddowg\JsonApi\Scope\GrantedScopesProviderInterface;
+use haddowg\JsonApi\Scope\OperationScopeResolverInterface;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ActionLinks\ActionLinkScopes;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ActionLinks\RecordResource;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\Attributes\DefineEnvironment;
@@ -13,11 +16,14 @@ use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use Workbench\App\Models\User;
+use Workbench\App\MusicCatalog\Security\BearerTokenScopes;
 
 /**
  * Action links a resource declares, against both data layers. Records 1, 2 and
  * 4 are released and 3 and 5 withdrawn. `review` links released records, `feature` links
  * released records for admins, and `archive`, an `asLink` action, links withdrawn ones.
+ * With the `scoped` environment `review` needs `records:review` and `archive` needs
+ * `records:archive`, read off a `Bearer <user>#<scopes>` token.
  */
 #[Group('actions')]
 abstract class ActionLinksConformanceTestCase extends Orchestra
@@ -67,6 +73,25 @@ abstract class ActionLinksConformanceTestCase extends Orchestra
         /** @var \Illuminate\Contracts\Config\Repository $config */
         $config = $app['config'];
         $config->set('jsonapi.base_uri', self::CONFIGURED_BASE_URI);
+    }
+
+    /**
+     * @param \Illuminate\Foundation\Application $app
+     */
+    protected function scoped($app): void
+    {
+        /** @var \Illuminate\Contracts\Config\Repository $config */
+        $config = $app['config'];
+        $config->set('jsonapi.openapi.security', [
+            'schemes' => ['oauth2' => [
+                'type' => 'oauth2',
+                'flows' => ['clientCredentials' => ['tokenUrl' => 'https://example.test/oauth/token', 'scopes' => []]],
+            ]],
+            'scope_scheme' => 'oauth2',
+        ]);
+
+        $app->singleton(OperationScopeResolverInterface::class, ActionLinkScopes::class);
+        $app->singleton(GrantedScopesProviderInterface::class, BearerTokenScopes::class);
     }
 
     protected function setUp(): void
@@ -143,6 +168,60 @@ abstract class ActionLinksConformanceTestCase extends Orchestra
     {
         self::assertArrayNotHasKey('archive', $this->linksOf('/api/records/1'));
         self::assertSame('http://localhost/api/records/3/-actions/archive', self::at($this->linksOf('/api/records/3'), 'archive', 'href'));
+    }
+
+    #[Test]
+    #[DefineEnvironment('scoped')]
+    public function aTokenGrantingTheActionsScopesSeesTheirLinks(): void
+    {
+        $token = 'someone#records:review records:archive';
+
+        self::assertArrayHasKey('review', $this->linksOf('/api/records/1', $token));
+        self::assertArrayHasKey('archive', $this->linksOf('/api/records/3', $token));
+    }
+
+    #[Test]
+    #[DefineEnvironment('scoped')]
+    public function aTokenMissingAnActionsScopeDoesNotSeeItsLink(): void
+    {
+        $token = 'someone#records:archive';
+
+        self::assertArrayNotHasKey('review', $this->linksOf('/api/records/1', $token));
+        $this->call('POST', '/api/records/1/-actions/review', [], [], [], [
+            'HTTP_ACCEPT' => self::MEDIA_TYPE,
+            'CONTENT_TYPE' => self::MEDIA_TYPE,
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
+        ])->assertForbidden();
+        self::assertArrayHasKey('archive', $this->linksOf('/api/records/3', $token));
+    }
+
+    #[Test]
+    #[DefineEnvironment('scoped')]
+    public function aTokenWithNoScopesSeesNoScopedLink(): void
+    {
+        $token = 'someone#';
+
+        self::assertArrayNotHasKey('review', $this->linksOf('/api/records/1', $token));
+        self::assertArrayNotHasKey('archive', $this->linksOf('/api/records/3', $token));
+    }
+
+    #[Test]
+    #[DefineEnvironment('scoped')]
+    public function aRequestWithoutAGrantKeepsEveryLink(): void
+    {
+        self::assertArrayHasKey('review', $this->linksOf('/api/records/1'));
+        self::assertArrayHasKey('archive', $this->linksOf('/api/records/3'));
+    }
+
+    #[Test]
+    #[DefineEnvironment('scoped')]
+    public function scopesAndTheAbilityBothGateTheLink(): void
+    {
+        $this->actingAs($this->user(admin: true));
+        self::assertArrayHasKey('feature', $this->linksOf('/api/records/1', 'someone#'));
+
+        $this->actingAs($this->user(admin: false));
+        self::assertArrayNotHasKey('feature', $this->linksOf('/api/records/1', 'someone#records:review'));
     }
 
     #[Test]
@@ -244,9 +323,9 @@ abstract class ActionLinksConformanceTestCase extends Orchestra
     /**
      * @return array<array-key, mixed>
      */
-    private function linksOf(string $uri): array
+    private function linksOf(string $uri, ?string $token = null): array
     {
-        $links = self::at($this->fetch($uri), 'data', 'links');
+        $links = self::at($this->fetch($uri, $token), 'data', 'links');
         self::assertIsArray($links);
 
         return $links;
@@ -255,9 +334,13 @@ abstract class ActionLinksConformanceTestCase extends Orchestra
     /**
      * @return array<array-key, mixed>
      */
-    private function fetch(string $uri): array
+    private function fetch(string $uri, ?string $token = null): array
     {
-        $response = $this->get($uri, ['Accept' => self::MEDIA_TYPE]);
+        $headers = ['Accept' => self::MEDIA_TYPE];
+        if ($token !== null) {
+            $headers['Authorization'] = 'Bearer ' . $token;
+        }
+        $response = $this->get($uri, $headers);
         $response->assertOk();
 
         return $this->decode($response);

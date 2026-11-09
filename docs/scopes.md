@@ -114,6 +114,8 @@ A custom action declares its own:
   hop is a `403` naming the path in `meta.include`.
 - A resource included by default that the caller may not read is left out of `included`. Its
   identifier stays in the linkage and the request succeeds.
+- An [action link](actions.md#the-attribute) is left out the same way when the grant misses a
+  scope its action needs, so a client isn't shown a link that would `403`.
 - An Atomic Operations batch needs the endpoint's scopes, and every operation in it is
   checked as the equivalent request would be, before the transaction opens. The first
   operation that fails refuses the whole batch with `source.pointer`
