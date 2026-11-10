@@ -922,7 +922,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             if ($windowed instanceof ErrorResponse) {
                 return $windowed;
             }
-            $page = $windowed;
+            ['page' => $page, 'total' => $total] = $windowed;
         } elseif ($relation->isToMany() && Polymorphism::isMonomorphic($relation)
             && ($queried || $this->providers->supportsType($relatedTypes[0]))) {
             // A monomorphic to-many (pivot or not) is paginated by default, queried or not, so
@@ -955,8 +955,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $relation->isCountable(),
         );
 
-        // A counted cursor page has no `last` link to show its total, so the total renders
-        // as the top-level meta.total.
+        // A linkage page counted for `?withCount=_self_` renders its total as the top-level
+        // meta.total, as a counted collection does.
         if ($total !== null) {
             $response = $response->withMeta(['total' => $total]);
         }
@@ -1007,7 +1007,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * endpoint's `_self_` gate). On success it returns the built page (`null` when the relation
      * is not paginated), so the caller can attach it to the response via
      * {@see IdentifierResponse::withPage()}, for a pivot relation the page members' pivot
-     * map the linkage renders as `meta.pivot`, and a counted cursor page's total.
+     * map the linkage renders as `meta.pivot`, and the total a `?withCount=_self_` asked for.
      *
      * @return ErrorResponse|array{page: PageInterface<mixed>|null, pivotMap: array<string, array<string, mixed>>, total: int|null}
      */
@@ -1053,15 +1053,15 @@ final class CrudOperationHandler implements OperationHandlerInterface
         return [
             'page' => $this->supplyWindowedRelationship($parent, $relation->name(), $items, $paginator, $result, $wantsCount, $request, $queryParameters),
             'pivotMap' => $this->pivotMap($server, $type, $parent, $relation, $items),
-            'total' => $result instanceof CursorCollectionResult ? $result->total : null,
+            'total' => $request->countsRelationship('_self_') ? $result->total : null,
         ];
     }
 
     /**
      * Windows an identified MorphToMany's relationship endpoint: its admitted pairs paged by the
-     * relation's paginator, supplied out-of-band as the linkage, with the page for the links.
+     * relation's paginator, supplied out-of-band as the linkage, with the page for the links and the total a `?withCount=_self_` asked for.
      *
-     * @return ErrorResponse|PageInterface<mixed>|null
+     * @return ErrorResponse|array{page: PageInterface<mixed>|null, total: int|null}
      */
     private function windowIdentifiedRelationshipEndpoint(
         Server $server,
@@ -1070,7 +1070,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         MorphToMany $relation,
         QueryParameters $queryParameters,
         JsonApiRequestInterface $request,
-    ): ErrorResponse|PageInterface|null {
+    ): ErrorResponse|array {
         $paginator = $this->relationCriteria->paginatorFor($relation, null, $server)?->resolve($request);
 
         if ($request->countsRelationship('_self_') && !$relation->isCountable()) {
@@ -1083,7 +1083,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $criteria = $this->relationCriteria->criteriaFor($queryParameters, null, $relation, $paginator?->window($request), wantsCount: $wantsCount, request: $request);
         $result = $this->relationshipLinkage->members()->pageMembers($server, $parent, $relation, $criteria, $request, $this->linkRows($type));
 
-        return $this->supplyWindowedRelationship($parent, $relation->name(), $this->materialize($result), $paginator, $result, $wantsCount, $request, $queryParameters);
+        return [
+            'page' => $this->supplyWindowedRelationship($parent, $relation->name(), $this->materialize($result), $paginator, $result, $wantsCount, $request, $queryParameters),
+            'total' => $request->countsRelationship('_self_') ? $result->total : null,
+        ];
     }
 
     /**
