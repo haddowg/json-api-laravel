@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.0](https://github.com/haddowg/json-api-laravel/compare/v2.5.0...v2.6.0) (2026-11-10)
+
+
+### Features
+
+* validate Union fields and store their values ([#239](https://github.com/haddowg/json-api-laravel/issues/239)) ([6efed7d](https://github.com/haddowg/json-api-laravel/commit/6efed7d7ba623b3a4ccc7f996702ece9ad46bc24))
+
 ## [2.5.0](https://github.com/haddowg/json-api-laravel/compare/v2.4.2...v2.5.0) (2026-11-10)
 
 
