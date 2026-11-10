@@ -288,7 +288,7 @@ abstract class UnionConformanceTestCase extends Orchestra
     {
         $document = $this->resolve(DocumentFactory::class)->forServer('default')->toArray();
 
-        self::assertSame(['contract' => GeneratorContract::UNIONS], $this->arrayAt($document, 'info', 'x-generator'));
+        self::assertSame(['contract' => GeneratorContract::BASELINE], $this->arrayAt($document, 'info', 'x-generator'));
         $attributes = $this->arrayAt($document, 'components', 'schemas', 'PresetsCreateAttributes', 'properties');
         self::assertSame([
             'type' => ['string', 'number', 'boolean', 'array', 'null'],
