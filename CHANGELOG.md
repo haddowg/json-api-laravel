@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.1](https://github.com/haddowg/json-api-laravel/compare/v2.7.0...v2.7.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* never render a provider-read to-many's linkage off the model ([#248](https://github.com/haddowg/json-api-laravel/issues/248)) ([0cde429](https://github.com/haddowg/json-api-laravel/commit/0cde4299caa1133ebbea44a75d39a4b17ed5994c))
+
 ## [2.7.0](https://github.com/haddowg/json-api-laravel/compare/v2.6.1...v2.7.0) (2026-11-10)
 
 
