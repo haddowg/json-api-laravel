@@ -98,6 +98,7 @@ use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\NaiveDateTimeStorage;
+use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphMembers;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphTargets;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
@@ -429,6 +430,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $resource = $server->hasResourceFor($type) ? $server->resourceFor($type) : null;
 
         $filters = $resource?->allFilters() ?? [];
+        $paths = FilterPaths::of($server, $resource);
 
         // The always-on filter-value gate: a client-supplied
         // `filter[<key>]` value is validated against the filter's declared value
@@ -436,7 +438,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // `filter[trackRange][min]=banana`, or a calendar-invalid DateRange bound) is a
         // clean `400` FILTER_VALUE_INVALID rather than a silent non-match or a driver
         // error. The raw requested map is validated (never the author-set defaults).
-        $this->filterValidator->validate($operation->queryParameters()->filter, $filters, $request);
+        $this->filterValidator->validate($operation->queryParameters()->filter, $filters, $request, $paths);
 
         // The `viewAny` policy gate authorizes the collection BEFORE the query runs, on
         // a blank instance minted for the type's class (so a policy's `viewAny($user)` is
@@ -482,6 +484,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $resource?->defaultSort() ?? [],
             wantsCount: $wantsCount,
             request: $request,
+            paths: $paths,
         ));
 
         $items = $this->materialize($result);
@@ -671,11 +674,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 wantsCount: $relWantsCount,
                 includePivotFields: $pivotQuery,
                 request: $request,
+                server: $server,
             );
 
             // Validate a client-supplied filter value against the merged vocabulary (related
             // resource ⊕ relation-scoped), so a mistyped value is the same 400 as elsewhere.
-            $this->filterValidator->validate($operation->queryParameters()->filter, $criteria->filters, $request);
+            $this->filterValidator->validate($operation->queryParameters()->filter, $criteria->filters, $request, $criteria->paths);
 
             // A relation over several types reaching a scoped type is read off the parent and
             // narrowed per member type before the page is cut, so the page stays full.
@@ -804,8 +808,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
                     $relation,
                     null,
                     request: $request,
+                    server: $server,
                 );
-                $this->filterValidator->validate($filter, $criteria->filters, $request);
+                $this->filterValidator->validate($filter, $criteria->filters, $request, $criteria->paths);
 
                 if (!$this->providers->forType($relatedType)->relatedToOneMatches($relatedType, $related, $relation, $criteria, $request)) {
                     $related = null;
@@ -1044,8 +1049,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
             wantsCount: $wantsCount,
             includePivotFields: $this->pivotQueryingProvider($parent, $relation) !== null,
             request: $request,
+            server: $server,
         );
-        $this->filterValidator->validate($queryParameters->filter, $criteria->filters, $request);
+        $this->filterValidator->validate($queryParameters->filter, $criteria->filters, $request, $criteria->paths);
 
         $result = $this->providers->forType($relatedType)->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
         $items = $this->materialize($result);

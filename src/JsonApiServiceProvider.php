@@ -262,7 +262,8 @@ final class JsonApiServiceProvider extends ServiceProvider
             };
 
             // Checks every to-many read order a server's resources declare against the sorts
-            // each relation accepts, so a typo'd default fails the boot. The resources resolve
+            // each relation accepts, and resolves every declared filter's traversal path, so a
+            // typo'd default or a polymorphic filter leaf fails the boot. The resources resolve
             // lazily through a bare core server, not the configured one, keeping registration
             // cheap; one that cannot be built here is left to the optimize check.
             $relationOrderGuard = static function (string $server) use ($app): void {
@@ -290,6 +291,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                         continue;
                     }
                     $guard->check($registry, $type, $resource);
+                    \haddowg\JsonApiLaravel\Server\FilterPathGuard::check($registry, $resource);
                 }
             };
 

@@ -12,6 +12,9 @@ use haddowg\JsonApi\Resource\Filter\FilterFamilyInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Filter\Range;
+use haddowg\JsonApi\Resource\Filter\WhereThrough;
+use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
+use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use Illuminate\Contracts\Validation\Factory as ValidationFactory;
 
 /**
@@ -53,17 +56,21 @@ final class FilterValueValidator
      * matching declared filter is left untouched (the unrecognised-key `400` is the
      * provider's concern, raised later in the
      * {@see \haddowg\JsonApiLaravel\DataProvider\CriteriaApplier}); a filter that declares
-     * no constraints and no list is skipped, so it costs nothing.
+     * no constraints and no list is skipped, so it costs nothing. A matched filter's
+     * traversal path is resolved through `$paths` first, so a path ending on a relationship
+     * validates each member against the related id's format when it declares no constraints.
      *
      * @param array<array-key, mixed>  $requested the request's raw `filter[<key>]` map
      * @param list<FilterInterface>    $filters   the declared filter vocabulary to match against
      * @param ?JsonApiRequestInterface $request   the request a filter family resolves a key against
+     * @param ?FilterPaths             $paths     resolves a matched filter's traversal path against the filtered type's fields
      *
      * @throws FilterValueInvalid when a client-supplied value violates its filter's constraints, or a list filter's value is not a list it accepts
      */
-    public function validate(array $requested, array $filters, ?JsonApiRequestInterface $request = null): void
+    public function validate(array $requested, array $filters, ?JsonApiRequestInterface $request = null, ?FilterPaths $paths = null): void
     {
         foreach ($this->matched($requested, $filters, $request) as [$key, $filter]) {
+            $filter = $paths?->resolve($filter) ?? $filter;
             $value = $requested[$key];
             $list = $filter instanceof AcceptsList ? $filter->listValue() : null;
 
@@ -93,6 +100,14 @@ final class FilterValueValidator
 
             if ($messages !== []) {
                 throw new FilterValueInvalid($key, $messages);
+            }
+
+            // A relationship leaf decodes each wire id through the related type's encoder,
+            // so an id it cannot decode is the same 400 before any query or gate runs.
+            if ($filter instanceof WhereThroughIn && $filter->resolvedPath()?->endsOnRelation() === true) {
+                $filter->storageValues($value);
+            } elseif ($filter instanceof WhereThrough && $filter->resolvedPath()?->endsOnRelation() === true) {
+                $filter->storageValue($value);
             }
         }
     }

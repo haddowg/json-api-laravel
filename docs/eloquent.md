@@ -119,6 +119,7 @@ declare, and the provider translates:
 | `DateRange::make('releasedAt', 'released_at')` | a datetime bound pair, in the app timezone (see [below](#date-times-and-the-app-timezone)) |
 | `WhereHas::make('tracks')` | `whereHas('tracks')` (relationship existence) |
 | `WhereThrough::make('artist.name')` | a dotted-path correlated `EXISTS` |
+| `WhereThroughIn::make('label', 'artist.label')` | one correlated `EXISTS` over the path with a `whereIn` at the leaf |
 | `WhereAll` / `WhereAny` | a nested `where(fn ($q) => …)` combining the children with `AND` / `orWhere` |
 | `Where…->fixed($value)` | the same `where` predicate with its value pinned server-side (no arm needed) |
 
@@ -180,6 +181,60 @@ family resolving to a built-in filter needs nothing more; one resolving to a cus
 an [arm](#custom-filters-and-sorts-the-arm-seam) on each provider, as any custom filter does.
 The OpenAPI `filter` parameter lists each family under `x-filter-families`, and a list filter
 gets its own `filter[<key>][]` parameter.
+
+### Filtering through a path: `WhereThroughIn` and relationship leaves
+
+`WhereThroughIn` is core's [`WhereThrough` with a `WhereIn` at the
+leaf](https://github.com/haddowg/json-api/blob/main/docs/filters.md#matching-a-list-through-a-path-wherethroughin).
+Its value is always a list, so `filter[advertiser]=4,7` and
+`filter[advertiser][]=4&filter[advertiser][]=7` both work, and each member is validated on its
+own. The Eloquent provider runs it as one `whereHas` chain over the path with a `whereIn` on the
+leaf, so the whole list is one correlated `EXISTS` whose leaf is an `IN`, never one `EXISTS` per
+value. A path of two hops nests a second `EXISTS` inside the first, as `whereHas` does for any
+dotted relation. An empty list matches nothing and adds `1 = 0` rather than an empty `IN`.
+
+A `?withCount` count or a Relationship Queries total filtered by one of these counts correctly
+too. Eloquent's `withCount` builds its subquery on the related model, so the `EXISTS` correlates
+on each counted member rather than on the parent, and two traversals in one `WhereAll` or
+`WhereAny` each correlate on their own.
+
+A `WhereThrough` or `WhereThroughIn` path can also [end on a
+relationship](https://github.com/haddowg/json-api/blob/main/docs/filters.md#paths-that-end-on-a-relationship):
+
+```php
+use haddowg\JsonApi\Resource\Filter\WhereThrough;
+use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
+
+public function filters(): array
+{
+    return [
+        WhereThroughIn::make('advertiser', 'campaign.advertiser'), // filter[advertiser]=4,7
+        WhereThroughIn::make('template', 'templates'),             // filter[template]=tpl-1,tpl-2
+        WhereThrough::make('advertiserIs', 'campaign.advertiser'), // filter[advertiserIs]=4
+    ];
+}
+```
+
+The filter then compares the related model's key at the end of the `whereHas` chain, so a single
+segment such as `templates` is a valid path. Both providers resolve each path after matching the
+requested key, against the fields of the type the filters run against: the type's own on its
+collection, and the related type's on a related or relationship endpoint, a relation's own
+`filters()` included. A filter family's filter resolves the same way, per request. Each segment
+matches a relation by the name its model method has, the relation's `storedAs()` column when it
+declares one. A path whose segments are not all relations ends on a field and behaves as it
+always did.
+
+The client sends the ids it reads in `data.id`. Each one is decoded through the related type's
+[id encoder](resources.md) before the query, and with no declared constraints the members
+validate against the related id's format, so a `numeric()` id rejects `filter[advertiser]=4,x`
+and a `uuid()` id anything that isn't a UUID. A bad member, or an id the encoder can't decode,
+is a `400 FILTER_VALUE_INVALID` at `filter[<key>]` before the query runs. The
+OpenAPI document types each list's items by the related id.
+
+A path ending on a `MorphTo` or `MorphToMany` has no single id to compare. Route registration
+and `jsonapi:optimize` resolve every declared filter, relation-scoped ones included, and fail
+with the path that ends on one, as they do for a `WhereThrough` on a relationship that declares
+`deserializeUsing()` or a non-equality operator.
 
 ### Date-times and the app timezone
 

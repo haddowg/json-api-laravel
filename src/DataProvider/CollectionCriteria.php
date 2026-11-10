@@ -43,6 +43,9 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  * - {@see $defaultSortResolved} — whether the default order was resolved against the
  *   relation's sorts when the criteria was built (a relation's own read order, checked at
  *   warm-up), so the applier takes it as given rather than matching each key;
+ * - {@see $paths} — resolves a matched traversal filter's path against the fields of the
+ *   type the filters run against, so a path ending on a relationship compares the related
+ *   id. `null` leaves every traversal path ending on a field;
  * - {@see $request} — the request being answered, which a filter or sort family needs to
  *   resolve a requested key. `null` only where no request drives the fetch, such as
  *   an internal lookup that never filters or sorts.
@@ -57,6 +60,7 @@ final readonly class CollectionCriteria
      * @param bool                  $wantsCount  whether the provider should run the `COUNT` for this windowed fetch (default false = count-free)
      * @param ?JsonApiRequestInterface $request  the request a filter or sort family resolves a key against
      * @param bool                  $defaultSortResolved whether {@see $defaultSort} is already resolved against the sorts, so it applies as given
+     * @param ?FilterPaths          $paths       resolves each matched filter's traversal path against the filtered type's fields
      */
     public function __construct(
         public QueryParameters $queryParameters,
@@ -68,5 +72,6 @@ final readonly class CollectionCriteria
         public bool $wantsCount = false,
         public ?JsonApiRequestInterface $request = null,
         public bool $defaultSortResolved = false,
+        public ?FilterPaths $paths = null,
     ) {}
 }

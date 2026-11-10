@@ -8,6 +8,8 @@ use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\FilterHandlerInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\Range;
+use haddowg\JsonApi\Resource\Filter\ThroughPath;
+use haddowg\JsonApi\Resource\Filter\TraversesPath;
 use haddowg\JsonApi\Resource\Filter\UnsupportedFilter;
 use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApi\Resource\Filter\WhereAll;
@@ -21,6 +23,7 @@ use haddowg\JsonApi\Resource\Filter\WhereNotIn;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
+use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -53,12 +56,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMan
  *   fixed-child group a canned toggle, and groups nest (a group child re-enters this
  *   dispatch). A `->fixed()` {@see Where} needs no arm of its own: its pinned value
  *   rides the existing `deserialize` seam, so the {@see Where} arm runs it unchanged.
- * - {@see WhereHas}/{@see WhereDoesntHave} and {@see WhereThrough} are
- *   relationship-existence filters: Eloquent's `whereHas`/`whereDoesntHave`
- *   compile to a correlated `EXISTS`/`NOT EXISTS` subquery (set-membership, never
- *   a fetch-join, so the primary rows are neither duplicated nor need a
- *   `DISTINCT`), and a dotted `WhereThrough` path drives a nested `whereHas` whose
- *   leaf closure applies the comparison on the final relation.
+ * - {@see WhereHas}/{@see WhereDoesntHave}, {@see WhereThrough} and
+ *   {@see WhereThroughIn} are relationship-existence filters: Eloquent's
+ *   `whereHas`/`whereDoesntHave` compile to a correlated `EXISTS`/`NOT EXISTS`
+ *   subquery (set-membership, never a fetch-join, so the primary rows are neither
+ *   duplicated nor need a `DISTINCT`), and a traversal path drives a nested
+ *   `whereHas` whose leaf closure applies the comparison, or the `IN` list, on the
+ *   final relation. A path resolved to a relationship leaf compares the related
+ *   model's key with the decoded id.
  *
  * Columns come from the server-side resource declaration, never the client, and
  * are validated as identifier paths and qualified against the model's table before
@@ -161,6 +166,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface
             $filter instanceof WhereNull => $query->whereNull($this->qualify($query, $filter->column)),
             $filter instanceof WhereNotNull => $query->whereNotNull($this->qualify($query, $filter->column)),
             $filter instanceof WhereThrough => $this->whereThrough($query, $filter, $value),
+            $filter instanceof WhereThroughIn => $this->whereThroughIn($query, $filter, $value),
             $filter instanceof WhereHas => $query->whereHas($filter->relationship),
             $filter instanceof WhereDoesntHave => $query->whereDoesntHave($filter->relationship),
             // Range (and DateRange, which extends it): two push-down where predicates.
@@ -261,34 +267,76 @@ final class EloquentFilterHandler implements FilterHandlerInterface
      * The dotted-traversal existence filter ({@see WhereThrough}): an `EXISTS-ANY`
      * semi-join. Eloquent's `whereHas` accepts a dotted `a.b.c` relation string for
      * nested existence; the leaf attribute is split off the last segment and the
-     * comparison applied in the closure on the final relation's query. Far simpler
-     * than a hand-built subquery — the in-memory witness walks the object graph, this
-     * compiles to a correlated EXISTS.
+     * comparison applied in the closure on the final relation's query. A path resolved to
+     * a relationship leaf traverses every segment and compares the related model's key
+     * with the decoded id instead.
      *
      * @param Builder<Model> $query
      */
     private function whereThrough(Builder $query, WhereThrough $filter, mixed $value): void
     {
-        $expected = $filter->deserialize !== null ? ($filter->deserialize)($value) : $value;
-
-        $segments = \explode('.', $filter->path);
-        if (\count($segments) < 2) {
-            throw new \LogicException(\sprintf(
-                'WhereThrough filter "%s" needs a dotted path "relationship.attribute"; got "%s".',
-                $filter->key(),
-                $filter->path,
-            ));
-        }
-
-        $leaf = $segments[\count($segments) - 1];
-        $relation = \implode('.', \array_slice($segments, 0, -1));
+        $expected = $filter->storageValue($value);
+        [$relation, $leaf] = $this->throughPath($filter);
 
         $query->whereHas(
             $relation,
             function (Builder $sub) use ($leaf, $filter, $expected): void {
-                $this->applyComparison($sub, $leaf, $filter->operator, $expected, $filter->key());
+                $this->applyComparison($sub, $leaf ?? $sub->getModel()->getKeyName(), $filter->operator, $expected, $filter->key());
             },
         );
+    }
+
+    /**
+     * The dotted-traversal set filter ({@see WhereThroughIn}): one `whereHas` chain over
+     * the path whose leaf is a `whereIn` over the list, so the list is one correlated
+     * `EXISTS` with an `IN`, never one per value. An empty list matches nothing.
+     *
+     * @param Builder<Model> $query
+     */
+    private function whereThroughIn(Builder $query, WhereThroughIn $filter, mixed $value): void
+    {
+        $values = $filter->storageValues($value);
+        if ($values === []) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        [$relation, $leaf] = $this->throughPath($filter);
+
+        $query->whereHas(
+            $relation,
+            function (Builder $sub) use ($leaf, $values): void {
+                $this->whereIn($sub, $leaf ?? $sub->getModel()->getKeyName(), $values, false);
+            },
+        );
+    }
+
+    /**
+     * The relation chain a traversal filter's `whereHas` walks and the column it compares
+     * at the end, or `null` for the related model's key when the path ends on a
+     * relationship. A path ending on a field needs at least one relationship before it.
+     *
+     * @return array{string, ?string}
+     */
+    private function throughPath(TraversesPath $filter): array
+    {
+        $path = $filter->resolvedPath() ?? ThroughPath::toField($filter->throughPath());
+        $segments = $path->segments;
+
+        if ($path->endsOnRelation()) {
+            return [\implode('.', $segments), null];
+        }
+
+        if (\count($segments) < 2) {
+            throw new \LogicException(\sprintf(
+                'Filter "%s" needs a dotted path "relationship.attribute" or a path ending on a relationship; got "%s".',
+                $filter->key(),
+                $filter->throughPath(),
+            ));
+        }
+
+        return [\implode('.', \array_slice($segments, 0, -1)), $segments[\count($segments) - 1]];
     }
 
     /**

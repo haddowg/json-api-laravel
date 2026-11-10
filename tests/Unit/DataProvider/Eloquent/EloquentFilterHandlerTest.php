@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Unit\DataProvider\Eloquent;
 
+use haddowg\JsonApi\Resource\Field\HasMany;
+use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Filter\Boolean;
 use haddowg\JsonApi\Resource\Filter\Contains;
 use haddowg\JsonApi\Resource\Filter\DateRange;
@@ -14,6 +16,7 @@ use haddowg\JsonApi\Resource\Filter\GreaterThan;
 use haddowg\JsonApi\Resource\Filter\Numeric;
 use haddowg\JsonApi\Resource\Filter\Range;
 use haddowg\JsonApi\Resource\Filter\StartsWith;
+use haddowg\JsonApi\Resource\Filter\ThroughPath;
 use haddowg\JsonApi\Resource\Filter\UnsupportedFilter;
 use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
@@ -25,6 +28,7 @@ use haddowg\JsonApi\Resource\Filter\WhereNotIn;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
+use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\AppliesToEloquentQueryBuilder;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentFilterHandler;
 use haddowg\JsonApiLaravel\Tests\Eloquent\EloquentTestCase;
@@ -208,6 +212,50 @@ final class EloquentFilterHandlerTest extends EloquentTestCase
         self::assertStringContainsString('exists (select * from "albums"', $sql);
         self::assertStringContainsString('"albums"."title" = ?', $sql);
         self::assertSame(['OK Computer'], $bindings);
+    }
+
+    #[Test]
+    public function itMapsAWhereThroughInToOneExistsWithAnInAtTheLeaf(): void
+    {
+        [$sql, $bindings] = $this->apply(WhereThroughIn::make('albumTitles', 'albums.title'), 'OK Computer,Kid A');
+
+        self::assertSame(1, \substr_count($sql, 'exists'));
+        self::assertStringContainsString('"albums"."title" in (?, ?)', $sql);
+        self::assertSame(['OK Computer', 'Kid A'], $bindings);
+    }
+
+    #[Test]
+    public function anEmptyWhereThroughInListMatchesNothingWithoutAnExists(): void
+    {
+        $sql = $this->sql(WhereThroughIn::make('albumTitles', 'albums.title'), []);
+
+        self::assertStringContainsString('1 = 0', $sql);
+        self::assertStringNotContainsString('exists', $sql);
+    }
+
+    #[Test]
+    public function aPathResolvedToARelationshipComparesTheRelatedKey(): void
+    {
+        $albums = HasMany::make('albums', 'albums')->build();
+        $path = new ThroughPath('albums', ['albums'], $albums, 'albums', Id::make()->build());
+
+        [$in, $inBindings] = $this->apply(WhereThroughIn::make('album', 'albums')->build()->withResolvedPath($path), ['3', '5']);
+        self::assertSame(1, \substr_count($in, 'exists'));
+        self::assertStringContainsString('"albums"."id" in (?, ?)', $in);
+        self::assertSame(['3', '5'], $inBindings);
+
+        [$eq, $eqBindings] = $this->apply(WhereThrough::make('album', 'albums')->build()->withResolvedPath($path), '3');
+        self::assertStringContainsString('"albums"."id" = ?', $eq);
+        self::assertSame(['3'], $eqBindings);
+    }
+
+    #[Test]
+    public function anUnresolvedSingleSegmentPathIsRefused(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('needs a dotted path');
+
+        $this->sql(WhereThroughIn::make('albums'), '1');
     }
 
     #[Test]

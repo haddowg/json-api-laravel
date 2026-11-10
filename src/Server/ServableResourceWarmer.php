@@ -89,6 +89,9 @@ use Psr\Log\LoggerInterface;
  *    rather than a problem, since the build is still servable.
  *  - **A to-many's read order must name sorts the relation accepts.** Core's
  *    {@see RelationOrderValidator}, run per resource.
+ *  - **A filter's traversal path must resolve.** A `WhereThrough` or `WhereThroughIn`
+ *    path ending on a polymorphic relation has no single id to compare
+ *    ({@see FilterPathGuard}), a relation's scoped filters included.
  *
  * Standalone-serializer types are validated too — a
  * fetch-opened standalone type without a provider is exactly the deploy-time
@@ -138,6 +141,7 @@ final class ServableResourceWarmer
                 $this->guardSortableFilterableColumns($serverName, $type, $problems);
                 $this->guardActionLinks($serverName, $type, $problems);
                 $this->guardRelationOrder($serverName, $type, $problems);
+                $this->guardFilterPaths($serverName, $type, $problems);
                 $this->noteInMemoryLinkRows($serverName, $type);
             }
 
@@ -329,6 +333,28 @@ final class ServableResourceWarmer
 
         try {
             (new RelationOrderGuard(fn(): DataProviderRegistry => $this->providers))->check($server, $type, $resource);
+        } catch (\LogicException $e) {
+            $problems[] = $e->getMessage();
+        }
+    }
+
+    /**
+     * Reports a declared filter whose traversal path can't be resolved, such as one ending on
+     * a polymorphic relation ({@see FilterPathGuard}). Route registration makes the same
+     * check, but a cached route table skips it.
+     *
+     * @param list<string> $problems
+     */
+    private function guardFilterPaths(string $serverName, string $type, array &$problems): void
+    {
+        $server = $this->servers->get($serverName);
+        $resource = $this->types->resourceFor($server, $type);
+        if ($resource === null) {
+            return;
+        }
+
+        try {
+            FilterPathGuard::check($server, $resource);
         } catch (\LogicException $e) {
             $problems[] = $e->getMessage();
         }
