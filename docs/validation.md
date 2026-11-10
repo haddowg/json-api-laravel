@@ -52,14 +52,17 @@ Core's constraint VOs translate to the natural Laravel rule:
 | `Map` children | nested dot-notation rules → `/data/attributes/<map>/<child>` pointers |
 | `Obj` children | the same dot-notation cascade as `Map` (one value, one json column) |
 | `OneOf` variants | the discriminator selects the variant; its children cascade like `Map`'s, an unknown discriminator is a `422` at `/data/attributes/<field>/<discriminator>` |
+| `Union` members | the value's JSON type selects the member; its rules apply at the union's pointer, a list member's element rules at `/data/attributes/<union>/<index>`; see [unions](composite-attributes.md#unions) |
 | `ArrayList` of `Obj` / `OneOf` | each element validates as its `Obj` or `OneOf` would, at `/data/attributes/<list>/<index>/…`; see [lists of structured elements](composite-attributes.md#lists-of-structured-elements) |
 | `Shape` | not translated — value-validated by core's opis `SchemaValueValidator` when opis is installed (see [composite attributes](composite-attributes.md)) |
 
 A required field must be present on create and may be left out of an update. When it is
-sent, Laravel's `required` applies: a string can't be empty or whitespace-only, a list or
-map can't be empty, and a boolean or number only has to be non-null, so `false` and `0`
-are valid. A field that is both required and nullable also accepts an explicit `null`, on
-create and on update, and still rejects a blank value.
+sent, Laravel's `required` applies: a string can't be empty or whitespace-only, and a list,
+a map or a field type of your own can't be empty. A boolean, a number, a `OneOf` and a
+`Union` only have to be non-null, so `false` and `0` are valid. An empty object for a required `OneOf` selects no variant, so
+it gets that error rather than `required`. A required union's string or list member still
+refuses an empty value. A field that is both required and nullable also accepts an explicit
+`null`, on create and on update, and still rejects a blank value.
 
 ### A value of the wrong JSON type
 
@@ -71,7 +74,8 @@ boolean for `Boolean`, an integer for `Integer`, a number for `Decimal`, a list 
 value without its type is the only error at its pointer, worded by Laravel's own message
 for the type, such as `The options.notify publishers field must be true or false.` or
 `The rows.0.key field must be a string.`. An object uses the `array` message and a list
-the `list` message. An explicit `null` on a field that is not nullable keeps the first
+the `list` message. Laravel has no message for a value of several types, so a union names
+them all: `The value field must be a string, a number, a boolean or a list.` An explicit `null` on a field that is not nullable keeps the first
 error Laravel's rules gave it. A pivot field's value in a linkage member's `meta` is
 checked the same way.
 

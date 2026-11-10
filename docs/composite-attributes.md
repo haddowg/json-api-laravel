@@ -165,6 +165,62 @@ renders through the children. A `serializeUsing()` value skips them and goes out
 hook returns it, so keep it to the declared shape or the response won't match the
 document.
 
+## Unions
+
+A [`Union`](https://github.com/haddowg/json-api/blob/main/docs/field-types.md#union) holds a
+string, a number, a boolean or a list of those, and the value's JSON type picks the one member
+that applies. Core casts the value through that member, so the package only validates it:
+
+```php
+Union::make('value')->of(
+    Str::make()->maxLength(20),
+    Decimal::make(),
+    Boolean::make(),
+    ArrayList::make()->maxItems(3)->of(Union::of(Str::make()->maxLength(10), Decimal::make(), Boolean::make())),
+)->nullable(),
+```
+
+The selected member's rules apply at the union's pointer. `"x"` repeated 21 times is a `422`
+at `/data/attributes/value`, and so is a list of four. Each element of a list member meets
+its own member's rules at its index, `/data/attributes/value/1`. This holds wherever the
+union sits: an attribute, a child of an `Obj`, `Map` or `OneOf` variant, an open object's
+member, an element of a list of unions, or a pivot field in a linkage member's `meta`.
+
+A value no member takes, such as an object here, is one `422` at its pointer that names
+every type the union takes: `The value field must be a string, a number, a boolean or a list.`
+A `null` is refused the same way unless the union is `nullable()`.
+
+A required union must be sent on create and can't be `null`. It refuses an empty string or
+an empty list with Laravel's `required` message, but takes `false` and `0`, since those
+are values of its boolean and number members. When the member has its own `minLength()` or
+`minItems()`, that minimum reports the empty value instead, once.
+
+The union's value is one column, `json` with the package's `AsJsonValue` cast:
+
+```php
+use haddowg\JsonApiLaravel\Eloquent\AsJsonValue;
+
+protected $casts = [
+    'value' => AsJsonValue::class,
+];
+```
+
+The column holds core's
+[stored form](https://github.com/haddowg/json-api/blob/main/docs/field-types.md#in-a-data-layer)
+of the value, the same JSON the Symfony bundle stores. A top-level date member hydrates a
+`\DateTimeImmutable`, so after hydration the package sets the model attribute to the
+stored form instead: a `Date` member's `"2026-01-02"`, a `DateTime` member's formatted
+string such as `"2026-01-02T03:04:05+02:00"`, and a list as its elements' own forms, such
+as `["a",2.0,true]`. `AsJsonValue` keeps the zero fraction a `Decimal` member stores, where
+Laravel's `array` cast would write `2`. A read renders the stored form directly, so reading
+the attribute off the model gives that string, not a `\DateTimeImmutable`. Call the
+union's `fromStoredForm()` in an accessor if your code wants the instant back. A union
+pivot field is stored in the same form.
+
+Inside an `Obj`, a `OneOf` variant or a list, a date member stores a string already, so the
+object's own cast is enough there. A plain PHP model can declare the property `mixed` and
+hold whatever the selected member casts to.
+
 ## Worked example
 
 The workbench's `releases` resource
@@ -183,6 +239,7 @@ against the in-memory and Eloquent providers.
 
 - [Validation](validation.md) — the bridge, the `422` shape, and the translation map.
 - Core [field types](https://github.com/haddowg/json-api/blob/main/docs/field-types.md#obj)
-  — `Obj`/`OneOf` semantics (merge, discriminator fallback, OpenAPI projection).
+  — `Obj`/`OneOf` semantics (merge, discriminator fallback, OpenAPI projection), and the
+  [`Union`](https://github.com/haddowg/json-api/blob/main/docs/field-types.md#union) field.
 - Core [constraints](https://github.com/haddowg/json-api/blob/main/docs/constraints.md#shape-composite-schema-constraints)
   — the `Shape` builders and the `SchemaValueValidator` execution route.

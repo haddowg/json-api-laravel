@@ -15,6 +15,7 @@ use haddowg\JsonApi\Resource\Constraint\ConstraintInterface;
 use haddowg\JsonApi\Resource\Constraint\MaxItems;
 use haddowg\JsonApi\Resource\Constraint\MaxProperties;
 use haddowg\JsonApi\Resource\Constraint\MinItems;
+use haddowg\JsonApi\Resource\Constraint\MinLength;
 use haddowg\JsonApi\Resource\Constraint\MinProperties;
 use haddowg\JsonApi\Resource\Constraint\Nullable;
 use haddowg\JsonApi\Resource\Constraint\Required;
@@ -34,6 +35,8 @@ use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\ObjectValue;
 use haddowg\JsonApi\Resource\ObjectValues;
+use haddowg\JsonApi\Resource\UnionValue;
+use haddowg\JsonApi\Resource\UnionValues;
 use haddowg\JsonApi\Resource\ValueTypeMismatch;
 use haddowg\JsonApi\Resource\ValueTypes;
 use haddowg\JsonApi\Schema\Error\Error;
@@ -44,6 +47,7 @@ use haddowg\JsonApiLaravel\Validation\Constraint\UniqueEntity;
 use haddowg\JsonApiLaravel\Validation\Rules\JsonType;
 use haddowg\JsonApiLaravel\Validation\Rules\NotNull;
 use haddowg\JsonApiLaravel\Validation\Rules\ParsableDate;
+use haddowg\JsonApiLaravel\Validation\Rules\PresentNotNull;
 use haddowg\JsonApiLaravel\Validation\Rules\RequiredOrNull;
 use haddowg\JsonApiLaravel\Validation\Rules\StoredRowsUnique;
 use Illuminate\Contracts\Validation\Factory as ValidationFactory;
@@ -250,6 +254,10 @@ final class ResourceValidator
         foreach ($this->oneOfErrors($resource, $attributes, $incoming, $creating, $request) as $error) {
             $errors[] = $error;
         }
+        // A union's rules are its selected member's, so they too depend on the value.
+        foreach ($this->unionErrors(UnionValues::in($resource->allFields(), $incoming, $creating, $request), $creating, $request) as $error) {
+            $errors[] = $error;
+        }
         foreach ($this->shapeErrors($resource, \array_merge($stored, $incoming), $incoming, $creating, $request) as $error) {
             $errors[] = $error;
         }
@@ -333,23 +341,32 @@ final class ResourceValidator
      */
     private function typeErrors(ValueTypeMismatch $mismatch): array
     {
-        $prefix = '/data/attributes/';
-        $segments = \str_starts_with($mismatch->pointer, $prefix)
-            ? \array_map(
-                static fn(string $segment): string => \str_replace(['~1', '~0'], ['/', '~'], $segment),
-                \explode('/', \substr($mismatch->pointer, \strlen($prefix))),
-            )
-            : [$mismatch->field->name()];
-        $name = \implode('.', \array_map(static fn(string $segment): string => \str_replace('_', ' ', Str::snake($segment)), $segments));
         $rule = $mismatch->isNull() ? new NotNull() : new JsonType($mismatch->expected);
 
         $errors = [];
-        $bag = $this->validatorFactory->make([self::VALUE => $mismatch->value], [self::VALUE => [$rule]], [], [self::VALUE => $name])->errors();
+        $bag = $this->validatorFactory->make([self::VALUE => $mismatch->value], [self::VALUE => [$rule]], [], [self::VALUE => $this->valueName($mismatch->pointer, $mismatch->field->name())])->errors();
         foreach ($bag->get(self::VALUE) as $message) {
             $errors[] = $this->errorAt(\is_string($message) ? $message : '', $mismatch->pointer);
         }
 
         return $errors;
+    }
+
+    /**
+     * How a message names the value at `$pointer`: as Laravel names a nested attribute, by
+     * its dot path below `data.attributes`, or by `$field` elsewhere.
+     */
+    private function valueName(string $pointer, string $field): string
+    {
+        $prefix = '/data/attributes/';
+        $segments = \str_starts_with($pointer, $prefix)
+            ? \array_map(
+                static fn(string $segment): string => \str_replace(['~1', '~0'], ['/', '~'], $segment),
+                \explode('/', \substr($pointer, \strlen($prefix))),
+            )
+            : [$field];
+
+        return \implode('.', \array_map(static fn(string $segment): string => \str_replace('_', ' ', Str::snake($segment)), $segments));
     }
 
     /**
@@ -674,6 +691,7 @@ final class ResourceValidator
             if (\array_key_exists($field->name(), $incoming)) {
                 $pointer = $this->linkageMetaPointer($embeddedRelationName, $field->name(), $index);
                 $mismatches = [...$mismatches, ...ValueTypes::mismatchesOf($field, $incoming[$field->name()], $pointer, $creating, $request)];
+                $errors = [...$errors, ...$this->unionErrors(UnionValues::of($field, $incoming[$field->name()], $pointer, $creating, $request), $creating, $request, $field->name())];
             }
         }
 
@@ -914,13 +932,17 @@ final class ResourceValidator
         $isRequired = $this->hasPresenceRule($field, Required::class, $creating, $request, $value);
         $isNullable = $this->hasPresenceRule($field, Nullable::class, $creating, $request, $value);
 
+        // A number, boolean, OneOf or Union only has to be present and not null to meet
+        // required(); a union's string or list member refuses an empty value in unionErrors().
+        $refusesEmpty = ValueTypes::requiredRefusesEmpty($field);
+
         $presence = [];
         if (($creating || $whole) && $isRequired) {
             if ($isNullable) {
                 // Present and non-blank, but may be null.
-                $presence = ['present', 'nullable', new RequiredOrNull()];
+                $presence = $refusesEmpty ? ['present', 'nullable', new RequiredOrNull()] : ['present', 'nullable'];
             } else {
-                $presence = ['required'];
+                $presence = $refusesEmpty ? ['required'] : [new PresentNotNull()];
             }
         } else {
             // A partial update never requires a member, and an optional field is only
@@ -929,9 +951,11 @@ final class ResourceValidator
             if ($isRequired && $isNullable) {
                 // Laravel's `required` rejects null even beside `nullable`.
                 $presence[] = 'nullable';
-                $presence[] = new RequiredOrNull();
+                if ($refusesEmpty) {
+                    $presence[] = new RequiredOrNull();
+                }
             } elseif ($isRequired) {
-                $presence[] = 'required'; // required-on-update: if present, non-empty
+                $presence[] = $refusesEmpty ? 'required' : new PresentNotNull(); // required-on-update: if present, non-empty
             } elseif ($isNullable) {
                 $presence[] = 'nullable';
             }
@@ -1285,6 +1309,49 @@ final class ResourceValidator
         }
 
         return $errors;
+    }
+
+    /**
+     * Validates each place core's {@see UnionValues} found against the rules of the member
+     * its value selected, at the place's pointer, so a list member's element violation
+     * lands at `<union>/<index>`. A place of a required union refuses an empty string or
+     * list with Laravel's `required`, unless the member's own minimum already refuses it,
+     * so the empty value is reported once. A message names a value outside
+     * `data.attributes` by `$field`.
+     *
+     * @param list<UnionValue> $places
+     *
+     * @return list<Error>
+     */
+    private function unionErrors(array $places, bool $creating, JsonApiRequestInterface $request, ?string $field = null): array
+    {
+        $errors = [];
+        foreach ($places as $place) {
+            $rules = $this->valueConstraints($place->member, $creating, $request);
+            if ($place->nonEmpty && !self::demandsNonEmpty($place->member, $creating)) {
+                \array_unshift($rules, 'required');
+            }
+            if ($rules !== []) {
+                $errors = [...$errors, ...$this->valueErrors($place->value, [self::VALUE => $rules], $this->valueName($place->pointer, $field ?? $place->union->name()), $place->pointer)];
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Whether the field's own `minLength()` or `minItems()` already refuses an empty value.
+     */
+    private static function demandsNonEmpty(FieldInterface $field, bool $creating): bool
+    {
+        foreach ($field->constraints() as $constraint) {
+            if (($constraint instanceof MinLength || $constraint instanceof MinItems)
+                && $constraint->value > 0 && $constraint->context()->appliesTo($creating)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
