@@ -9,12 +9,14 @@ use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Filter\FilterDefaults;
 use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
 use haddowg\JsonApi\Schema\Relationship\ToOneRelationshipLinkage;
 use haddowg\JsonApi\Serializer\IncludeControlsInterface;
 use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApi\Server\Server;
+use haddowg\JsonApiLaravel\Serializer\ProviderReadLoadState;
 use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -35,7 +37,9 @@ use Illuminate\Database\Eloquent\Model;
  * parent:
  *  - an **Eloquent model** takes `$model->setRelation($column, $value)` — which makes
  *    `relationLoaded()` true, so the load-state seam then reports loaded and core reads the
- *    linkage off the model without a query;
+ *    linkage off the model without a query. A to-many read for its order or a filter default
+ *    also gets the value as out-of-band linkage, since the server's load state never reports
+ *    such a relation loaded ({@see \haddowg\JsonApiLaravel\Serializer\ProviderReadLoadState});
  *  - any **other object** (an in-memory POPO) is left untouched and gets the value as
  *    out-of-band linkage for this request. An in-memory record is shared by every request, so
  *    a write onto it would outlive the read.
@@ -449,6 +453,9 @@ final class RelatedIncludeBatcher
         }
 
         $loadState = $server->relationshipLoadState();
+        if ($loadState instanceof ProviderReadLoadState) {
+            return $loadState->isLoadedOnModel($entity, $relation);
+        }
 
         return $loadState === null || $loadState->isRelationshipLoaded($entity, $relation);
     }
@@ -685,6 +692,7 @@ final class RelatedIncludeBatcher
             ? $this->linkageCriteria($server, $provider, $entities[0], $relation, $request)
             : $this->plainIncludeCriteria($request);
         $batch = $provider->fetchRelatedCollectionBatch($type, $entities, $relation, $criteria, $request);
+        $outOfBand = $relation->isToMany() && ($criteria->defaultSort !== [] || FilterDefaults::apply([], $criteria->filters) !== []);
 
         $serializer = $server->serializerFor($type);
 
@@ -700,7 +708,7 @@ final class RelatedIncludeBatcher
             }
 
             $items = $this->itemsOf($batch->for($wireId));
-            $this->hold($entity, $relation, $column, $items, $linkages);
+            $this->hold($entity, $relation, $column, $items, $linkages, $outOfBand);
             foreach ($items as $target) {
                 $targets[] = $target;
             }
@@ -714,18 +722,23 @@ final class RelatedIncludeBatcher
      * {@see Model::setRelation()} (a to-many wrapped in an {@see EloquentCollection}, a to-one
      * the single model or `null`), the same write its own lazy load makes, so `relationLoaded()`
      * is true and the load-state seam reports loaded. Any other object gets the
-     * value as out-of-band linkage in `$linkages` and is left as it is.
+     * value as out-of-band linkage in `$linkages` and is left as it is. A to-many read through
+     * its provider for its order or a filter default renders from out-of-band linkage on a model
+     * too, since the server's load state never reports such a relation loaded.
      *
      * @param list<object>                                                            $loaded
      * @param array<int, array<string, RelationshipLinkage|ToOneRelationshipLinkage>> $linkages
      */
-    private function hold(object $entity, RelationInterface $relation, string $column, array $loaded, array &$linkages): void
+    private function hold(object $entity, RelationInterface $relation, string $column, array $loaded, array &$linkages, bool $outOfBand = false): void
     {
         if ($entity instanceof Model) {
             if ($relation->isToMany()) {
                 /** @var list<Model> $models */
                 $models = $loaded;
                 $entity->setRelation($column, new EloquentCollection($models));
+                if ($outOfBand) {
+                    $linkages[\spl_object_id($entity)][$relation->name()] = new RelationshipLinkage($loaded);
+                }
             } else {
                 $entity->setRelation($column, $loaded[0] ?? null);
             }
@@ -756,8 +769,10 @@ final class RelatedIncludeBatcher
     }
 
     /**
-     * Whether `$relation`'s linkage has a read order to apply: a monomorphic to-many whose
-     * related type has a provider, with its own default order or the related type's.
+     * Whether `$relation`'s linkage must be read through its provider to list the members
+     * its endpoints serve: a monomorphic to-many whose related type has a provider, with a
+     * read order, its own or the related type's, or a filter default its related endpoint
+     * folds in.
      */
     private function ordersLinkage(Server $server, string $type, object $entity, RelationInterface $relation, JsonApiRequestInterface $request): bool
     {
@@ -766,7 +781,9 @@ final class RelatedIncludeBatcher
             return false;
         }
 
-        return $this->linkageCriteria($server, $this->providers->forType($type), $entity, $relation, $request)->defaultSort !== [];
+        $criteria = $this->linkageCriteria($server, $this->providers->forType($type), $entity, $relation, $request);
+
+        return $criteria->defaultSort !== [] || FilterDefaults::apply([], $criteria->filters) !== [];
     }
 
     /**
