@@ -31,6 +31,7 @@ use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
 use haddowg\JsonApiLaravel\DataProvider\QueriesFilteredCollectionInterface;
 use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelatedBatch;
+use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
@@ -384,6 +385,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // `related.*` is exactly what Eloquent's own relation get() does; for a non-joined
         // relation (HasMany/BelongsTo) it is a harmless `table.*`.
         $builder = $relationQuery->getQuery()->select($relationQuery->getRelated()->qualifyColumn('*'));
+        $this->replaceMethodOrder($builder, $relation, $criteria);
 
         // A pivot relation resolves `pivot.` filter/sort columns against its join table and
         // selects the pivot row with each member, so `meta.pivot` reads off the same page.
@@ -472,6 +474,14 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         }
 
         $method = $this->relationMethod($relation);
+
+        // A to-many reads in its order: the relation's own default, else the related type's,
+        // pushed onto the eager query exactly as the related endpoint orders its page.
+        if ($relation->isToMany()) {
+            $this->replaceMethodOrder($eager->getQuery(), $relation, $criteria);
+            [$filterHandler, $sortHandler] = $this->handlersFor($eager, $models[0], $relation);
+            $this->applier->apply($criteria, $eager->getQuery(), $filterHandler, $sortHandler);
+        }
 
         // Eloquent's own eager pipeline: one query for the whole page, then the ORM-correct
         // dictionary partition + setRelation per parent (Builder::eagerLoadRelation's shape).
@@ -595,7 +605,9 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // the endpoint's same 400). The relation's own get() adds the correct projection
         // (related.* plus, for a belongsToMany, the aliased pivot columns), so the SELECT is
         // left untouched here — overriding it would drop the FK/pivot the partition needs.
-        $this->applier->apply($criteria, $eager->getQuery(), $this->filterHandler, $this->sortHandler);
+        $this->replaceMethodOrder($eager->getQuery(), $relation, $criteria);
+        [$filterHandler, $sortHandler] = $this->handlersFor($eager, $models[0], $relation);
+        $this->applier->apply($criteria, $eager->getQuery(), $filterHandler, $sortHandler);
 
         // The deterministic primary-key tiebreak, appended AFTER the relation order so ties
         // resolve by id ASC — byte-identical to the witness's `withPkTiebreak`, so the SQL
@@ -781,6 +793,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // projection (related.* plus, for a belongsToMany, the aliased pivot columns), so
         // the SELECT is left untouched — overriding it would drop the FK/pivot the partition
         // needs.
+        $this->replaceMethodOrder($eager->getQuery(), $relation, $criteria);
         $this->applier->apply($this->filtersOnly($criteria), $eager->getQuery(), $this->filterHandler, $this->sortHandler);
         (new EloquentKeyset($related, $this->sortHandler))->orderBy($eager->getQuery(), $columns);
 
@@ -939,8 +952,8 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // to exactly the attribute read below.
         $counted = $models[0]->newQuery()
             ->whereKey($keys)
-            ->withCount([$method . ' as ' . $countAttribute => function (Builder $subQuery) use ($criteria): void {
-                $this->applyCountCriteria($subQuery, $criteria);
+            ->withCount([$method . ' as ' . $countAttribute => function (Builder $subQuery) use ($criteria, $models, $relation): void {
+                $this->applyCountCriteria($subQuery, $criteria, $this->pivotRelation($models[0], $relation));
             }])
             ->get();
 
@@ -1284,11 +1297,44 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * the related endpoint would page. Extracted so the subquery Builder carries its element
      * type for the shared applier.
      *
-     * @param Builder<Model> $subQuery
+     * @param Builder<Model>                                 $subQuery
+     * @param EloquentBelongsToMany<Model, Model, *, *>|null $pivot
      */
-    private function applyCountCriteria(Builder $subQuery, CollectionCriteria $criteria): void
+    private function applyCountCriteria(Builder $subQuery, CollectionCriteria $criteria, ?EloquentBelongsToMany $pivot = null): void
     {
-        $this->applier->apply($this->filtersOnly($criteria), $subQuery, $this->filterHandler, $this->sortHandler);
+        $filterHandler = $pivot !== null ? $this->filterHandler->forPivot($pivot) : $this->filterHandler;
+        $this->applier->apply($this->filtersOnly($criteria), $subQuery, $filterHandler, $this->sortHandler);
+    }
+
+    /**
+     * Drops the order an Eloquent relation method's `orderBy` gives `$builder` when a
+     * requested sort or the relation's own default orders it: either replaces the method's
+     * order, while the related type's default follows it (ADR 0037).
+     *
+     * @param Builder<Model> $builder
+     */
+    private function replaceMethodOrder(Builder $builder, RelationInterface $relation, CollectionCriteria $criteria): void
+    {
+        if ($criteria->queryParameters->sort !== [] || RelationCriteriaFactory::declaresOwnOrder($relation)) {
+            $builder->reorder();
+        }
+    }
+
+    /**
+     * The filter and sort handlers for a relation's eager query: a pivot relation's resolve a
+     * `pivot.` column to its join table.
+     *
+     * @param EloquentRelation<Model, Model, *> $eager
+     *
+     * @return array{EloquentFilterHandler, EloquentSortHandler}
+     */
+    private function handlersFor(EloquentRelation $eager, Model $parent, RelationInterface $relation): array
+    {
+        if ($eager instanceof EloquentBelongsToMany && $this->pivotRelation($parent, $relation) !== null) {
+            return [$this->filterHandler->forPivot($eager), $this->sortHandler->forPivot($eager)];
+        }
+
+        return [$this->filterHandler, $this->sortHandler];
     }
 
     /**

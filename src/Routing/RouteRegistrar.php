@@ -72,6 +72,7 @@ final class RouteRegistrar
      * @param array<string, array{prefix?: string, middleware?: list<string>|string, domain?: string|null, route_defaults?: array<string, string>, base_uri?: string|null, output_timezone?: string|null}> $servers the per-server route config
      * @param (\Closure(class-string): ?string)|null                                                         $idPatternResolver resolves a resource class to its {@see Id} field's declared route pattern (null when unconstrained); null disables the lookup (the single-segment default)
      * @param (\Closure(class-string): ?list<string>)|null                                                   $filterKeysResolver resolves a resource class to its filter keys (null when it cannot be read); null skips checking the filters a collection action lists
+     * @param (\Closure(string): void)|null                                                                $relationOrderGuard checks a server's to-many read orders, throwing on a sort a relation doesn't accept; null skips the check
      */
     public function __construct(
         private readonly Discovery $discovery,
@@ -80,6 +81,7 @@ final class RouteRegistrar
         private readonly string $atomicPath = '/operations',
         private readonly ?\Closure $idPatternResolver = null,
         private readonly ?\Closure $filterKeysResolver = null,
+        private readonly ?\Closure $relationOrderGuard = null,
     ) {}
 
     /**
@@ -109,6 +111,9 @@ final class RouteRegistrar
         // Refuse a configuration collision up front, then emit the atomic + action routes
         // FIRST (literal paths / declared methods) so they win over the generic routes.
         $this->guardAtomicPathCollision($server);
+        if ($this->relationOrderGuard !== null) {
+            ($this->relationOrderGuard)($server);
+        }
         $this->addAtomicRoute($router, $server, $namePrefix);
         $this->addActionRoutes($router, $server, $namePrefix);
 

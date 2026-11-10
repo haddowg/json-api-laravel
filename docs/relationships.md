@@ -127,6 +127,33 @@ HasMany::make('tracks', 'tracks')
     ->countable();
 ```
 
+### A relation's default read order
+
+A to-many can declare the order its members read in when the request names no `sort`, with
+`defaultSort()`. For that relation it replaces the related type's own `defaultSort()`, which
+still orders a relation that declares none. A requested `sort` replaces either.
+
+```php
+HasMany::make('books', 'books')
+    ->defaultSort(new SortDirective(SortByField::make('year'), descending: true));
+
+BelongsToMany::make('picks', 'books')
+    ->fields(Integer::make('rank'))
+    ->defaultSort(new SortDirective(SortByField::make('rank'), descending: false));
+```
+
+The order holds on every path that reads the members: the related endpoint, the relationship
+endpoint, the linkage of an `?include` or a `withData()` relation, with include batching on or
+off, and a Relationship Queries window. Both providers apply it, except that a pivot key
+orders only on the Eloquent provider, since the in-memory witness holds no pivot data. A key
+the relation doesn't accept fails route registration and `jsonapi:optimize`. The OpenAPI
+document gives the relation's own order as the `sort` parameter's `default` on both
+endpoints; the related type's fallback isn't projected there.
+
+On the Eloquent provider an `orderBy` on the relation method is the relation's order when
+nothing else orders it. A requested sort or the relation's own `defaultSort()` replaces it,
+and the related type's `defaultSort()` follows it, so the method's order comes first.
+
 ## The Relationship Queries profile
 
 Order and narrow a relation's linkage from the **primary** request (not the related

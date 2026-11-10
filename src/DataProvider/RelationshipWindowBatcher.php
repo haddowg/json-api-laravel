@@ -151,7 +151,7 @@ final class RelationshipWindowBatcher
         // merged vocabulary, with NO query and NO property mutation (so no leak). The windowed
         // relations validate their keys through the fetch as before, so this only covers the
         // gated remainder.
-        $this->validateUnwindowedRelatedQueryKeys($server, $type, $allRelations, $relations, $request);
+        $this->validateUnwindowedRelatedQueryKeys($server, $type, $parents[0], $allRelations, $relations, $request);
 
         // ONE batch fetch per windowed relation over the WHOLE page (O(N), not O(M*N)). For each
         // relation, fetch the page-1 windowed batch once, then record each parent's page-1
@@ -243,6 +243,7 @@ final class RelationshipWindowBatcher
             $relation,
             $window,
             wantsCount: $wantsCount,
+            queriesPivotColumns: $this->queriesPivotColumns($type, $parents[0], $relation),
             request: $request,
         );
 
@@ -390,6 +391,7 @@ final class RelationshipWindowBatcher
     private function validateUnwindowedRelatedQueryKeys(
         Server $server,
         string $type,
+        object $parent,
         array $allRelations,
         array $windowed,
         JsonApiRequestInterface $request,
@@ -432,6 +434,7 @@ final class RelationshipWindowBatcher
                 $relatedResource,
                 $relation,
                 null,
+                queriesPivotColumns: $this->queriesPivotColumns($type, $parent, $relation),
                 request: $request,
             );
 
@@ -700,6 +703,21 @@ final class RelationshipWindowBatcher
         }
 
         return $result;
+    }
+
+    /**
+     * Whether `$type`'s provider reads the relation's pivot columns, so a read order the
+     * relation declares over a pivot field windows as it orders the related endpoint.
+     */
+    private function queriesPivotColumns(string $type, object $parent, RelationInterface $relation): bool
+    {
+        if (!$this->providers->supportsType($type)) {
+            return false;
+        }
+
+        $provider = $this->providers->forType($type);
+
+        return $provider instanceof QueriesPivotColumnsInterface && $provider->queriesPivotColumns($parent, $relation);
     }
 
     /**

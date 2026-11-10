@@ -502,6 +502,12 @@ column); `defaultSort()` orders an unsorted collection. Sparse fieldsets narrow 
 columns. Page / offset / cursor (keyset) pagination all push down — see
 [pagination](pagination.md).
 
+A to-many's members read in the relation's own `defaultSort()`, else the related type's, on
+every path, [include batching](#include-batching--spi-not-with) and
+[windows](#windowed-relationship-queries--sql-push-down-only) included. An `orderBy` on the
+Eloquent relation method gives way to a requested sort or the relation's own default, and
+leads the related type's default. A pivot key orders by the join table's column.
+
 ### Sort families
 
 Some sort keys are data: a campaign's placeholder values, custom fields, keys of a JSON column.

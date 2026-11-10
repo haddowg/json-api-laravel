@@ -1,0 +1,3 @@
+# A relation's own order replaces its Eloquent method's orderBy
+
+An Eloquent relation method can carry its own `orderBy`, which the related endpoint already ran ahead of the related type's `defaultSort()`. We kept that, since the method is the more specific statement about the relation, but let a requested sort or the relation's declared `defaultSort()` drop the method's order rather than follow it: otherwise an `orderBy` on a unique column makes the client's sort and the order the OpenAPI document advertises do nothing, and the in-memory witness, which has no method, would read the relation differently from Eloquent on every path.

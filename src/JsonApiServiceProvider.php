@@ -261,7 +261,34 @@ final class JsonApiServiceProvider extends ServiceProvider
                 }
             };
 
-            return new RouteRegistrar($app->make(Discovery::class), $servers, $atomicEnabled, $atomicPath, $idPatternResolver, $filterKeysResolver);
+            // Checks every to-many read order a server's resources declare against the sorts
+            // each relation accepts, so a typo'd default fails the boot. The resources resolve
+            // lazily through a bare core server, not the configured one, keeping registration
+            // cheap; one that cannot be built here is left to the optimize check.
+            $relationOrderGuard = static function (string $server) use ($app): void {
+                /** @var Discovery $discovery */
+                $discovery = $app->make(Discovery::class);
+                $registry = \haddowg\JsonApi\Server\Server::make()->withContainer(static fn(string $class): object => $app->make($class));
+                $types = [];
+                foreach ($discovery->resourcesFor($server) as $descriptor) {
+                    if ($descriptor->type !== '' && !$registry->hasSerializerFor($descriptor->type)) {
+                        $registry = $registry->register($descriptor->class, $descriptor->serializer, $descriptor->hydrator);
+                        $types[] = $descriptor->type;
+                    }
+                }
+
+                $validator = new \haddowg\JsonApi\Serializer\RelationOrderValidator($registry);
+                foreach ($types as $type) {
+                    try {
+                        $resource = $registry->resourceFor($type);
+                    } catch (\Throwable) {
+                        continue;
+                    }
+                    $validator->validate($type, $resource);
+                }
+            };
+
+            return new RouteRegistrar($app->make(Discovery::class), $servers, $atomicEnabled, $atomicPath, $idPatternResolver, $filterKeysResolver, $relationOrderGuard);
         });
     }
 

@@ -159,8 +159,8 @@ final class CriteriaApplier
      */
     private function defaultDirectives(CollectionCriteria $criteria): array
     {
-        if ($criteria->defaultSort === []) {
-            return [];
+        if ($criteria->defaultSort === [] || $criteria->defaultSortResolved) {
+            return $criteria->defaultSort;
         }
 
         foreach ($criteria->defaultSort as $directive) {

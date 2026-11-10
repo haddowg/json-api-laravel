@@ -9,12 +9,14 @@ use haddowg\JsonApi\OpenApi\Metadata\DeclaresDeprecatedRelation;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresIdentifiedMembers;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresIdentifierMeta;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresPolymorphicRelation;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresRelationDefaultSort;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresRelationExampleId;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresRelationUriFieldName;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresWriteOnlyRelation;
 use haddowg\JsonApi\OpenApi\Schema;
 use haddowg\JsonApi\Resource\Deprecatable;
 use haddowg\JsonApi\Resource\Field\AbstractRelationValue;
+use haddowg\JsonApi\Resource\Field\DefaultSortedRelationInterface;
 use haddowg\JsonApi\Resource\Field\ExemplifiedRelationInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphMembers;
@@ -32,7 +34,7 @@ use haddowg\JsonApiLaravel\OpenApi\PivotFields;
  * {@see \haddowg\JsonApi\Server\Server} fallback chain + the relation graph) and
  * passed in.
  */
-final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, DeclaresRelationUriFieldName, DeclaresRelationExampleId, DeclaresAlwaysCounted, DeclaresPolymorphicRelation, DeclaresIdentifiedMembers, DeclaresDeprecatedRelation, DeclaresIdentifierMeta
+final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, DeclaresRelationUriFieldName, DeclaresRelationExampleId, DeclaresAlwaysCounted, DeclaresPolymorphicRelation, DeclaresIdentifiedMembers, DeclaresDeprecatedRelation, DeclaresIdentifierMeta, DeclaresRelationDefaultSort
 {
     /**
      * @param list<string> $relatedIncludablePaths the related type's includable paths (resolved by the source)
@@ -54,6 +56,11 @@ final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, Decl
     public function identifierMetaFields(): array
     {
         return $this->relation instanceof AbstractRelationValue ? $this->relation->identifierMetaFields() : [];
+    }
+
+    public function defaultSort(): array
+    {
+        return $this->relation instanceof DefaultSortedRelationInterface ? $this->relation->defaultSort() : [];
     }
 
     public function alwaysCounts(): bool
