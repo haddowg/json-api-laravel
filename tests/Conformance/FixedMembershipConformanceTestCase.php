@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
+use haddowg\JsonApi\Atomic\AtomicExtension;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -43,6 +44,16 @@ abstract class FixedMembershipConformanceTestCase extends Orchestra
             JsonApiServiceProvider::class,
             $this->conformanceServiceProvider(),
         ];
+    }
+
+    /**
+     * @param \Illuminate\Foundation\Application $app
+     */
+    protected function defineEnvironment($app): void
+    {
+        /** @var \Illuminate\Contracts\Config\Repository $config */
+        $config = $app['config'];
+        $config->set('jsonapi.atomic_operations.enabled', true);
     }
 
     protected function seedConformanceData(): void {}
@@ -182,6 +193,42 @@ abstract class FixedMembershipConformanceTestCase extends Orchestra
 
     // --- helpers ---------------------------------------------------------------------
 
+    // --- atomic operations ----------------------------------------------------------
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function anAtomicReplaceThatChangesTheMembersCarriesTheOperationPointer(): void
+    {
+        $response = $this->atomic([
+            ['op' => 'update', 'ref' => ['type' => 'playlists', 'id' => '2'], 'data' => ['type' => 'playlists', 'id' => '2', 'attributes' => ['title' => 'Rolled back']]],
+            ['op' => 'update', 'ref' => ['type' => 'playlists', 'id' => '2', 'relationship' => 'fixedTracks'], 'data' => [$this->track('5')]],
+        ]);
+
+        $response->assertStatus(403);
+        self::assertSame('MEMBERSHIP_CHANGE_PROHIBITED', $response->json('errors.0.code'));
+        self::assertSame('/atomic:operations/1/data/relationships/fixedTracks', $response->json('errors.0.source.pointer'));
+        self::assertSame(['1'], $this->memberIds(2));
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function anAtomicEmbeddedReplaceThatChangesTheMembersCarriesTheOperationPointer(): void
+    {
+        $response = $this->atomic([
+            ['op' => 'update', 'ref' => ['type' => 'playlists', 'id' => '1'], 'data' => ['type' => 'playlists', 'id' => '1', 'attributes' => ['title' => 'Kept']]],
+            ['op' => 'update', 'ref' => ['type' => 'playlists', 'id' => '2'], 'data' => [
+                'type' => 'playlists',
+                'id' => '2',
+                'relationships' => ['fixedTracks' => ['data' => [$this->track('1'), $this->track('2')]]],
+            ]],
+        ]);
+
+        $response->assertStatus(403);
+        self::assertSame('MEMBERSHIP_CHANGE_PROHIBITED', $response->json('errors.0.code'));
+        self::assertSame('/atomic:operations/1/data/relationships/fixedTracks', $response->json('errors.0.source.pointer'));
+        self::assertSame(['1'], $this->memberIds(2));
+    }
+
     /**
      * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
      */
@@ -236,6 +283,21 @@ abstract class FixedMembershipConformanceTestCase extends Orchestra
             'Accept' => self::MEDIA_TYPE,
             'CONTENT_TYPE' => self::MEDIA_TYPE,
         ]);
+    }
+
+    /**
+     * @param list<array<string, mixed>> $operations
+     *
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    protected function atomic(array $operations): TestResponse
+    {
+        $type = 'application/vnd.api+json; ext="' . AtomicExtension::URI . '"';
+
+        return $this->call('POST', '/api/operations', [], [], [], [
+            'HTTP_ACCEPT' => $type,
+            'CONTENT_TYPE' => $type,
+        ], \json_encode(['atomic:operations' => $operations], \JSON_THROW_ON_ERROR));
     }
 
     /**
