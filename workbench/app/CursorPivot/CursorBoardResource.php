@@ -39,7 +39,8 @@ final class CursorBoardResource extends AbstractResource
             Str::make('name'),
             BelongsToMany::make('widgets', 'cursorWidgets')
                 ->fields(Integer::make('position')->readOnly()->build())
-                ->paginate(CursorPaginator::make()->withDefaultSize(2)),
+                ->paginate(CursorPaginator::make()->withDefaultSize(2))
+                ->countable(),
         ];
     }
 }

@@ -1658,6 +1658,9 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             $this->keysetResolver->assertFresh($boundary, $columns, $parameter);
         }
 
+        // `?withCount=_self_` counts the filtered collection, before the keyset bound.
+        $counter = $criteria->wantsCount ? clone $builder : null;
+
         $keyset = new EloquentKeyset($model, $sortHandler ?? $this->sortHandler, $pivot?->getTable());
         if ($boundary !== null) {
             $keyset->applyAfter($builder, $boundary, $orderColumns);
@@ -1669,7 +1672,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             // Over-fetch limit+1 in the (possibly flipped) order; the surplus is
             // dropped by runCursor BEFORE the cursors closure mints.
             probe: static fn(CursorWindow $w): array => \array_values((clone $builder)->limit($w->limit + 1)->get()->all()),
-            cursors: function (array $rows, bool $hasMore) use ($window, $columns, $backward, $pivot): CursorCollectionResult {
+            cursors: function (array $rows, bool $hasMore, ?int $total) use ($window, $columns, $backward, $pivot): CursorCollectionResult {
                 // Re-orient a backward page to natural forward order for rendering.
                 $page = $backward ? \array_reverse($rows) : $rows;
 
@@ -1679,8 +1682,10 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
                     \array_values($page),
                     $hasMore,
                     static fn(object $row, string $column): string|int|float|bool|null => CursorTokenMinter::coerce(self::keysetValue($row, $column, $pivot)),
+                    $total,
                 );
             },
+            count: $counter === null ? null : static fn(): int => $counter->reorder()->count(),
         );
     }
 

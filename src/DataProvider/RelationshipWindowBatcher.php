@@ -229,7 +229,10 @@ final class RelationshipWindowBatcher
         // (`countable()` is the upstream gate for that). A count-free paginator default emits
         // `first`/`prev`/`next` with no total/`last`. The `?withCount` flag rides the ORIGINAL
         // request, not the synthetic page request.
-        $wantsCount = ($paginator?->wantsCount() ?? false) || $request->countsRelationship($relation->name());
+        // A cursor window renders no total, and the relation's `meta.total` comes from the
+        // grouped relation count, so a cursor-windowed include never counts here.
+        $wantsCount = !$paginator instanceof CursorPaginator
+            && (($paginator?->wantsCount() ?? false) || $request->countsRelationship($relation->name()));
 
         $criteria = $this->relationCriteria->criteriaFor(
             new QueryParameters(

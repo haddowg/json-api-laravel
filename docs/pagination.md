@@ -118,6 +118,12 @@ request, so its pages always carry `meta.total` and a `last` link. The OpenAPI
 [operation examples](openapi.md#operation-examples) for that collection show them too. A
 `MultiPaginator` counts when its default strategy does.
 
+A `CursorPaginator` has no `withCount()`, but a client can still ask for the size of a
+`countable()` collection with `?withCount=_self_` under the Countable profile. The handler runs
+one `COUNT` over the filtered collection, with its scopes and without the cursor bounds or the
+page size, and renders it as the top-level `meta.total` on every page, the related and
+relationship endpoints included. A cursor page never carries `meta.page.total` or a `last` link.
+
 The relationship (linkage) endpoint of a to-many, `GET /{type}/{id}/relationships/{rel}`, pages
 by default just as its related twin does: a plain request with no query string serves page 1 at
 that default size, with `first`/`next` (and `last` when counted) links on the document. A relation
