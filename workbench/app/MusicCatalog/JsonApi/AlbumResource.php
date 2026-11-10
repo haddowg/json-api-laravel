@@ -115,7 +115,7 @@ final class AlbumResource extends AbstractResource
                 ->example('https://store.example.com/albums/1')
                 ->hrefUsing(fn(mixed $album): string => 'https://store.example.com/albums/' . $this->getId($album)),
             ActionLink::for('download')
-                ->when(static fn(AlbumModel|AlbumDomain $album, JsonApiRequestInterface $request): bool => $album->status === AlbumStatus::Released->value)
+                ->when(static fn(AlbumModel|AlbumDomain $album, JsonApiRequestInterface $request): bool => $album->status === AlbumStatus::Released)
                 ->describedAs('A short-lived link to the album as CSV, present while the album is released.'),
         ];
     }

@@ -46,6 +46,7 @@ use Workbench\App\MusicCatalog\JsonApi\ReleaseResource;
 use Workbench\App\MusicCatalog\JsonApi\TrackResource;
 use Workbench\App\MusicCatalog\JsonApi\UserResource;
 use Workbench\App\MusicCatalog\Listeners\AuditLogSubscriber;
+use Workbench\App\MusicCatalog\Model\AlbumStatus;
 use Workbench\App\MusicCatalog\Provider\CatalogExportPersister;
 use Workbench\App\MusicCatalog\Provider\CatalogExportProvider;
 use Workbench\App\MusicCatalog\Provider\ChartProvider;
@@ -239,7 +240,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
                 artwork: $row['artwork'],
                 released_at: $row['released_at'],
                 explicit: $row['explicit'],
-                status: $row['status'],
+                status: AlbumStatus::from($row['status']),
                 available_from: $row['available_from'],
                 available_until: $row['available_until'],
                 release_info: $row['release_info'],

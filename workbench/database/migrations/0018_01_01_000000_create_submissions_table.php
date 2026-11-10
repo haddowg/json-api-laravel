@@ -27,6 +27,7 @@ return new class extends Migration {
             $table->json('rows')->nullable();
             $table->json('mapping')->nullable();
             $table->json('block')->nullable();
+            $table->json('review')->nullable();
         });
     }
 

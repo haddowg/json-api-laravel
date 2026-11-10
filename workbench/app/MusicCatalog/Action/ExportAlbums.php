@@ -16,6 +16,7 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use Workbench\App\MusicCatalog\Model\AlbumStatus;
 use Workbench\App\MusicCatalog\OpenApi\AlbumCatalogueStats;
 
 /**
@@ -54,7 +55,7 @@ final class ExportAlbums implements ActionHandlerInterface
         }
         \usort($albums, static fn(object $a, object $b): int => (int) self::scalar($a, 'id') <=> (int) self::scalar($b, 'id'));
 
-        $published = \count(\array_filter($albums, static fn(object $album): bool => self::scalar($album, 'status') === 'released'));
+        $published = \count(\array_filter($albums, static fn(object $album): bool => Accessor::get($album, 'status') === AlbumStatus::Released));
         $counts = ['published' => $published, 'unpublished' => \count($albums) - $published];
 
         return match ($context->responseMediaType()) {

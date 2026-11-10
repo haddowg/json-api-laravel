@@ -7,6 +7,7 @@ namespace Workbench\App\MusicCatalog\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Workbench\App\MusicCatalog\Model\AlbumStatus;
 
 /**
  * The `albums` Eloquent model (storage table `mc_albums`). Casts give the wire types the
@@ -21,7 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null                     $artwork
  * @property \Illuminate\Support\Carbon      $released_at
  * @property bool                            $explicit
- * @property string                          $status
+ * @property AlbumStatus                     $status
  * @property \Illuminate\Support\Carbon|null $available_from
  * @property \Illuminate\Support\Carbon|null $available_until
  * @property array<string, mixed>|null       $release_info
@@ -53,6 +54,7 @@ final class Album extends Model
     protected $casts = [
         'average_rating' => 'float',
         'explicit' => 'boolean',
+        'status' => AlbumStatus::class,
         'released_at' => 'datetime',
         'available_from' => 'date',
         'available_until' => 'date',

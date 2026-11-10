@@ -15,6 +15,7 @@ final class Submission
      * @param list<mixed>|null          $rows
      * @param array<string, mixed>|null $mapping
      * @param array<string, mixed>|null $block
+     * @param array<string, mixed>|null $review
      */
     public function __construct(
         public string $id = '',
@@ -24,11 +25,12 @@ final class Submission
         public ?bool $flag = null,
         public ?\DateTimeImmutable $day = null,
         public ?\DateTimeImmutable $at = null,
-        public ?string $kind = null,
+        public ?SubmissionKind $kind = null,
         public ?array $tags = null,
         public ?array $options = null,
         public ?array $rows = null,
         public ?array $mapping = null,
         public ?array $block = null,
+        public ?array $review = null,
     ) {}
 }
