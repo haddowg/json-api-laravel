@@ -207,10 +207,10 @@ still a valid error object.
 ### Scoping a code to the operations that raise it
 
 A catalogued code is offered by every operation's error response for its status. When only
-some operations raise it, scope it, and the document offers it on those operations alone:
-each points its response for the code's status at one narrowed to the scoped code (a
-`ConflictWithArticleLocked` carrying `ErrorDocument409WithArticleLocked`), gaining that
-status if it did not advertise it, while every other operation keeps the shared response.
+some operations raise it, scope it, and the document offers it on those operations alone.
+Each covered operation gets its own error document for the code's status, named for the
+operation, such as `ArticlesUpdate409`, and an inline response that uses it, gaining that
+status if it did not advertise it. Every other operation keeps the shared response.
 
 For an error you own, declare the scope on its descriptor. A discovered or registered class
 keeps the scope its descriptor declares:
