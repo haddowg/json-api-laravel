@@ -232,7 +232,7 @@ abstract class ThroughFilterConformanceTestCase extends Orchestra
         self::assertSame(['type' => 'array', 'items' => ['type' => 'integer']], $this->at($parameters, 'filter[advertiser]', 'schema'));
         self::assertSame(['type' => 'array', 'items' => ['type' => 'integer']], $this->at($parameters, 'filter[advertiser][]', 'schema'));
         self::assertSame(['key' => 'advertiser', 'delimited' => true], $this->at($parameters, 'filter[advertiser][]', 'x-filter-list'));
-        self::assertSame(['type' => 'array', 'items' => ['format' => 'uuid']], $this->at($parameters, 'filter[brand]', 'schema'));
+        self::assertSame(['type' => 'array', 'items' => ['type' => 'string', 'format' => 'uuid']], $this->at($parameters, 'filter[brand]', 'schema'));
         self::assertSame(['type' => 'array', 'items' => ['type' => 'string']], $this->at($parameters, 'filter[template]', 'schema'));
         self::assertSame(['type' => 'integer'], $this->at($parameters, 'filter[advertiserIs]', 'schema'));
         self::assertSame(['type' => 'array', 'items' => ['type' => 'string']], $this->at($parameters, 'filter[campaignNames][]', 'schema'));
