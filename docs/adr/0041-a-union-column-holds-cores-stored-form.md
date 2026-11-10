@@ -1,0 +1,3 @@
+# A union column holds core's stored form
+
+A `Union`'s value is one `json` column, but a top-level date member hydrates a `\DateTimeImmutable` that a JSON column can't hold, so after hydration the handler sets each top-level union the write sent on an Eloquent model to core's `toStoredForm()`, and a union pivot field is stored the same way, matching what the Symfony bundle stores. It happens in the handler rather than in a cast because a cast never sees the field, and Eloquent encodes the hydrated value the moment core assigns it. The package's `AsJsonValue` cast encodes that form keeping a zero fraction, as Doctrine's `json` type does, and a read renders the stored form directly, so the model keeps the stored form rather than casting it back with `fromStoredForm()`.

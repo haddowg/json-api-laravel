@@ -20,6 +20,7 @@ use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\Positions;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Field\Time;
+use haddowg\JsonApi\Resource\Field\Union;
 use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApiLaravel\DataPersister\AbstractDataPersister;
 use haddowg\JsonApiLaravel\DataPersister\PositionColumn;
@@ -495,7 +496,9 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
 
         foreach ($values as $column => $value) {
             $field = $fields[$column] ?? null;
-            if ($value instanceof \DateTimeInterface && !$field instanceof Date && !$field instanceof Time
+            if ($field instanceof Union) {
+                $value = $field->toStoredForm($value);
+            } elseif ($value instanceof \DateTimeInterface && !$field instanceof Date && !$field instanceof Time
                 && ($dates->isNaive($row, $column) || !$row->hasCast($column))) {
                 $value = $dates->toStorage($value);
             }
@@ -861,10 +864,13 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             /** @var mixed $value */
             $value = $field->castWireValue($raw);
 
-            // A pivot column is written as Y-m-d H:i:s whatever offset the value carries,
-            // so a date-time moves into the storage zone unless the pivot model gives the
-            // column a cast of its own.
-            if ($value instanceof \DateTimeInterface && !$field instanceof Date && !$field instanceof Time
+            // A union is stored in its stored form, so a date member writes its string. A
+            // pivot column is otherwise written as Y-m-d H:i:s whatever offset the value
+            // carries, so a date-time moves into the storage zone unless the pivot model
+            // gives the column a cast of its own.
+            if ($field instanceof Union) {
+                $value = $field->toStoredForm($value);
+            } elseif ($value instanceof \DateTimeInterface && !$field instanceof Date && !$field instanceof Time
                 && ($dates->isNaive($pivotModel, $column) || !$pivotModel->hasCast($column))) {
                 $value = $dates->toStorage($value);
             }

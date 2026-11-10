@@ -11,6 +11,7 @@ use haddowg\JsonApi\Collection\LinkRows\LinkRowQuery;
 use haddowg\JsonApi\Collection\LinkRows\LinkRowQueryInterface;
 use haddowg\JsonApi\Collection\LinkRows\LinkRowWritePlan;
 use haddowg\JsonApi\Exception\AdditionProhibited;
+use haddowg\JsonApi\Exception\AttributeValueInvalid;
 use haddowg\JsonApi\Exception\FilterParamUnrecognized;
 use haddowg\JsonApi\Exception\FullReplacementProhibited;
 use haddowg\JsonApi\Exception\QueryParamUnrecognized;
@@ -57,6 +58,7 @@ use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\Positions;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Field\Time;
+use haddowg\JsonApi\Resource\Field\Union;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Filter\SupportsSingular;
@@ -1651,6 +1653,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // relationships are stripped so core never scalar-hydrates an association.
         $entity = $server->hydratorFor($type)->hydrate($this->datesInStorageZone($resource, $entity, $this->withoutRelationships($body)), $entity);
         \assert(\is_object($entity));
+        $this->unionsInStoredForm($resource, $entity, $body, true);
 
         // The post-hydration entity seam (uniqueness's custom cousin): a resource's
         // EntityConstraintInterface constraints validate the hydrated entity before
@@ -1822,6 +1825,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
             $entity = $hydrator->hydrate($this->datesInStorageZone($resource, $entity, $this->withoutRelationships($body)), $entity);
             \assert(\is_object($entity));
+            $this->unionsInStoredForm($resource, $entity, $body, false);
 
             if ($resource !== null) {
                 $this->validator->validateEntity($resource, $entity, false);
@@ -2513,6 +2517,39 @@ final class CrudOperationHandler implements OperationHandlerInterface
         \assert($converted instanceof JsonApiRequestInterface);
 
         return $converted;
+    }
+
+    /**
+     * Sets each top-level {@see Union} attribute the write sent on an Eloquent model to the
+     * union's stored form, so its column holds JSON: a date member's string rather than the
+     * `\DateTimeImmutable` it hydrated. A union inside an `Obj` or a list is stored as a
+     * string by core already, and a union a write hook fills is the hook's to store.
+     */
+    private function unionsInStoredForm(?AbstractResource $resource, object $entity, JsonApiRequestInterface $body, bool $creating): void
+    {
+        if ($resource === null || !$entity instanceof Model) {
+            return;
+        }
+
+        $data = $body->getResource();
+        $attributes = \is_array($data) ? ($data['attributes'] ?? null) : null;
+        if (!\is_array($attributes)) {
+            return;
+        }
+
+        foreach ($resource->allFields() as $field) {
+            $column = $field instanceof Union ? $field->column() : null;
+            if ($column === null || !$field instanceof Union || $field->relatedVia() !== null || $field->hydratesThroughHook()
+                || !\array_key_exists($field->name(), $attributes) || $field->isReadOnlyFor($creating, $body)) {
+                continue;
+            }
+
+            try {
+                $entity->setAttribute($column, $field->toStoredForm($field->castWireValue($attributes[$field->name()])));
+            } catch (AttributeValueInvalid) {
+                // hydration refused it already
+            }
+        }
     }
 
     private function withoutRelationships(JsonApiRequestInterface $body): JsonApiRequestInterface
