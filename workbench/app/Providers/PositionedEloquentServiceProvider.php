@@ -10,7 +10,7 @@ use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\Models\Queue;
 use Workbench\App\Models\Song;
-use Workbench\App\Positioned\QueueResource;
+use Workbench\App\Positioned\JoinedQueueResource;
 use Workbench\App\Positioned\SongResource;
 
 /**
@@ -20,7 +20,7 @@ final class PositionedEloquentServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([QueueResource::class, SongResource::class]);
+        JsonApi::register([JoinedQueueResource::class, SongResource::class]);
 
         $modelByType = ['queues' => Queue::class, 'songs' => Song::class];
 

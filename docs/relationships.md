@@ -182,9 +182,11 @@ row that moves is first parked past the positions in use, then each takes its fi
 and a unique owner and position index never sees two rows at one position. The Eloquent
 persister writes a `hasMany` position on the related row and a join position on the pivot row.
 For an identified `MorphToMany`, `fillUsing()` creates and deletes the link rows and the
-positions are written onto them afterwards, so a row the hook creates should leave its position
-empty, and the column nullable. The in-memory witness holds no join pivot, so a positioned
-`BelongsToMany` there keeps its members in linkage order with no positions to render.
+positions are written onto them afterwards. An Eloquent row the hook creates is inserted at once,
+before Laravel can give it a position, so the hook must create it with an empty position and the
+position column must be nullable; the write then gives it its place. The in-memory witness holds
+no join pivot, so route registration and `jsonapi:optimize` refuse a positioned `BelongsToMany`
+whose related type it serves.
 
 ## The Relationship Queries profile
 

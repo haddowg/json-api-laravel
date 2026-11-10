@@ -21,7 +21,8 @@ use PHPUnit\Framework\Attributes\Test;
  * ({@see EloquentPositionedConformanceTest}), whose every position is unique per queue, so a
  * reorder that wrote positions in place would fail there.
  *
- * Queue 1 holds songs 1, 2 and 3 at positions 0, 1 and 2 on each relation.
+ * Queue 1 holds songs 1, 2 and 3 at positions 0, 1 and 2 on each relation. The in-memory
+ * witness holds no join rows, so it declares no positioned join, which warm-up would refuse.
  */
 #[Group('spec:crud')]
 abstract class PositionedConformanceTestCase extends Orchestra
@@ -33,10 +34,6 @@ abstract class PositionedConformanceTestCase extends Orchestra
      */
     abstract protected function conformanceServiceProvider(): string;
 
-    /**
-     * Whether the provider stores a join's pivot fields, so the `favourites` positions render.
-     */
-    abstract protected function storesPivots(): bool;
 
     /**
      * @param \Illuminate\Foundation\Application $app
@@ -154,10 +151,6 @@ abstract class PositionedConformanceTestCase extends Orchestra
             $songs = $this->read('/api/queues/1/songs')->json('data');
             self::assertSame($expected, \array_combine(\array_column($songs, 'id'), \array_map(static fn(array $song): ?int => $song['attributes']['slot'], $songs)));
 
-            return;
-        }
-
-        if ($relation === 'favourites' && !$this->storesPivots()) {
             return;
         }
 

@@ -43,7 +43,6 @@ final class PositionedInMemoryServiceProvider extends ServiceProvider
                 (string) $id,
                 $row['name'],
                 $held,
-                \array_map(static fn(int $songId): Song => $songs[(string) $songId], $row['favourites']),
                 \array_map(static fn(int $songId, int $position): MixRow => new MixRow($songId, $position), $row['mix'], \array_keys($row['mix'])),
             );
         }

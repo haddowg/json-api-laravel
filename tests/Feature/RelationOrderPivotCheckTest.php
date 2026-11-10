@@ -53,4 +53,13 @@ final class RelationOrderPivotCheckTest extends Orchestra
     {
         self::assertStringContainsString(self::PROBLEM, \implode("\n", $this->resolve(ServableResourceWarmer::class)->warm()));
     }
+
+    #[Test]
+    public function theWarmerReportsAJoinPosition(): void
+    {
+        self::assertStringContainsString(
+            'Relation "slots" on resource type "bins" is ordered by the pivot field "position"',
+            \implode("\n", $this->resolve(ServableResourceWarmer::class)->warm()),
+        );
+    }
 }

@@ -6,7 +6,6 @@ namespace Workbench\App\Positioned;
 
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Resource\AbstractResource;
-use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\HasMany;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Integer;
@@ -17,9 +16,10 @@ use Workbench\App\Models\MixRow as MixRowModel;
 use Workbench\App\Models\Queue as QueueModel;
 
 /**
- * A queue keeping three relations in the order its clients send: `songs` by each song's slot,
- * `favourites` by a join position, and `mix` by a position on its own link rows. Each
- * position is unique per queue in storage.
+ * A queue keeping its relations in the order its clients send: `songs` by each song's slot and
+ * `mix` by a position on its own link rows. {@see JoinedQueueResource} adds `favourites`, by a
+ * join position only a provider querying the join holds. Each position is unique per queue in
+ * storage.
  */
 final class QueueResource extends AbstractResource
 {
@@ -31,9 +31,6 @@ final class QueueResource extends AbstractResource
             Id::make()->allowClientId(),
             Str::make('name'),
             HasMany::make('songs', 'songs')->positionedBy('slot'),
-            BelongsToMany::make('favourites', 'songs')
-                ->fields(Integer::make('position'))
-                ->positionedBy('position'),
             MorphToMany::make('mix', ['songs'])
                 ->storedAs('mixRows')
                 ->identifiedBy(static fn(mixed $queue): array => self::mix($queue))

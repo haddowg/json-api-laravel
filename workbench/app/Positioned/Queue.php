@@ -11,14 +11,12 @@ final class Queue
 {
     /**
      * @param list<Song>   $songs
-     * @param list<Song>   $favourites
      * @param list<MixRow> $mixRows
      */
     public function __construct(
         public string $id = '',
         public string $name = '',
         public array $songs = [],
-        public array $favourites = [],
         public array $mixRows = [],
     ) {}
 }

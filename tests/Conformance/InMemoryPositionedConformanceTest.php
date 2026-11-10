@@ -9,7 +9,7 @@ use Workbench\App\Providers\PositionedInMemoryServiceProvider;
 
 /**
  * {@see PositionedConformanceTestCase} against the in-memory witness. It holds no join pivot,
- * so `favourites` keeps its members in linkage order without positions to show.
+ * so its queues declare no positioned `favourites`.
  *
  * @internal
  */
@@ -21,8 +21,10 @@ final class InMemoryPositionedConformanceTest extends PositionedConformanceTestC
         return PositionedInMemoryServiceProvider::class;
     }
 
-    protected function storesPivots(): bool
+
+    public static function relations(): iterable
     {
-        return false;
+        yield 'hasMany' => ['songs'];
+        yield 'identified MorphToMany' => ['mix'];
     }
 }

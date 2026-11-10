@@ -24,10 +24,6 @@ final class EloquentPositionedConformanceTest extends PositionedConformanceTestC
         return PositionedEloquentServiceProvider::class;
     }
 
-    protected function storesPivots(): bool
-    {
-        return true;
-    }
 
     /**
      * @param \Illuminate\Foundation\Application $app
