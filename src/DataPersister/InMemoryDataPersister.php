@@ -9,14 +9,19 @@ use haddowg\JsonApi\Collection\LinkRows\LinkRowWritePlan;
 use haddowg\JsonApi\Exception\ClientGeneratedIdAlreadyExists;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
+use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\HasMany;
 use haddowg\JsonApi\Resource\Field\HasOne;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
+use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
+use haddowg\JsonApi\Resource\Field\Positions;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryStore;
+use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
+use Illuminate\Container\Container;
 
 /**
  * The in-memory write witness: it persists through the same {@see InMemoryStore} an
@@ -152,7 +157,9 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
                 ? $this->resolveRelated($this->linkageType($identifier, $fallbackType), $identifier->id)
                 : null;
         } else {
+            $current = $this->currentList($entity, $property);
             $entity->{$property} = $this->applyToMany($entity, $property, $fallbackType, $linkage, $mode);
+            $this->writePositions($relation, $current, $entity->{$property}, $mode);
         }
 
         if ($flush) {
@@ -269,6 +276,47 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
         }
 
         return \array_values($next);
+    }
+
+    /**
+     * Writes the positions of a to-many positioned with `positionedBy()` onto its members: a
+     * replace gives each its index, an add appends the new ones after the highest position, and
+     * a remove leaves gaps. A pivot position has no row here, the in-memory pivot boundary.
+     *
+     * @param list<object> $current the members before the write
+     * @param list<object> $next    the members after it, in linkage order
+     */
+    private function writePositions(RelationInterface $relation, array $current, array $next, Mode $mode): void
+    {
+        if ($mode === Mode::Remove || $relation instanceof PivotRelationInterface) {
+            return;
+        }
+
+        $container = Container::getInstance();
+        $column = PositionColumn::of($relation, $container->bound(IdEncoderResolver::class) ? $container->make(IdEncoderResolver::class) : null);
+        if ($column === null) {
+            return;
+        }
+
+        $byId = [];
+        foreach ($next as $member) {
+            $byId[$this->idOf($member)] = $member;
+        }
+
+        if ($mode === Mode::Replace) {
+            $positions = Positions::forReplace(\array_keys($byId));
+        } else {
+            $held = [];
+            foreach ($current as $member) {
+                $at = Accessor::get($member, $column);
+                $held[$this->idOf($member)] = \is_numeric($at) ? (int) $at : 0;
+            }
+            $positions = Positions::forAdd($held, \array_keys($byId));
+        }
+
+        foreach ($positions as $id => $at) {
+            Accessor::set($byId[(string) $id], $column, $at);
+        }
     }
 
     /**

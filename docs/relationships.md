@@ -154,8 +154,37 @@ document gives the relation's own order as the `sort` parameter's `default` on b
 endpoints; the related type's fallback isn't projected there.
 
 On the Eloquent provider an `orderBy` on the relation method is the relation's order when
-nothing else orders it. A requested sort or the relation's own `defaultSort()` replaces it,
+nothing else orders it. A requested sort or the relation's own order, its `defaultSort()` or its position, replaces it,
 and the related type's `defaultSort()` follows it, so the method's order comes first.
+
+### Positioned relations
+
+`positionedBy()` keeps a to-many in the order clients send. It names a stored `Integer` field:
+a pivot field on a `BelongsToMany` or an identified `MorphToMany`, or a `readOnly()` field of the
+related type on a `HasMany`.
+
+```php
+HasMany::make('songs', 'songs')->positionedBy('slot'), // SongResource: Integer::make('slot')->readOnly()
+
+BelongsToMany::make('favourites', 'songs')
+    ->fields(Integer::make('position'))
+    ->positionedBy('position'),
+```
+
+A replace, by `PATCH` on the relationship or as linkage in a whole-resource write, gives each
+member its index in the linkage from `0`. On a join, members a scope hides from the caller keep
+their rows and follow the linkage. An add appends the new members after the highest position,
+and a remove leaves gaps. Clients never set a position: it is read-only in `meta.pivot` and as an
+attribute. The relation reads in position order unless it declares a `defaultSort()`.
+
+Positions are usually unique per owner, so both providers write them in core's two passes: every
+row that moves is first parked past the positions in use, then each takes its final position,
+and a unique owner and position index never sees two rows at one position. The Eloquent
+persister writes a `hasMany` position on the related row and a join position on the pivot row.
+For an identified `MorphToMany`, `fillUsing()` creates and deletes the link rows and the
+positions are written onto them afterwards, so a row the hook creates should leave its position
+empty, and the column nullable. The in-memory witness holds no join pivot, so a positioned
+`BelongsToMany` there keeps its members in linkage order with no positions to render.
 
 ## The Relationship Queries profile
 
