@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\DataPersister;
 
+use haddowg\JsonApi\Collection\LinkRows\InMemoryLinkRows;
+use haddowg\JsonApi\Collection\LinkRows\LinkRowWritePlan;
 use haddowg\JsonApi\Exception\ClientGeneratedIdAlreadyExists;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
@@ -11,6 +13,7 @@ use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\HasMany;
 use haddowg\JsonApi\Resource\Field\HasOne;
 use haddowg\JsonApi\Resource\Field\Mode;
+use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryStore;
@@ -30,7 +33,7 @@ use haddowg\JsonApiLaravel\DataProvider\InMemoryStore;
  * types' stores — and sets the parent's association property to that object (or list of
  * objects). A persister with no resolver supports only whole-resource writes.
  */
-final class InMemoryDataPersister implements DataPersisterInterface, TransactionalDataPersisterInterface, ReportsCurrentOwners
+final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersisterInterface, TransactionalDataPersisterInterface, ReportsCurrentOwners
 {
     /**
      * @param InMemoryStore                            $store           the store shared with the read provider
@@ -110,6 +113,23 @@ final class InMemoryDataPersister implements DataPersisterInterface, Transaction
     public function delete(string $type, object $entity): void
     {
         $this->store->remove($entity);
+    }
+
+    /**
+     * Writes a declared `MorphToMany`'s link rows held on the parent from core's plan, through
+     * core's in-memory reference, which also refuses a pass that would put two rows at one
+     * position.
+     */
+    public function writeLinkRows(string $type, object $parent, MorphToMany $relation, LinkRowWritePlan $plan, bool $flush = true): object
+    {
+        $written = (new InMemoryLinkRows())->write($relation, $parent, $plan);
+        \assert(\is_object($written));
+
+        if ($flush) {
+            $this->store->save($written);
+        }
+
+        return $written;
     }
 
     public function mutateRelationship(

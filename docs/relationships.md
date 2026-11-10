@@ -486,15 +486,15 @@ hide rows. A `view` check doesn't count here, since it never filters a list.
 - A scoped type's ids are admitted whenever the linkage renders, in one key-only query per type
   for the whole page, and a hidden or missing member is left out of the linkage.
 - `GET /users/{id}/companies` admits each scoped type over all of the parent's pairs, cuts the
-  page from the admitted pairs in pair order, and only then loads the page's rows, one query per
-  type. A page is never short and `?withCount=_self_` is exact. `?filter` and `?sort` are a
-  `400`, as for any polymorphic to-many.
+  page from the admitted pairs, and only then loads the page's rows, one query per type. A page
+  is never short and `?withCount=_self_` is exact. `?filter` and `?sort` work only over pivot
+  fields, described below, and anything else is a `400`.
 - `?withCount=companies` counts the admitted pairs.
 - `?include=companies` loads every member's row, one query per type, and leaves out a row that
   doesn't come back.
 - `GET /users/{id}/relationships/companies` pages the admitted pairs exactly as the related
-  endpoint does, with the same paginator, `page` parameters and `?withCount=_self_`, but loads no
-  rows. `?filter` and `?sort` are a `400`. Other polymorphic to-many relationship endpoints still
+  endpoint does, with the same paginator, `page`, `sort` and `filter` parameters and
+  `?withCount=_self_`, but loads no rows. Other polymorphic to-many relationship endpoints still
   answer any query with a `400`.
 
 The pairs must point at rows that exist. A scoped type checks every pair, so a pair whose row is
@@ -511,3 +511,52 @@ type to the rows that provider admits, before the page is cut, so pages stay ful
 count matches. A write naming a member resolves it through its own member type's provider: a
 hidden one is a `404`, and a replace keeps the hidden current members attached
 ([custom data providers](custom-data-providers.md#a-provider-that-scopes-its-rows)).
+
+#### Pivot fields on the link rows
+
+The rows can carry fields of their own. Declare the rows by their fields with `through()` and
+`identifiedByRows()`, then declare the pivot fields with `fields()`, as on a `BelongsToMany`:
+
+```php
+MorphToMany::make('items', ['notes', 'photos'])
+    ->storedAs('boardItems')
+    ->through(BoardItem::class)
+    ->identifiedByRows(owner: 'board', type: 'item_type', id: 'item_id')
+    ->fields(Integer::make('position'), Str::make('label')->nullable())
+    ->withFilters(Where::make('label', 'pivot.label'))
+    ->defaultSort(new SortDirective(SortByField::make('position'), descending: false)),
+```
+
+`through()` names the row model, `owner` the `belongsTo` or `morphTo` on it that points at the
+parent, or an attribute holding the parent's key, and `type` and `id` the attributes holding
+each member's stored type and key. `storedAs()` names the parent's relation core reads the rows
+from in memory.
+
+Each identifier renders its readable fields as `meta.pivot`, in the relationship document, in
+the linkage of a resource document and on each resource of the related page. Both endpoints
+take `sort` by any stored pivot field and `filter` by a `withFilters()` filter on a `pivot.`
+column, and nothing else, since the members share no other field. With no `sort` the members
+read in the relation's `defaultSort()`. Ties break by stored type, then id.
+
+On Eloquent the endpoints query the rows in SQL from those fields alone: the rows of the
+`through()` model owned by the parent whose type is a declared one, a scoped member type
+narrowed in the same query to the keys its provider admits, then the filters, the sorts, the
+tiebreak and the page, in one query. Narrowing goes through core's `LinkRowQuery::narrowed()`
+on every path, linkage included: one key-only read of the rows for a whole page of parents,
+then one admission per scoped type. The in-memory provider runs the same rules over the rows
+core reads off the parent. A write keeps the members a scope hides, which core's write plan
+receives.
+
+Laravel writes a declared relation's rows itself, so it takes no `fillUsing()`. A write's
+`meta.pivot` is validated against the writable pivot fields, and core plans the write: the rows
+to delete, the rows that move, the rows to update and the rows to insert. The Eloquent persister
+applies each pass in turn inside the write's transaction, saving a new row of the `through()`
+model with its owner associated and its values in storage form. The in-memory persister applies
+the plan to the rows held on the parent.
+
+A relation declared with an `identifiedBy()` closure, for rows these fields can't describe, is
+served in memory on every provider: each read loads all of a parent's rows through the closure.
+`jsonapi:optimize` logs a notice for such a relation once it declares pivot fields, filters,
+sorts, a default order or a count, or is paged. Its writes still go through `fillUsing()`, and
+once the hook has run, each member's `meta.pivot` values are written onto its row: an Eloquent
+row is saved, and any other row is set in place.

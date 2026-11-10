@@ -92,6 +92,12 @@ final class EloquentFilterHandler implements FilterHandlerInterface
      */
     private ?EloquentBelongsToMany $pivot = null;
 
+    /**
+     * Whether a `pivot.`-prefixed column names a column of the query's own model, the link row
+     * an identified `MorphToMany` queries.
+     */
+    private bool $rows = false;
+
     private readonly NaiveDateTimeStorage $dates;
 
     /**
@@ -113,6 +119,18 @@ final class EloquentFilterHandler implements FilterHandlerInterface
     {
         $handler = clone $this;
         $handler->pivot = $relation;
+
+        return $handler;
+    }
+
+    /**
+     * A copy of this handler that reads a `pivot.`-prefixed column off the query's own model,
+     * for a query over an identified `MorphToMany`'s link rows.
+     */
+    public function forRows(): self
+    {
+        $handler = clone $this;
+        $handler->rows = true;
 
         return $handler;
     }
@@ -353,6 +371,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface
      */
     private function modelOf(Builder $query, string $column): array
     {
+        $column = $this->rowColumn($column);
         if ($this->pivot !== null && \str_starts_with($column, RelationCriteriaFactory::PIVOT_PREFIX)) {
             $pivotClass = $this->pivot->getPivotClass();
 
@@ -526,6 +545,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface
             throw new \LogicException(\sprintf('"%s" is not a valid column path.', $column));
         }
 
+        $column = $this->rowColumn($column);
         if ($this->pivot !== null && \str_starts_with($column, RelationCriteriaFactory::PIVOT_PREFIX)) {
             return $this->pivot->getTable() . '.' . \substr($column, \strlen(RelationCriteriaFactory::PIVOT_PREFIX));
         }
@@ -533,5 +553,15 @@ final class EloquentFilterHandler implements FilterHandlerInterface
         // An already-qualified column (a dotted table.column) is passed through by
         // qualifyColumn; a bare column is prefixed with the model table.
         return $query->getModel()->qualifyColumn($column);
+    }
+
+    /**
+     * `$column` with its `pivot.` prefix stripped when it names a link row's own column.
+     */
+    private function rowColumn(string $column): string
+    {
+        return $this->rows && \str_starts_with($column, RelationCriteriaFactory::PIVOT_PREFIX)
+            ? \substr($column, \strlen(RelationCriteriaFactory::PIVOT_PREFIX))
+            : $column;
     }
 }

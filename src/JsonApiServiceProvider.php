@@ -1417,6 +1417,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(MetadataSource::class),
                 $this->serverNames(),
                 $app->make(ActionRegistry::class),
+                $app->bound(LoggerInterface::class) ? $app->make(LoggerInterface::class) : null,
             );
         });
     }

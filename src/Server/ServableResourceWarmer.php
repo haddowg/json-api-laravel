@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Server;
 
+use haddowg\JsonApi\Collection\LinkRows\LinkRowQuery;
 use haddowg\JsonApi\OpenApi\Metadata\ActionDeclarations;
 use haddowg\JsonApi\OpenApi\ProjectedTypes;
 use haddowg\JsonApi\OpenApi\RelatedTypeNotRegistered;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\Id;
+use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Sort\SortByField;
@@ -23,6 +25,7 @@ use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
 use haddowg\JsonApiLaravel\Operation\Operation;
 use Illuminate\Database\Eloquent\Model;
+use Psr\Log\LoggerInterface;
 
 /**
  * Asserts at `artisan optimize` (a deploy step) that every registered type is actually
@@ -81,6 +84,9 @@ use Illuminate\Database\Eloquent\Model;
  *
  *  - **A collection action may list only filters its mount type declares.** Core's
  *    action-declaration check, run with the type's filter keys.
+ *  - **An identified `MorphToMany` read through an `identifiedBy()` closure is logged.**
+ *    Core's in-memory notice says why its link rows are served in memory, as a notice
+ *    rather than a problem, since the build is still servable.
  *  - **A to-many's read order must name sorts the relation accepts.** Core's
  *    {@see RelationOrderValidator}, run per resource.
  *
@@ -104,6 +110,7 @@ final class ServableResourceWarmer
         private readonly MetadataSource $metadata,
         private readonly array $serverNames,
         private readonly ?ActionRegistry $actions = null,
+        private readonly ?LoggerInterface $logger = null,
     ) {}
 
     /**
@@ -131,6 +138,7 @@ final class ServableResourceWarmer
                 $this->guardSortableFilterableColumns($serverName, $type, $problems);
                 $this->guardActionLinks($serverName, $type, $problems);
                 $this->guardRelationOrder($serverName, $type, $problems);
+                $this->noteInMemoryLinkRows($serverName, $type);
             }
 
             // The standalone-serializer types run the
@@ -323,6 +331,25 @@ final class ServableResourceWarmer
             (new RelationOrderGuard(fn(): DataProviderRegistry => $this->providers))->check($server, $type, $resource);
         } catch (\LogicException $e) {
             $problems[] = $e->getMessage();
+        }
+    }
+
+    /**
+     * Logs, as a notice rather than a problem, each identified `MorphToMany` on `$type` whose
+     * link rows an `identifiedBy()` closure reads, so every request serves them in memory.
+     */
+    private function noteInMemoryLinkRows(string $serverName, string $type): void
+    {
+        if ($this->logger === null) {
+            return;
+        }
+
+        $server = $this->servers->get($serverName);
+        foreach ($this->types->relationsFor($server, $type) as $relation) {
+            $notice = $relation instanceof MorphToMany ? LinkRowQuery::inMemoryNotice($relation, $server->defaultPaginator()) : null;
+            if ($notice !== null) {
+                $this->logger->notice($notice, ['type' => $type, 'server' => $serverName]);
+            }
         }
     }
 
