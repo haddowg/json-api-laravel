@@ -75,7 +75,7 @@ final class ConformanceInMemoryServiceProvider extends ServiceProvider
 
         JsonApi::provider(new InMemoryDataProvider('tracks', $tracks, identify: self::identify()));
 
-        $playlistProvider = new InMemoryDataProvider('playlists', $playlists, identify: self::identify());
+        $playlistProvider = new InMemoryDataProvider('playlists', $playlists, identify: self::identify(), assignId: self::assignId());
         JsonApi::provider($playlistProvider);
 
         $relatedResolver = static fn(string $type, string $id): ?object => match ($type) {

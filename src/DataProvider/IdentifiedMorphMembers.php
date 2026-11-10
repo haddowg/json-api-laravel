@@ -295,6 +295,19 @@ final class IdentifiedMorphMembers
     }
 
     /**
+     * Every stored pair of `$relation` on `$parent`, as wire `[type, id]` pairs.
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    public function wirePairs(Server $server, object $parent, MorphToMany $relation, JsonApiRequestInterface $request): array
+    {
+        return \array_map(
+            fn(array $pair): array => [$pair[0], $this->wireId($server, $pair[0], $pair[1])],
+            $relation->storedIdentifierList($parent, $request),
+        );
+    }
+
+    /**
      * The stored pairs of `$relation` on `$parent` whose type is scoped and whose row the scope
      * hides, as wire `[type, id]` pairs: a replace leaves them attached.
      *

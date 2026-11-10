@@ -1,0 +1,3 @@
+# A fixed membership counts the members a scope hides as held
+
+The persister writes associations itself, so core's own membership check never runs and the handler calls `assertMembershipUnchanged()` beside the other mutability gates, for the relationship endpoint and for embedded linkage on an update, before the write reaches any persister. It compares every member the parent holds, read through the relation the way a full replacement reads them, with the client's linkage plus the members a scope hides, because a client can't list a member it can't see and a full replacement already keeps those attached. Reading through the relation rather than a provider keeps the Eloquent and in-memory providers, and a custom persister, on one answer.

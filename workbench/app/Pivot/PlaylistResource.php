@@ -6,6 +6,7 @@ namespace Workbench\App\Pivot;
 
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Constraint\Comparison;
+use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\Boolean;
 use haddowg\JsonApi\Resource\Field\DateTime;
@@ -32,11 +33,11 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  *    `weight >= position` (a cross-pivot-field rule evaluated over the MERGED pivot);
  *    `addedAt` is `readOnly()` (server-owned, never written from meta).
  *
- * The type exposes fetch + update only, so its relationship-mutation routes (PATCH/POST/DELETE
- * on `…/relationships/{rel}`) are emitted and the pivot upsert runs, without a create/delete
- * surface.
+ * The type exposes fetch, create and update, so its relationship-mutation routes
+ * (PATCH/POST/DELETE on `…/relationships/{rel}`) are emitted and the pivot upsert runs, and a
+ * create can set the members of a fixed relation, without a delete surface.
  */
-#[AsJsonApiResource(operations: [Operation::FetchCollection, Operation::FetchOne, Operation::Update])]
+#[AsJsonApiResource(operations: [Operation::FetchCollection, Operation::FetchOne, Operation::Create, Operation::Update])]
 final class PlaylistResource extends AbstractResource
 {
     public static string $type = 'playlists';
@@ -64,6 +65,17 @@ final class PlaylistResource extends AbstractResource
                 ->cannotReplace()
                 ->cannotAdd()
                 ->cannotRemove(),
+
+            // Two more views over the `tracks` join whose members are fixed: a replace may
+            // reorder them but not add or drop one (MEMBERSHIP_CHANGE_PROHIBITED), and a POST
+            // or DELETE gets the addition or removal 403. `gatedTracks` fixes them only on a
+            // public playlist, judged per request.
+            BelongsToMany::make('fixedTracks', 'tracks')
+                ->storedAs('tracks')
+                ->cannotChangeMembership(),
+            BelongsToMany::make('gatedTracks', 'tracks')
+                ->storedAs('tracks')
+                ->cannotChangeMembership(static fn(mixed $playlist): bool => Accessor::get($playlist, 'public') === true),
 
             // The pivot-bearing membership: declaring fields() renders + validates + upserts
             // the join columns.
