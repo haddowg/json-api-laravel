@@ -49,6 +49,7 @@ use haddowg\JsonApi\Resource\Field\BelongsTo;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\Date;
 use haddowg\JsonApi\Resource\Field\DateTime;
+use haddowg\JsonApi\Resource\Field\GuardsMembershipInterface;
 use haddowg\JsonApi\Resource\Field\HasOne;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\MorphTo;
@@ -73,6 +74,7 @@ use haddowg\JsonApi\Response\SeeOtherResponse;
 use haddowg\JsonApi\Schema\Relationship\IdentifiedMember;
 use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
 use haddowg\JsonApi\Schema\Relationship\RelationshipPagination;
+use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApi\Serializer\PolymorphicSerializer;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApi\Server\RequestBaseUri;
@@ -2005,9 +2007,14 @@ final class CrudOperationHandler implements OperationHandlerInterface
             ? $body->getRelationshipDataToMany($relationshipName)
             : $body->getRelationshipDataToOne($relationshipName);
 
-        // The relation's request-aware mutability flags (cannotReplace/cannotAdd/cannotRemove)
-        // — a 403 family, distinct from the policy gate below.
+        $request = $this->jsonApiRequest($operation->context());
+
+        // The relation's request-aware mutability flags (cannotReplace/cannotAdd/cannotRemove/
+        // cannotChangeMembership) — a 403 family, distinct from the policy gate below.
         $this->guardMutability($relation, $relationshipName, $linkage, $mode, $body, $parent);
+        if ($mode === Mode::Replace) {
+            $this->guardMembership($relation, $linkage, $body, $parent, $server, $request);
+        }
 
         // A pivot relation folds its stored pivot rows in for the merge-before-validate pass:
         // a member already in the relationship validates its MERGED pivot (stored row overlaid
@@ -2033,8 +2040,6 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // `securityMutate` ability override — after validation (422/409 before the policy 403).
         $serverName = $this->serverNameOf($operation->context());
         $this->gateMutate($type, $parent, $relation, $serverName);
-
-        $request = $this->jsonApiRequest($operation->context());
 
         // Ids the related type's own provider does not serve are rejected, and a replace keeps
         // the members it hides. The echo then lists the members the relationship endpoint
@@ -2142,6 +2147,63 @@ final class CrudOperationHandler implements OperationHandlerInterface
         if ($mode === Mode::Remove && $relation->allowsRemoveFor($body, $parent) === false) {
             throw new RemovalProhibited($relationshipName);
         }
+    }
+
+    /**
+     * Refuses a to-many replace that changes the members of a relation declared with
+     * `cannotChangeMembership()` ({@see \haddowg\JsonApi\Exception\MembershipChangeProhibited},
+     * `403`). The persister writes the association itself, so core's own check never runs. The
+     * members a scope hides are added to the client's linkage, as the write will add them, so
+     * the comparison is with everything the parent holds.
+     */
+    private function guardMembership(
+        RelationInterface $relation,
+        ToOneRelationship|ToManyRelationship $linkage,
+        JsonApiRequestInterface $body,
+        object $parent,
+        Server $server,
+        JsonApiRequestInterface $request,
+    ): void {
+        if (!$linkage instanceof ToManyRelationship || !$relation instanceof GuardsMembershipInterface || $relation->allowsMembershipChangeFor($body, $parent)) {
+            return;
+        }
+
+        $this->scopedWrites ??= new ScopedRelationshipWrites($this->providers, $this->relationshipLinkage->members());
+        $relation->assertMembershipUnchanged(
+            $body,
+            $parent,
+            $this->currentMembers($relation, $parent, $server, $request),
+            $this->scopedWrites->withHiddenMembers($parent, $relation, $linkage, $server, $request),
+        );
+    }
+
+    /**
+     * The members `$relation` holds on `$parent`, as wire `[type, id]` pairs: an identified
+     * `MorphToMany`'s stored pairs, otherwise the relation's value read off a copy of the parent
+     * (so a relation an Eloquent model loads doesn't stay on the parent the response renders),
+     * each member's type and id taken from its serializer.
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    private function currentMembers(RelationInterface $relation, object $parent, Server $server, JsonApiRequestInterface $request): array
+    {
+        if (IdentifiedMorphMembers::identifies($relation)) {
+            return $this->relationshipLinkage->members()->wirePairs($server, $parent, $relation, $request);
+        }
+
+        $value = $relation->readValue(clone $parent, $request);
+        $members = [];
+        foreach (\is_iterable($value) ? $value : [] as $member) {
+            if ($member instanceof ResourceIdentifier) {
+                $members[] = [$member->type, (string) $member->id];
+            } elseif (\is_object($member) && ($serializer = $relation->resolveSerializer($member, $server)) !== null) {
+                $members[] = [$serializer->getType($member), $serializer->getId($member)];
+            } elseif (\is_string($member) || \is_int($member)) {
+                $members[] = [$relation->relatedTypes()[0] ?? '', (string) $member];
+            }
+        }
+
+        return $members;
     }
 
     /**
@@ -2276,6 +2338,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $relation = $relationship['relation'];
             if ($creating === false) {
                 $this->guardMutability($relation, $relation->name(), $relationship['linkage'], Mode::Replace, $body, $entity);
+                $this->guardMembership($relation, $relationship['linkage'], $body, $entity, $server, $request);
             }
 
             $linkage = $this->scopeWrittenLinkage($entity, $relation, $relationship['linkage'], Mode::Replace, $server, $request, $creating);

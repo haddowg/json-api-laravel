@@ -13,7 +13,8 @@ use haddowg\JsonApi\Resource\Field\Str;
 
 /**
  * `companies` reads its pairs off the join rows with identifiedBy() and writes them back with
- * fillUsing(), honouring the relationship endpoint's mode.
+ * fillUsing(), honouring the relationship endpoint's mode. With `mtm.fixed` its members are
+ * fixed, so a replace may only reorder them.
  */
 final class UserResource extends AbstractResource
 {
@@ -26,6 +27,7 @@ final class UserResource extends AbstractResource
             Str::make('name'),
             MorphToMany::make('companies', ['agencies', 'advertisers', 'publishers'])
                 ->countable()
+                ->cannotChangeMembership(static fn(): bool => config('mtm.fixed') === true)
                 ->identifiedBy(static fn(mixed $user): array => self::pairs($user))
                 ->fillUsing(static function (mixed $user, mixed $linkage, array $data): mixed {
                     \assert($linkage instanceof ToManyRelationship);

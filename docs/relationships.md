@@ -363,6 +363,32 @@ Removing a row the parent doesn't hold changes nothing. Removing one whose forei
 is `NOT NULL` is a `403` (`REMOVAL_PROHIBITED`, or `FULL_REPLACEMENT_PROHIBITED` for a
 replacement that would drop it), since the row can't be left without a parent.
 
+### Fixing a to-many's members
+
+`cannotChangeMembership()` keeps a to-many's members as they are while still letting a client
+reorder them:
+
+```php
+BelongsToMany::make('tracks', 'tracks')->cannotChangeMembership(),
+```
+
+A replacement, by `PATCH …/relationships/tracks` or as the relation's linkage in a
+whole-resource `PATCH`, must list exactly the members the parent holds now. Order and repeats
+don't matter. Adding or leaving out a member is a `403` `MEMBERSHIP_CHANGE_PROHIBITED` at
+`/data/relationships/tracks`. A `POST` or `DELETE` to the relationship endpoint gets
+`ADDITION_PROHIBITED` or `REMOVAL_PROHIBITED`, and the OpenAPI document drops those two verbs
+and keeps `PATCH`. A create sets the members freely. Pass a closure,
+`cannotChangeMembership(fn (Playlist $playlist, $request): bool => $playlist->public)`, to fix
+them only where it returns `true`. It is judged per request, so the document keeps every verb.
+
+Both reference providers read the current members through the relation itself: the Eloquent
+relation method (the relation's `storedAs()` name, else its name) or the in-memory property,
+each member's id taken from its type's serializer, so an encoded id compares in its wire
+form. An identified `MorphToMany` compares its stored pairs. Members a scope hides count as
+held, the same as a full replacement keeps them attached, so a client only lists the members
+it can see. A custom persister needs nothing extra: the handler runs the check before it calls
+`mutateRelationship()`.
+
 ### Writing a relation through `fillUsing()`
 
 A relation with a `fillUsing()` hook writes its own linkage. The hook runs in place of the

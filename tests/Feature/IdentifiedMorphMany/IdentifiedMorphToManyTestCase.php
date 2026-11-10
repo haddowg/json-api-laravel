@@ -211,6 +211,25 @@ abstract class IdentifiedMorphToManyTestCase extends Orchestra
     }
 
     #[Test]
+    public function aFixedMembershipComparesTheStoredPairsAndKeepsAHiddenMember(): void
+    {
+        config(['mtm.fixed' => true]);
+        $headers = ['Accept' => self::MEDIA_TYPE, 'Content-Type' => self::MEDIA_TYPE];
+        $reordered = \array_map(static function (string $key): array {
+            [$type, $id] = \explode(':', $key);
+
+            return ['type' => $type, 'id' => $id];
+        }, \array_reverse($this->visible(self::USER_ONE)));
+
+        $this->patchJson('/users/1/relationships/companies', ['data' => $reordered], $headers)->assertOk();
+
+        $changed = $this->patchJson('/users/1/relationships/companies', ['data' => \array_slice($reordered, 1)], $headers);
+        $changed->assertStatus(403);
+        self::assertSame('MEMBERSHIP_CHANGE_PROHIBITED', $changed->json('errors.0.code'));
+        self::assertSame('/data/relationships/companies', $changed->json('errors.0.source.pointer'));
+    }
+
+    #[Test]
     public function anAddWritesThroughTheHook(): void
     {
         $this->postJson('/users/3/relationships/companies', ['data' => [
