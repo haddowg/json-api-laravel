@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature\IdentifierMeta;
 
+use haddowg\JsonApi\OpenApi\GeneratorContract;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
 use haddowg\JsonApiLaravel\Tests\Fixtures\IdentifierMeta\IdentifierMetaServiceProvider;
@@ -138,7 +139,7 @@ abstract class IdentifierMetaTestCase extends Orchestra
     {
         $doc = $this->resolve(DocumentFactory::class)->forServer()->toArray();
 
-        self::assertSame(28, $this->at($doc, 'info', 'x-generator', 'contract'));
+        self::assertSame(GeneratorContract::BASELINE, $this->at($doc, 'info', 'x-generator', 'contract'));
         self::assertSame(['role'], \array_keys($this->arrayAt($doc, 'components', 'schemas', 'ShelvesCuratorIdentifierMeta', 'properties')));
         self::assertSame(['slot', 'featured'], \array_keys($this->arrayAt($doc, 'components', 'schemas', 'ShelvesBooksIdentifierMeta', 'properties')));
 

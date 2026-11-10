@@ -18,6 +18,8 @@ use Workbench\App\Validation\SubmissionResource;
  */
 final class ValueTypeInMemoryServiceProvider extends ServiceProvider
 {
+    public const string SUBMISSIONS = 'workbench.submissions_provider';
+
     public function register(): void
     {
         JsonApi::register([SubmissionResource::class]);
@@ -36,6 +38,7 @@ final class ValueTypeInMemoryServiceProvider extends ServiceProvider
                 $item->id = $id;
             },
         );
+        $this->app->instance(self::SUBMISSIONS, $submissions);
         JsonApi::provider($submissions);
         JsonApi::persister(new InMemoryDataPersister('submissions', $submissions->store(), static fn(): Submission => new Submission()));
     }

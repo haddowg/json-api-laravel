@@ -20,8 +20,9 @@ use Workbench\App\Providers\WorkbenchServiceProvider;
  * An application's error offered only on the operations that raise it. A discovered
  * error keeps the scope its own descriptor declares, and a `ScopedErrorSource` bound under
  * {@see JsonApiServiceProvider::ERROR_SOURCE_TAG} catalogues and scopes a class whose
- * descriptor declares none. Each covered operation points its response for the code's
- * status at one narrowed to the scoped code; every other operation keeps the shared one.
+ * descriptor declares none. Each covered operation gets its own inline response for the
+ * code's status, whose error document is named for the operation; every other operation
+ * keeps the shared one.
  *
  * @internal
  */
@@ -36,6 +37,7 @@ final class ErrorScopeTest extends TestCase
         $document = $this->document();
 
         $this->assertContains('ALBUM_LOCKED', $this->offeredCodes($document, '/albums/{id}', 'patch', '409'));
+        $this->assertInlineErrorDocument($document, '/albums/{id}', 'patch', '409', 'AlbumsUpdate409');
 
         // The album create raises a 409 too, but not this one: it keeps the shared response.
         $this->assertNotContains('ALBUM_LOCKED', $this->offeredCodes($document, '/albums', 'post', '409'));
@@ -56,6 +58,7 @@ final class ErrorScopeTest extends TestCase
 
         // The album delete gains the 402 the scoped code needs, offering it…
         $this->assertContains('PAYMENT_REQUIRED', $this->offeredCodes($document, '/albums/{id}', 'delete', '402'));
+        $this->assertInlineErrorDocument($document, '/albums/{id}', 'delete', '402', 'AlbumsDelete402');
 
         // …and no operation the scope does not cover advertises it.
         foreach ($this->arrayAt($document, 'paths') as $path => $item) {
@@ -112,7 +115,8 @@ final class ErrorScopeTest extends TestCase
 
     /**
      * The codes the `$status` response of `$method $path` offers: the `const` branches of
-     * every shape its error document's `errors.items` names.
+     * every shape its error document's `errors.items` names. The response is read inline,
+     * or from the component it references.
      *
      * @param array<array-key, mixed> $document
      *
@@ -120,7 +124,10 @@ final class ErrorScopeTest extends TestCase
      */
     private function offeredCodes(array $document, string $path, string $method, string $status): array
     {
-        $response = $this->componentAt($document, $this->stringAt($document, 'paths', $path, $method, 'responses', $status, '$ref'));
+        $response = $this->arrayAt($document, 'paths', $path, $method, 'responses', $status);
+        if (isset($response['$ref'])) {
+            $response = $this->componentAt($document, $this->stringAt($response, '$ref'));
+        }
         $errorDocument = $this->componentAt($document, $this->stringAt($response, 'content', 'application/vnd.api+json', 'schema', '$ref'));
 
         $codes = [];
@@ -135,6 +142,19 @@ final class ErrorScopeTest extends TestCase
         }
 
         return $codes;
+    }
+
+    /**
+     * Asserts the `$status` response of `$method $path` sits inline in the operation and
+     * uses the error document named `$name`.
+     *
+     * @param array<array-key, mixed> $document
+     */
+    private function assertInlineErrorDocument(array $document, string $path, string $method, string $status, string $name): void
+    {
+        $response = $this->arrayAt($document, 'paths', $path, $method, 'responses', $status);
+        $this->assertArrayNotHasKey('$ref', $response);
+        $this->assertSame('#/components/schemas/' . $name, $this->stringAt($response, 'content', 'application/vnd.api+json', 'schema', '$ref'));
     }
 
     /**

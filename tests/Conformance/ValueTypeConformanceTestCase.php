@@ -9,6 +9,9 @@ use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
+use Workbench\App\Models\Submission as SubmissionModel;
+use Workbench\App\Validation\Submission;
+use Workbench\App\Validation\SubmissionKind;
 
 /**
  * The JSON type witness, run against both providers, the Laravel twin of the Symfony
@@ -240,6 +243,53 @@ abstract class ValueTypeConformanceTestCase extends Orchestra
 
         $response->assertStatus(422);
         self::assertSame(['/data/attributes/flag', '/data/attributes/options/notifyPublishers'], $this->pointersOf($response));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function anEnumIsStoredAsItsCaseAndReadBackAsItsValue(): void
+    {
+        $response = $this->create(['kind' => 'final']);
+
+        $response->assertStatus(201);
+        self::assertSame('final', $response->json('data.attributes.kind'));
+        $id = $response->json('data.id');
+        self::assertIsString($id);
+        self::assertSame(SubmissionKind::Final, $this->storedSubmission($id)->kind);
+
+        $this->writeJsonApi('PATCH', '/api/submissions/' . $id, [
+            'data' => ['type' => 'submissions', 'id' => $id, 'attributes' => ['kind' => 'draft']],
+        ])->assertStatus(200);
+
+        self::assertSame(SubmissionKind::Draft, $this->storedSubmission($id)->kind);
+        self::assertSame('draft', $this->fetch($id)->json('data.attributes.kind'));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function anEnumInsideAJsonColumnKeepsItsBackingValue(): void
+    {
+        $response = $this->create(['review' => ['verdict' => 'final']]);
+
+        $response->assertStatus(201);
+        self::assertSame(['verdict' => 'final'], $response->json('data.attributes.review'));
+        $id = $response->json('data.id');
+        self::assertIsString($id);
+        self::assertSame(['verdict' => 'final'], $this->storedSubmission($id)->review);
+        self::assertSame(['verdict' => 'final'], $this->fetch($id)->json('data.attributes.review'));
+    }
+
+    /**
+     * The submission as the data layer stored it, read fresh from the store.
+     */
+    abstract protected function storedSubmission(string $id): Submission|SubmissionModel;
+
+    /**
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    private function fetch(string $id): TestResponse
+    {
+        return $this->get('/api/submissions/' . $id, ['Accept' => self::MEDIA_TYPE])->assertStatus(200);
     }
 
     /**

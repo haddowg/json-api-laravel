@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Workbench\App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Workbench\App\Validation\SubmissionKind;
 
 /**
  * The `submissions` Eloquent model backing the JSON type conformance suite: each object
@@ -15,11 +16,13 @@ use Illuminate\Database\Eloquent\Model;
  * @property int|null                  $count
  * @property float|null                $ratio
  * @property bool|null                 $flag
+ * @property SubmissionKind|null       $kind
  * @property list<mixed>|null          $tags
  * @property array<string, mixed>|null $options
  * @property list<mixed>|null          $rows
  * @property array<string, mixed>|null $mapping
  * @property array<string, mixed>|null $block
+ * @property array<string, mixed>|null $review
  */
 final class Submission extends Model
 {
@@ -41,10 +44,12 @@ final class Submission extends Model
         'flag' => 'boolean',
         'day' => 'date',
         'at' => 'datetime',
+        'kind' => SubmissionKind::class,
         'tags' => 'array',
         'options' => 'array',
         'rows' => 'array',
         'mapping' => 'array',
         'block' => 'array',
+        'review' => 'array',
     ];
 }

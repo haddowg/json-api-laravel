@@ -46,4 +46,9 @@ final class EloquentValueTypeConformanceTest extends ValueTypeConformanceTestCas
     {
         Submission::query()->create(['id' => 1, 'name' => 'Seed']);
     }
+
+    protected function storedSubmission(string $id): Submission
+    {
+        return Submission::query()->findOrFail((int) $id);
+    }
 }

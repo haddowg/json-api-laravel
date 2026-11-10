@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Workbench\App\MusicCatalog\Domain;
 
+use Workbench\App\MusicCatalog\Model\AlbumStatus;
+
 /**
  * An album — a plain mutable domain object seeded into the in-memory provider. Property
  * names are the storage columns the {@see \Workbench\App\MusicCatalog\JsonApi\AlbumResource}
@@ -24,7 +26,7 @@ final class Album
         public ?string $artwork = null,
         public ?\DateTimeImmutable $released_at = null,
         public bool $explicit = false,
-        public string $status = 'released',
+        public AlbumStatus $status = AlbumStatus::Released,
         public ?\DateTimeImmutable $available_from = null,
         public ?\DateTimeImmutable $available_until = null,
         public ?array $release_info = null,
