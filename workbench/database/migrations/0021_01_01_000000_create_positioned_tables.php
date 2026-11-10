@@ -37,6 +37,16 @@ return new class extends Migration {
         Schema::create('pq_mix_rows', function (Blueprint $table): void {
             $table->increments('id');
             $table->unsignedInteger('queue_id');
+            $table->string('item_type');
+            $table->unsignedInteger('song_id');
+            $table->unsignedInteger('position');
+            $table->unique(['queue_id', 'position']);
+        });
+
+        // An identifiedBy() closure's fillUsing() hook creates rows before they are placed.
+        Schema::create('pq_loose_mix_rows', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->unsignedInteger('queue_id');
             $table->unsignedInteger('song_id');
             $table->unsignedInteger('position')->nullable();
             $table->unique(['queue_id', 'position']);
@@ -45,6 +55,7 @@ return new class extends Migration {
 
     public function down(): void
     {
+        Schema::dropIfExists('pq_loose_mix_rows');
         Schema::dropIfExists('pq_mix_rows');
         Schema::dropIfExists('pq_favourites');
         Schema::dropIfExists('pq_songs');

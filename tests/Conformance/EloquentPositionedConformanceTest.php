@@ -62,7 +62,8 @@ final class EloquentPositionedConformanceTest extends PositionedConformanceTestC
                 $queue->favourites()->attach($songId, ['position' => $position]);
             }
             foreach ($row['mix'] as $position => $songId) {
-                $queue->mixRows()->create(['song_id' => $songId, 'position' => $position]);
+                $queue->mixRows()->create(['item_type' => 'songs', 'song_id' => $songId, 'position' => $position]);
+                $queue->looseMixRows()->create(['song_id' => $songId, 'position' => $position]);
             }
         }
     }

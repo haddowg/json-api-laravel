@@ -73,7 +73,8 @@ abstract class PositionedConformanceTestCase extends Orchestra
     {
         yield 'hasMany' => ['songs'];
         yield 'belongsToMany' => ['favourites'];
-        yield 'identified MorphToMany' => ['mix'];
+        yield 'declared MorphToMany' => ['mix'];
+        yield 'closure MorphToMany' => ['looseMix'];
     }
 
     #[Test]

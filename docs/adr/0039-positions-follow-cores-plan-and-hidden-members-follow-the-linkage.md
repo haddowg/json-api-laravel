@@ -1,0 +1,3 @@
+# Positions follow core's plan, and hidden members follow the linkage
+
+A positioned relation's writes go in core's two passes so a unique owner and position index holds: a declared identified `MorphToMany` gets them from its `LinkRowWritePlan`, which inserts a new row straight at its final position, while one read through an `identifiedBy()` closure leaves its rows to `fillUsing()`, so Laravel positions them after the hook has run, which needs the hook to create a row with no position in a nullable column. On a positioned join, a replace keeps the members a scope hides, so they take the positions after the linkage's, the one placement that can't collide with an index the client chose.

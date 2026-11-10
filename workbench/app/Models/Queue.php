@@ -46,4 +46,12 @@ final class Queue extends Model
     {
         return $this->hasMany(MixRow::class, 'queue_id')->orderBy('id');
     }
+
+    /**
+     * @return HasMany<LooseMixRow, $this>
+     */
+    public function looseMixRows(): HasMany
+    {
+        return $this->hasMany(LooseMixRow::class, 'queue_id')->orderBy('id');
+    }
 }

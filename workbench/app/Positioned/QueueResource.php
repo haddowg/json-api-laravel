@@ -12,14 +12,16 @@ use haddowg\JsonApi\Resource\Field\Integer;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\Str;
+use Workbench\App\Models\LooseMixRow;
 use Workbench\App\Models\MixRow as MixRowModel;
 use Workbench\App\Models\Queue as QueueModel;
 
 /**
- * A queue keeping its relations in the order its clients send: `songs` by each song's slot and
- * `mix` by a position on its own link rows. {@see JoinedQueueResource} adds `favourites`, by a
- * join position only a provider querying the join holds. Each position is unique per queue in
- * storage.
+ * A queue keeping its relations in the order its clients send: `songs` by each song's slot,
+ * `mix` by a position on link rows declared by their fields, which the data layer writes, and
+ * `looseMix` by a position on link rows an `identifiedBy()` closure reads and `fillUsing()`
+ * writes. {@see JoinedQueueResource} adds `favourites`, by a join position only a provider
+ * querying the join holds. Every position is unique per queue in storage.
  */
 final class QueueResource extends AbstractResource
 {
@@ -33,14 +35,20 @@ final class QueueResource extends AbstractResource
             HasMany::make('songs', 'songs')->positionedBy('slot'),
             MorphToMany::make('mix', ['songs'])
                 ->storedAs('mixRows')
-                ->identifiedBy(static fn(mixed $queue): array => self::mix($queue))
+                ->through(MixRowModel::class)
+                ->identifiedByRows(owner: 'queue', type: 'item_type', id: 'song_id')
+                ->fields(Integer::make('position'))
+                ->positionedBy('position'),
+            MorphToMany::make('looseMix', ['songs'])
+                ->storedAs('looseMixRows')
+                ->identifiedBy(static fn(mixed $queue): array => self::looseMix($queue))
                 ->fields(Integer::make('position')->nullable())
                 ->positionedBy('position')
                 ->fillUsing(static function (mixed $queue, mixed $linkage, array $data): mixed {
                     \assert($linkage instanceof ToManyRelationship);
                     $mode = $data['mode'] ?? Mode::Replace;
                     \assert($mode instanceof Mode);
-                    self::fillMix($queue, $linkage, $mode);
+                    self::fillLooseMix($queue, $linkage, $mode);
 
                     return $queue;
                 }),
@@ -50,22 +58,22 @@ final class QueueResource extends AbstractResource
     /**
      * @return list<array{0: string, 1: int, 2: object}>
      */
-    private static function mix(mixed $queue): array
+    private static function looseMix(mixed $queue): array
     {
         $rows = match (true) {
-            $queue instanceof Queue => $queue->mixRows,
-            $queue instanceof QueueModel => $queue->mixRows->all(),
+            $queue instanceof Queue => $queue->looseMixRows,
+            $queue instanceof QueueModel => $queue->looseMixRows->all(),
             default => [],
         };
 
-        return \array_values(\array_map(static fn(MixRow|MixRowModel $row): array => ['songs', $row->song_id, $row], $rows));
+        return \array_values(\array_map(static fn(LooseMixRow $row): array => ['songs', $row->song_id, $row], $rows));
     }
 
     /**
      * Keeps a row per member, deleting the dropped ones and creating the new ones with no
-     * position, which the write then gives them.
+     * position, which the write then gives them, so the column is nullable.
      */
-    private static function fillMix(mixed $queue, ToManyRelationship $linkage, Mode $mode): void
+    private static function fillLooseMix(mixed $queue, ToManyRelationship $linkage, Mode $mode): void
     {
         $sent = [];
         foreach ($linkage->resourceIdentifiers as $identifier) {
@@ -73,10 +81,10 @@ final class QueueResource extends AbstractResource
         }
 
         $kept = [];
-        foreach (self::mix($queue) as [, $id, $row]) {
+        foreach (self::looseMix($queue) as [, $id, $row]) {
             $named = isset($sent[$id]);
             $drop = ($mode === Mode::Replace && !$named) || ($mode === Mode::Remove && $named);
-            if ($drop && $row instanceof MixRowModel) {
+            if ($drop && $row instanceof LooseMixRow && $row->exists) {
                 $row->delete();
             }
             if (!$drop) {
@@ -87,13 +95,13 @@ final class QueueResource extends AbstractResource
 
         $added = $mode === Mode::Remove ? [] : \array_keys($sent);
         if ($queue instanceof Queue) {
-            /** @var list<MixRow> $kept */
-            $queue->mixRows = [...$kept, ...\array_map(static fn(int $id): MixRow => new MixRow($id), $added)];
+            /** @var list<LooseMixRow> $kept */
+            $queue->looseMixRows = [...$kept, ...\array_map(static fn(int $id): LooseMixRow => new LooseMixRow(['song_id' => $id]), $added)];
         } elseif ($queue instanceof QueueModel) {
             foreach ($added as $id) {
-                $queue->mixRows()->create(['song_id' => $id]);
+                $queue->looseMixRows()->create(['song_id' => $id]);
             }
-            $queue->unsetRelation('mixRows');
+            $queue->unsetRelation('looseMixRows');
         }
     }
 }

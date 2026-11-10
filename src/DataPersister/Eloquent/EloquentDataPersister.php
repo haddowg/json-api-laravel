@@ -433,12 +433,14 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         \assert($parent instanceof Model);
         $fields = $relation->linkRowFields();
         \assert($fields !== null && \is_a($fields->through, Model::class, true));
+
         $apply = function () use ($parent, $relation, $plan, $fields): void {
             foreach ($plan->deletes as $member) {
                 if ($member->row instanceof Model) {
                     $member->row->delete();
                 }
             }
+
             foreach ([$plan->temporary, $plan->updates] as $pass) {
                 foreach ($pass as $write) {
                     $row = $write->member->row;
@@ -446,6 +448,9 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
                         $this->fillLinkRow($row, $relation, $write->values);
                         $row->save();
                     }
+                }
+            }
+
             $class = $fields->through;
             foreach ($plan->inserts as $write) {
                 $row = new $class();
@@ -457,42 +462,60 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
                     $owner->associate($parent);
                 } else {
                     $row->setAttribute($fields->owner, $parent->getKey());
+                }
                 $this->fillLinkRow($row, $relation, $values);
                 $row->save();
+            }
+
             $parent->unsetRelation($relation->column() ?? $relation->name());
         };
+
         if ($flush) {
             $parent->getConnection()->transaction($apply);
         } else {
             $apply();
         }
+
         return $parent;
     }
+
     /**
      * Sets a link row's fields from a plan's values, a date-time pivot value moved into the
      * storage zone as a join's pivot value is.
      *
      * @param array<string, mixed> $values
+     */
     private function fillLinkRow(Model $row, MorphToMany $relation, array $values): void
+    {
         $dates = new NaiveDateTimeStorage();
         $fields = [];
         foreach ($relation->pivotFields() as $field) {
             $fields[$field->column() ?? $field->name()] = $field;
+        }
+
         foreach ($values as $column => $value) {
             $field = $fields[$column] ?? null;
             if ($value instanceof \DateTimeInterface && !$field instanceof Date && !$field instanceof Time
                 && ($dates->isNaive($row, $column) || !$row->hasCast($column))) {
                 $value = $dates->toStorage($value);
+            }
             $row->setAttribute($column, $value);
+        }
+    }
+
+    /**
      * A replace or add on a `hasMany` positioned with `positionedBy()`, whose positions live on
      * the related rows: a replace orphans the dropped rows and gives each member its linkage
      * index, an add appends the new members after the highest position. Core's
      * {@see Positions::plan()} orders the writes so a unique owner and position index never sees
      * two rows at one position: every row that moves is parked past the positions in use, then
      * each member is adopted at its final position.
+     *
      * @param HasOneOrMany<Model, Model, mixed> $eloquentRelation
      * @param list<Model>                       $incoming
+     */
     private function mutatePositionedHasMany(HasOneOrMany $eloquentRelation, RelationInterface $relation, array $incoming, Mode $mode, string $position, string $foreignKey, ?string $morphType): void
+    {
         $current = [];
         $rows = [];
         foreach ($eloquentRelation->get() as $row) {
@@ -500,18 +523,25 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             $rows[$this->key($row)] = $row;
             $at = $row->getAttribute($position);
             $current[$this->key($row)] = \is_numeric($at) ? (int) $at : 0;
+        }
+
         $byKey = [];
         foreach ($incoming as $member) {
             $byKey[$this->key($member)] = $member;
+        }
+
         $target = $mode === Mode::Replace
             ? Positions::forReplace(\array_keys($byKey))
             : $current + Positions::forAdd($current, \array_keys($byKey));
         $plan = Positions::plan($current, $target);
+
         foreach ($plan->removed as $key) {
             $this->orphan($rows[$key], $foreignKey, $morphType, new FullReplacementProhibited($relation->name()));
+        }
         foreach ($plan->temporary as $key => $at) {
             $rows[$key]->setAttribute($position, $at);
             $rows[$key]->save();
+        }
         foreach ($plan->final as $key => $at) {
             $member = $rows[$key] ?? $byKey[$key];
             $member->setAttribute($position, $at);

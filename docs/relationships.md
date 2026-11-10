@@ -181,10 +181,13 @@ Positions are usually unique per owner, so both providers write them in core's t
 row that moves is first parked past the positions in use, then each takes its final position,
 and a unique owner and position index never sees two rows at one position. The Eloquent
 persister writes a `hasMany` position on the related row and a join position on the pivot row.
-For an identified `MorphToMany`, `fillUsing()` creates and deletes the link rows and the
-positions are written onto them afterwards. An Eloquent row the hook creates is inserted at once,
-before Laravel can give it a position, so the hook must create it with an empty position and the
-position column must be nullable; the write then gives it its place. The in-memory witness holds
+An identified `MorphToMany` declared with `identifiedByRows()` takes its positions from core's
+link-row write plan: the persister deletes the dropped rows, parks the movers, updates the kept
+rows and inserts each new row straight at its final position, so the position column can be
+`NOT NULL` under the unique index. One declared with an `identifiedBy()` closure leaves its rows
+to `fillUsing()`, and the positions are written onto them afterwards. An Eloquent row that hook
+creates is inserted at once, before Laravel can give it a position, so the hook must create it
+with an empty position and that form's position column must be nullable. The in-memory witness holds
 no join pivot, so route registration and `jsonapi:optimize` refuse a positioned `BelongsToMany`
 whose related type it serves.
 

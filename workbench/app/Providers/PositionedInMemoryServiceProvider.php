@@ -9,18 +9,21 @@ use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\InMemorySnapshotCoordinator;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
+use Workbench\App\Models\LooseMixRow;
+use Workbench\App\Models\MixRow;
 use Workbench\App\Positioned\Fixtures;
-use Workbench\App\Positioned\MixRow;
 use Workbench\App\Positioned\Queue;
 use Workbench\App\Positioned\QueueResource;
 use Workbench\App\Positioned\Song;
 use Workbench\App\Positioned\SongResource;
+use Workbench\App\Positioned\VisibleSongsOnly;
 
 /**
  * The in-memory half of the positioned relation conformance wiring, seeded from
- * {@see Fixtures}.
+ * {@see Fixtures}. When {@see hiddenSongs()} names any, the songs are served by a provider of
+ * their own that hides them.
  */
-final class PositionedInMemoryServiceProvider extends ServiceProvider
+class PositionedInMemoryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
@@ -43,7 +46,8 @@ final class PositionedInMemoryServiceProvider extends ServiceProvider
                 (string) $id,
                 $row['name'],
                 $held,
-                \array_map(static fn(int $songId, int $position): MixRow => new MixRow($songId, $position), $row['mix'], \array_keys($row['mix'])),
+                \array_map(static fn(int $songId, int $position): MixRow => new MixRow(['item_type' => 'songs', 'song_id' => $songId, 'position' => $position]), $row['mix'], \array_keys($row['mix'])),
+                \array_map(static fn(int $songId, int $position): LooseMixRow => new LooseMixRow(['song_id' => $songId, 'position' => $position]), $row['mix'], \array_keys($row['mix'])),
             );
         }
 
@@ -52,10 +56,21 @@ final class PositionedInMemoryServiceProvider extends ServiceProvider
 
         $songProvider = new InMemoryDataProvider('songs', $songs, coordinator: $coordinator);
         $queueProvider = new InMemoryDataProvider('queues', $queues, identify: static fn(object $queue): string => $queue instanceof Queue ? $queue->id : '', coordinator: $coordinator);
-        JsonApi::provider($songProvider);
+        $hidden = $this->hiddenSongs();
+        JsonApi::provider($hidden === [] ? $songProvider : new VisibleSongsOnly($songs, $hidden));
         JsonApi::provider($queueProvider);
 
         $related = static fn(string $type, string $id): ?object => $type === 'songs' ? $songProvider->store()->find($id) : null;
         JsonApi::persister(new InMemoryDataPersister('queues', $queueProvider->store(), static fn(): Queue => new Queue(), $related));
+    }
+
+    /**
+     * The songs a scope hides, none by default.
+     *
+     * @return list<string>
+     */
+    protected function hiddenSongs(): array
+    {
+        return [];
     }
 }

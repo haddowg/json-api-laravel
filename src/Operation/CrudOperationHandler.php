@@ -2578,7 +2578,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $row = $members[$key]->row;
                 if (\is_object($row)) {
                     Accessor::set($row, $position, $at);
-                    if ($row instanceof Model) {
+                    if ($row instanceof Model && $row->exists) {
                         $row->save();
                     }
                 }

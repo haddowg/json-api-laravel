@@ -11,12 +11,14 @@ final class Queue
 {
     /**
      * @param list<Song>   $songs
-     * @param list<MixRow> $mixRows
+     * @param list<\Workbench\App\Models\MixRow>      $mixRows
+     * @param list<\Workbench\App\Models\LooseMixRow> $looseMixRows
      */
     public function __construct(
         public string $id = '',
         public string $name = '',
         public array $songs = [],
         public array $mixRows = [],
+        public array $looseMixRows = [],
     ) {}
 }

@@ -25,6 +25,7 @@ final class InMemoryPositionedConformanceTest extends PositionedConformanceTestC
     public static function relations(): iterable
     {
         yield 'hasMany' => ['songs'];
-        yield 'identified MorphToMany' => ['mix'];
+        yield 'declared MorphToMany' => ['mix'];
+        yield 'closure MorphToMany' => ['looseMix'];
     }
 }
