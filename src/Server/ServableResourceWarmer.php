@@ -13,6 +13,7 @@ use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Sort\SortByField;
+use haddowg\JsonApi\Serializer\RelationOrderValidator;
 use haddowg\JsonApiLaravel\Action\ActionRegistry;
 use haddowg\JsonApiLaravel\Action\ActionScope;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
@@ -80,6 +81,8 @@ use Illuminate\Database\Eloquent\Model;
  *
  *  - **A collection action may list only filters its mount type declares.** Core's
  *    action-declaration check, run with the type's filter keys.
+ *  - **A to-many's read order must name sorts the relation accepts.** Core's
+ *    {@see RelationOrderValidator}, run per resource.
  *
  * Standalone-serializer types are validated too — a
  * fetch-opened standalone type without a provider is exactly the deploy-time
@@ -127,6 +130,7 @@ final class ServableResourceWarmer
                 $this->guardEloquentRelationMethods($serverName, $type, $problems);
                 $this->guardSortableFilterableColumns($serverName, $type, $problems);
                 $this->guardActionLinks($serverName, $type, $problems);
+                $this->guardRelationOrder($serverName, $type, $problems);
             }
 
             // The standalone-serializer types run the
@@ -297,6 +301,29 @@ final class ServableResourceWarmer
         }
 
         return false;
+    }
+
+    /**
+     * Reports a to-many whose read order names a sort the relation doesn't accept, in core's
+     * {@see RelationOrderValidator} wording, or a pivot field its related type's provider can't
+     * query ({@see RelationOrderGuard}). Route registration makes the same check, but a cached
+     * route table skips it.
+     *
+     * @param list<string> $problems
+     */
+    private function guardRelationOrder(string $serverName, string $type, array &$problems): void
+    {
+        $server = $this->servers->get($serverName);
+        $resource = $this->types->resourceFor($server, $type);
+        if ($resource === null) {
+            return;
+        }
+
+        try {
+            (new RelationOrderGuard(fn(): DataProviderRegistry => $this->providers))->check($server, $type, $resource);
+        } catch (\LogicException $e) {
+            $problems[] = $e->getMessage();
+        }
     }
 
     /**

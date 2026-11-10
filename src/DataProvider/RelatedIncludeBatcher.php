@@ -103,6 +103,7 @@ final class RelatedIncludeBatcher
         private readonly ScopedPolymorphicMembers $polymorphicMembers,
         private readonly IdentifiedMorphTargets $identified,
         private readonly ?IdentifiedMorphMembers $members = null,
+        private readonly RelationCriteriaFactory $relationCriteria = new RelationCriteriaFactory(),
     ) {}
 
     /**
@@ -315,6 +316,17 @@ final class RelatedIncludeBatcher
                 continue;
             }
 
+            // A to-many with a read order renders its linkage in that order wherever it renders,
+            // so it loads ordered whether batching is on or not.
+            if ($this->ordersLinkage($server, $type, $entities[0], $relation, $request)) {
+                $rendering = \array_values(\array_filter($entities, fn(object $entity): bool => $this->rendersData($server, $entity, $relation)));
+                if ($rendering !== [] && (!$batch || $this->executeLoad($server, $rendering, $type, $relation, $request, $linkages) === null)) {
+                    $this->loadOrdered($server, $rendering, $relation, $request, $linkages);
+                }
+
+                continue;
+            }
+
             // Otherwise the relation is not expanded into the compound document — but an
             // EAGER monomorphic to-one (BelongsTo/MorphTo, or a withData() override) still
             // emits its linkage `data` on every read regardless of ?include. Core never
@@ -388,7 +400,9 @@ final class RelatedIncludeBatcher
         $provider = $this->providers->scopedRelatedProvider($type, $relatedTypes[0]);
         \assert($provider !== null);
 
-        $criteria = $this->plainIncludeCriteria($request);
+        $criteria = $relation->isToMany()
+            ? $this->linkageCriteria($server, $provider, $entities[0], $relation, $request)
+            : $this->plainIncludeCriteria($request);
         $targets = [];
         foreach ($rendering as $entity) {
             $items = $this->itemsOf($provider->fetchRelatedCollection($relatedTypes[0], $entity, $relation, $criteria, $request));
@@ -546,6 +560,9 @@ final class RelatedIncludeBatcher
         $monomorphic = \count($relatedTypes) === 1;
 
         $targets = $batch && $monomorphic ? $this->executeLoad($server, $entities, $type, $relation, $request, $linkages) : null;
+        if ($targets === null && $this->ordersLinkage($server, $type, $entities[0], $relation, $request)) {
+            $this->loadOrdered($server, $entities, $relation, $request, $linkages);
+        }
         if ($targets !== null) {
             // Thread the root-scoped safeguards into the next level unchanged.
             $this->preloadLevel($server, $targets, $relatedTypes[0], $request, $childPath, $maxDepth, $allowedPaths, true, $batch, $linkages, $reach);
@@ -641,8 +658,11 @@ final class RelatedIncludeBatcher
             return null;
         }
 
-        $batch = $this->providers->forType($type)
-            ->fetchRelatedCollectionBatch($type, $entities, $relation, $this->plainIncludeCriteria($request), $request);
+        $provider = $this->providers->forType($type);
+        $criteria = $relation->isToMany()
+            ? $this->linkageCriteria($server, $provider, $entities[0], $relation, $request)
+            : $this->plainIncludeCriteria($request);
+        $batch = $provider->fetchRelatedCollectionBatch($type, $entities, $relation, $criteria, $request);
 
         $serializer = $server->serializerFor($type);
 
@@ -711,6 +731,59 @@ final class RelatedIncludeBatcher
             || $entity instanceof \stdClass
             || $entity instanceof \ArrayAccess
             || (new \ReflectionClass($entity))->getAttributes(\AllowDynamicProperties::class) !== [];
+    }
+
+    /**
+     * Whether `$relation`'s linkage has a read order to apply: a monomorphic to-many whose
+     * related type has a provider, with its own default order or the related type's.
+     */
+    private function ordersLinkage(Server $server, string $type, object $entity, RelationInterface $relation, JsonApiRequestInterface $request): bool
+    {
+        $relatedTypes = $relation->relatedTypes();
+        if (!$relation->isToMany() || \count($relatedTypes) !== 1 || !$this->providers->supportsType($relatedTypes[0]) || !$this->providers->supportsType($type)) {
+            return false;
+        }
+
+        return $this->linkageCriteria($server, $this->providers->forType($type), $entity, $relation, $request)->defaultSort !== [];
+    }
+
+    /**
+     * Loads each of `$entities`' members of `$relation` in its read order through the related
+     * type's provider, one read per parent, and hands them back as out-of-band linkage. The
+     * path an ordered relation takes when the batch can't carry it.
+     *
+     * @param list<object>                                                            $entities
+     * @param array<int, array<string, RelationshipLinkage|ToOneRelationshipLinkage>> $linkages
+     */
+    private function loadOrdered(Server $server, array $entities, RelationInterface $relation, JsonApiRequestInterface $request, array &$linkages): void
+    {
+        $relatedType = $relation->relatedTypes()[0];
+        $provider = $this->providers->forType($relatedType);
+
+        foreach ($entities as $entity) {
+            $criteria = $this->linkageCriteria($server, $provider, $entity, $relation, $request);
+            $linkages[\spl_object_id($entity)][$relation->name()] = new RelationshipLinkage(
+                $this->itemsOf($provider->fetchRelatedCollection($relatedType, $entity, $relation, $criteria, $request)),
+            );
+        }
+    }
+
+    /**
+     * The criteria a to-many's linkage loads with: its whole member set, no filter, in the
+     * relation's read order, with its pivot sorts when `$provider` can query the join.
+     *
+     * @param DataProviderInterface<object> $provider
+     */
+    private function linkageCriteria(Server $server, DataProviderInterface $provider, object $entity, RelationInterface $relation, JsonApiRequestInterface $request): CollectionCriteria
+    {
+        $relatedType = $relation->relatedTypes()[0] ?? null;
+
+        return $this->relationCriteria->linkageCriteriaFor(
+            $relatedType !== null ? $this->types->resourceFor($server, $relatedType) : null,
+            $relation,
+            $provider instanceof QueriesPivotColumnsInterface && $provider->queriesPivotColumns($entity, $relation),
+            $request,
+        );
     }
 
     /**

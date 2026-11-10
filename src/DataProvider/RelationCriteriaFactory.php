@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\DataProvider;
 
 use haddowg\JsonApi\Operation\QueryParameters;
-use haddowg\JsonApi\Pagination\CursorWindow;
 use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Pagination\WindowInterface;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\DefaultSortedRelationInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterFamilyInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
@@ -18,6 +18,7 @@ use haddowg\JsonApi\Resource\Filter\TargetsColumn;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
 use haddowg\JsonApi\Resource\Sort\SortByField;
+use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
 use haddowg\JsonApi\Resource\Sort\SortMatcher;
 use haddowg\JsonApi\Server\Server;
@@ -84,9 +85,9 @@ final class RelationCriteriaFactory
      * On a key clash the relation wins over the related resource, preserving the merge
      * order `[...resourceFilters, ...relationFilters]`; core's {@see FilterMatcher::merge()}
      * keeps a filter family and an exact filter of the same key apart.
-     * `defaultSort` is the related resource's default order (empty for a polymorphic
-     * to-many); the merged vocabulary rides the criteria so both providers' existing
-     * handlers apply it unchanged (core's docs/sorts.md).
+     * `defaultSort` is the relation's own default order, else the related resource's (empty
+     * for a polymorphic to-many); the merged vocabulary rides the criteria so both
+     * providers' existing handlers apply it unchanged (core's docs/sorts.md).
      *
      * `$wantsCount` rides onto the criteria: only the related endpoint passes `true` (the
      * relation's paginator opted in via `withCount()`, or the client asked
@@ -95,8 +96,8 @@ final class RelationCriteriaFactory
      * from the separate {@see \haddowg\JsonApi\Serializer\RelationshipCountInterface} seam).
      *
      * `$includePivotFields` keeps the relation's `pivot.`-columned filters and adds the pivot
-     * field sorts. A cursor window gets the pivot filters but not the pivot sorts: the keyset
-     * reads its columns off the related model, never the join.
+     * field sorts, a cursor window's keyset included. `$queriesPivotColumns` adds the pivot
+     * sorts alone, for a Relationship Queries window, which takes no pivot filter.
      *
      * `$request` rides onto the criteria so a filter or sort family can resolve a requested key.
      */
@@ -108,23 +109,105 @@ final class RelationCriteriaFactory
         bool $wantsCount = false,
         bool $includePivotFields = false,
         ?JsonApiRequestInterface $request = null,
+        ?bool $queriesPivotColumns = null,
     ): CollectionCriteria {
         $relationFilters = $includePivotFields ? $relation->allFilters() : self::withoutPivotFilters($relation->allFilters());
-
-        $relationSorts = $relation->sorts();
-        if ($includePivotFields && !$window instanceof CursorWindow) {
-            $relationSorts = SortMatcher::merge($relationSorts, self::pivotSorts($relation));
-        }
+        $sorts = $this->sortsFor($relatedResource, $relation, $includePivotFields || ($queriesPivotColumns ?? false));
+        [$defaultSort, $resolved] = $this->defaultSortFor($relatedResource, $relation, $sorts, $request);
 
         return new CollectionCriteria(
             $queryParameters,
             FilterMatcher::merge($relatedResource?->allFilters() ?? [], $relationFilters),
-            SortMatcher::merge($relatedResource?->allSorts() ?? [], $relationSorts),
+            $sorts,
             $window,
-            $relatedResource?->defaultSort() ?? [],
+            $defaultSort,
             wantsCount: $wantsCount,
             request: $request,
+            defaultSortResolved: $resolved,
         );
+    }
+
+    /**
+     * The criteria that reads a to-many's whole member set in its read order for document
+     * linkage: the include batch and a linkage read with no include. It carries the sort
+     * vocabulary and default order of {@see criteriaFor()} but no filter, so a filter's
+     * declared default never narrows the linkage, and no window.
+     */
+    public function linkageCriteriaFor(
+        ?AbstractResource $relatedResource,
+        RelationInterface $relation,
+        bool $includePivotFields,
+        JsonApiRequestInterface $request,
+    ): CollectionCriteria {
+        $sorts = $this->sortsFor($relatedResource, $relation, $includePivotFields);
+        [$defaultSort, $resolved] = $this->defaultSortFor($relatedResource, $relation, $sorts, $request);
+
+        return new CollectionCriteria(
+            new QueryParameters(fields: [], includes: [], sort: [], filter: [], pagination: $request->getPagination()),
+            sorts: $sorts,
+            defaultSort: $defaultSort,
+            request: $request,
+            defaultSortResolved: $resolved,
+        );
+    }
+
+    /**
+     * Whether `$relation` declares its own default read order, which replaces the order an
+     * Eloquent relation method's `orderBy` gives its query, as a requested sort does (ADR 0037).
+     */
+    public static function declaresOwnOrder(RelationInterface $relation): bool
+    {
+        return $relation instanceof DefaultSortedRelationInterface && $relation->defaultSort() !== [];
+    }
+
+    /**
+     * @return list<SortInterface>
+     */
+    private function sortsFor(?AbstractResource $relatedResource, RelationInterface $relation, bool $includePivotSorts): array
+    {
+        $relationSorts = $relation->sorts();
+        if ($includePivotSorts) {
+            $relationSorts = SortMatcher::merge($relationSorts, self::pivotSorts($relation));
+        }
+
+        return SortMatcher::merge($relatedResource?->allSorts() ?? [], $relationSorts);
+    }
+
+    /**
+     * The order to read the relation's members in when the request names no sort, and
+     * whether it is already resolved against the relation's sorts: the relation's own
+     * `defaultSort()`, resolved, else the related type's, which the applier matches as it
+     * does a resource's. Each of the relation's own directives is matched to the sort `$sorts`
+     * holds for the key, so a pivot field or `withSorts()` key orders by the column the
+     * relation declares for it. A pivot key the provider can't query is refused at warm-up,
+     * so one that reaches here unresolved is dropped. {@see \haddowg\JsonApi\Serializer\RelationOrderValidator}
+     * has checked every other key at warm-up.
+     *
+     * @param list<SortInterface> $sorts
+     *
+     * @return array{list<SortDirective>, bool}
+     */
+    private function defaultSortFor(?AbstractResource $relatedResource, RelationInterface $relation, array $sorts, ?JsonApiRequestInterface $request): array
+    {
+        if (!self::declaresOwnOrder($relation)) {
+            return [$relatedResource?->defaultSort() ?? [], false];
+        }
+
+        \assert($relation instanceof DefaultSortedRelationInterface);
+        $pivotKeys = \array_map(static fn(SortInterface $sort): string => $sort->key(), PivotFields::sortsFor($relation));
+
+        $directives = [];
+        foreach ($relation->defaultSort() as $directive) {
+            $key = $directive->sort->key();
+            $matched = SortMatcher::match($sorts, $key, $request);
+            if ($matched !== null) {
+                $directives[] = new SortDirective($matched, $directive->descending);
+            } elseif (!\in_array($key, $pivotKeys, true)) {
+                $directives[] = $directive;
+            }
+        }
+
+        return [$directives, true];
     }
 
     /**

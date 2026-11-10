@@ -40,6 +40,9 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  *   `links.last`) iff `true`, else fetches count-free (the window+1 probe → `hasMore`, no
  *   total). Defaulted `false` so every construction site stays count-free unless the
  *   handler explicitly asks for a count;
+ * - {@see $defaultSortResolved} — whether the default order was resolved against the
+ *   relation's sorts when the criteria was built (a relation's own read order, checked at
+ *   warm-up), so the applier takes it as given rather than matching each key;
  * - {@see $request} — the request being answered, which a filter or sort family needs to
  *   resolve a requested key. `null` only where no request drives the fetch, such as
  *   an internal lookup that never filters or sorts.
@@ -53,6 +56,7 @@ final readonly class CollectionCriteria
      * @param array<string, string> $aliasOf     directive KEY → target query alias; an absent key resolves to the root alias
      * @param bool                  $wantsCount  whether the provider should run the `COUNT` for this windowed fetch (default false = count-free)
      * @param ?JsonApiRequestInterface $request  the request a filter or sort family resolves a key against
+     * @param bool                  $defaultSortResolved whether {@see $defaultSort} is already resolved against the sorts, so it applies as given
      */
     public function __construct(
         public QueryParameters $queryParameters,
@@ -63,5 +67,6 @@ final readonly class CollectionCriteria
         public array $aliasOf = [],
         public bool $wantsCount = false,
         public ?JsonApiRequestInterface $request = null,
+        public bool $defaultSortResolved = false,
     ) {}
 }

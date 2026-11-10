@@ -8,6 +8,7 @@ use haddowg\JsonApi\Collection\Keyset\KeysetColumn;
 use haddowg\JsonApi\Pagination\CursorBoundary;
 use haddowg\JsonApi\Resource\DateTimeParser;
 use haddowg\JsonApi\Resource\Sort\UnsupportedSort;
+use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
@@ -52,11 +53,13 @@ final class EloquentKeyset
 
     /**
      * @param Model                $model the query's model (its table qualifies columns; its `$casts` flag date columns)
-     * @param ?EloquentSortHandler $sorts the handler whose arms supply a custom sort's expression
+     * @param ?EloquentSortHandler $sorts      the handler whose arms supply a custom sort's expression
+     * @param ?string              $pivotTable the join table a `pivot.` column names, on a pivot relation's query
      */
     public function __construct(
         private readonly Model $model,
         private readonly ?EloquentSortHandler $sorts = null,
+        private readonly ?string $pivotTable = null,
     ) {}
 
     /**
@@ -322,6 +325,10 @@ final class EloquentKeyset
     {
         if (\preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/', $column) !== 1) {
             throw new \LogicException(\sprintf('"%s" is not a valid column path.', $column));
+        }
+
+        if ($this->pivotTable !== null && \str_starts_with($column, RelationCriteriaFactory::PIVOT_PREFIX)) {
+            return $this->pivotTable . '.' . \substr($column, \strlen(RelationCriteriaFactory::PIVOT_PREFIX));
         }
 
         return $this->model->qualifyColumn($column);

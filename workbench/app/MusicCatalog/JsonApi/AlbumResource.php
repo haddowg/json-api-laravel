@@ -70,11 +70,12 @@ final class AlbumResource extends AbstractResource
                 ->storedAs('available_until')
                 ->nullable()
                 ->compareWith('availableFrom', Comparison::GreaterThan),
-            // The read hook shapes the value itself, so the map needs its own example.
-            Map::make('releaseInfo')->example(['label' => 'Apple Records', 'catalogueNumber' => 'PCS 7088'])->nullable()->fields(
+            // The read value renders through the children, so each example comes from the
+            // children its schema shows and a write's leaves the read-only one out.
+            Map::make('releaseInfo')->nullable()->fields(
                 Str::make('label')->example('Apple Records'),
                 Str::make('catalogueNumber')->example('PCS 7088')->readOnly(),
-            )->serializeUsing(static function (mixed $model): mixed {
+            )->extractUsing(static function (mixed $model): mixed {
                 $info = \is_object($model) ? Accessor::get($model, 'release_info') : null;
 
                 return $info === [] ? null : $info;

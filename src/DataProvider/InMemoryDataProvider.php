@@ -414,10 +414,10 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
         $tiebreak = new SortByField('__jsonapi_pk_tiebreak', $this->idColumn);
 
         $requested = $criteria->queryParameters->sort;
-        $sort = [...$requested, $tiebreak->key()];
 
-        // The default sort applies only when no sort was requested; append the tiebreak to
-        // it too so a default-ordered window is tiebroken the same way.
+        // The default sort applies only when no sort was requested, so a default-ordered
+        // window takes the tiebreak after its default and leaves the request's sort empty.
+        $sort = $requested === [] ? [] : [...$requested, $tiebreak->key()];
         $defaultSort = $requested === []
             ? [...$criteria->defaultSort, new SortDirective($tiebreak, descending: false)]
             : $criteria->defaultSort;
@@ -440,6 +440,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
             // the same wantsCount the batcher resolved.
             wantsCount: $criteria->wantsCount,
             request: $criteria->request,
+            defaultSortResolved: $criteria->defaultSortResolved,
         );
     }
 
