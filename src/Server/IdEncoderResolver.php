@@ -44,6 +44,11 @@ final class IdEncoderResolver
      */
     private array $cache = [];
 
+    /**
+     * @var array<string, array<string, AbstractResource|null>>
+     */
+    private array $resources = [];
+
     private string $server = ServerRegistry::DEFAULT_SERVER;
 
     /**
@@ -77,24 +82,40 @@ final class IdEncoderResolver
         return $this->cache[$server][$type];
     }
 
+    /**
+     * The resource that declares `$type` on `$server` (null is the bound server), the one its
+     * id encoder is read from, or `null` when the type has none.
+     */
+    public function resourceFor(string $type, ?string $server = null): ?AbstractResource
+    {
+        $server ??= $this->server;
+        if (!\array_key_exists($type, $this->resources[$server] ?? [])) {
+            $this->resources[$server][$type] = $this->resolveResource($type, $server);
+        }
+
+        return $this->resources[$server][$type];
+    }
+
     private function resolve(string $type, string $server): ?IdEncoderInterface
+    {
+        foreach ($this->resourceFor($type, $server)?->allFields() ?? [] as $field) {
+            if ($field instanceof Id) {
+                return $field->encoder();
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveResource(string $type, string $server): ?AbstractResource
     {
         $candidates = \array_filter($this->discovery->resources(), static fn(ResourceDescriptor $descriptor): bool => $descriptor->type === $type);
         $own = \array_filter($candidates, static fn(ResourceDescriptor $descriptor): bool => $descriptor->exposedOn($server));
 
         foreach ($own !== [] ? $own : $candidates as $descriptor) {
             $resource = ($this->resolver)($descriptor->class);
-            if (!$resource instanceof AbstractResource) {
-                return null;
-            }
 
-            foreach ($resource->allFields() as $field) {
-                if ($field instanceof Id) {
-                    return $field->encoder();
-                }
-            }
-
-            return null;
+            return $resource instanceof AbstractResource ? $resource : null;
         }
 
         return null;

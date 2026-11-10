@@ -154,8 +154,42 @@ document gives the relation's own order as the `sort` parameter's `default` on b
 endpoints; the related type's fallback isn't projected there.
 
 On the Eloquent provider an `orderBy` on the relation method is the relation's order when
-nothing else orders it. A requested sort or the relation's own `defaultSort()` replaces it,
+nothing else orders it. A requested sort or the relation's own order, its `defaultSort()` or its position, replaces it,
 and the related type's `defaultSort()` follows it, so the method's order comes first.
+
+### Positioned relations
+
+`positionedBy()` keeps a to-many in the order clients send. It names a stored `Integer` field:
+a pivot field on a `BelongsToMany` or an identified `MorphToMany`, or a `readOnly()` field of the
+related type on a `HasMany`.
+
+```php
+HasMany::make('songs', 'songs')->positionedBy('slot'), // SongResource: Integer::make('slot')->readOnly()
+
+BelongsToMany::make('favourites', 'songs')
+    ->fields(Integer::make('position'))
+    ->positionedBy('position'),
+```
+
+A replace, by `PATCH` on the relationship or as linkage in a whole-resource write, gives each
+member its index in the linkage from `0`. On a join, members a scope hides from the caller keep
+their rows and follow the linkage. An add appends the new members after the highest position,
+and a remove leaves gaps. Clients never set a position: it is read-only in `meta.pivot` and as an
+attribute. The relation reads in position order unless it declares a `defaultSort()`.
+
+Positions are usually unique per owner, so both providers write them in core's two passes: every
+row that moves is first parked past the positions in use, then each takes its final position,
+and a unique owner and position index never sees two rows at one position. The Eloquent
+persister writes a `hasMany` position on the related row and a join position on the pivot row.
+An identified `MorphToMany` declared with `identifiedByRows()` takes its positions from core's
+link-row write plan: the persister deletes the dropped rows, parks the movers, updates the kept
+rows and inserts each new row straight at its final position, so the position column can be
+`NOT NULL` under the unique index. One declared with an `identifiedBy()` closure leaves its rows
+to `fillUsing()`, and the positions are written onto them afterwards. An Eloquent row that hook
+creates is inserted at once, before Laravel can give it a position, so the hook must create it
+with an empty position and that form's position column must be nullable. The in-memory witness holds
+no join pivot, so route registration and `jsonapi:optimize` refuse a positioned `BelongsToMany`
+whose related type it serves.
 
 ## The Relationship Queries profile
 

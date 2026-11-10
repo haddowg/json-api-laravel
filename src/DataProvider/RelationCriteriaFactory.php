@@ -10,6 +10,7 @@ use haddowg\JsonApi\Pagination\WindowInterface;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\DefaultSortedRelationInterface;
+use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterFamilyInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
@@ -17,6 +18,7 @@ use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Filter\TargetsColumn;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
+use haddowg\JsonApi\Resource\Sort\RelationSorts;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
@@ -152,12 +154,37 @@ final class RelationCriteriaFactory
     }
 
     /**
-     * Whether `$relation` declares its own default read order, which replaces the order an
-     * Eloquent relation method's `orderBy` gives its query, as a requested sort does (ADR 0037).
+     * Whether `$relation` has its own read order, its declared default or its position order,
+     * which replaces the order an Eloquent relation method's `orderBy` gives its query, as a
+     * requested sort does (ADR 0037).
      */
     public static function declaresOwnOrder(RelationInterface $relation): bool
     {
-        return $relation instanceof DefaultSortedRelationInterface && $relation->defaultSort() !== [];
+        return RelationSorts::ownDefault($relation) !== [];
+    }
+
+    /**
+     * The relation's own read order: its declared default, else ascending by its position, a
+     * related type's position field ordering by that field's column.
+     *
+     * @return list<SortDirective>
+     */
+    private static function ownOrder(RelationInterface $relation, ?AbstractResource $relatedResource): array
+    {
+        $own = RelationSorts::ownDefault($relation);
+        if ($own === [] || $relation instanceof PivotRelationInterface
+            || ($relation instanceof DefaultSortedRelationInterface && $relation->defaultSort() !== [])) {
+            return $own;
+        }
+
+        $name = $own[0]->sort->key();
+        foreach ($relatedResource?->allFields() ?? [] as $field) {
+            if ($field->name() === $name && !$field instanceof RelationInterface) {
+                return [new SortDirective(SortByField::make($name, $field->column() ?? $name), descending: false)];
+            }
+        }
+
+        return $own;
     }
 
     /**
@@ -176,7 +203,7 @@ final class RelationCriteriaFactory
     /**
      * The order to read the relation's members in when the request names no sort, and
      * whether it is already resolved against the relation's sorts: the relation's own
-     * `defaultSort()`, resolved, else the related type's, which the applier matches as it
+     * `defaultSort()` or position order, resolved, else the related type's, which the applier matches as it
      * does a resource's. Each of the relation's own directives is matched to the sort `$sorts`
      * holds for the key, so a pivot field or `withSorts()` key orders by the column the
      * relation declares for it. A pivot key the provider can't query is refused at warm-up,
@@ -193,11 +220,10 @@ final class RelationCriteriaFactory
             return [$relatedResource?->defaultSort() ?? [], false];
         }
 
-        \assert($relation instanceof DefaultSortedRelationInterface);
         $pivotKeys = \array_map(static fn(SortInterface $sort): string => $sort->key(), PivotFields::sortsFor($relation));
 
         $directives = [];
-        foreach ($relation->defaultSort() as $directive) {
+        foreach (self::ownOrder($relation, $relatedResource) as $directive) {
             $key = $directive->sort->key();
             $matched = SortMatcher::match($sorts, $key, $request);
             if ($matched !== null) {

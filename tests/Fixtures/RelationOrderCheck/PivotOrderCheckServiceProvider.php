@@ -16,9 +16,10 @@ final class PivotOrderCheckServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([RackResource::class, EntryResource::class])->ignoreRoutes();
+        JsonApi::register([RackResource::class, BinResource::class, EntryResource::class])->ignoreRoutes();
 
         JsonApi::provider(new InMemoryDataProvider('racks', []));
+        JsonApi::provider(new InMemoryDataProvider('bins', []));
         JsonApi::provider(new InMemoryDataProvider('entries', []));
     }
 }

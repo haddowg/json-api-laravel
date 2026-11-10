@@ -53,6 +53,7 @@ use haddowg\JsonApi\Resource\Field\HasOne;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
+use haddowg\JsonApi\Resource\Field\Positions;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Field\Time;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
@@ -69,6 +70,7 @@ use haddowg\JsonApi\Response\NoContentResponse;
 use haddowg\JsonApi\Response\RawResponse;
 use haddowg\JsonApi\Response\RelatedResponse;
 use haddowg\JsonApi\Response\SeeOtherResponse;
+use haddowg\JsonApi\Schema\Relationship\IdentifiedMember;
 use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
 use haddowg\JsonApi\Schema\Relationship\RelationshipPagination;
 use haddowg\JsonApi\Serializer\PolymorphicSerializer;
@@ -84,6 +86,7 @@ use haddowg\JsonApiLaravel\DataPersister\AcceptedForProcessing;
 use haddowg\JsonApiLaravel\DataPersister\AsyncWriteNotAllowedInAtomicOperation;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
+use haddowg\JsonApiLaravel\DataPersister\PositionColumn;
 use haddowg\JsonApiLaravel\DataPersister\ReportsCurrentOwners;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\WritesLinkRowsInterface;
@@ -186,9 +189,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * The identified `MorphToMany` writes awaiting {@see writeLinkRows()}, each with the members
-     * its relation held before the write, by type and wire id.
+     * its relation held before the write and their positions, by type and wire id.
      *
-     * @var list<array{MorphToMany, ToManyRelationship, array<string, true>}>
+     * @var list<array{MorphToMany, ToManyRelationship, Mode, array<string, int>}>
      */
     private array $linkRowWrites = [];
 
@@ -2541,6 +2544,49 @@ final class CrudOperationHandler implements OperationHandlerInterface
     }
 
     /**
+     * Writes the positions of an identified `MorphToMany` positioned with `positionedBy()` onto
+     * its link rows once `fillUsing()` has written them: a replace gives each member its linkage
+     * index, an add appends the new members after the highest position, and a remove leaves
+     * gaps. Core's {@see Positions::plan()} orders the writes so a unique owner and position
+     * index never sees two rows at one position: every row that moves is parked past the
+     * positions in use, then each takes its final position. A row the hook creates should leave
+     * its position empty for this to fill.
+     *
+     * @param array<string, int>              $held    the positions before the write, by type and wire id
+     * @param array<string, IdentifiedMember> $members the members after it, by type and wire id
+     */
+    private function writeLinkRowPositions(MorphToMany $relation, ToManyRelationship $linkage, Mode $mode, array $held, array $members): void
+    {
+        $position = PositionColumn::of($relation);
+        if ($position === null) {
+            return;
+        }
+
+        $sent = [];
+        foreach ($linkage->resourceIdentifiers as $identifier) {
+            $sent[] = $identifier->type . "\0" . $identifier->id;
+        }
+
+        $current = \array_intersect_key($held, $members);
+        $target = $mode === Mode::Replace
+            ? Positions::forReplace([...$sent, ...\array_keys(\array_diff_key($members, \array_flip($sent)))])
+            : $current + Positions::forAdd($current, $sent);
+        $plan = Positions::plan($current, \array_intersect_key($target, $members));
+
+        foreach ([$plan->temporary, $plan->final] as $pass) {
+            foreach ($pass as $key => $at) {
+                $row = $members[$key]->row;
+                if (\is_object($row)) {
+                    Accessor::set($row, $position, $at);
+                    if ($row instanceof Model && $row->exists) {
+                        $row->save();
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Notes the members an identified `MorphToMany` with stored pivot fields holds before a write
      * of `$linkage`, so {@see writeLinkRows()} can tell a new member from an existing one once
      * the relation's `fillUsing()` has written the link rows.
@@ -2552,8 +2598,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
             return;
         }
 
-        $held = $this->relationshipLinkage->members()->membersByKey($server, $parent, $relation, $request);
-        $this->linkRowWrites[] = [$relation, $linkage, \array_fill_keys(\array_keys($held), true)];
+        $position = PositionColumn::of($relation);
+        $held = [];
+        foreach ($this->relationshipLinkage->members()->membersByKey($server, $parent, $relation, $request) as $key => $member) {
+            $at = $position !== null && $member->row !== null ? Accessor::get($member->row, $position) : null;
+            $held[$key] = \is_numeric($at) ? (int) $at : 0;
+        }
+        $this->linkRowWrites[] = [$relation, $linkage, $mode, $held];
     }
 
     /**
@@ -2567,11 +2618,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $writes = $this->linkRowWrites;
         $this->linkRowWrites = [];
 
-        foreach ($writes as [$relation, $linkage, $held]) {
+        foreach ($writes as [$relation, $linkage, $mode, $held]) {
             if ($parent instanceof Model) {
                 $parent->unsetRelation($relation->column() ?? $relation->name());
             }
             $members = $this->relationshipLinkage->members()->membersByKey($server, $parent, $relation, $request);
+            $this->writeLinkRowPositions($relation, $linkage, $mode, $held, $members);
 
             foreach ($linkage->resourceIdentifiers as $identifier) {
                 $pivot = $identifier->meta['pivot'] ?? null;

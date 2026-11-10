@@ -17,10 +17,12 @@ use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
+use haddowg\JsonApi\Resource\Field\Positions;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Field\Time;
 use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApiLaravel\DataPersister\AbstractDataPersister;
+use haddowg\JsonApiLaravel\DataPersister\PositionColumn;
 use haddowg\JsonApiLaravel\DataPersister\ReportsCurrentOwners;
 use haddowg\JsonApiLaravel\DataPersister\SoftDeleteCapable;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
@@ -392,6 +394,13 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             return;
         }
 
+        $position = PositionColumn::of($relation, $this->idEncoders());
+        if ($position !== null) {
+            $this->mutatePositionedHasMany($eloquentRelation, $relation, $incoming, $mode, $position, $foreignKey, $morphType);
+
+            return;
+        }
+
         // A full Replace orphans the current members not in the incoming set (an FK-move):
         // null their FK before the incoming are re-parented below.
         if ($mode === Mode::Replace) {
@@ -491,6 +500,52 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
                 $value = $dates->toStorage($value);
             }
             $row->setAttribute($column, $value);
+        }
+    }
+
+    /**
+     * A replace or add on a `hasMany` positioned with `positionedBy()`, whose positions live on
+     * the related rows: a replace orphans the dropped rows and gives each member its linkage
+     * index, an add appends the new members after the highest position. Core's
+     * {@see Positions::plan()} orders the writes so a unique owner and position index never sees
+     * two rows at one position: every row that moves is parked past the positions in use, then
+     * each member is adopted at its final position.
+     *
+     * @param HasOneOrMany<Model, Model, mixed> $eloquentRelation
+     * @param list<Model>                       $incoming
+     */
+    private function mutatePositionedHasMany(HasOneOrMany $eloquentRelation, RelationInterface $relation, array $incoming, Mode $mode, string $position, string $foreignKey, ?string $morphType): void
+    {
+        $current = [];
+        $rows = [];
+        foreach ($eloquentRelation->get() as $row) {
+            \assert($row instanceof Model);
+            $rows[$this->key($row)] = $row;
+            $at = $row->getAttribute($position);
+            $current[$this->key($row)] = \is_numeric($at) ? (int) $at : 0;
+        }
+
+        $byKey = [];
+        foreach ($incoming as $member) {
+            $byKey[$this->key($member)] = $member;
+        }
+
+        $target = $mode === Mode::Replace
+            ? Positions::forReplace(\array_keys($byKey))
+            : $current + Positions::forAdd($current, \array_keys($byKey));
+        $plan = Positions::plan($current, $target);
+
+        foreach ($plan->removed as $key) {
+            $this->orphan($rows[$key], $foreignKey, $morphType, new FullReplacementProhibited($relation->name()));
+        }
+        foreach ($plan->temporary as $key => $at) {
+            $rows[$key]->setAttribute($position, $at);
+            $rows[$key]->save();
+        }
+        foreach ($plan->final as $key => $at) {
+            $member = $rows[$key] ?? $byKey[$key];
+            $member->setAttribute($position, $at);
+            $eloquentRelation->save($member);
         }
     }
 
@@ -604,6 +659,13 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         // are checked against the scoped read first, and a replace keeps the hidden members.
         $hidden = $this->hiddenJoinedIds($eloquentRelation, $ids, $mode);
 
+        $position = $mode !== Mode::Remove ? PositionColumn::of($relation) : null;
+        if ($position !== null) {
+            $this->mutatePositionedJoin($eloquentRelation, $relation, $linkage, $mode, $ids, $hidden, $position);
+
+            return;
+        }
+
         // A Remove carries no pivot meta, and a bare join, or one whose pivot fields are all
         // computed, has no pivot columns — the id-only sync/attach/detach form covers both.
         if ($mode === Mode::Remove || !$relation instanceof PivotRelation || $relation->storedPivotFields() === []) {
@@ -652,6 +714,64 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         }
 
         $eloquentRelation->sync($payload);
+    }
+
+    /**
+     * A replace or add on a join positioned with `positionedBy()`: a replace gives each member
+     * its linkage index, any member a scope hides following them, and an add appends the new
+     * members after the highest position. Core's {@see Positions::plan()} orders the writes so a
+     * unique owner and position index never sees two rows at one position: the dropped rows are
+     * detached, every row that moves is parked past the positions in use, and then each member
+     * takes its final position and its `meta.pivot` values, new members attaching there.
+     *
+     * @param BelongsToMany<Model, Model> $eloquentRelation
+     * @param list<mixed>                 $ids              the incoming storage ids
+     * @param list<string>                $hidden           the attached ids a scope hides
+     */
+    private function mutatePositionedJoin(BelongsToMany $eloquentRelation, RelationInterface $relation, ToManyRelationship $linkage, Mode $mode, array $ids, array $hidden, string $position): void
+    {
+        $relatedKey = $eloquentRelation->getRelatedPivotKeyName();
+        $current = [];
+        foreach ($eloquentRelation->newPivotQuery()->get([$relatedKey, $position]) as $row) {
+            $key = $row->{$relatedKey} ?? null;
+            $at = $row->{$position} ?? null;
+            if (\is_scalar($key)) {
+                $current[(string) $key] = \is_numeric($at) ? (int) $at : 0;
+            }
+        }
+
+        $incoming = $this->stringKeys($ids);
+        $target = $mode === Mode::Replace
+            ? Positions::forReplace([...$incoming, ...$hidden])
+            : $current + Positions::forAdd($current, $incoming);
+        $plan = Positions::plan($current, $target);
+
+        if ($plan->removed !== []) {
+            $eloquentRelation->detach($plan->removed);
+        }
+        foreach ($plan->temporary as $key => $at) {
+            $eloquentRelation->updateExistingPivot($key, [$position => $at]);
+        }
+
+        $stored = $relation instanceof PivotRelation && $relation->storedPivotFields() !== [];
+        $payload = [];
+        foreach ($linkage->resourceIdentifiers as $identifier) {
+            if ($identifier->id === null) {
+                continue;
+            }
+            /** @var mixed $storageId */
+            $storageId = $this->decodeLinkageId($this->relatedType($relation, $identifier), $identifier->id);
+            if (!\is_scalar($storageId)) {
+                continue;
+            }
+            $key = (string) $storageId;
+            $payload[$key] = $stored ? $this->pivotAttributes($eloquentRelation, $relation, $identifier->meta, !isset($current[$key])) : [];
+        }
+        foreach ($plan->final as $key => $at) {
+            $payload[$key] = [...($payload[$key] ?? []), $position => $at];
+        }
+
+        $eloquentRelation->syncWithoutDetaching($payload);
     }
 
     /**
@@ -911,6 +1031,11 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
      */
     private function encoderFor(string $type): ?IdEncoderInterface
     {
+        return $this->idEncoders()?->encoderFor($type);
+    }
+
+    private function idEncoders(): ?IdEncoderResolver
+    {
         if (!$this->idEncodersResolved) {
             $container = Container::getInstance();
             $this->idEncoders = $container->bound(IdEncoderResolver::class)
@@ -919,7 +1044,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             $this->idEncodersResolved = true;
         }
 
-        return $this->idEncoders?->encoderFor($type);
+        return $this->idEncoders;
     }
 
     /**

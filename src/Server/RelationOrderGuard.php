@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Server;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
+use haddowg\JsonApi\Resource\Sort\RelationSorts;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
 use haddowg\JsonApi\Resource\Sort\SortMatcher;
 use haddowg\JsonApi\Serializer\RelationOrderValidator;
@@ -16,8 +17,8 @@ use haddowg\JsonApiLaravel\OpenApi\PivotFields;
 
 /**
  * Checks a resource's to-many read orders at route registration and `jsonapi:optimize`: core's
- * {@see RelationOrderValidator}, and that an order only a pivot field answers is read by a
- * provider that queries the join. The in-memory provider holds no pivot data, so such an order
+ * {@see RelationOrderValidator}, and that an order only a pivot field answers, a declared
+ * default or a join position, is read by a provider that queries the join. The in-memory provider holds no pivot data, so such an order
  * would otherwise do nothing on every read of the relation.
  */
 final class RelationOrderGuard
@@ -39,7 +40,7 @@ final class RelationOrderGuard
                 continue;
             }
 
-            $order = $relation->defaultSort();
+            $order = RelationSorts::ownDefault($relation);
             $pivotKeys = \array_map(static fn(SortInterface $sort): string => $sort->key(), PivotFields::sortsFor($relation));
             $relatedType = $relation->relatedTypes()[0] ?? null;
             if ($order === [] || $pivotKeys === [] || $relatedType === null) {
