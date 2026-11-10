@@ -20,7 +20,13 @@ final class LoadedLinkageServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([TemplateResource::class, BindingResource::class]);
+        JsonApi::register([
+            TemplateResource::class,
+            BindingResource::class,
+            ShowTemplateAction::class,
+            ListTemplatesAction::class,
+            ShowBindingAction::class,
+        ]);
 
         if (config('loaded_linkage.store') === 'memory') {
             $bindings = [
@@ -29,6 +35,9 @@ final class LoadedLinkageServiceProvider extends ServiceProvider
                 '3' => new BindingRecord('3', 'Detached Binding', detached: true),
             ];
             $template = new TemplateRecord('1', 'Template One', \array_values($bindings), \array_values($bindings));
+            foreach ($bindings as $binding) {
+                $binding->template = $template;
+            }
 
             JsonApi::provider(new InMemoryDataProvider('templates', ['1' => $template]));
             JsonApi::provider(new HidesHiddenRows('bindings', new InMemoryDataProvider('bindings', $bindings)));

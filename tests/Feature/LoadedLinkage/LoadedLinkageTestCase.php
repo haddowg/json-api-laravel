@@ -4,10 +4,16 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature\LoadedLinkage;
 
+use haddowg\JsonApi\Response\DataResponse;
+use haddowg\JsonApiLaravel\Event\AfterFetchOneEvent;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+use haddowg\JsonApiLaravel\Server\ServerRegistry;
+use haddowg\JsonApiLaravel\Tests\Fixtures\LoadedLinkage\Binding;
+use haddowg\JsonApiLaravel\Tests\Fixtures\LoadedLinkage\BindingRecord;
 use haddowg\JsonApiLaravel\Tests\Fixtures\LoadedLinkage\LoadedLinkageServiceProvider;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -77,6 +83,20 @@ abstract class LoadedLinkageTestCase extends Orchestra
     {
         parent::setUp();
 
+        // A read of a binding answers with its template, a resource the read itself never
+        // loaded relations for.
+        Event::listen(AfterFetchOneEvent::class, function (AfterFetchOneEvent $event): void {
+            $binding = $event->entity;
+            $template = match (true) {
+                $binding instanceof Binding => $binding->template,
+                $binding instanceof BindingRecord => $binding->template,
+                default => null,
+            };
+            if ($event->type === 'bindings' && $template !== null) {
+                $event->setResponse(DataResponse::fromResource($template, app(ServerRegistry::class)->get()->serializerFor('templates')));
+            }
+        });
+
         if ($this->store() !== 'eloquent') {
             return;
         }
@@ -140,6 +160,107 @@ abstract class LoadedLinkageTestCase extends Orchestra
         $response = $this->read('/templates/1?withCount=bindings', self::MEDIA_TYPE . ';profile="' . self::COUNTABLE_PROFILE . '"');
         self::assertSame(1, $response->json('data.relationships.bindings.meta.total'));
         $this->assertNoHiddenBinding($response);
+    }
+
+    #[Test]
+    public function anActionsResourceRendersTheLinkageItsRelationshipEndpointServes(): void
+    {
+        foreach (['/templates/1/-actions/show', '/templates/-actions/list'] as $action) {
+            $response = $this->action($action);
+
+            foreach (['bindings', 'sharedBindings'] as $name) {
+                $relationship = $this->templateValue($response, 'relationships.' . $name);
+                self::assertIsArray($relationship, $action . ' ' . $name);
+                if (\array_key_exists('data', $relationship)) {
+                    self::assertSame(['1'], $this->ids($relationship['data']), $action . ' ' . $name);
+                }
+            }
+            self::assertSame(
+                $this->ids($this->read('/templates/1/relationships/listedBindings')->json('data')),
+                $this->ids($this->templateValue($response, 'relationships.listedBindings.data')),
+                $action,
+            );
+            $this->assertNoHiddenBinding($response);
+        }
+    }
+
+    #[Test]
+    public function anActionsIncludedToManyIsScopedAndFiltered(): void
+    {
+        foreach (['/templates/1/-actions/show', '/templates/-actions/list'] as $action) {
+            foreach (['bindings', 'sharedBindings', 'listedBindings'] as $name) {
+                $response = $this->action($action . '?include=' . $name);
+
+                self::assertSame(['1'], $this->ids($this->templateValue($response, 'relationships.' . $name . '.data')), $action . ' ' . $name);
+                self::assertSame(['1'], $this->ids($response->json('included')), $action . ' ' . $name);
+                $this->assertNoHiddenBinding($response);
+            }
+        }
+    }
+
+    #[Test]
+    public function anActionsNestedIncludeIsScopedAndFiltered(): void
+    {
+        foreach (['bindings', 'sharedBindings', 'listedBindings'] as $name) {
+            $response = $this->action('/bindings/1/-actions/show?include=template.' . $name);
+
+            $templates = \array_values(\array_filter(
+                (array) $response->json('included'),
+                static fn(mixed $resource): bool => \is_array($resource) && ($resource['type'] ?? null) === 'templates',
+            ));
+            self::assertCount(1, $templates, $name);
+            self::assertSame(['1'], $this->ids(data_get($templates[0], 'relationships.' . $name . '.data')), $name);
+            $this->assertNoHiddenBinding($response);
+        }
+    }
+
+    #[Test]
+    public function anActionsCountAgreesWithTheRelationshipEndpoint(): void
+    {
+        foreach (['/templates/1/-actions/show', '/templates/-actions/list'] as $action) {
+            $response = $this->action($action . '?withCount=bindings', self::MEDIA_TYPE . ';profile="' . self::COUNTABLE_PROFILE . '"');
+
+            self::assertSame(1, $this->templateValue($response, 'relationships.bindings.meta.total'), $action);
+            $this->assertNoHiddenBinding($response);
+        }
+    }
+
+    #[Test]
+    public function aResponseAHookSwapsInIsScopedAndFiltered(): void
+    {
+        $response = $this->read('/bindings/1');
+
+        self::assertSame('templates', $response->json('data.type'));
+        self::assertSame(['1'], $this->ids($response->json('data.relationships.listedBindings.data')));
+        $this->assertNoHiddenBinding($response);
+    }
+
+    /**
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    protected function action(string $path, string $accept = self::MEDIA_TYPE): TestResponse
+    {
+        $response = $this->call('POST', '/api' . $path, server: ['HTTP_ACCEPT' => $accept, 'CONTENT_TYPE' => self::MEDIA_TYPE]);
+        $response->assertOk();
+
+        return $response;
+    }
+
+    /**
+     * A value under template 1 as the response's primary data renders it, alone or in a
+     * collection.
+     *
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
+     */
+    protected function templateValue(TestResponse $response, string $key): mixed
+    {
+        $data = $response->json('data');
+        self::assertIsArray($data);
+        $template = \array_is_list($data) ? ($data[0] ?? null) : $data;
+        self::assertIsArray($template);
+        self::assertSame('1', $template['id'] ?? null);
+
+        return data_get($template, $key);
     }
 
     /**

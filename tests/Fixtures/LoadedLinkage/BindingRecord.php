@@ -11,5 +11,6 @@ final class BindingRecord
         public string $name,
         public bool $hidden = false,
         public bool $detached = false,
+        public ?TemplateRecord $template = null,
     ) {}
 }
