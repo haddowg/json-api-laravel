@@ -277,14 +277,19 @@ final class JsonApiServiceProvider extends ServiceProvider
                     }
                 }
 
-                $validator = new \haddowg\JsonApi\Serializer\RelationOrderValidator($registry);
+                $guard = new \haddowg\JsonApiLaravel\Server\RelationOrderGuard(static function () use ($app): DataProviderRegistry {
+                    $providers = $app->make(DataProviderRegistry::class);
+                    \assert($providers instanceof DataProviderRegistry);
+
+                    return $providers;
+                });
                 foreach ($types as $type) {
                     try {
                         $resource = $registry->resourceFor($type);
                     } catch (\Throwable) {
                         continue;
                     }
-                    $validator->validate($type, $resource);
+                    $guard->check($registry, $type, $resource);
                 }
             };
 

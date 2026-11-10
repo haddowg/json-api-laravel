@@ -144,9 +144,12 @@ BelongsToMany::make('picks', 'books')
 
 The order holds on every path that reads the members: the related endpoint, the relationship
 endpoint, the linkage of an `?include` or a `withData()` relation, with include batching on or
-off, and a Relationship Queries window. Both providers apply it, except that a pivot key
-orders only on the Eloquent provider, since the in-memory witness holds no pivot data. A key
-the relation doesn't accept fails route registration and `jsonapi:optimize`. The OpenAPI
+off, and a Relationship Queries window, offset or cursor. Linkage loads through the provider in
+one ordered query per relation for a page of parents. A pivot key orders by the join table's
+column, and a Relationship Queries window on the Eloquent provider also takes a pivot field as
+its `sort`, though not as a filter. Route registration and `jsonapi:optimize` refuse a key the
+relation doesn't accept, and a pivot key whose related type's provider doesn't query the join,
+as on the in-memory provider, which holds no pivot data. The OpenAPI
 document gives the relation's own order as the `sort` parameter's `default` on both
 endpoints; the related type's fallback isn't projected there.
 

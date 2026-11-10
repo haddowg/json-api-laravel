@@ -9,7 +9,7 @@ use Workbench\App\Providers\RelationOrderInMemoryServiceProvider;
 
 /**
  * {@see RelationOrderConformanceTestCase} against the in-memory witness. It holds no pivot
- * data, so `picks` keeps its storage order, and it has no relation method, so `classics`
+ * data, so its shelves declare no `picks`, and it has no relation method, so `classics`
  * reads in the books' title order.
  *
  * @internal
@@ -22,9 +22,9 @@ final class InMemoryRelationOrderConformanceTest extends RelationOrderConformanc
         return RelationOrderInMemoryServiceProvider::class;
     }
 
-    protected function expectedPicks(): array
+    protected function expectedPicks(): ?array
     {
-        return ['1', '2', '4'];
+        return null;
     }
 
     protected function expectedClassics(): array

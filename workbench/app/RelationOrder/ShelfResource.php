@@ -8,15 +8,15 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\HasMany;
 use haddowg\JsonApi\Resource\Field\Id;
-use haddowg\JsonApi\Resource\Field\Integer;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
 
 /**
  * A shelf whose to-manys read in different orders: `books` newest first by its own
- * default, `favourites` by the books' title default, `picks` by a pivot rank, and
- * `classics` by its Eloquent relation method's `orderBy`, then the books' default.
+ * default, `favourites` by the books' title default, and `classics` by its Eloquent
+ * relation method's `orderBy`, then the books' default. {@see PickingShelfResource} adds
+ * `picks`, ordered by a pivot rank only a provider querying the join can read.
  */
 final class ShelfResource extends AbstractResource
 {
@@ -30,9 +30,6 @@ final class ShelfResource extends AbstractResource
             HasMany::make('books', 'books')
                 ->defaultSort(new SortDirective(SortByField::make('year'), descending: true)),
             BelongsToMany::make('favourites', 'books')->withData(),
-            BelongsToMany::make('picks', 'books')
-                ->fields(Integer::make('rank'))
-                ->defaultSort(new SortDirective(SortByField::make('rank'), descending: false)),
             BelongsToMany::make('classics', 'books'),
         ];
     }

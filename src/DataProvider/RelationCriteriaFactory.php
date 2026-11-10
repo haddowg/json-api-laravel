@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\DataProvider;
 
 use haddowg\JsonApi\Operation\QueryParameters;
-use haddowg\JsonApi\Pagination\CursorWindow;
 use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Pagination\WindowInterface;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
@@ -97,8 +96,8 @@ final class RelationCriteriaFactory
      * from the separate {@see \haddowg\JsonApi\Serializer\RelationshipCountInterface} seam).
      *
      * `$includePivotFields` keeps the relation's `pivot.`-columned filters and adds the pivot
-     * field sorts. A cursor window gets the pivot filters but not the pivot sorts: the keyset
-     * reads its columns off the related model, never the join.
+     * field sorts, a cursor window's keyset included. `$queriesPivotColumns` adds the pivot
+     * sorts alone, for a Relationship Queries window, which takes no pivot filter.
      *
      * `$request` rides onto the criteria so a filter or sort family can resolve a requested key.
      */
@@ -113,19 +112,13 @@ final class RelationCriteriaFactory
         ?bool $queriesPivotColumns = null,
     ): CollectionCriteria {
         $relationFilters = $includePivotFields ? $relation->allFilters() : self::withoutPivotFilters($relation->allFilters());
-        $pivotSorts = !$window instanceof CursorWindow;
-
-        [$defaultSort, $resolved] = $this->defaultSortFor(
-            $relatedResource,
-            $relation,
-            $this->sortsFor($relatedResource, $relation, ($queriesPivotColumns ?? $includePivotFields) && $pivotSorts),
-            $request,
-        );
+        $sorts = $this->sortsFor($relatedResource, $relation, $includePivotFields || ($queriesPivotColumns ?? false));
+        [$defaultSort, $resolved] = $this->defaultSortFor($relatedResource, $relation, $sorts, $request);
 
         return new CollectionCriteria(
             $queryParameters,
             FilterMatcher::merge($relatedResource?->allFilters() ?? [], $relationFilters),
-            $this->sortsFor($relatedResource, $relation, $includePivotFields && $pivotSorts),
+            $sorts,
             $window,
             $defaultSort,
             wantsCount: $wantsCount,
@@ -186,10 +179,9 @@ final class RelationCriteriaFactory
      * `defaultSort()`, resolved, else the related type's, which the applier matches as it
      * does a resource's. Each of the relation's own directives is matched to the sort `$sorts`
      * holds for the key, so a pivot field or `withSorts()` key orders by the column the
-     * relation declares for it. A pivot key is dropped when the provider can't query the
-     * join, the in-memory pivot boundary, or under a cursor window, whose keyset reads only
-     * the related row. {@see \haddowg\JsonApi\Serializer\RelationOrderValidator} has
-     * checked every other key at warm-up.
+     * relation declares for it. A pivot key the provider can't query is refused at warm-up,
+     * so one that reaches here unresolved is dropped. {@see \haddowg\JsonApi\Serializer\RelationOrderValidator}
+     * has checked every other key at warm-up.
      *
      * @param list<SortInterface> $sorts
      *

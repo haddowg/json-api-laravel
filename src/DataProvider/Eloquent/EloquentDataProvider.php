@@ -391,17 +391,19 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // selects the pivot row with each member, so `meta.pivot` reads off the same page.
         $filterHandler = $this->filterHandler;
         $sortHandler = $this->sortHandler;
+        $pivot = null;
         if ($relationQuery instanceof EloquentBelongsToMany && $this->queriesPivotColumns($parent, $relation)) {
             $filterHandler = $filterHandler->forPivot($relationQuery);
             $sortHandler = $sortHandler->forPivot($relationQuery);
             $this->selectPivot($builder, $relationQuery);
+            $pivot = $relationQuery;
         }
 
         // A cursor (keyset) window is its own pushed-down execution, exactly as on the
         // primary collection: the builder is already parent-scoped, so the keyset WHERE
         // + the forced NULL=largest ORDER BY compose on top of the relation constraint.
         if ($criteria->window instanceof CursorWindow) {
-            return $this->runCursor($builder, $criteria, $criteria->window, $filterHandler, $sortHandler);
+            return $this->runCursor($builder, $criteria, $criteria->window, $filterHandler, $sortHandler, $pivot);
         }
 
         $builder = $this->applier->apply($criteria, $builder, $filterHandler, $sortHandler);
@@ -794,8 +796,10 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // the SELECT is left untouched — overriding it would drop the FK/pivot the partition
         // needs.
         $this->replaceMethodOrder($eager->getQuery(), $relation, $criteria);
-        $this->applier->apply($this->filtersOnly($criteria), $eager->getQuery(), $this->filterHandler, $this->sortHandler);
-        (new EloquentKeyset($related, $this->sortHandler))->orderBy($eager->getQuery(), $columns);
+        [$filterHandler, $sortHandler] = $this->handlersFor($eager, $models[0], $relation);
+        $pivot = $eager instanceof EloquentBelongsToMany && $this->pivotRelation($models[0], $relation) !== null ? $eager : null;
+        $this->applier->apply($this->filtersOnly($criteria), $eager->getQuery(), $filterHandler, $sortHandler);
+        (new EloquentKeyset($related, $sortHandler, $pivot?->getTable()))->orderBy($eager->getQuery(), $columns);
 
         // A cursor page is count-free by definition (a CursorPaginator never counts), so the
         // window always probes limit + 1 per partition for the hasMore signal.
@@ -812,9 +816,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
         // The SAME row → keyset-value reader the per-parent path (runCursor) mints with, so
         // the single-window tokens are byte-identical to the per-parent tokens.
-        $readValue = static fn(object $row, string $column): string|int|float|bool|null => CursorTokenMinter::coerce(
-            $row instanceof Model ? $row->getAttribute($column) : null,
-        );
+        $readValue = static fn(object $row, string $column): string|int|float|bool|null => CursorTokenMinter::coerce(self::keysetValue($row, $column, $pivot));
 
         $encoder = $this->encoderFor($parentType);
 
@@ -1451,7 +1453,8 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * direction and the after-predicate, then reverses the sliced rows to natural
      * forward order before minting.
      *
-     * @param Builder<Model> $builder
+     * @param Builder<Model>                                 $builder
+     * @param EloquentBelongsToMany<Model, Model, *, *>|null $pivot   the pivot relation whose join a `pivot.` keyset column reads
      *
      * @return CursorCollectionResult<object>
      */
@@ -1461,6 +1464,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         CursorWindow $window,
         ?EloquentFilterHandler $filterHandler = null,
         ?EloquentSortHandler $sortHandler = null,
+        ?EloquentBelongsToMany $pivot = null,
     ): CursorCollectionResult {
         $model = $builder->getModel();
         $pkColumn = $model->getKeyName();
@@ -1490,7 +1494,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             $this->keysetResolver->assertFresh($boundary, $columns, $parameter);
         }
 
-        $keyset = new EloquentKeyset($model, $sortHandler ?? $this->sortHandler);
+        $keyset = new EloquentKeyset($model, $sortHandler ?? $this->sortHandler, $pivot?->getTable());
         if ($boundary !== null) {
             $keyset->applyAfter($builder, $boundary, $orderColumns);
         }
@@ -1501,7 +1505,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             // Over-fetch limit+1 in the (possibly flipped) order; the surplus is
             // dropped by runCursor BEFORE the cursors closure mints.
             probe: static fn(CursorWindow $w): array => \array_values((clone $builder)->limit($w->limit + 1)->get()->all()),
-            cursors: function (array $rows, bool $hasMore) use ($window, $columns, $backward): CursorCollectionResult {
+            cursors: function (array $rows, bool $hasMore) use ($window, $columns, $backward, $pivot): CursorCollectionResult {
                 // Re-orient a backward page to natural forward order for rendering.
                 $page = $backward ? \array_reverse($rows) : $rows;
 
@@ -1510,12 +1514,31 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
                     $columns,
                     \array_values($page),
                     $hasMore,
-                    static fn(object $row, string $column): string|int|float|bool|null => CursorTokenMinter::coerce(
-                        $row instanceof Model ? $row->getAttribute($column) : null,
-                    ),
+                    static fn(object $row, string $column): string|int|float|bool|null => CursorTokenMinter::coerce(self::keysetValue($row, $column, $pivot)),
                 );
             },
         );
+    }
+
+    /**
+     * A fetched row's value of a keyset column, a `pivot.` column read off the join row
+     * `$pivot` hydrated onto it.
+     *
+     * @param EloquentBelongsToMany<Model, Model, *, *>|null $pivot
+     */
+    private static function keysetValue(object $row, string $column, ?EloquentBelongsToMany $pivot): mixed
+    {
+        if (!$row instanceof Model) {
+            return null;
+        }
+
+        if ($pivot !== null && \str_starts_with($column, RelationCriteriaFactory::PIVOT_PREFIX)) {
+            $join = $row->getRelation($pivot->getPivotAccessor());
+
+            return $join instanceof Model ? $join->getAttribute(\substr($column, \strlen(RelationCriteriaFactory::PIVOT_PREFIX))) : null;
+        }
+
+        return $row->getAttribute($column);
     }
 
     /**

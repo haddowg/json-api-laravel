@@ -35,11 +35,12 @@ abstract class RelationOrderConformanceTestCase extends Orchestra
     abstract protected function conformanceServiceProvider(): string;
 
     /**
-     * Shelf 1's `picks` with no sort requested.
+     * Shelf 1's `picks` with no sort requested, or `null` where the provider can't order by
+     * the pivot rank and the relation isn't declared.
      *
-     * @return list<string>
+     * @return list<string>|null
      */
-    abstract protected function expectedPicks(): array;
+    abstract protected function expectedPicks(): ?array;
 
     /**
      * Shelf 1's `classics` with no sort requested.
@@ -155,7 +156,7 @@ abstract class RelationOrderConformanceTestCase extends Orchestra
     {
         $this->batch($batched);
 
-        foreach (['picks' => $this->expectedPicks(), 'classics' => $this->expectedClassics()] as $relation => $expected) {
+        foreach (\array_filter(['picks' => $this->expectedPicks(), 'classics' => $this->expectedClassics()]) as $relation => $expected) {
             self::assertSame($expected, $this->dataIds('/api/shelves/1/' . $relation), $relation);
             self::assertSame($expected, $this->dataIds('/api/shelves/1/relationships/' . $relation), $relation);
             self::assertSame($expected, $this->linkageIds($this->document('/api/shelves/1?include=' . $relation), $relation), $relation);
@@ -172,7 +173,9 @@ abstract class RelationOrderConformanceTestCase extends Orchestra
 
         self::assertSame(['-year'], $this->sortDefault($document, '/shelves/{id}/books'));
         self::assertSame(['-year'], $this->sortDefault($document, '/shelves/{id}/relationships/books'));
-        self::assertSame(['rank'], $this->sortDefault($document, '/shelves/{id}/picks'));
+        if ($this->expectedPicks() !== null) {
+            self::assertSame(['rank'], $this->sortDefault($document, '/shelves/{id}/picks'));
+        }
         self::assertNull($this->sortDefault($document, '/shelves/{id}/favourites'));
     }
 

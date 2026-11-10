@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversNothing;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\Test;
 use Workbench\App\Models\Book;
 use Workbench\App\Models\Shelf;
 use Workbench\App\Providers\RelationOrderEloquentServiceProvider;
@@ -71,5 +74,49 @@ final class EloquentRelationOrderConformanceTest extends RelationOrderConformanc
         foreach (Fixtures::books() as $id => $row) {
             Book::query()->create(['id' => $id, 'title' => $row['title'], 'year' => $row['year'], 'genre' => $row['genre'], 'shelf_id' => $row['shelf']]);
         }
+    }
+
+    #[Test]
+    public function aCursorPageReadsInThePivotOrder(): void
+    {
+        $first = $this->get('/api/shelves/1/rankedPicks', ['Accept' => self::MEDIA_TYPE]);
+        $first->assertOk();
+        /** @var list<array{id: string}> $data */
+        $data = $first->json('data');
+        self::assertSame(['4', '1'], \array_column($data, 'id'));
+
+        $next = $first->json('links.next.href');
+        self::assertIsString($next);
+        /** @var list<array{id: string}> $rest */
+        $rest = $this->get($next, ['Accept' => self::MEDIA_TYPE])->json('data');
+        self::assertSame(['2'], \array_column($rest, 'id'));
+    }
+
+    #[Test]
+    #[Group('spec:profiles')]
+    public function aRelationshipQueriesCursorWindowReadsInThePivotOrder(): void
+    {
+        $response = $this->get(
+            '/api/shelves/1?include=rankedPicks&relatedQuery[rankedPicks][filter][genre]=sf',
+            ['Accept' => self::MEDIA_TYPE . ';profile="https://haddowg.github.io/json-api/profiles/relationship-queries/"'],
+        );
+        $response->assertOk();
+
+        /** @var list<array{id: string}> $linkage */
+        $linkage = $response->json('data.relationships.rankedPicks.data');
+        self::assertSame(['4', '1'], \array_column($linkage, 'id'));
+    }
+
+    #[Test]
+    public function orderedLinkageIsOneQueryPerRelationForAPage(): void
+    {
+        DB::enableQueryLog();
+        $this->get('/api/shelves?include=books', ['Accept' => self::MEDIA_TYPE])->assertOk();
+
+        $queries = \array_column(DB::getQueryLog(), 'query');
+        $books = \array_filter($queries, static fn(string $query): bool => \str_contains($query, 'from "ro_books"') && !\str_contains($query, 'ro_shelf_'));
+        $favourites = \array_filter($queries, static fn(string $query): bool => \str_contains($query, '"ro_shelf_favourite"') && !\str_contains($query, 'year'));
+        self::assertCount(1, $books, \implode("\n", $queries));
+        self::assertCount(1, $favourites, \implode("\n", $queries));
     }
 }

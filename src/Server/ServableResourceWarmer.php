@@ -305,8 +305,9 @@ final class ServableResourceWarmer
 
     /**
      * Reports a to-many whose read order names a sort the relation doesn't accept, in core's
-     * {@see RelationOrderValidator} wording. Route registration makes the same check, but a
-     * cached route table skips it.
+     * {@see RelationOrderValidator} wording, or a pivot field its related type's provider can't
+     * query ({@see RelationOrderGuard}). Route registration makes the same check, but a cached
+     * route table skips it.
      *
      * @param list<string> $problems
      */
@@ -319,7 +320,7 @@ final class ServableResourceWarmer
         }
 
         try {
-            (new RelationOrderValidator($server))->validate($type, $resource);
+            (new RelationOrderGuard(fn(): DataProviderRegistry => $this->providers))->check($server, $type, $resource);
         } catch (\LogicException $e) {
             $problems[] = $e->getMessage();
         }

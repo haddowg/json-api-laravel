@@ -11,7 +11,7 @@ use Illuminate\Support\ServiceProvider;
 use Workbench\App\Models\Book;
 use Workbench\App\Models\Shelf;
 use Workbench\App\RelationOrder\BookResource;
-use Workbench\App\RelationOrder\ShelfResource;
+use Workbench\App\RelationOrder\PickingShelfResource;
 
 /**
  * The Eloquent half of the relation read order conformance wiring.
@@ -20,7 +20,7 @@ final class RelationOrderEloquentServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([ShelfResource::class, BookResource::class]);
+        JsonApi::register([PickingShelfResource::class, BookResource::class]);
 
         $modelByType = ['shelves' => Shelf::class, 'books' => Book::class];
 
