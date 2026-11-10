@@ -76,6 +76,11 @@ onto the other. The input object comes from one of two places:
 2. otherwise the package instantiates via the `inputType`'s persister, which exists when
    `inputType` is a type with a create endpoint, such as the mount `type`.
 
+A `DataResponse` loads its resources' relations the way a read does, whether the handler
+built it with `$context->data()` or by hand. Linkage, `?include` and `?withCount` go through
+the related type's provider, so the scope, filter defaults and default order its
+relationship endpoint applies hold in the action's document too.
+
 ## An action that creates a resource
 
 An action that creates the resource it returns, such as duplicating an album, declares

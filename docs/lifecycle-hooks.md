@@ -64,7 +64,9 @@ you need.
   (`beforeDelete` throwing a `409`).
 - **An after hook** runs after the operation and, by returning a response value object, **may
   replace the response** — reshape the rendered document, or return a `204` from
-  `afterDelete`. Returning `null` keeps the default response.
+  `afterDelete`. Returning `null` keeps the default response. A replacement `DataResponse`
+  that renders other resources has their relations loaded through their providers as a
+  read would, so its linkage and `included` are scoped the same.
 
 ## `HookContext`
 

@@ -200,6 +200,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
      */
     private array $linkRowWrites = [];
 
+    /**
+     * The primary resources this operation loaded relations for, by object id.
+     *
+     * @var array<int, true>
+     */
+    private array $preloaded = [];
+
     public function __construct(
         private readonly DataProviderRegistry $providers,
         private readonly DataPersisterRegistry $persisters,
@@ -265,7 +272,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->relationshipLinkage->bind($server instanceof Server ? $server : null, $serverName);
         $this->idEncoders?->bind($serverName);
 
-        return match (true) {
+        $this->preloaded = [];
+
+        $response = match (true) {
             $operation instanceof FetchResourceOperation => $this->fetch($operation),
             $operation instanceof FetchRelatedOperation => $this->fetchRelated($operation),
             $operation instanceof FetchRelationshipOperation => $this->fetchRelationship($operation),
@@ -281,6 +290,51 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $operation instanceof AtomicOperationsOperation => $this->atomic($operation),
             default => ErrorResponse::fromException(new ResourceNotFound()),
         };
+
+        $request = $operation->context()->httpRequest();
+
+        return $response instanceof DataResponse && $server instanceof Server && $request instanceof JsonApiRequestInterface
+            ? $this->loadRendered($server, $response, $request)
+            : $response;
+    }
+
+    /**
+     * Loads the relations of the resources a response renders that this operation did
+     * not load them for: a custom action's resources, or ones an after-hook answered
+     * with. They render through the same scoped preload, windows and counts a read
+     * runs, so no linkage, included resource or count is read off the model.
+     */
+    private function loadRendered(Server $server, DataResponse $response, JsonApiRequestInterface $request): DataResponse
+    {
+        $groups = [];
+        $loaded = true;
+        foreach ($response->primaryResources() as $member) {
+            if (!\is_object($member)) {
+                continue;
+            }
+            $groups[$response->serializer()->getType($member)][] = $member;
+            $loaded = $loaded && isset($this->preloaded[\spl_object_id($member)]);
+        }
+        if ($loaded || $groups === []) {
+            return $response;
+        }
+
+        if (\count($groups) > 1) {
+            $this->relationshipPagination->set(null);
+            $this->relationshipLinkage->set(null);
+            $this->relationshipCount->set(null);
+            $this->preloadGroups($server, $groups, $request);
+
+            return $response;
+        }
+
+        $type = \array_key_first($groups);
+        $members = $groups[$type];
+        $this->preloadIncludes($server, $members, $type, $request);
+        $activatedProfiles = $this->applyRelationshipWindows($server, $type, $members, $request);
+        $this->applyRelationshipCounts($server, $type, $members, $request);
+
+        return $activatedProfiles === [] ? $response : $response->withActivatedProfiles(...$activatedProfiles);
     }
 
     /**
@@ -1246,6 +1300,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
     {
         $this->relationshipLinkage->resetScope();
         if ($request !== null && $entities !== []) {
+            $this->markPreloaded($entities);
             $this->relationshipLinkage->scope($this->includeBatcher->preload($server, $entities, $type, $request));
         }
     }
@@ -1260,21 +1315,47 @@ final class CrudOperationHandler implements OperationHandlerInterface
      */
     private function preloadPolymorphicIncludes(Server $server, RelationInterface $relation, array $items, JsonApiRequestInterface $request, array $types = []): void
     {
-        $this->relationshipLinkage->resetScope();
-
         $byType = [];
         foreach ($items as $item) {
             $memberType = $types[\spl_object_id($item)] ?? $relation->resolveSerializer($item, $server)?->getType($item);
-            if ($memberType !== null && $this->providers->supportsType($memberType)) {
+            if ($memberType !== null) {
                 $byType[$memberType][] = $item;
             }
         }
 
-        foreach ($byType as $memberType => $members) {
-            $scoped = $this->includeBatcher->preload($server, $members, $memberType, $request);
+        $this->preloadGroups($server, $byType, $request);
+    }
+
+    /**
+     * Preloads primary resources of several types, keyed by type, keeping every type's
+     * scoped linkage.
+     *
+     * @param array<string, list<object>> $groups
+     */
+    private function preloadGroups(Server $server, array $groups, JsonApiRequestInterface $request): void
+    {
+        $this->relationshipLinkage->resetScope();
+
+        foreach ($groups as $type => $members) {
+            if (!$this->providers->supportsType($type)) {
+                continue;
+            }
+
+            $this->markPreloaded($members);
+            $scoped = $this->includeBatcher->preload($server, $members, $type, $request);
             if ($scoped !== null) {
                 $this->relationshipLinkage->addScope($scoped);
             }
+        }
+    }
+
+    /**
+     * @param list<object> $entities
+     */
+    private function markPreloaded(array $entities): void
+    {
+        foreach ($entities as $entity) {
+            $this->preloaded[\spl_object_id($entity)] = true;
         }
     }
 
