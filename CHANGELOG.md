@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.1](https://github.com/haddowg/json-api-laravel/compare/v2.6.0...v2.6.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* render withCount=_self_ totals on cursor pages ([#242](https://github.com/haddowg/json-api-laravel/issues/242)) ([6269e43](https://github.com/haddowg/json-api-laravel/commit/6269e435fc7517e9c6c697f0c84162fe91c65383))
+
 ## [2.6.0](https://github.com/haddowg/json-api-laravel/compare/v2.5.0...v2.6.0) (2026-11-10)
 
 
