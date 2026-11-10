@@ -1,0 +1,3 @@
+# A to-many read through its provider never renders linkage off the model
+
+A model's to-many whose related type has its own provider, whose related endpoint folds in a filter default, or which has a read order renders linkage only from the members the include batcher loaded through the provider, handed to core as out-of-band linkage, and those reads fold in the same filter defaults the related endpoint does. The batcher decides what to load before the document renders, so a relation that an attribute or a hook loads on the model afterwards would otherwise render every row its query returns, including the ones the provider hides. Such a relation that the batcher left lazy renders links and no `data` instead, the same as when nothing loaded it.

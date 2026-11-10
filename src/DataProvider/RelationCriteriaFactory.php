@@ -15,6 +15,7 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterFamilyInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
+use haddowg\JsonApi\Resource\Filter\HasDefaultValue;
 use haddowg\JsonApi\Resource\Filter\TargetsColumn;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
@@ -138,8 +139,9 @@ final class RelationCriteriaFactory
     /**
      * The criteria that reads a to-many's whole member set in its read order for document
      * linkage: the include batch and a linkage read with no include. It carries the sort
-     * vocabulary and default order of {@see criteriaFor()} but no filter, so a filter's
-     * declared default never narrows the linkage, and no window.
+     * vocabulary and default order of {@see criteriaFor()}, the filters whose defaults the
+     * related endpoint folds in with no `filter` requested, and no window, so the linkage
+     * lists the members the related endpoint serves.
      */
     public function linkageCriteriaFor(
         ?AbstractResource $relatedResource,
@@ -152,11 +154,47 @@ final class RelationCriteriaFactory
 
         return new CollectionCriteria(
             new QueryParameters(fields: [], includes: [], sort: [], filter: [], pagination: $request->getPagination()),
+            filters: self::linkageFilters($relatedResource, $relation),
             sorts: $sorts,
             defaultSort: $defaultSort,
             request: $request,
             defaultSortResolved: $resolved,
         );
+    }
+
+    /**
+     * Whether a to-many's members read through its provider differ from the ones its model
+     * relation holds: it has a read order, its own or the related type's, or its related
+     * endpoint folds in a filter default.
+     */
+    public static function readsThroughProvider(?AbstractResource $relatedResource, RelationInterface $relation): bool
+    {
+        if (!$relation->isToMany()) {
+            return false;
+        }
+
+        if (self::declaresOwnOrder($relation) || ($relatedResource?->defaultSort() ?? []) !== []) {
+            return true;
+        }
+
+        foreach (self::linkageFilters($relatedResource, $relation) as $filter) {
+            if ($filter instanceof HasDefaultValue && $filter->hasDefault()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The filters a linkage read folds the defaults of: the related type's and the
+     * relation's own, without the pivot ones.
+     *
+     * @return list<FilterInterface>
+     */
+    private static function linkageFilters(?AbstractResource $relatedResource, RelationInterface $relation): array
+    {
+        return FilterMatcher::merge($relatedResource?->allFilters() ?? [], self::withoutPivotFilters($relation->allFilters()));
     }
 
     /**

@@ -70,6 +70,15 @@ Whether linkage `data` is rendered depends on load state: a lazy to-many emits l
 without forcing a fetch (`dataOnlyWhenLoaded()`), driven by a storage-aware load-state seam —
 on Eloquent, `relationLoaded()`. An empty to-one renders `data: null`.
 
+A to-many whose members are read through a provider renders only the linkage the include
+batcher loads before the document renders: one whose related type has its own provider, one
+with a read order, and one whose related endpoint folds in a filter default. If the batcher
+left it lazy, it renders links and no `data`, even when an attribute or a hook loads the
+relation on the model afterwards, since that relation query skips the provider's scope and
+the filter defaults. Declare it `withData()` or include it to render its linkage. Included and
+always-emitted linkage fold in the same filter defaults as the related endpoint, so they list
+the members it serves with no `filter` sent, the set `?withCount` counts.
+
 ## `?include`
 
 Compound documents assemble through a provider-agnostic batcher over the SPI (not top-level

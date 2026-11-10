@@ -86,6 +86,7 @@ use haddowg\JsonApiLaravel\Routing\JsonApiRoute;
 use haddowg\JsonApiLaravel\Routing\OpenApiRouteRegistrar;
 use haddowg\JsonApiLaravel\Routing\RouteRegistrar;
 use haddowg\JsonApiLaravel\Scope\ScopeTables;
+use haddowg\JsonApiLaravel\Serializer\ProviderReadLoadState;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipPagination;
@@ -972,7 +973,11 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $maxIncludeDepth,
                     $strict,
                     $relationshipCount,
-                    $loadState,
+                    $loadState === null ? null : new ProviderReadLoadState(
+                        $loadState,
+                        static fn(): DataProviderRegistry => $app->make(DataProviderRegistry::class),
+                        static fn(): \haddowg\JsonApi\Server\Server => $app->make(ServerRegistry::class)->get($server),
+                    ),
                     $relationshipPagination,
                     $relationshipLinkage,
                     $this->actionLinkContributor($app, $server),
