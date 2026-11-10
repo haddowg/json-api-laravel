@@ -18,6 +18,7 @@ use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Filter\TargetsColumn;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
+use haddowg\JsonApi\Resource\SerializerResolverInterface;
 use haddowg\JsonApi\Resource\Sort\RelationSorts;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
@@ -102,6 +103,9 @@ final class RelationCriteriaFactory
      * sorts alone, for a Relationship Queries window, which takes no pivot filter.
      *
      * `$request` rides onto the criteria so a filter or sort family can resolve a requested key.
+     * `$server` lets each matched filter's traversal path resolve against the related type's
+     * fields ({@see FilterPaths}); without it, or for a polymorphic to-many, every path ends on
+     * a field.
      */
     public function criteriaFor(
         QueryParameters $queryParameters,
@@ -112,6 +116,7 @@ final class RelationCriteriaFactory
         bool $includePivotFields = false,
         ?JsonApiRequestInterface $request = null,
         ?bool $queriesPivotColumns = null,
+        ?SerializerResolverInterface $server = null,
     ): CollectionCriteria {
         $relationFilters = $includePivotFields ? $relation->allFilters() : self::withoutPivotFilters($relation->allFilters());
         $sorts = $this->sortsFor($relatedResource, $relation, $includePivotFields || ($queriesPivotColumns ?? false));
@@ -126,6 +131,7 @@ final class RelationCriteriaFactory
             wantsCount: $wantsCount,
             request: $request,
             defaultSortResolved: $resolved,
+            paths: $server !== null ? FilterPaths::of($server, $relatedResource) : null,
         );
     }
 

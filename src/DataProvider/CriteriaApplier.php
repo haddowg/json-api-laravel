@@ -101,11 +101,13 @@ final class CriteriaApplier
         // A defaulted key is always declared (the default came from a declared
         // filter), so the matcher's unrecognised-key 400 only ever fires for a
         // genuinely undeclared requested key. The matcher resolves filter families and
-        // reads a list filter's value as its members.
+        // reads a list filter's value as its members. Each match then resolves its traversal
+        // path, so a family's filter resolves per request too.
         $requested = FilterDefaults::apply($criteria->queryParameters->filter, $criteria->filters);
 
         foreach (FilterMatcher::directives($requested, $criteria->filters, $criteria->request) as $directive) {
-            $query = $handler->apply($directive->filter, $query, $directive->value);
+            $filter = $criteria->paths?->resolve($directive->filter) ?? $directive->filter;
+            $query = $handler->apply($filter, $query, $directive->value);
         }
 
         return $query;

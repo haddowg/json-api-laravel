@@ -187,6 +187,7 @@ final class RelationCountBatcher
             $relation,
             null,
             request: $request,
+            server: $server,
         );
 
         // Drop the related resource's default order — a count needs none, and on a
@@ -199,6 +200,7 @@ final class RelationCountBatcher
             defaultSort: [],
             aliasOf: $criteria->aliasOf,
             request: $criteria->request,
+            paths: $criteria->paths,
         );
     }
 

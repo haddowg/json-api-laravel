@@ -26,6 +26,7 @@ use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
+use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use haddowg\JsonApiLaravel\Event\AfterActionEvent;
 use haddowg\JsonApiLaravel\Event\BeforeActionEvent;
 use haddowg\JsonApiLaravel\Operation\Operation;
@@ -130,8 +131,9 @@ final readonly class ActionInvoker
         // checked as the collection fetch checks them, so a 400 precedes any 403.
         $filters = $scope === ActionScope::Collection ? $this->effectiveFilters($server, $type, $descriptor) : [];
         $requestedFilter = $operation->queryParameters()->filter;
+        $paths = $filters !== [] ? FilterPaths::of($server, $server->resourceFor($type)) : null;
         if ($filters !== []) {
-            $this->validateFilter($requestedFilter, $filters, $this->request($operation));
+            $this->validateFilter($requestedFilter, $filters, $this->request($operation), $paths);
         }
 
         // The before-action lifecycle event: fired after entity
@@ -169,6 +171,7 @@ final readonly class ActionInvoker
                     new QueryParameters(fields: [], includes: [], sort: [], filter: $requestedFilter, pagination: []),
                     $filters,
                     request: $this->request($operation),
+                    paths: $paths,
                 ),
             ),
         );
@@ -222,7 +225,7 @@ final readonly class ActionInvoker
      * @param array<string, mixed>  $requested
      * @param list<FilterInterface> $filters
      */
-    private function validateFilter(array $requested, array $filters, JsonApiRequestInterface $request): void
+    private function validateFilter(array $requested, array $filters, JsonApiRequestInterface $request, ?FilterPaths $paths): void
     {
         foreach (\array_keys($requested) as $key) {
             if (FilterMatcher::match($filters, (string) $key, $request) === null) {
@@ -230,7 +233,7 @@ final readonly class ActionInvoker
             }
         }
 
-        $this->filterValidator?->validate($requested, $filters, $request);
+        $this->filterValidator?->validate($requested, $filters, $request, $paths);
     }
 
     /**

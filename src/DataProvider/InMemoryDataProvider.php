@@ -441,6 +441,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
             wantsCount: $criteria->wantsCount,
             request: $criteria->request,
             defaultSortResolved: $criteria->defaultSortResolved,
+            paths: $criteria->paths,
         );
     }
 
@@ -576,6 +577,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
             window: null,
             defaultSort: [],
             request: $criteria->request,
+            paths: $criteria->paths,
         );
 
         /** @var list<object> $applied */

@@ -248,12 +248,13 @@ final class RelationshipWindowBatcher
             wantsCount: $wantsCount,
             queriesPivotColumns: $this->queriesPivotColumns($type, $parents[0], $relation),
             request: $request,
+            server: $server,
         );
 
         // Validate the relatedQuery filter VALUE against the per-relation merged vocabulary
         // before the batched window fetch, so a mistyped value on the include/linkage path is
         // the endpoint's same 400. RAW client input only (RelatedQuery::filter).
-        $this->filterValues->validate($relatedQuery->filter, $criteria->filters, $criteria->request);
+        $this->filterValues->validate($relatedQuery->filter, $criteria->filters, $criteria->request, $criteria->paths);
 
         // ONE batched fetch for the whole page, driven through the PRIMARY type's provider — so
         // the provider keys each parent's page by the parent's own WIRE id. The per-parent
@@ -439,6 +440,7 @@ final class RelationshipWindowBatcher
                 null,
                 queriesPivotColumns: $this->queriesPivotColumns($type, $parent, $relation),
                 request: $request,
+                server: $server,
             );
 
             $this->assertRelatedQueryKeysRecognised($relatedQuery, $criteria);
@@ -446,7 +448,7 @@ final class RelationshipWindowBatcher
             // The mistyped-VALUE check rides the same path as the windowed fetch: a links-only
             // relation validates its raw filter values too, so a bad value is the endpoint's
             // same `400` here as well.
-            $this->filterValues->validate($relatedQuery->filter, $criteria->filters, $criteria->request);
+            $this->filterValues->validate($relatedQuery->filter, $criteria->filters, $criteria->request, $criteria->paths);
         }
     }
 
@@ -556,12 +558,13 @@ final class RelationshipWindowBatcher
                 $relation,
                 null,
                 request: $request,
+                server: $server,
             );
 
             // Validate the relatedQuery filter VALUE against the per-relation merged vocabulary
             // before the batched match runs, so a mistyped value on the include/linkage path is
             // the endpoint's same 400. RAW client input only (RelatedQuery::filter).
-            $this->filterValues->validate($request->getRelatedQuery($relation->name())->filter, $criteria->filters, $request);
+            $this->filterValues->validate($request->getRelatedQuery($relation->name())->filter, $criteria->filters, $request, $criteria->paths);
 
             $matches = $this->providers->forType($type)
                 ->relatedToOneMatchesBatch($type, $parents, $relation, $criteria, $request);

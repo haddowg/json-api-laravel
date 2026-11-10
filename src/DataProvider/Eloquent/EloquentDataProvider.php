@@ -1730,6 +1730,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             defaultSort: [],
             aliasOf: $criteria->aliasOf,
             request: $criteria->request,
+            paths: $criteria->paths,
         );
     }
 
