@@ -36,7 +36,8 @@ final class CursorGroupResource extends AbstractResource
             Id::make(),
             Str::make('name'),
             HasMany::make('widgets', 'cursorWidgets')
-                ->paginate(CursorPaginator::make()->withDefaultSize(2)),
+                ->paginate(CursorPaginator::make()->withDefaultSize(2))
+                ->countable(),
         ];
     }
 }

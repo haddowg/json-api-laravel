@@ -296,6 +296,25 @@ abstract class RelationshipReadConformanceTestCase extends Orchestra
     // --- ?withCount (Countable profile) --------------------------------------
 
     #[Test]
+    #[Group('spec:fetching-relationships')]
+    #[Group('spec:fetching-pagination')]
+    public function aCountedRelationshipLinkageRendersTheTotalAtTheTopLevel(): void
+    {
+        // The Countable profile puts a `_self_` count in the top-level meta.total; the
+        // offset page keeps its `last` link beside it.
+        $response = $this->fetchWithCount('/api/artists/1/relationships/albums?withCount=_self_&page[size]=2&page[number]=1');
+
+        $response->assertOk();
+        self::assertSame(['total' => 4], $response->json('meta'));
+        self::assertNotNull($response->json('links.last'));
+
+        // Without `_self_` the linkage stays links-only, though the album paginator counts.
+        $plain = $this->fetch('/api/artists/1/relationships/albums?page[size]=2&page[number]=1');
+        $plain->assertOk();
+        self::assertNull($plain->json('meta'));
+    }
+
+    #[Test]
     #[Group('spec:fetching')]
     public function withCountEmitsMetaTotalOnACountableRelationship(): void
     {

@@ -251,7 +251,9 @@ guide covers what each example holds.
 
 A collection whose paginator counts on every request, one built with `withCount()` on the
 resource or on the relation, shows its total and `last` link in the example, as the handler
-renders them. A count-free paginator's example shows neither, and a cursor page never counts.
+renders them. A count-free paginator's example shows neither. A cursor paginator never counts
+every request, so a countable cursor collection shows the `meta.total` a `withCount=_self_`
+request gets, with no `meta.page.total` or `last`.
 
 ### Linkage to a type the server does not register
 
