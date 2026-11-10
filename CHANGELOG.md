@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.2](https://github.com/haddowg/json-api-laravel/compare/v2.7.1...v2.7.2) (2026-11-10)
+
+
+### Bug Fixes
+
+* scope the linkage and includes of an action's response ([#250](https://github.com/haddowg/json-api-laravel/issues/250)) ([1de882f](https://github.com/haddowg/json-api-laravel/commit/1de882f1b10a82db4724afa4463cb3b6c999348e))
+
 ## [2.7.1](https://github.com/haddowg/json-api-laravel/compare/v2.7.0...v2.7.1) (2026-11-10)
 
 
