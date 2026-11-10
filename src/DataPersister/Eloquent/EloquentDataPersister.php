@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\DataPersister\Eloquent;
 
+use haddowg\JsonApi\Collection\LinkRows\LinkRowWritePlan;
 use haddowg\JsonApi\Exception\ClientGeneratedIdAlreadyExists;
 use haddowg\JsonApi\Exception\FullReplacementProhibited;
 use haddowg\JsonApi\Exception\RemovalProhibited;
@@ -15,6 +16,7 @@ use haddowg\JsonApi\Resource\Field\Date;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\Mode;
+use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Field\Time;
 use haddowg\JsonApi\Schema\ResourceIdentifier;
@@ -22,6 +24,7 @@ use haddowg\JsonApiLaravel\DataPersister\AbstractDataPersister;
 use haddowg\JsonApiLaravel\DataPersister\ReportsCurrentOwners;
 use haddowg\JsonApiLaravel\DataPersister\SoftDeleteCapable;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
+use haddowg\JsonApiLaravel\DataPersister\WritesLinkRowsInterface;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\NaiveDateTimeStorage;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use Illuminate\Container\Container;
@@ -72,7 +75,7 @@ use Illuminate\Support\Facades\DB;
  * An application may extend it to override {@see instantiate()} or {@see delete()} for the
  * types it registers the subclass for, keeping every other write and capability.
  */
-class EloquentDataPersister extends AbstractDataPersister implements TransactionalDataPersisterInterface, SoftDeleteCapable, ReportsCurrentOwners
+class EloquentDataPersister extends AbstractDataPersister implements WritesLinkRowsInterface, TransactionalDataPersisterInterface, SoftDeleteCapable, ReportsCurrentOwners
 {
     /**
      * @var array<string, class-string<Model>>
@@ -406,6 +409,88 @@ class EloquentDataPersister extends AbstractDataPersister implements Transaction
 
         foreach ($incoming as $member) {
             $eloquentRelation->save($member);
+        }
+    }
+
+    /**
+     * Writes a declared `MorphToMany`'s link rows from core's plan: each deleted row is deleted,
+     * each moving row saved at its temporary position, each kept row saved with its final
+     * position and pivot values, then each new row of the `through()` model inserted with its
+     * owner associated and its values in storage form. Every pass finishes before the next, so
+     * a unique owner and position index holds throughout.
+     */
+    public function writeLinkRows(string $type, object $parent, MorphToMany $relation, LinkRowWritePlan $plan, bool $flush = true): object
+    {
+        \assert($parent instanceof Model);
+        $fields = $relation->linkRowFields();
+        \assert($fields !== null && \is_a($fields->through, Model::class, true));
+
+        $apply = function () use ($parent, $relation, $plan, $fields): void {
+            foreach ($plan->deletes as $member) {
+                if ($member->row instanceof Model) {
+                    $member->row->delete();
+                }
+            }
+
+            foreach ([$plan->temporary, $plan->updates] as $pass) {
+                foreach ($pass as $write) {
+                    $row = $write->member->row;
+                    if ($row instanceof Model) {
+                        $this->fillLinkRow($row, $relation, $write->values);
+                        $row->save();
+                    }
+                }
+            }
+
+            $class = $fields->through;
+            foreach ($plan->inserts as $write) {
+                $row = new $class();
+                \assert($row instanceof Model);
+                $owner = \method_exists($row, $fields->owner) ? $row->{$fields->owner}() : null;
+                $values = $write->values;
+                unset($values[$fields->owner]);
+                if ($owner instanceof BelongsTo) {
+                    $owner->associate($parent);
+                } else {
+                    $row->setAttribute($fields->owner, $parent->getKey());
+                }
+                $this->fillLinkRow($row, $relation, $values);
+                $row->save();
+            }
+
+            $parent->unsetRelation($relation->column() ?? $relation->name());
+        };
+
+        if ($flush) {
+            $parent->getConnection()->transaction($apply);
+        } else {
+            $apply();
+        }
+
+        return $parent;
+    }
+
+    /**
+     * Sets a link row's fields from a plan's values, a date-time pivot value moved into the
+     * storage zone as a join's pivot value is.
+     *
+     * @param array<string, mixed> $values
+     */
+    private function fillLinkRow(Model $row, MorphToMany $relation, array $values): void
+    {
+        $dates = new NaiveDateTimeStorage();
+        $fields = [];
+        foreach ($relation->pivotFields() as $field) {
+            $fields[$field->column() ?? $field->name()] = $field;
+        }
+
+        foreach ($values as $column => $value) {
+            $field = $fields[$column] ?? null;
+            if ($value instanceof \DateTimeInterface && !$field instanceof Date && !$field instanceof Time
+                && ($dates->isNaive($row, $column) || !$row->hasCast($column))) {
+                $value = $dates->toStorage($value);
+            }
+            $row->setAttribute($column, $value);
         }
     }
 

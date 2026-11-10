@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\DataProvider;
 use haddowg\JsonApi\Collection\CollectionResult;
 use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
 use haddowg\JsonApi\Schema\Relationship\ToOneRelationshipLinkage;
@@ -290,7 +291,10 @@ final class RelatedIncludeBatcher
             // An identified MorphToMany admits each scoped type's pairs for its linkage, and loads
             // every member's row, one read per type, when it is included.
             if ($this->members !== null && IdentifiedMorphMembers::identifies($relation)) {
-                foreach ($this->members->load($entities, $relation, $request, $included) as $targetType => $targets) {
+                if ($included || $this->rendersData($server, $entities[0], $relation)) {
+                    $this->loadLinkRows($entities, $relation);
+                }
+                foreach ($this->members->load($entities, $relation, $request, $included, $type) as $targetType => $targets) {
                     if ($included) {
                         $this->preloadLevel($server, $targets, $targetType, $request, $childPath, $maxDepth, $allowedPaths, true, $batch, $linkages, $reach);
                     }
@@ -413,6 +417,24 @@ final class RelatedIncludeBatcher
         }
 
         return $targets;
+    }
+
+    /**
+     * Loads the link rows of a `MorphToMany` declared with `identifiedByRows()` for every Eloquent
+     * parent of the level in one query, through the parent's relation the rows are read from in
+     * memory, so its linkage doesn't read them once per parent.
+     *
+     * @param list<object> $entities
+     */
+    private function loadLinkRows(array $entities, MorphToMany $relation): void
+    {
+        $models = \array_values(\array_filter($entities, static fn(object $entity): bool => $entity instanceof Model));
+        $method = $relation->column() ?? $relation->name();
+        if ($relation->linkRowFields() === null || $models === [] || !\method_exists($models[0], $method)) {
+            return;
+        }
+
+        (new EloquentCollection($models))->loadMissing($method);
     }
 
     /**

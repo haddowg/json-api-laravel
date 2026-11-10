@@ -9,6 +9,10 @@ use haddowg\JsonApi\Collection\CursorCollectionResult;
 use haddowg\JsonApi\Collection\Keyset\CursorTokenMinter;
 use haddowg\JsonApi\Collection\Keyset\KeysetColumn;
 use haddowg\JsonApi\Collection\Keyset\KeysetResolver;
+use haddowg\JsonApi\Collection\LinkRows\InMemoryLinkRows;
+use haddowg\JsonApi\Collection\LinkRows\LinkRowKeysInterface;
+use haddowg\JsonApi\Collection\LinkRows\LinkRowQuery;
+use haddowg\JsonApi\Collection\LinkRows\LinkRowQueryInterface;
 use haddowg\JsonApi\Collection\WindowExecutor;
 use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Pagination\CursorCodec;
@@ -19,9 +23,14 @@ use haddowg\JsonApi\Resource\Field\BelongsToMany as PivotRelation;
 use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
+use haddowg\JsonApi\Resource\Field\LinkRowFields;
+use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\InMemory\ArrayFilterHandler;
 use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortHandler;
+use haddowg\JsonApi\Resource\Sort\SortByField;
+use haddowg\JsonApi\Resource\Sort\SortDirective;
+use haddowg\JsonApi\Schema\Relationship\IdentifiedMember;
 use haddowg\JsonApiLaravel\DataProvider\AbstractDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\AdmitsIdsInterface;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
@@ -37,7 +46,9 @@ use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 
@@ -97,7 +108,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
  *
  * @extends AbstractDataProvider<object>
  */
-final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface
+final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, LinkRowQueryInterface, LinkRowKeysInterface
 {
     private readonly CriteriaApplier $applier;
 
@@ -1097,6 +1108,159 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      *
      * @return array<string, array<string, mixed>>
      */
+    /**
+     * Queries an identified `MorphToMany` declared with `identifiedByRows()` in SQL, from its
+     * link-row fields alone: the rows of its `through()` model whose owner field is the parent,
+     * whose type field holds a counted stored type or a narrowed type's admitted id, filtered
+     * and sorted on their row columns, tie-broken as core sets, then paged, each row mapped to
+     * its member by the query. A relation declared with an `identifiedBy()` closure, whose rows
+     * only the closure can read, is queried in memory.
+     */
+    public function queryLinkRows(mixed $parent, MorphToMany $relation, LinkRowQuery $query, JsonApiRequestInterface $request): CollectionResult
+    {
+        $fields = $query->fields;
+        if ($fields === null || !$parent instanceof Model || !\is_a($fields->through, Model::class, true)) {
+            return (new InMemoryLinkRows())->queryLinkRows($parent, $relation, $query, $request);
+        }
+
+        $builder = $this->linkRowsOf($parent, $fields);
+        $row = $builder->getModel();
+        $type = $row->qualifyColumn($fields->type);
+        $id = $row->qualifyColumn($fields->id);
+        $builder->whereNotNull($id)->where(static function (Builder $counted) use ($query, $type, $id): void {
+            $counted->whereIn($type, $query->typeValues());
+            foreach ($query->admittedIds() as $value => $ids) {
+                $counted->orWhere(static fn(Builder $admitted): Builder => $admitted->where($type, $value)->whereIn($id, $ids));
+            }
+        });
+
+        $filters = $this->filterHandler->forRows();
+        foreach ($query->filters as $directive) {
+            $builder = $filters->apply($directive->filter, $builder, $directive->value);
+        }
+
+        $builder = $this->sortHandler->forRows()->apply(\array_map(
+            static fn(SortDirective $directive): SortDirective => $directive->sort instanceof SortByField
+                ? new SortDirective(SortByField::make($directive->sort->key(), LinkRowQuery::PIVOT_PREFIX . LinkRowQuery::rowColumn($directive->sort->column)), $directive->descending)
+                : $directive,
+            $query->sorts,
+        ), $builder);
+        foreach ($query->tiebreak() as $field) {
+            $builder->orderBy($row->qualifyColumn($field));
+        }
+
+        $members = static fn(EloquentCollection $rows): array => \array_values(\array_filter(
+            \array_map($query->member(...), $rows->all()),
+            static fn(?IdentifiedMember $member): bool => $member !== null,
+        ));
+
+        return $this->windowExecutor->run(
+            $query->window,
+            countable: $query->countable,
+            all: static fn(): array => $members($builder->get()),
+            count: static fn(): int => (clone $builder)->reorder()->count(),
+            page: static fn(int $offset, int $limit): array => $members((clone $builder)->offset($offset)->limit($limit)->get()),
+            probe: static fn(int $offset, int $limit): array => $members((clone $builder)->offset($offset)->limit($limit)->get()),
+        );
+    }
+
+    /**
+     * One key-only read of the `through()` model for every parent in the batch: the owner,
+     * type and id columns of the rows owned by one of the parents whose type is one of
+     * `$types`, grouped back to each parent's position.
+     */
+    public function linkRowKeys(array $parents, MorphToMany $relation, array $types, JsonApiRequestInterface $request): array
+    {
+        $keys = \array_fill_keys(\array_keys($parents), []);
+        $fields = $relation->linkRowFields();
+        $models = \array_filter($parents, static fn(mixed $parent): bool => $parent instanceof Model);
+        if ($fields === null || $models === [] || !\is_a($fields->through, Model::class, true)) {
+            return $keys;
+        }
+
+        $stored = [];
+        foreach ($types as $type) {
+            \array_push($stored, ...$fields->storedValues($type));
+        }
+
+        [$builder, $ownerColumn, $ownerKey] = $this->linkRowsOwnedBy(\array_values($models), $fields);
+        $row = $builder->getModel();
+        $typeColumn = $row->qualifyColumn($fields->type);
+        $idColumn = $row->qualifyColumn($fields->id);
+        $read = $builder->whereIn($typeColumn, $stored)->whereNotNull($idColumn)
+            ->distinct()
+            ->get([$ownerColumn . ' as owner_key', $typeColumn . ' as type_value', $idColumn . ' as id_value']);
+
+        $found = [];
+        foreach ($read as $keyRow) {
+            $owner = $keyRow->getAttribute('owner_key');
+            $value = $keyRow->getAttribute('type_value');
+            $id = $keyRow->getAttribute('id_value');
+            $type = \is_string($value) || \is_int($value) ? $fields->memberType($value) : null;
+            if (\is_scalar($owner) && $type !== null && (\is_int($id) || (\is_string($id) && $id !== ''))) {
+                $found[(string) $owner][$type][(string) $id] ??= $id;
+            }
+        }
+
+        foreach ($models as $position => $parent) {
+            $key = $ownerKey($parent);
+            $held = \is_scalar($key) ? $found[(string) $key] ?? [] : [];
+            foreach ($types as $type) {
+                if (isset($held[$type])) {
+                    $keys[$position][$type] = \array_values($held[$type]);
+                }
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
+     * The rows of the `through()` model whose owner field points at `$parent`.
+     *
+     * @return Builder<Model>
+     */
+    private function linkRowsOf(Model $parent, LinkRowFields $fields): Builder
+    {
+        return $this->linkRowsOwnedBy([$parent], $fields)[0];
+    }
+
+    /**
+     * The rows of the `through()` model owned by one of `$parents`, through the `belongsTo` or
+     * `morphTo` the owner field names on the row model, else an owner field holding the
+     * parent's key, with the qualified owner column and how to read a parent's key for it.
+     *
+     * @param non-empty-list<Model> $parents
+     *
+     * @return array{Builder<Model>, string, \Closure(Model): mixed}
+     */
+    private function linkRowsOwnedBy(array $parents, LinkRowFields $fields): array
+    {
+        $class = $fields->through;
+        \assert(\is_a($class, Model::class, true));
+        $row = new $class();
+        $builder = $row->newQuery();
+
+        $owner = \method_exists($row, $fields->owner) ? $row->{$fields->owner}() : null;
+        if ($owner instanceof MorphTo) {
+            $column = $row->qualifyColumn($owner->getForeignKeyName());
+            $builder->where($row->qualifyColumn($owner->getMorphType()), $parents[0]->getMorphClass());
+
+            return [$builder->whereIn($column, \array_map(static fn(Model $parent): mixed => $parent->getKey(), $parents)), $column, static fn(Model $parent): mixed => $parent->getKey()];
+        }
+        if ($owner instanceof BelongsTo) {
+            $column = $row->qualifyColumn($owner->getForeignKeyName());
+            $ownerKey = $owner->getOwnerKeyName();
+            $read = static fn(Model $parent): mixed => $parent->getAttribute($ownerKey);
+
+            return [$builder->whereIn($column, \array_map($read, $parents)), $column, $read];
+        }
+
+        $column = $row->qualifyColumn($fields->owner);
+
+        return [$builder->whereIn($column, \array_map(static fn(Model $parent): mixed => $parent->getKey(), $parents)), $column, static fn(Model $parent): mixed => $parent->getKey()];
+    }
+
     public function fetchRelationshipPivot(string $type, object $parent, RelationInterface $relation): array
     {
         $eloquentRelation = $this->pivotRelation($parent, $relation);

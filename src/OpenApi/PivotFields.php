@@ -6,11 +6,13 @@ namespace haddowg\JsonApiLaravel\OpenApi;
 
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
+use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 
 /**
- * Reads a {@see BelongsToMany} relation's declared pivot fields
+ * Reads a {@see BelongsToMany} relation's declared pivot fields, or those of a
+ * `MorphToMany` declared with `identifiedBy()` on its link rows
  * ({@see BelongsToMany::pivotFields()} — real {@see FieldInterface} definitions) for
  * OpenAPI projection: the per-edge `meta.pivot` field inventory and the auto-derived
  * `?sort=<field>` vocabulary each pivot field contributes on the relation's
@@ -34,7 +36,7 @@ final class PivotFields
      */
     public static function declaredFor(RelationInterface $relation): array
     {
-        return $relation instanceof BelongsToMany ? $relation->pivotFields() : [];
+        return $relation instanceof PivotRelationInterface ? $relation->pivotFields() : [];
     }
 
     /**
@@ -49,7 +51,7 @@ final class PivotFields
     public static function sortsFor(RelationInterface $relation): array
     {
         $sorts = [];
-        $stored = $relation instanceof BelongsToMany ? $relation->storedPivotFields() : [];
+        $stored = $relation instanceof PivotRelationInterface ? $relation->storedPivotFields() : [];
         foreach ($stored as $field) {
             $sorts[] = SortByField::make($field->name(), $field->column() ?? $field->name());
         }

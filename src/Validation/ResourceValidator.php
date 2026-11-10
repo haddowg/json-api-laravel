@@ -22,14 +22,15 @@ use haddowg\JsonApi\Resource\Constraint\Shape;
 use haddowg\JsonApi\Resource\Constraint\When;
 use haddowg\JsonApi\Resource\DateTimeParser;
 use haddowg\JsonApi\Resource\Field\ArrayList;
-use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Map;
 use haddowg\JsonApi\Resource\Field\Mode;
+use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\Obj;
 use haddowg\JsonApi\Resource\Field\OneOf;
+use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\ObjectValue;
 use haddowg\JsonApi\Resource\ObjectValues;
@@ -431,7 +432,7 @@ final class ResourceValidator
         // and each member's writable pivot `meta` against the pivot fields' constraints in the
         // per-member new/existing context. `Mode::Remove` / a request-less call skip the pivot
         // pass; the id-format pass runs whenever a resource resolver is supplied.
-        $isPivot = $mode !== Mode::Remove && $relation instanceof BelongsToMany && $relation->pivotFields() !== [] && $request !== null;
+        $isPivot = $mode !== Mode::Remove && $relation instanceof PivotRelationInterface && $relation->pivotFields() !== [] && $request !== null;
 
         $errors = [];
         if ($linkage instanceof ToOneRelationship) {
@@ -441,8 +442,8 @@ final class ResourceValidator
                 if ($idError !== null) {
                     $errors[] = $idError;
                 }
-                if ($isPivot && $request !== null && $relation instanceof BelongsToMany) {
-                    foreach ($this->memberPivotErrors($relation, $identifier->id, $this->pivotMetaIn($identifier->meta), null, $existingPivot, $request, $embeddedRelationName) as $metaError) {
+                if ($isPivot && $request !== null && $relation instanceof PivotRelationInterface) {
+                    foreach ($this->memberPivotErrors($relation, $this->pivotKey($relation, $identifier->type, $identifier->id), $this->pivotMetaIn($identifier->meta), null, $existingPivot, $request, $embeddedRelationName) as $metaError) {
                         $errors[] = $metaError;
                     }
                 }
@@ -453,8 +454,8 @@ final class ResourceValidator
                 if ($idError !== null) {
                     $errors[] = $idError;
                 }
-                if ($isPivot && $request !== null && $relation instanceof BelongsToMany) {
-                    foreach ($this->memberPivotErrors($relation, $identifier->id, $this->pivotMetaIn($identifier->meta), $index, $existingPivot, $request, $embeddedRelationName) as $metaError) {
+                if ($isPivot && $request !== null && $relation instanceof PivotRelationInterface) {
+                    foreach ($this->memberPivotErrors($relation, $this->pivotKey($relation, $identifier->type, $identifier->id), $this->pivotMetaIn($identifier->meta), $index, $existingPivot, $request, $embeddedRelationName) as $metaError) {
                         $errors[] = $metaError;
                     }
                 }
@@ -592,6 +593,15 @@ final class ResourceValidator
     }
 
     /**
+     * The key a member's stored pivot row is held under: its id, or for an identified
+     * `MorphToMany`, whose members span types, its type and id.
+     */
+    private function pivotKey(PivotRelationInterface $relation, string $type, ?string $id): ?string
+    {
+        return $id !== null && $relation instanceof MorphToMany ? $type . "\0" . $id : $id;
+    }
+
+    /**
      * Validates ONE relationship-endpoint member's pivot `meta` in the per-member
      * new/existing context (the merge-before-validate pass): a member whose related id is in
      * `$existingPivot` is an existing row, so its stored pivot row is merged UNDER the
@@ -608,7 +618,7 @@ final class ResourceValidator
      * @return list<Error>
      */
     private function memberPivotErrors(
-        BelongsToMany $relation,
+        PivotRelationInterface $relation,
         ?string $id,
         array $incoming,
         ?int $index,

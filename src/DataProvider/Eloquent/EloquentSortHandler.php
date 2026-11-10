@@ -49,6 +49,12 @@ final class EloquentSortHandler implements SortHandlerInterface
     private ?EloquentBelongsToMany $pivot = null;
 
     /**
+     * Whether a `pivot.`-prefixed column names a column of the query's own model, the link row
+     * an identified `MorphToMany` queries.
+     */
+    private bool $rows = false;
+
+    /**
      * @param iterable<EloquentSortArmInterface<Model>> $arms author arms for custom sort types, consulted in order
      */
     public function __construct(iterable $arms = [])
@@ -66,6 +72,18 @@ final class EloquentSortHandler implements SortHandlerInterface
     {
         $handler = clone $this;
         $handler->pivot = $relation;
+
+        return $handler;
+    }
+
+    /**
+     * A copy of this handler that reads a `pivot.`-prefixed column off the query's own model,
+     * for a query over an identified `MorphToMany`'s link rows.
+     */
+    public function forRows(): self
+    {
+        $handler = clone $this;
+        $handler->rows = true;
 
         return $handler;
     }
@@ -149,10 +167,21 @@ final class EloquentSortHandler implements SortHandlerInterface
             throw new \LogicException(\sprintf('"%s" is not a valid column path.', $column));
         }
 
+        $column = $this->rowColumn($column);
         if ($this->pivot !== null && \str_starts_with($column, RelationCriteriaFactory::PIVOT_PREFIX)) {
             return $this->pivot->getTable() . '.' . \substr($column, \strlen(RelationCriteriaFactory::PIVOT_PREFIX));
         }
 
         return $query->getModel()->qualifyColumn($column);
+    }
+
+    /**
+     * `$column` with its `pivot.` prefix stripped when it names a link row's own column.
+     */
+    private function rowColumn(string $column): string
+    {
+        return $this->rows && \str_starts_with($column, RelationCriteriaFactory::PIVOT_PREFIX)
+            ? \substr($column, \strlen(RelationCriteriaFactory::PIVOT_PREFIX))
+            : $column;
     }
 }
