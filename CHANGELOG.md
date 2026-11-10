@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.5.0](https://github.com/haddowg/json-api-laravel/compare/v2.4.2...v2.5.0) (2026-11-10)
+
+
+### Features
+
+* give an identified MorphToMany pivot fields on its link rows ([#235](https://github.com/haddowg/json-api-laravel/issues/235)) ([23a1cce](https://github.com/haddowg/json-api-laravel/commit/23a1cce58bf28e62112cdae61da21797228dd917))
+* keep a positioned to-many in the order its linkage sets ([#236](https://github.com/haddowg/json-api-laravel/issues/236)) ([dabef33](https://github.com/haddowg/json-api-laravel/commit/dabef337021981907bb91f08e352c2e34a363480))
+* let a to-many relation fix its members with cannotChangeMembership ([#233](https://github.com/haddowg/json-api-laravel/issues/233)) ([c2d531a](https://github.com/haddowg/json-api-laravel/commit/c2d531a2b4596aa6f8a38da3ae81b4982a639df5))
+* read a to-many in its relation's default order on every path ([#234](https://github.com/haddowg/json-api-laravel/issues/234)) ([a4447e7](https://github.com/haddowg/json-api-laravel/commit/a4447e7d16d034d97333c0c9017e3acfe77d5cbc))
+
 ## [2.4.2](https://github.com/haddowg/json-api-laravel/compare/v2.4.1...v2.4.2) (2026-11-09)
 
 
