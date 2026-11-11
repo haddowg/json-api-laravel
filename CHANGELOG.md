@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.0](https://github.com/haddowg/json-api-laravel/compare/v2.7.2...v2.8.0) (2026-11-11)
+
+
+### Features
+
+* batch reads through a related type's own provider ([#252](https://github.com/haddowg/json-api-laravel/issues/252)) ([88ffad5](https://github.com/haddowg/json-api-laravel/commit/88ffad5644a2eeacc284b177bfcf2c88dc7dda3e))
+
 ## [2.7.2](https://github.com/haddowg/json-api-laravel/compare/v2.7.1...v2.7.2) (2026-11-10)
 
 
