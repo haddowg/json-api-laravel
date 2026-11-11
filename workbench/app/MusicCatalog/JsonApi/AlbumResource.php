@@ -100,6 +100,13 @@ final class AlbumResource extends AbstractResource
                 ->withFilters(Where::make('longerThan', 'length_seconds', '>')->integer())
                 ->withSorts(SortByField::make('duration', 'length_seconds'))
                 ->countable(),
+            // The same tracks without the tracks type's explicit=false default, so an
+            // explicit track is a member here. The filter stays, and `tracks` takes the writes.
+            HasMany::make('tracklist', 'tracks')
+                ->storedAs('tracks')
+                ->readOnly()
+                ->withoutFilterDefaults('explicit')
+                ->countable(),
         ];
     }
 
