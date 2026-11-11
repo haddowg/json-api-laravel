@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.0](https://github.com/haddowg/json-api-laravel/compare/v2.8.0...v2.9.0) (2026-11-11)
+
+
+### Features
+
+* let a relation drop its related type's filter defaults ([#254](https://github.com/haddowg/json-api-laravel/issues/254)) ([08e362c](https://github.com/haddowg/json-api-laravel/commit/08e362c48e56dfdad7416db6ff26915a7109ca21))
+
 ## [2.8.0](https://github.com/haddowg/json-api-laravel/compare/v2.7.2...v2.8.0) (2026-11-11)
 
 
