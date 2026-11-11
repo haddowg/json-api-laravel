@@ -69,6 +69,12 @@ abstract class AbstractDataProvider implements DataProviderInterface
      * Default: an **empty {@see RelatedBatch}**, which loads no parent, so the include
      * preloader renders each parent's own relation and a windowed or counted read calls
      * {@see fetchRelatedCollection()} per parent. Override to batch an include without N+1.
+     *
+     * It is also called for a relation whose related type this provider serves, with
+     * `$parents` of another type, `$parentType`, served by another provider. Key every parent
+     * you answer by its wire id; a parent left out is read with {@see fetchRelatedCollection()}
+     * on its own. An answered to-one renders the result's first item, or none when it is
+     * empty, and needs no relation method on the parent.
      */
     public function fetchRelatedCollectionBatch(
         string $parentType,

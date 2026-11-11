@@ -151,8 +151,38 @@ and not the reference Eloquent or in-memory provider), its members load through 
 includes, linkage rendered without an include, `?withCount` totals, the Relationship Queries
 window and the relationship endpoint, so each shows exactly what the related endpoint shows.
 
-These loads run once per parent rather than batched. An Eloquent global scope needs none of
-this: Eloquent applies it to every relation read already.
+Each of those reads first asks your provider's `fetchRelatedCollectionBatch()` for the whole
+page, passing the parent's type and the page of parents, which are of a type your provider
+doesn't serve. Key the result by each parent's wire id and give every parent you answer an
+entry, an empty `CollectionResult` for one with nothing related. A parent you leave out is read
+on its own with `fetchRelatedCollection()`, so the inherited empty batch keeps one read per
+parent. An Eloquent global scope needs none of this: Eloquent applies it to every relation read
+already.
+
+A to-one to such a type loads the same way, and an answered batch is where its target comes
+from: the first item of a parent's result, or no target when the result is empty. That holds on
+every read of the relation, so `included`, linkage rendered without an include, the related and
+relationship endpoints and a `relatedQuery` filter all show the batch's target. One parent is a
+batch of one, and a page asks once however many of those render. The parent needs no relation
+method, attribute or `extractUsing()` for it, so a read-only type your provider answers with one
+grouped query per page can hang off an Eloquent model as is:
+
+```php
+HasOne::make('progress', 'progresses')->withData(),
+```
+
+```php
+public function fetchRelatedCollectionBatch(string $parentType, array $parents, RelationInterface $relation, CollectionCriteria $criteria, JsonApiRequestInterface $request): RelatedBatch
+{
+    $ids = array_map(fn (object $run): string => (string) $run->id, $parents);
+    $rows = $this->progressByRun($ids); // one GROUP BY for the page
+
+    return new RelatedBatch(array_combine($ids, array_map(
+        fn (string $id): CollectionResult => new CollectionResult(isset($rows[$id]) ? [$rows[$id]] : []),
+        $ids,
+    )));
+}
+```
 
 A relation computed with `extractUsing()` follows the same rule. The closure's value is only the
 candidate set: when the related type has its own provider, the members load through that
@@ -161,8 +191,8 @@ linkage, `included`, both endpoints, `?withCount` and the window all show the sa
 Eloquent type the closure's own queries already run through the model's global scopes, so a
 closure that calls `withoutGlobalScopes()` gets exactly the rows it asked for.
 
-A to-one target of such a type is read off the parent and kept only while the provider's
-`fetchOne()` still returns it. Otherwise the relation renders as empty everywhere: linkage,
+A to-one target your provider's batch leaves out is read off the parent and kept only while the
+provider's `fetchOne()` still returns it. Otherwise the relation renders as empty everywhere: linkage,
 `included`, the relationship and related endpoints, a `MorphTo`, and any attribute flattened
 through it with `on()`. Writing such an attribute through a hidden target is a `422`.
 

@@ -117,6 +117,16 @@ interface DataProviderInterface
      * include batcher renders that parent's own relation and the windowed and counted paths
      * read it with {@see fetchRelatedCollection()}, so leaving a parent out never empties it.
      *
+     * It is also called on the provider of the RELATED type, for a relation whose related
+     * type this provider serves and whose parents are of another type served by another
+     * provider ({@see DataProviderRegistry::scopedRelatedProvider()}). `$parentType` is then
+     * that other type, `$parents` are its objects, and the batch is keyed by each parent's
+     * wire id as that type's serializer reports it. Every parent the batch answers must be
+     * keyed; one it leaves out is read on its own with {@see fetchRelatedCollection()}. For a
+     * to-one asked this way the answer is the target itself: its first item, or none when it
+     * is empty, on every read of the relation, so the parent needs no relation method,
+     * attribute or hook to hold it.
+     *
      * @param list<object> $parents the already-fetched page of parents (the handler holds it)
      *
      * @throws \haddowg\JsonApi\Exception\FilterParamUnrecognized when a requested filter key is not declared

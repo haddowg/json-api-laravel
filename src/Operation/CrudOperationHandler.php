@@ -836,7 +836,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
             throw new RelationshipCountNotAllowed(['_self_']);
         }
 
-        // A target whose type has its own scoping provider shows only if that provider serves it.
+        // A target whose type has its own scoping provider shows only if that provider serves it,
+        // and comes from that provider's batch when it answers for this parent.
+        $this->relationshipLinkage->loadToOne([$parent], $type, $relation, $request);
         $related = $this->relationshipLinkage->toOneTargetFor($parent, $relation, $request);
 
         // A polymorphic to-one (MorphTo) has no single related resource and so no shared
@@ -1003,6 +1005,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // The whole association, but loaded through the related type's own scoping provider
             // rather than read off the parent, so it lists exactly what the related endpoint does.
             $this->scopeRelationshipEndpoint($server, $type, $parent, $relation, $operation->queryParameters(), $request);
+        } elseif (!$relation->isToMany()) {
+            // A to-one the related type's own provider answers in its batch takes its target from it.
+            $this->relationshipLinkage->loadToOne([$parent], $type, $relation, $request);
         }
 
         // The linkage serializer may wrap the parent's (a pivot relation's does), which hides

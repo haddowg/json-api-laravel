@@ -146,11 +146,12 @@ final class DataProviderRegistry
 
     /**
      * Fetches `$relation`'s related members for every parent in `$parents`, keyed by each
-     * parent's wire id: through the parent type's batch when that matches the related endpoint,
-     * otherwise one {@see DataProviderInterface::fetchRelatedCollection()} per parent through
-     * the related type's own provider (the related endpoint's exact read), so a render path
-     * never shows a member the related endpoint would not. A parent the batch did not load is
-     * read the same way through the parent type's provider.
+     * parent's wire id, in one {@see DataProviderInterface::fetchRelatedCollectionBatch()}: the
+     * parent type's batch when that matches the related endpoint, otherwise the related type's
+     * own provider's batch, asked about parents of another type, so a render path never shows a
+     * member the related endpoint would not. A parent the batch did not answer is read on its
+     * own with {@see DataProviderInterface::fetchRelatedCollection()} through the same provider,
+     * never taken as having no members.
      *
      * Monomorphic relations only; a polymorphic relation has no single related provider.
      *
@@ -166,19 +167,13 @@ final class DataProviderRegistry
         \Closure $wireIdOf,
     ): RelatedBatch {
         $relatedType = $relation->relatedTypes()[0] ?? $parentType;
-        $reader = $this->scopedRelatedProvider($parentType, $relatedType);
-        $batch = null;
-        if ($reader === null) {
-            $reader = $this->forType($parentType);
-            $batch = $reader->fetchRelatedCollectionBatch($parentType, $parents, $relation, $criteria, $request);
-        }
+        $reader = $this->scopedRelatedProvider($parentType, $relatedType) ?? $this->forType($parentType);
+        $batch = $reader->fetchRelatedCollectionBatch($parentType, $parents, $relation, $criteria, $request);
 
-        // A parent the batch did not load, or every parent when the related type has its own
-        // provider, is read one at a time, never taken as having no members.
         $results = [];
         foreach ($parents as $parent) {
             $wireId = $wireIdOf($parent);
-            $results[$wireId] = $batch?->has($wireId) === true
+            $results[$wireId] = $batch->has($wireId)
                 ? $batch->for($wireId)
                 : $reader->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
         }

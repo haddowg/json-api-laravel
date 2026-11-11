@@ -106,6 +106,17 @@ final class RequestScopedRelationshipLinkage implements ToOneRelationshipLinkage
     }
 
     /**
+     * Loads to-one `$relation` on `$parents`, which are of `$type`, through the related type's
+     * own provider in one batch, when that provider serves it ({@see ScopedToOneTargets::load()}).
+     *
+     * @param list<object> $parents
+     */
+    public function loadToOne(array $parents, string $type, RelationInterface $relation, JsonApiRequestInterface $request): void
+    {
+        $this->toOne->load($parents, $type, $relation, $request);
+    }
+
+    /**
      * The object to-one `$relation` renders on `$model`, for the to-one related endpoint.
      */
     public function toOneTargetFor(object $model, RelationInterface $relation, JsonApiRequestInterface $request): mixed

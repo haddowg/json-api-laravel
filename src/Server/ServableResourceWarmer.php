@@ -21,6 +21,7 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
+use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
 use haddowg\JsonApiLaravel\Operation\Operation;
@@ -455,7 +456,9 @@ final class ServableResourceWarmer
      * same member the {@see EloquentDataProvider}'s batchers call — so a `storedAs()`
      * alias is honoured, and a relation carrying an `extractUsing()`/`serializeUsing()`
      * closure is skipped outright: its value comes from the closure, never from a model
-     * method, so a missing method is not a defect. A typo'd relation name on a plain
+     * method, so a missing method is not a defect. So is a monomorphic relation whose related type
+     * has its own provider ({@see DataProviderRegistry::scopedRelatedProvider()}), which that
+     * provider reads for the parent. A typo'd relation name on a plain
      * relation would otherwise fail at runtime. Gated on the type resolving to an
      * {@see EloquentDataProvider} model, so a POPO / in-memory type is skipped.
      *
@@ -473,6 +476,11 @@ final class ServableResourceWarmer
         foreach ($this->types->relationsFor($server, $type) as $relation) {
             if ($this->hasValueClosure($relation)) {
                 continue; // extractUsing/serializeUsing supplies the value — no model method needed
+            }
+
+            // The related type's own provider reads it for the parent, so it is never read off the model.
+            if (Polymorphism::isMonomorphic($relation) && $this->providers->scopedRelatedProvider($type, $relation->relatedTypes()[0]) !== null) {
+                continue;
             }
 
             $method = $relation->column() ?? $relation->name();
