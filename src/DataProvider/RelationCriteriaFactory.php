@@ -16,6 +16,7 @@ use haddowg\JsonApi\Resource\Filter\FilterFamilyInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Filter\HasDefaultValue;
+use haddowg\JsonApi\Resource\Filter\RelationFilters;
 use haddowg\JsonApi\Resource\Filter\TargetsColumn;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
@@ -125,7 +126,7 @@ final class RelationCriteriaFactory
 
         return new CollectionCriteria(
             $queryParameters,
-            FilterMatcher::merge($relatedResource?->allFilters() ?? [], $relationFilters),
+            FilterMatcher::merge(self::relatedFilters($relatedResource, $relation), $relationFilters),
             $sorts,
             $window,
             $defaultSort,
@@ -165,7 +166,7 @@ final class RelationCriteriaFactory
     /**
      * Whether a to-many's members read through its provider differ from the ones its model
      * relation holds: it has a read order, its own or the related type's, or its related
-     * endpoint folds in a filter default.
+     * endpoint folds in a filter default the relation doesn't drop.
      */
     public static function readsThroughProvider(?AbstractResource $relatedResource, RelationInterface $relation): bool
     {
@@ -194,7 +195,18 @@ final class RelationCriteriaFactory
      */
     private static function linkageFilters(?AbstractResource $relatedResource, RelationInterface $relation): array
     {
-        return FilterMatcher::merge($relatedResource?->allFilters() ?? [], self::withoutPivotFilters($relation->allFilters()));
+        return FilterMatcher::merge(self::relatedFilters($relatedResource, $relation), self::withoutPivotFilters($relation->allFilters()));
+    }
+
+    /**
+     * The related type's filters as the relation applies them, without the defaults it
+     * drops through `withoutFilterDefaults()`.
+     *
+     * @return list<FilterInterface>
+     */
+    private static function relatedFilters(?AbstractResource $relatedResource, RelationInterface $relation): array
+    {
+        return RelationFilters::relatedFilters($relation, $relatedResource?->allFilters() ?? []);
     }
 
     /**

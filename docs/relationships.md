@@ -77,7 +77,8 @@ left it lazy, it renders links and no `data`, even when an attribute or a hook l
 relation on the model afterwards, since that relation query skips the provider's scope and
 the filter defaults. Declare it `withData()` or include it to render its linkage. Included and
 always-emitted linkage fold in the same filter defaults as the related endpoint, so they list
-the members it serves with no `filter` sent, the set `?withCount` counts.
+the members it serves with no `filter` sent, the set `?withCount` counts. A relation that
+[drops those defaults](#dropping-the-related-types-filter-defaults) drops them on all of these.
 
 ## `?include`
 
@@ -135,6 +136,31 @@ HasMany::make('tracks', 'tracks')
     ->withSorts(SortByField::make('duration', 'length_seconds'))
     ->countable();
 ```
+
+### Dropping the related type's filter defaults
+
+A filter default on the related type narrows every read of a to-many to that type: its linkage,
+`?include`, `?withCount`, the related and relationship endpoints and a
+[Relationship Queries](#the-relationship-queries-profile) window. A relation that should list
+every member drops them with `withoutFilterDefaults()`:
+
+```php
+// TrackResource declares Where::make('explicit')->asBoolean()->default(false)
+HasMany::make('tracks', 'tracks')->withoutFilterDefaults('explicit'),
+
+// drops every default the related type declares
+HasMany::make('allTracks', 'tracks')->withoutFilterDefaults(),
+```
+
+With keys, only those defaults stop applying; with none, all of them do. The filters stay, so
+`filter[explicit]=true` on `/albums/1/allTracks` still narrows the members, and `/tracks` keeps
+its defaults. A default the relation declares on its own `withFilters()` filter still applies.
+
+Route registration and `jsonapi:optimize` refuse a key that isn't a defaulted filter of the
+related type, in core's `RelationFilterDefaultsValidator` wording. A polymorphic relation needs
+the key defaulted on one of its related types. A to-many left with no default, no read order
+and no scoping provider reads its linkage off the model relation again, batched across the page
+like any other.
 
 ### A relation's default read order
 
