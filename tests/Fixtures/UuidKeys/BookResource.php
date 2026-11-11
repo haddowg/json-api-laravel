@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Tests\Fixtures\UuidKeys;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\BelongsTo;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
+use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\Contains;
 
@@ -20,6 +21,7 @@ final class BookResource extends AbstractResource
             UuidKeys::id()->allowClientId(),
             Str::make('title')->sortable(),
             BelongsTo::make('writer', 'writers')->nullable(),
+            MorphTo::make('penName', ['writers'])->storedAs('writer')->readOnly(),
             BelongsToMany::make('labels', 'labels')->countable(),
         ];
     }

@@ -170,6 +170,16 @@ abstract class UuidKeysTestCase extends Orchestra
     }
 
     #[Test]
+    public function withCountCountsTheTargetOfAToOneRelatedEndpoint(): void
+    {
+        $this->read('/api/books/' . self::B1 . '/writer?withCount=books', self::COUNTABLE)
+            ->assertJsonPath('data.relationships.books.meta.total', 2);
+        $this->read('/api/books/' . self::B3 . '/penName?withCount=books', self::COUNTABLE)
+            ->assertJsonPath('data.id', self::W2)
+            ->assertJsonPath('data.relationships.books.meta.total', 1);
+    }
+
+    #[Test]
     public function aRelatedQueryWindowsEachParent(): void
     {
         $writers = $this->read('/api/writers?sort=name&include=books&withCount=books&relatedQuery[books][filter][title]=m', self::QUERIES);

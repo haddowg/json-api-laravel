@@ -891,13 +891,14 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // against the rendered to-one target emits `meta.total` on its relationship object —
         // parity with the single-resource fetch, and (with the per-dispatch clear above) never
         // a stale count. The related type may have no provider of its own (only ever resolved
-        // through the parent), so guard the resolution.
-        if (\is_object($related) && !$polymorphic && $this->providers->supportsType($relatedType)) {
-            $this->preloadIncludes($server, [$related], $relatedType, $request);
+        // through the parent), so guard the resolution. A MorphTo target loads as its own type.
+        $targetType = \is_object($related) && $polymorphic ? $serializer->getType($related) : $relatedType;
+        if (\is_object($related) && $this->providers->supportsType($targetType)) {
+            $this->preloadIncludes($server, [$related], $targetType, $request);
             // Its relationships honour the Relationship Queries profile like any rendered resource,
             // so their linkage, included members and counts come from the same filtered set.
-            $activatedProfiles = $this->applyRelationshipWindows($server, $relatedType, [$related], $request);
-            $this->applyRelationshipCounts($server, $relatedType, [$related], $request);
+            $activatedProfiles = $this->applyRelationshipWindows($server, $targetType, [$related], $request);
+            $this->applyRelationshipCounts($server, $targetType, [$related], $request);
         }
 
         $response = RelatedResponse::fromResource($related, $serializer);
