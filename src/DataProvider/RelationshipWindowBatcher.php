@@ -92,6 +92,7 @@ final class RelationshipWindowBatcher
         // mistyped relatedQuery value is the endpoint's same 400 here too. Only RAW client input
         // is validated (never author defaults).
         private readonly FilterValueValidator $filterValues,
+        private readonly ?ScopedToOneTargets $toOne = null,
     ) {}
 
     /**
@@ -261,7 +262,7 @@ final class RelationshipWindowBatcher
         // scoping, merged-vocabulary key validation (unknown key -> the endpoint's 400), and the
         // count-free vs countable distinction are all reused verbatim from
         // fetchRelatedCollection's tail. A related type served by its own scoping provider is
-        // windowed through that provider per parent instead, exactly as its related endpoint.
+        // windowed through that provider's batch instead, and per parent for any it leaves out.
         $serializer = $server->serializerFor($type);
         $batch = $this->providers->fetchRelatedBatch(
             $type,
@@ -566,11 +567,29 @@ final class RelationshipWindowBatcher
             // the endpoint's same 400. RAW client input only (RelatedQuery::filter).
             $this->filterValues->validate($request->getRelatedQuery($relation->name())->filter, $criteria->filters, $request, $criteria->paths);
 
+            // A to-one the related type's own provider answers in its batch takes its target from
+            // that batch, matched through the same provider. The rest are matched off the parent.
+            $loaded = $this->toOne?->load($parents, $type, $relation, $request);
+            if ($loaded !== null) {
+                $provider = $this->providers->forType($relatedType);
+                foreach ($loaded['answered'] as $parent) {
+                    $target = $this->toOne?->targetFor($parent, $relation, $request);
+                    if (!\is_object($target) || !$provider->relatedToOneMatches($relatedType, $target, $relation, $criteria, $request)) {
+                        $linkages[\spl_object_id($parent)][$relation->name()] = ToOneRelationshipLinkage::none();
+                    }
+                }
+            }
+
+            $rest = $loaded === null ? $parents : $loaded['unanswered'];
+            if ($rest === []) {
+                continue;
+            }
+
             $matches = $this->providers->forType($type)
-                ->relatedToOneMatchesBatch($type, $parents, $relation, $criteria, $request);
+                ->relatedToOneMatchesBatch($type, $rest, $relation, $criteria, $request);
 
             $serializer = $server->serializerFor($type);
-            foreach ($parents as $parent) {
+            foreach ($rest as $parent) {
                 if (($matches[$serializer->getId($parent)] ?? false) === false) {
                     $linkages[\spl_object_id($parent)][$relation->name()] = ToOneRelationshipLinkage::none();
                 }

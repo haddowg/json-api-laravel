@@ -55,13 +55,19 @@ use Illuminate\Database\Eloquent\Model;
  *    renders its own relation. A provider that cannot batch a relation returns an empty
  *    batch, and every parent renders lazily.
  *
- * A to-many whose related type is served by its own provider (not the parent's, not a
+ * A relation whose related type is served by its own provider (not the parent's, not a
  * reference provider) is different: that provider may scope its rows, and the related endpoint
- * reads the members through it. Such a relation is never batched through the parent or read
- * off it. Its members load through the related provider, per parent, whenever they render
- * (included, or as linkage without an include), batching on or off, and are handed back as
- * out-of-band linkage rather than written onto the parent. A polymorphic relation reaching
- * such a type has its members narrowed per member type instead.
+ * reads the members through it. Such a relation is never batched through the parent's provider.
+ * Whenever it renders (included, or as linkage without an include), batching on or off, the
+ * related provider's {@see DataProviderInterface::fetchRelatedCollectionBatch()} loads it for
+ * the whole level in one call, and a parent that batch leaves out is read on its own:
+ *  - a monomorphic to-many's members come from the batch, or from that parent's
+ *    {@see DataProviderInterface::fetchRelatedCollection()}, and are handed back as out-of-band
+ *    linkage rather than written onto the parent;
+ *  - a monomorphic to-one's target comes from the batch through {@see ScopedToOneTargets}, so
+ *    the parent needs no relation method. A parent the batch leaves out loads as any other
+ *    to-one and is checked against the provider when it renders.
+ * A polymorphic relation reaching such a type has its members narrowed per member type instead.
  *
  * Beyond the `?include` tree it also preloads the one relation class that renders linkage
  * on EVERY read regardless of `?include` — an **eager monomorphic to-one** (`BelongsTo`/
@@ -109,6 +115,7 @@ final class RelatedIncludeBatcher
         private readonly IdentifiedMorphTargets $identified,
         private readonly ?IdentifiedMorphMembers $members = null,
         private readonly RelationCriteriaFactory $relationCriteria = new RelationCriteriaFactory(),
+        private readonly ?ScopedToOneTargets $toOne = null,
     ) {}
 
     /**
@@ -307,6 +314,13 @@ final class RelatedIncludeBatcher
                 continue;
             }
 
+            if ($this->toOne !== null && !$relation->isToMany() && Polymorphism::isMonomorphic($relation)
+                && $this->providers->relatesToScopedType($type, $relation)) {
+                $this->loadScopedToOne($server, $this->toOne, $entities, $type, $relation, $request, $childPath, $maxDepth, $allowedPaths, $included, $batch, $linkages, $reach);
+
+                continue;
+            }
+
             if ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation)) {
                 $targets = $this->loadScoped($server, $entities, $type, $relation, $request, $included, $linkages);
                 if ($included) {
@@ -351,9 +365,10 @@ final class RelatedIncludeBatcher
 
     /**
      * Loads a to-many whose related type is served by its own scoping provider through that
-     * provider, one {@see DataProviderInterface::fetchRelatedCollection()} per parent (the
-     * related endpoint's read), for every parent that renders the relation's data: all of them
-     * when it is included, otherwise those whose linkage renders anyway. Each parent's members
+     * provider, for every parent that renders the relation's data: all of them when it is
+     * included, otherwise those whose linkage renders anyway. One batch answers the level, and a
+     * parent it leaves out takes one {@see DataProviderInterface::fetchRelatedCollection()}, the
+     * related endpoint's read ({@see DataProviderRegistry::fetchRelatedBatch()}). Each parent's members
      * go into `$linkages` for out-of-band rendering, never onto the parent, which may be a
      * shared in-memory object. Returns the loaded members of an included relation.
      *
@@ -411,9 +426,11 @@ final class RelatedIncludeBatcher
         $criteria = $relation->isToMany()
             ? $this->linkageCriteria($server, $provider, $entities[0], $relation, $request)
             : $this->plainIncludeCriteria($request);
+        $serializer = $server->serializerFor($type);
+        $batch = $this->providers->fetchRelatedBatch($type, $rendering, $relation, $criteria, $request, static fn(object $entity): string => $serializer->getId($entity));
         $targets = [];
         foreach ($rendering as $entity) {
-            $items = $this->itemsOf($provider->fetchRelatedCollection($relatedTypes[0], $entity, $relation, $criteria, $request));
+            $items = $this->itemsOf($batch->for($serializer->getId($entity)));
             $linkages[\spl_object_id($entity)][$relation->name()] = new RelationshipLinkage($items);
             foreach ($items as $item) {
                 $targets[$relatedTypes[0]][] = $item;
@@ -421,6 +438,55 @@ final class RelatedIncludeBatcher
         }
 
         return $targets;
+    }
+
+    /**
+     * Loads a monomorphic to-one whose related type is served by its own scoping provider through
+     * that provider's batch, for every parent that renders it: all of them when it is included,
+     * otherwise those whose linkage renders anyway ({@see ScopedToOneTargets::load()}). An
+     * included relation's batched targets seed the next level. A parent the batch did not answer
+     * loads the way any other to-one does.
+     *
+     * @param list<object>                                                            $entities
+     * @param ?int                                                                    $maxDepth
+     * @param list<string>|null                                                       $allowedPaths
+     * @param array<int, array<string, RelationshipLinkage|ToOneRelationshipLinkage>> $linkages
+     * @param array<string, bool>                                                     $reach
+     */
+    private function loadScopedToOne(
+        Server $server,
+        ScopedToOneTargets $toOne,
+        array $entities,
+        string $type,
+        RelationInterface $relation,
+        JsonApiRequestInterface $request,
+        string $childPath,
+        ?int $maxDepth,
+        ?array $allowedPaths,
+        bool $included,
+        bool $batch,
+        array &$linkages,
+        array &$reach,
+    ): void {
+        $rendering = $included
+            ? $entities
+            : \array_values(\array_filter($entities, fn(object $entity): bool => $this->rendersData($server, $entity, $relation)));
+        $loaded = $rendering === [] ? null : $toOne->load($rendering, $type, $relation, $request);
+        $rest = $loaded === null ? $entities : $loaded['unanswered'];
+
+        if ($included && $loaded !== null && $loaded['targets'] !== []) {
+            $this->preloadLevel($server, $loaded['targets'], $relation->relatedTypes()[0], $request, $childPath, $maxDepth, $allowedPaths, true, $batch, $linkages, $reach);
+        }
+
+        if ($rest === []) {
+            return;
+        }
+
+        if ($included) {
+            $this->loadRelation($server, $rest, $type, $relation, $request, $childPath, $maxDepth, $allowedPaths, $batch, $linkages, $reach);
+        } elseif ($batch) {
+            $this->preloadEagerLinkage($server, $rest, $type, $relation, $request, $linkages);
+        }
     }
 
     /**
@@ -483,7 +549,8 @@ final class RelatedIncludeBatcher
             $seed = false;
             foreach ($this->types->readableRelationsFor($server, $type, $request) as $relation) {
                 $seed = $seed
-                    || ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation))
+                    || (($relation->isToMany() || ($this->toOne !== null && Polymorphism::isMonomorphic($relation)))
+                        && $this->providers->relatesToScopedType($type, $relation))
                     || IdentifiedMorphTargets::identifies($relation)
                     || IdentifiedMorphMembers::identifies($relation);
                 foreach ($relation->relatedTypes() as $relatedType) {

@@ -49,6 +49,7 @@ use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\RelationshipWindowBatcher;
 use haddowg\JsonApiLaravel\DataProvider\ScopedPolymorphicMembers;
+use haddowg\JsonApiLaravel\DataProvider\ScopedToOneTargets;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Discovery\DiscoveryScanner;
 use haddowg\JsonApiLaravel\Eloquent\ModelMapResolver;
@@ -805,6 +806,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->app->singleton(GuardedTypes::class);
         $this->app->singleton(IdentifiedMorphTargets::class);
         $this->app->singleton(IdentifiedMorphMembers::class);
+        $this->app->singleton(ScopedToOneTargets::class);
         $this->app->singleton(RequestScopedRelationshipLinkage::class);
 
         $this->app->singleton(RelatedIncludeBatcher::class, static function (Container $app): RelatedIncludeBatcher {
@@ -814,6 +816,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(ScopedPolymorphicMembers::class),
                 $app->make(IdentifiedMorphTargets::class),
                 $app->make(IdentifiedMorphMembers::class),
+                toOne: $app->make(ScopedToOneTargets::class),
             );
         });
 
@@ -837,6 +840,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(TypeMetadataResolver::class),
                 $app->make(RelationCriteriaFactory::class),
                 $app->make(FilterValueValidator::class),
+                $app->make(ScopedToOneTargets::class),
             );
         });
     }
