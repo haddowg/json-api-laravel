@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature\MusicCatalog;
 
+use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\OpenApi\ArtifactStore;
 use haddowg\JsonApiLaravel\Testing\SchemaConformanceTrait;
 use haddowg\JsonApiLaravel\Testing\SchemaDocumentKind;
@@ -11,6 +12,8 @@ use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\Attributes\DefineEnvironment;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
+use Workbench\App\MusicCatalog\Domain\Track as TrackDomain;
+use Workbench\App\MusicCatalog\Models\Track as TrackModel;
 use Workbench\App\MusicCatalog\Support\Fixtures;
 
 /**
@@ -311,6 +314,32 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         ])->assertStatus(405);
     }
 
+    public function test_the_tracklist_drops_the_explicit_default_that_tracks_keeps(): void
+    {
+        // Paranoid Android turns explicit; the in-memory catalog has no tracks persister.
+        $track = $this->app?->make(DataProviderRegistry::class)->forType('tracks')->fetchOne('tracks', '2');
+        self::assertTrue($track instanceof TrackModel || $track instanceof TrackDomain);
+        $track->explicit = true;
+        if ($track instanceof TrackModel) {
+            $track->save();
+        }
+
+        self::assertSame(['1', '2'], $this->sortedIds($this->fetch('/api/albums/1/tracklist')->assertOk()->json('data')));
+        self::assertSame(['1', '2'], $this->sortedIds($this->fetch('/api/albums/1/relationships/tracklist')->assertOk()->json('data')));
+        self::assertSame(['1'], $this->sortedIds($this->fetch('/api/albums/1/tracks')->assertOk()->json('data')));
+
+        $album = $this->get('/api/albums/1?include=tracklist&withCount=tracks,tracklist', [
+            'Accept' => self::MEDIA_TYPE . ';profile="https://haddowg.github.io/json-api/profiles/countable/"',
+        ])->assertOk();
+        self::assertSame(['total' => 1], $album->json('data.relationships.tracks.meta'));
+        self::assertSame(['total' => 2], $album->json('data.relationships.tracklist.meta'));
+        self::assertSame(['1', '2'], $this->sortedIds($album->json('data.relationships.tracklist.data')));
+
+        // The filter stays, so a client can still ask for the clean tracks, and /tracks keeps its default.
+        self::assertSame(['1'], $this->sortedIds($this->fetch('/api/albums/1/tracklist?filter[explicit]=false')->assertOk()->json('data')));
+        self::assertNotContains('2', $this->sortedIds($this->fetch('/api/tracks')->assertOk()->json('data')));
+    }
+
     // --- writes ----------------------------------------------------------------
 
     public function test_album_create_assigns_a_store_provided_id(): void
@@ -409,6 +438,26 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         $this->get('/api/albums/999999/-actions/download', ['Accept' => 'text/html'])
             ->assertNotFound()
             ->assertJsonPath('errors.0.status', '404');
+    }
+
+    /**
+     * The ids of a list of resource objects or identifiers, sorted.
+     *
+     * @return list<string>
+     */
+    protected function sortedIds(mixed $data): array
+    {
+        self::assertIsArray($data);
+
+        $ids = [];
+        foreach ($data as $row) {
+            self::assertIsArray($row);
+            self::assertIsString($row['id'] ?? null);
+            $ids[] = $row['id'];
+        }
+        \sort($ids);
+
+        return $ids;
     }
 
     /**

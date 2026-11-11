@@ -15,6 +15,7 @@ use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Sort\SortByField;
+use haddowg\JsonApi\Serializer\RelationFilterDefaultsValidator;
 use haddowg\JsonApi\Serializer\RelationOrderValidator;
 use haddowg\JsonApiLaravel\Action\ActionRegistry;
 use haddowg\JsonApiLaravel\Action\ActionScope;
@@ -90,6 +91,8 @@ use Psr\Log\LoggerInterface;
  *    rather than a problem, since the build is still servable.
  *  - **A to-many's read order must name sorts the relation accepts.** Core's
  *    {@see RelationOrderValidator}, run per resource.
+ *  - **A relation's `withoutFilterDefaults()` must name defaulted filters.** Core's
+ *    {@see RelationFilterDefaultsValidator}, run per resource.
  *  - **A filter's traversal path must resolve.** A `WhereThrough` or `WhereThroughIn`
  *    path ending on a polymorphic relation has no single id to compare
  *    ({@see FilterPathGuard}), a relation's scoped filters included.
@@ -142,6 +145,7 @@ final class ServableResourceWarmer
                 $this->guardSortableFilterableColumns($serverName, $type, $problems);
                 $this->guardActionLinks($serverName, $type, $problems);
                 $this->guardRelationOrder($serverName, $type, $problems);
+                $this->guardRelationFilterDefaults($serverName, $type, $problems);
                 $this->guardFilterPaths($serverName, $type, $problems);
                 $this->noteInMemoryLinkRows($serverName, $type);
             }
@@ -334,6 +338,28 @@ final class ServableResourceWarmer
 
         try {
             (new RelationOrderGuard(fn(): DataProviderRegistry => $this->providers))->check($server, $type, $resource);
+        } catch (\LogicException $e) {
+            $problems[] = $e->getMessage();
+        }
+    }
+
+    /**
+     * Reports a relation whose `withoutFilterDefaults()` names a key no related type defaults,
+     * or drops a default its filter can't drop, in core's {@see RelationFilterDefaultsValidator}
+     * wording. Route registration makes the same check, but a cached route table skips it.
+     *
+     * @param list<string> $problems
+     */
+    private function guardRelationFilterDefaults(string $serverName, string $type, array &$problems): void
+    {
+        $server = $this->servers->get($serverName);
+        $resource = $this->types->resourceFor($server, $type);
+        if ($resource === null) {
+            return;
+        }
+
+        try {
+            (new RelationFilterDefaultsValidator($server))->validate($type, $resource);
         } catch (\LogicException $e) {
             $problems[] = $e->getMessage();
         }
