@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Tests\Conformance;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 
@@ -236,6 +237,50 @@ abstract class RelationshipReadConformanceTestCase extends Orchestra
 
         $response->assertOk();
         self::assertSame(['type' => 'artists', 'id' => '1'], $response->json('data'));
+    }
+
+    // --- ?include on the relationship-linkage endpoint -------------------------
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function unknownRelationshipIncludes(): iterable
+    {
+        yield 'unknown top-level path' => ['/api/artists/1/relationships/albums?include=nonsense', 'nonsense'];
+        yield 'unknown segment below the relationship' => ['/api/artists/1/relationships/albums?include=albums.nonsense', 'albums.nonsense'];
+        yield 'unknown segment deeper below the relationship' => ['/api/artists/1/relationships/albums?include=albums.artist.nonsense', 'albums.artist.nonsense'];
+        yield 'to-one relationship' => ['/api/albums/1/relationships/artist?include=artist.nonsense', 'artist.nonsense'];
+        yield 'missing parent' => ['/api/artists/9999/relationships/albums?include=nonsense', 'nonsense'];
+    }
+
+    #[Test]
+    #[Group('spec:fetching-includes')]
+    #[DataProvider('unknownRelationshipIncludes')]
+    public function anUnknownIncludePathOnTheRelationshipEndpointIs400(string $uri, string $path): void
+    {
+        // Include paths on a relationship endpoint start at the parent resource, as in the
+        // spec's own `GET /articles/1/relationships/comments?include=comments.author`.
+        $response = $this->fetch($uri);
+
+        $response->assertStatus(400);
+        self::assertSame('INCLUSION_UNRECOGNIZED', $response->json('errors.0.code'));
+        self::assertSame('include', $response->json('errors.0.source.parameter'));
+        $detail = $response->json('errors.0.detail');
+        self::assertIsString($detail);
+        self::assertStringContainsString($path, $detail);
+    }
+
+    #[Test]
+    #[Group('spec:fetching-includes')]
+    public function aKnownIncludePathOnTheRelationshipEndpointRendersLinkageOnly(): void
+    {
+        $response = $this->fetch('/api/artists/1/relationships/albums?include=albums.artist');
+
+        $response->assertOk();
+        /** @var list<array{type: string, id: string}> $data */
+        $data = $response->json('data');
+        self::assertSame(['1', '3', '6', '7'], $this->sortedLinkageIds($data));
+        self::assertNull($response->json('included'));
     }
 
     // --- compound documents via ?include -------------------------------------

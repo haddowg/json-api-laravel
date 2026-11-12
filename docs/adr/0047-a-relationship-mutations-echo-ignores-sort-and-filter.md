@@ -1,0 +1,3 @@
+# A relationship mutation's echo ignores sort and filter
+
+A to-many relationship mutation answers with the relationship's linkage, read through the related type's provider when that type is scoped. That read built its criteria from the request's query against no vocabulary at all, so a `?sort` or `?filter` on the mutation failed it with a `400` after the write had already committed. The echo now lists the whole visible association with an empty query, as the Symfony bundle's does. A mutation endpoint advertises no sort, filter or page parameters, so there is nothing to honour; the read endpoint still honours or refuses them as [ADR 0006](0006-a-relationship-endpoint-pages-by-default-and-refuses-a-query-it-cant-honour.md) describes.

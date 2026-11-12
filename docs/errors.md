@@ -138,7 +138,13 @@ Core catalogues its own error codes in the generated OpenAPI document: the codes
 status sharing a `source` member and declared `meta` form one named shape (`Error404`,
 `Error400Parameter`), each code a `const` branch of the shape's `code`, and
 `ErrorDocument.errors.items` offers the shapes by an `anyOf` a generated client can dispatch
-on. Your application's codes join them when you say where they are.
+on. The package's own codes are catalogued beside them: `VALIDATION_FAILED` on creates,
+updates, relationship writes, actions that take a document and `POST /operations`, and the
+Atomic Operations codes (`ATOMIC_HREF_INVALID`, `ATOMIC_HREF_UNRESOLVABLE`,
+`ATOMIC_OPERATION_NOT_EXPOSED`, `ATOMIC_OPERATIONS_NOT_SUPPORTED`,
+`ATOMIC_OPERATIONS_UNAVAILABLE`, `ATOMIC_TARGET_TYPE_UNKNOWN` and
+`ASYNC_WRITE_IN_ATOMIC_OPERATION`) on `POST /operations` alone. Your application's codes join
+them when you say where they are.
 
 An error that wants a place in the catalogue implements core's `DescribedErrorInterface`,
 which reads the code, status and title off the class — nothing is constructed to describe

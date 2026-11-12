@@ -939,6 +939,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $type = $target->type;
         $relationshipName = (string) $target->relationship;
 
+        RelationshipIncludePaths::validate($server, $this->jsonApiRequest($operation->context()), $type);
+
         $parent = $this->loadParent($type, $target->id);
         if ($parent === null) {
             return ErrorResponse::fromException(new ResourceNotFound());
@@ -1007,7 +1009,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         } elseif ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation)) {
             // The whole association, but loaded through the related type's own scoping provider
             // rather than read off the parent, so it lists exactly what the related endpoint does.
-            $this->scopeRelationshipEndpoint($server, $type, $parent, $relation, $operation->queryParameters(), $request);
+            $this->scopeRelationshipEndpoint($server, $type, $parent, $relation, $request);
         } elseif (!$relation->isToMany()) {
             // A to-one the related type's own provider answers in its batch takes its target from it.
             $this->relationshipLinkage->loadToOne([$parent], $type, $relation, $request);
@@ -1161,13 +1163,15 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * Supplies a plain (unqueried) to-many relationship endpoint's linkage out-of-band from the
      * related type's own scoping provider. A polymorphic relation is read off the parent and
      * narrowed per member type instead.
+     *
+     * The whole association is listed whatever the request's query says, so a mutation echoes
+     * every member it can see even when the request carries `?sort` or `?filter`.
      */
     private function scopeRelationshipEndpoint(
         Server $server,
         string $type,
         object $parent,
         RelationInterface $relation,
-        QueryParameters $queryParameters,
         JsonApiRequestInterface $request,
     ): void {
         $relatedTypes = $relation->relatedTypes();
@@ -1183,7 +1187,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         \assert($provider !== null);
 
         $items = $this->materialize(
-            $provider->fetchRelatedCollection($relatedTypes[0], $parent, $relation, new CollectionCriteria($queryParameters, request: $request), $request),
+            $provider->fetchRelatedCollection($relatedTypes[0], $parent, $relation, new CollectionCriteria(new QueryParameters([], [], [], [], []), request: $request), $request),
         );
 
         $this->relationshipLinkage->scope(new WindowedRelationshipLinkage(
@@ -2218,7 +2222,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             return $changed;
         });
         if ($scopeEcho) {
-            $this->scopeRelationshipEndpoint($server, $type, $parent, $relation, $operation->queryParameters(), $request);
+            $this->scopeRelationshipEndpoint($server, $type, $parent, $relation, $request);
         }
 
         // The 200 linkage echo carries `meta.pivot` for a pivot relation (Eloquent-only),

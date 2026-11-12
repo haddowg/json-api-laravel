@@ -36,8 +36,7 @@ use haddowg\JsonApiLaravel\Scope\ScopeTables;
  * It implements core's {@see ContributesErrorCodes} (a {@see ServerMetadataInterface}
  * that also names error sources) rather than the bare interface, so the application's own
  * described errors — the ones {@see \haddowg\JsonApiLaravel\Discovery\Discovery} found —
- * join core's in the projected catalogue. A server with none contributes an empty list,
- * which changes no document.
+ * join core's in the projected catalogue, after the package's own ({@see BuiltInErrorSources}).
  *
  * It also implements core's {@see DeclaresLinkObjects}, so the links components describe
  * the form the server renders its built links in, and each example `describedby` points
@@ -136,11 +135,13 @@ final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLi
     }
 
     /**
+     * The package's own described errors, then the application's.
+     *
      * @return list<ErrorCatalogSourceInterface>
      */
     public function errorSources(): iterable
     {
-        return $this->errorSources;
+        return [...BuiltInErrorSources::for($this->types), ...$this->errorSources];
     }
 
     public function title(): string

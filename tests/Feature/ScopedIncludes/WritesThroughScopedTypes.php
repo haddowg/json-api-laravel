@@ -179,6 +179,25 @@ trait WritesThroughScopedTypes
     }
 
     #[Test]
+    public function aToManyMutationEchoIgnoresSortAndFilter(): void
+    {
+        $query = '?sort=-label&filter[label]=nothing';
+
+        $added = $this->send('POST', '/vaults/1/relationships/coins' . $query, ['data' => [['type' => 'coins', 'id' => '5']]]);
+        $added->assertOk();
+        self::assertSame(['1', '3', '5'], $this->ids($added, 'data'));
+
+        $replaced = $this->send('PATCH', '/vaults/1/relationships/coins' . $query, ['data' => [['type' => 'coins', 'id' => '1'], ['type' => 'coins', 'id' => '5']]]);
+        $replaced->assertOk();
+        self::assertSame(['1', '5'], $this->ids($replaced, 'data'));
+
+        $removed = $this->send('DELETE', '/vaults/1/relationships/coins' . $query, ['data' => [['type' => 'coins', 'id' => '5']]]);
+        $removed->assertOk();
+        self::assertSame(['1'], $this->ids($removed, 'data'));
+        self::assertSame(['1', '2'], $this->storedCoinsOf('1'));
+    }
+
+    #[Test]
     public function aCreateThroughAHiddenFlattenedHopIsRejectedLikeAMissingOwner(): void
     {
         $through = fn(string $coin): array => $this->vaultDocument(
