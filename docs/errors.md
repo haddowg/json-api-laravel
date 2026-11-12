@@ -165,6 +165,9 @@ tells core what decides that from its own runtime:
 - `RESOURCE_NOT_FOUND` appears on a create whose linkage can name a missing resource: a
   related type a provider of your own serves, one with an id encoder or an integer key, or a
   model with global scopes.
+- An `include` that reaches a relation or related type the caller may not read never
+  refuses the request: the relationship renders its links with no data, so it adds
+  neither code.
 - `INCLUSION_NOT_ALLOWED` and `INCLUSION_DEPTH_EXCEEDED` follow the root type's allowed and
   excluded include paths and maximum depth, and `jsonapi.max_include_depth`.
 - `REQUEST_BODY_INVALID_JSON_API` appears on creates and updates, whose `attributes`,

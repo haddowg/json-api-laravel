@@ -26,6 +26,8 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use Workbench\App\MusicCatalog\Providers\MusicCatalogEloquentServiceProvider;
 use Workbench\App\MusicCatalog\Support\CatalogConfig;
+use Workbench\App\MusicCatalog\Support\Fixtures;
+use Workbench\Database\Seeders\McCatalogSeeder;
 
 /**
  * The runtime facts the catalogue's metadata reports, which decide the error codes each
@@ -107,6 +109,20 @@ final class ErrorCoverageFactsTest extends Orchestra
 
         $response->assertStatus(401);
         self::assertSame('AUTHENTICATION_REQUIRED', $response->json('errors.0.code'));
+    }
+
+    #[Test]
+    public function anIncludeReachingARefusedReadWithholdsTheDataInsteadOfRefusing(): void
+    {
+        (new McCatalogSeeder())->run();
+
+        // `owner` declares security(read: 'inspectOwner'), which a guest fails. The include
+        // renders the relationship's links with no data, so it documents no 401 or 403.
+        $response = $this->get('/admin/playlists/' . Fixtures::PLAYLIST_ONE . '?include=owner', ['Accept' => 'application/vnd.api+json']);
+
+        $response->assertOk();
+        self::assertArrayNotHasKey('data', (array) $response->json('data.relationships.owner'));
+        self::assertSame([], $response->json('included') ?? []);
     }
 
     #[Test]

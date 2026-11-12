@@ -73,7 +73,12 @@ relations, so a loaded to-one model that a before-save hook changed is saved as 
 
 A create naming a client id that a row already has is a `409`
 `CLIENT_GENERATED_ID_ALREADY_EXISTS`. The lookup ignores global scopes, so a soft-deleted or
-scoped-out row still holds its id. A linkage id sent to a related model with an integer key
+scoped-out row still holds its id. A concurrent create can insert the id after the lookup, and
+then the insert breaks the primary key. The persister answers the same `409` when the row
+it failed to insert was never saved and a row with the id is there. If the database refuses that
+second lookup, as PostgreSQL does in a failed transaction, the violation stays a `500`.
+
+A linkage id sent to a related model with an integer key
 must be the key's canonical form: `abc` or `01` names no row and is a `404`
 `RESOURCE_NOT_FOUND`, the answer the Symfony bundle's Doctrine persister gives.
 

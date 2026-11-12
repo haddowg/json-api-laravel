@@ -40,6 +40,7 @@ use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\QueryException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -142,12 +143,36 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             throw new ClientGeneratedIdAlreadyExists(\is_scalar($key) ? (string) $key : '');
         }
 
-        $entity->getConnection()->transaction(function () use ($entity): void {
-            $entity->save();
-            $this->saveChangedToOneTargets($entity);
-        });
+        try {
+            $entity->getConnection()->transaction(function () use ($entity): void {
+                $entity->save();
+                $this->saveChangedToOneTargets($entity);
+            });
+        } catch (UniqueConstraintViolationException $exception) {
+            // A concurrent create can take the key between the check above and the insert. An
+            // entity that exists was inserted, so the violation came from a later save.
+            if ($key !== null && !$entity->exists && $this->keyIsTaken($entity, $key)) {
+                throw new ClientGeneratedIdAlreadyExists(\is_scalar($key) ? (string) $key : '');
+            }
+
+            throw $exception;
+        }
 
         return $entity;
+    }
+
+    /**
+     * Whether a row holds `$key`, after an insert under it violated a unique constraint.
+     * Inside a transaction a database such as PostgreSQL refuses the lookup, and then the
+     * violation stands as it is.
+     */
+    private function keyIsTaken(Model $entity, mixed $key): bool
+    {
+        try {
+            return $entity->newQueryWithoutScopes()->whereKey($key)->exists();
+        } catch (QueryException) {
+            return false;
+        }
     }
 
     public function update(string $type, object $entity): object
