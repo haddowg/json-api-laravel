@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.12.0](https://github.com/haddowg/json-api-laravel/compare/v2.11.0...v2.12.0) (2026-11-12)
+
+
+### Features
+
+* offer each error code only where the package can raise it ([#261](https://github.com/haddowg/json-api-laravel/issues/261)) ([fd4c561](https://github.com/haddowg/json-api-laravel/commit/fd4c5613a109e343ad5d3680709134adcd8892c2))
+
 ## [2.11.0](https://github.com/haddowg/json-api-laravel/compare/v2.10.0...v2.11.0) (2026-11-12)
 
 
