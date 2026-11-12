@@ -10,11 +10,16 @@ use haddowg\JsonApi\OpenApi\ExternalDocumentation;
 use haddowg\JsonApi\OpenApi\License;
 use haddowg\JsonApi\OpenApi\Metadata\AtomicOperationsMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\ContributesErrorCodes;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresDocumentValidation;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresExampleGeneration;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresLinkObjects;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresMaxIncludeDepth;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresMethodNotAllowed;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationScopeTable;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationSecurity;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresReadOnlyAttributeRejection;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresStrictQueryParameters;
+use haddowg\JsonApi\OpenApi\Metadata\OperationKey;
 use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\TypeMetadataInterface;
 use haddowg\JsonApi\OpenApi\SecurityRequirement;
@@ -36,8 +41,7 @@ use haddowg\JsonApiLaravel\Scope\ScopeTables;
  * It implements core's {@see ContributesErrorCodes} (a {@see ServerMetadataInterface}
  * that also names error sources) rather than the bare interface, so the application's own
  * described errors — the ones {@see \haddowg\JsonApiLaravel\Discovery\Discovery} found —
- * join core's in the projected catalogue. A server with none contributes an empty list,
- * which changes no document.
+ * join core's in the projected catalogue, after the package's own ({@see BuiltInErrorSources}).
  *
  * It also implements core's {@see DeclaresLinkObjects}, so the links components describe
  * the form the server renders its built links in, and each example `describedby` points
@@ -54,8 +58,12 @@ use haddowg\JsonApiLaravel\Scope\ScopeTables;
  * Through {@see DeclaresMethodNotAllowed} it says the exception renderer answers a method
  * a JSON:API path does not accept with a `405` error document, so the catalogue lists
  * `METHOD_NOT_ALLOWED`.
+ *
+ * And the runtime facts core's error coverage reads: which operations the route
+ * middleware and the Gate can refuse ({@see DeclaresOperationSecurity}), whether query
+ * parameters are strict, which documents are checked, and the default include depth.
  */
-final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLinkObjects, DeclaresReadOnlyAttributeRejection, DeclaresExampleGeneration, DeclaresOperationScopeTable, DeclaresMethodNotAllowed
+final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLinkObjects, DeclaresReadOnlyAttributeRejection, DeclaresExampleGeneration, DeclaresOperationScopeTable, DeclaresMethodNotAllowed, DeclaresOperationSecurity, DeclaresStrictQueryParameters, DeclaresDocumentValidation, DeclaresMaxIncludeDepth
 {
     /**
      * @param list<Server>                  $servers
@@ -66,6 +74,7 @@ final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLi
      * @param list<string>                  $profiles
      * @param list<ErrorCatalogSourceInterface> $errorSources
      * @param string|null                   $scopeServer the server whose scope table this is, null for every server's merged
+     * @param (\Closure(?TypeMetadataInterface, OperationKey, bool): bool)|null $security answers whether the route middleware or the Gate can refuse an operation, with `ACCESS_DENIED` when the bool is true and `AUTHENTICATION_REQUIRED` otherwise; null answers yes
      */
     public function __construct(
         private string $title,
@@ -89,7 +98,55 @@ final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLi
         private bool $generatesExamples = true,
         private ?ScopeTables $scopes = null,
         private ?string $scopeServer = null,
+        private ?\Closure $security = null,
+        private bool $strictQueryParameters = true,
+        private bool $checksResourceObjectMembers = true,
+        private ?int $maxIncludeDepth = null,
     ) {}
+
+    public function canDenyAccess(?TypeMetadataInterface $type, OperationKey $operation): bool
+    {
+        return $this->security === null || ($this->security)($type, $operation, true);
+    }
+
+    public function canRequireAuthentication(?TypeMetadataInterface $type, OperationKey $operation): bool
+    {
+        return $this->security === null || ($this->security)($type, $operation, false);
+    }
+
+    public function strictQueryParameters(): bool
+    {
+        return $this->strictQueryParameters;
+    }
+
+    /**
+     * The package checks no request document against the JSON:API schema.
+     */
+    public function validatesRequestDocuments(): bool
+    {
+        return false;
+    }
+
+    /**
+     * The CRUD handler refuses a create or update body whose members aren't objects.
+     */
+    public function checksResourceObjectMembers(): bool
+    {
+        return $this->checksResourceObjectMembers;
+    }
+
+    /**
+     * The package never validates a response before sending it.
+     */
+    public function validatesResponseDocuments(): bool
+    {
+        return false;
+    }
+
+    public function maxIncludeDepth(): ?int
+    {
+        return $this->maxIncludeDepth;
+    }
 
     public function scopeTable(): ScopeTable
     {
@@ -136,11 +193,13 @@ final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLi
     }
 
     /**
+     * The package's own described errors, then the application's.
+     *
      * @return list<ErrorCatalogSourceInterface>
      */
     public function errorSources(): iterable
     {
-        return $this->errorSources;
+        return [...BuiltInErrorSources::for($this->types), ...$this->errorSources];
     }
 
     public function title(): string

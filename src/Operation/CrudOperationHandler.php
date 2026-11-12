@@ -19,6 +19,7 @@ use haddowg\JsonApi\Exception\RelationshipCountNotAllowed;
 use haddowg\JsonApi\Exception\RelationshipNotExists;
 use haddowg\JsonApi\Exception\RelationshipTypeInappropriate;
 use haddowg\JsonApi\Exception\RemovalProhibited;
+use haddowg\JsonApi\Exception\RequestBodyInvalidJsonApi;
 use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
@@ -274,6 +275,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->idEncoders?->bind($serverName);
 
         $this->preloaded = [];
+
+        if ($operation instanceof CreateResourceOperation || $operation instanceof UpdateResourceOperation) {
+            $this->assertObjectMembers($operation->body());
+        }
 
         $response = match (true) {
             $operation instanceof FetchResourceOperation => $this->fetch($operation),
@@ -1007,7 +1012,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         } elseif ($relation->isToMany() && $this->providers->relatesToScopedType($type, $relation)) {
             // The whole association, but loaded through the related type's own scoping provider
             // rather than read off the parent, so it lists exactly what the related endpoint does.
-            $this->scopeRelationshipEndpoint($server, $type, $parent, $relation, $operation->queryParameters(), $request);
+            $this->scopeRelationshipEndpoint($server, $type, $parent, $relation, $request);
         } elseif (!$relation->isToMany()) {
             // A to-one the related type's own provider answers in its batch takes its target from it.
             $this->relationshipLinkage->loadToOne([$parent], $type, $relation, $request);
@@ -1161,13 +1166,15 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * Supplies a plain (unqueried) to-many relationship endpoint's linkage out-of-band from the
      * related type's own scoping provider. A polymorphic relation is read off the parent and
      * narrowed per member type instead.
+     *
+     * The whole association is listed whatever the request's query says, so a mutation echoes
+     * every member it can see even when the request carries `?sort` or `?filter`.
      */
     private function scopeRelationshipEndpoint(
         Server $server,
         string $type,
         object $parent,
         RelationInterface $relation,
-        QueryParameters $queryParameters,
         JsonApiRequestInterface $request,
     ): void {
         $relatedTypes = $relation->relatedTypes();
@@ -1183,7 +1190,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         \assert($provider !== null);
 
         $items = $this->materialize(
-            $provider->fetchRelatedCollection($relatedTypes[0], $parent, $relation, new CollectionCriteria($queryParameters, request: $request), $request),
+            $provider->fetchRelatedCollection($relatedTypes[0], $parent, $relation, new CollectionCriteria(new QueryParameters([], [], [], [], []), request: $request), $request),
         );
 
         $this->relationshipLinkage->scope(new WindowedRelationshipLinkage(
@@ -2218,7 +2225,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             return $changed;
         });
         if ($scopeEcho) {
-            $this->scopeRelationshipEndpoint($server, $type, $parent, $relation, $operation->queryParameters(), $request);
+            $this->scopeRelationshipEndpoint($server, $type, $parent, $relation, $request);
         }
 
         // The 200 linkage echo carries `meta.pivot` for a pivot relation (Eloquent-only),
@@ -2654,6 +2661,38 @@ final class CrudOperationHandler implements OperationHandlerInterface
         \assert($converted instanceof JsonApiRequestInterface);
 
         return $converted;
+    }
+
+    /**
+     * Rejects a resource object whose `attributes`, `relationships` or `meta`, or one of
+     * whose relationships, is present but not an object. The write path reads each of
+     * them as a map and would otherwise skip one it can't read.
+     *
+     * @throws RequestBodyInvalidJsonApi
+     */
+    private function assertObjectMembers(JsonApiRequestInterface $body): void
+    {
+        $data = $body->getResource();
+        if (!\is_array($data)) {
+            return;
+        }
+
+        $violations = [];
+        foreach (['attributes', 'relationships', 'meta'] as $member) {
+            if (\array_key_exists($member, $data) && !\is_array($data[$member])) {
+                $violations[] = ['message' => \sprintf('the "%s" member must be an object', $member), 'property' => '/data/' . $member];
+            }
+        }
+
+        foreach (\is_array($data['relationships'] ?? null) ? $data['relationships'] : [] as $name => $relationship) {
+            if (!\is_array($relationship)) {
+                $violations[] = ['message' => \sprintf('the "%s" relationship must be an object', $name), 'property' => '/data/relationships/' . \str_replace(['~', '/'], ['~0', '~1'], (string) $name)];
+            }
+        }
+
+        if ($violations !== []) {
+            throw new RequestBodyInvalidJsonApi($violations);
+        }
     }
 
     /**

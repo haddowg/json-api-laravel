@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Atomic;
 
-use haddowg\JsonApi\Exception\JsonApiExceptionInterface;
-use haddowg\JsonApi\Schema\Error\Error;
+use haddowg\JsonApi\Exception\DescribedErrorInterface;
+use haddowg\JsonApi\Exception\ErrorContextType;
+use haddowg\JsonApi\Exception\ErrorDescriptor;
+use haddowg\JsonApi\Exception\ErrorFeature;
+use haddowg\JsonApi\Exception\ErrorScope;
+use haddowg\JsonApi\Exception\ErrorSourceShape;
+use haddowg\JsonApi\OpenApi\Metadata\OperationKind;
 use haddowg\JsonApi\Schema\Error\ErrorSource;
 
 /**
@@ -18,7 +23,7 @@ use haddowg\JsonApi\Schema\Error\ErrorSource;
  * is the client's fault — a malformed or unknown URL — so it is a `400`, pointed at the
  * operation's `href` member. Raised by the pre-flight scan, before anything is written.
  */
-final class AtomicHrefUnresolvable extends \RuntimeException implements JsonApiExceptionInterface
+final class AtomicHrefUnresolvable extends \RuntimeException implements DescribedErrorInterface
 {
     public function __construct(
         public readonly string $href,
@@ -27,14 +32,28 @@ final class AtomicHrefUnresolvable extends \RuntimeException implements JsonApiE
         parent::__construct(\sprintf('The atomic operation href "%s" does not match any JSON:API route.', $href));
     }
 
+    public static function describe(): ErrorDescriptor
+    {
+        return new ErrorDescriptor(
+            code: 'ATOMIC_HREF_UNRESOLVABLE',
+            status: 400,
+            title: 'Atomic operation href is unresolvable',
+            context: ['href' => ErrorContextType::Str],
+            source: ErrorSourceShape::Pointer,
+            exampleSource: '/atomic:operations/0/href',
+            feature: ErrorFeature::AtomicOperations,
+            scope: ErrorScope::kinds(OperationKind::Atomic),
+            description: 'An operation\'s `href` matches no JSON:API route on this server. The server applied none of the batch. Correct the URL, or address the target with `ref`, and send the whole batch again.',
+            exampleDetail: 'The atomic operation href "/articles/1/reviewers" does not match any JSON:API route.',
+        );
+    }
+
     public function getErrors(): array
     {
         return [
-            new Error(
-                status: '400',
-                code: 'ATOMIC_HREF_UNRESOLVABLE',
-                title: 'Atomic operation href is unresolvable',
+            self::describe()->toError(
                 detail: $this->getMessage(),
+                context: ['href' => $this->href],
                 source: $this->pointer !== '' ? ErrorSource::fromPointer($this->pointer) : null,
             ),
         ];
@@ -42,6 +61,6 @@ final class AtomicHrefUnresolvable extends \RuntimeException implements JsonApiE
 
     public function getStatusCode(): int
     {
-        return 400;
+        return self::describe()->status;
     }
 }

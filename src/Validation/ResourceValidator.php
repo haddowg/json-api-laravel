@@ -550,10 +550,7 @@ final class ResourceValidator
             return null;
         }
 
-        return new Error(
-            status: '422',
-            code: 'VALIDATION_FAILED',
-            title: 'Unprocessable Entity',
+        return ValidationFailed::describe()->toError(
             detail: (string) $bag->first('id'),
             source: ErrorSource::fromPointer($pointer),
         );
@@ -705,10 +702,7 @@ final class ResourceValidator
      */
     private function pivotError(string $detail, string $field, ?int $index, ?string $embeddedRelationName): Error
     {
-        return new Error(
-            status: '422',
-            code: 'VALIDATION_FAILED',
-            title: 'Unprocessable Entity',
+        return ValidationFailed::describe()->toError(
             detail: $detail,
             source: ErrorSource::fromPointer($this->linkageMetaPointer($embeddedRelationName, $field, $index)),
         );
@@ -787,10 +781,7 @@ final class ResourceValidator
 
         $errors = [];
         foreach ($bag->get($name) as $message) {
-            $errors[] = new Error(
-                status: '422',
-                code: 'VALIDATION_FAILED',
-                title: 'Unprocessable Entity',
+            $errors[] = ValidationFailed::describe()->toError(
                 detail: \is_string($message) ? $message : '',
                 source: ErrorSource::fromPointer($pointer),
             );
@@ -1548,10 +1539,7 @@ final class ResourceValidator
             return null;
         }
 
-        return new Error(
-            status: '422',
-            code: 'VALIDATION_FAILED',
-            title: 'Unprocessable Entity',
+        return ValidationFailed::describe()->toError(
             detail: $bag->first('id'),
             source: ErrorSource::fromPointer('/data/id'),
         );
@@ -1573,10 +1561,7 @@ final class ResourceValidator
 
     private function relationshipError(string $detail, string $relation): Error
     {
-        return new Error(
-            status: '422',
-            code: 'VALIDATION_FAILED',
-            title: 'Unprocessable Entity',
+        return ValidationFailed::describe()->toError(
             detail: $detail,
             source: ErrorSource::fromPointer($this->pointers->forRelationship($relation)),
         );
@@ -1584,10 +1569,7 @@ final class ResourceValidator
 
     private function errorAt(string $detail, string $pointer): Error
     {
-        return new Error(
-            status: '422',
-            code: 'VALIDATION_FAILED',
-            title: 'Unprocessable Entity',
+        return ValidationFailed::describe()->toError(
             detail: $detail,
             source: ErrorSource::fromPointer($pointer),
         );
@@ -1595,10 +1577,7 @@ final class ResourceValidator
 
     private function error(string $detail, string $key): Error
     {
-        return new Error(
-            status: '422',
-            code: 'VALIDATION_FAILED',
-            title: 'Unprocessable Entity',
+        return ValidationFailed::describe()->toError(
             detail: $detail,
             source: ErrorSource::fromPointer($this->pointers->forAttribute($key)),
         );

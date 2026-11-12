@@ -192,6 +192,16 @@ abstract class WriteOnlyRelationsTestCase extends Orchestra
     }
 
     #[Test]
+    public function aWriteOnlyRelationshipMutationIgnoresInclude(): void
+    {
+        // The mutation renders nothing, so like a delete it never reads include.
+        $this->update('/boxes/1/relationships/stickers?include=nonsense', ['data' => [['type' => 'stickers', 'id' => '2']]])
+            ->assertNoContent();
+
+        self::assertSame(['2'], $this->storedWriteOnlyMembers('1')[1]);
+    }
+
+    #[Test]
     public function aWriteOnlyRelationIsStillWritable(): void
     {
         $response = $this->update('/boxes/1', [

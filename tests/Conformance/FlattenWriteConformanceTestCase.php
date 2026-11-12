@@ -566,8 +566,9 @@ abstract class FlattenWriteConformanceTestCase extends Orchestra
         self::assertSame([], $this->includedIdentities($editor));
 
         // The relationship endpoint renders identifiers only, so its members carry no
-        // relationships or included resources that could disagree.
-        $linkage = $this->read('/api/countries/1/relationships/authors?include=books', $accept);
+        // relationships or included resources that could disagree. Its include paths start
+        // at the country, as every relationship endpoint's do.
+        $linkage = $this->read('/api/countries/1/relationships/authors?include=authors.books', $accept);
         self::assertSame([['type' => 'authors', 'id' => '1'], ['type' => 'authors', 'id' => '2']], $linkage->json('data'));
         self::assertNull($linkage->json('included'));
     }

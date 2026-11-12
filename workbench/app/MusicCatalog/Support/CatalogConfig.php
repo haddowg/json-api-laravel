@@ -9,6 +9,7 @@ use haddowg\JsonApi\Scope\OperationScopeResolverInterface;
 use haddowg\JsonApi\Scope\ScopeCatalogInterface;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
+use Workbench\App\MusicCatalog\Security\AuthenticateBearerToken;
 use Workbench\App\MusicCatalog\Security\BearerTokenScopes;
 use Workbench\App\MusicCatalog\Security\CatalogScopes;
 
@@ -60,15 +61,17 @@ final class CatalogConfig
      * server (the minimal multi-server witness) with its own base, which includes its
      * `admin` prefix as the bundle example's does. The routing prefix/domain never reaches
      * the OpenAPI path keys (core keys paths by `uriType`), only the normalized
-     * `servers[].url`, so their exact values do not affect the byte-compat diff.
+     * `servers[].url`, so their exact values do not affect the byte-compat diff. Both run
+     * {@see AuthenticateBearerToken}, as the bundle example's firewall covers both, so each
+     * operation documents the same `401`.
      *
      * @return array<string, array{prefix: string, middleware: list<string>, domain: string|null, base_uri?: string}>
      */
     public static function servers(): array
     {
         return [
-            'default' => ['prefix' => 'api', 'middleware' => [], 'domain' => null],
-            'admin' => ['prefix' => 'admin', 'middleware' => [], 'domain' => null, 'base_uri' => 'https://admin.music.example/admin'],
+            'default' => ['prefix' => 'api', 'middleware' => [AuthenticateBearerToken::class], 'domain' => null],
+            'admin' => ['prefix' => 'admin', 'middleware' => [AuthenticateBearerToken::class], 'domain' => null, 'base_uri' => 'https://admin.music.example/admin'],
         ];
     }
 
