@@ -9,8 +9,12 @@ namespace Workbench\App\LinkRows;
  */
 final class Note
 {
+    /**
+     * @param list<Board> $pinnedOn the boards that pin the note
+     */
     public function __construct(
         public string $id = '',
         public string $title = '',
+        public array $pinnedOn = [],
     ) {}
 }

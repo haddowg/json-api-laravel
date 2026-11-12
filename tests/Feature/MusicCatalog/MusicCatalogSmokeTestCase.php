@@ -182,6 +182,42 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         self::assertSame(['albums', 'artists', 'tracks'], $types);
     }
 
+    public function test_a_polymorphic_related_page_counts_a_relation_on_each_member_type_that_declares_it(): void
+    {
+        $counts = ['Accept' => self::MEDIA_TYPE . ';profile="https://haddowg.github.io/json-api/profiles/countable/"'];
+
+        // Only albums count `tracks` and only tracks count `playlists`: each member renders
+        // its own total, and a member whose type lacks the relation renders none.
+        $items = $this->get('/api/libraries/1/items?withCount=tracks,playlists', $counts)->assertOk();
+        $totals = [];
+        foreach ((array) $items->json('data') as $member) {
+            $type = data_get($member, 'type');
+            self::assertIsString($type);
+            $totals[$type] = [
+                'tracks' => data_get($member, 'relationships.tracks.meta.total'),
+                'playlists' => data_get($member, 'relationships.playlists.meta.total'),
+            ];
+        }
+        \ksort($totals);
+        self::assertSame([
+            'albums' => ['tracks' => 1, 'playlists' => null],
+            'artists' => ['tracks' => null, 'playlists' => null],
+            'tracks' => ['tracks' => null, 'playlists' => 1],
+        ], $totals);
+
+        // A name no member type counts is still refused.
+        $refused = $this->get('/api/libraries/1/items?withCount=owner', $counts)->assertStatus(400);
+        self::assertSame('RELATIONSHIP_COUNT_NOT_ALLOWED', $refused->json('errors.0.code'));
+    }
+
+    public function test_the_album_title_filter_keeps_artists_with_a_matching_album_ignoring_case(): void
+    {
+        // OK Computer is artist 1's, Dummy is artist 2's.
+        self::assertSame(['1'], $this->sortedIds($this->fetch('/api/artists?filter[albumTitle]=COMPUTER')->assertOk()->json('data')));
+        self::assertSame(['2'], $this->sortedIds($this->fetch('/api/artists?filter[albumTitle]=dum')->assertOk()->json('data')));
+        self::assertSame([], $this->sortedIds($this->fetch('/api/artists?filter[albumTitle]=zzz')->assertOk()->json('data')));
+    }
+
     public function test_playlists_show(): void
     {
         $show = $this->fetch('/api/playlists/' . Fixtures::PLAYLIST_ONE)->assertOk();

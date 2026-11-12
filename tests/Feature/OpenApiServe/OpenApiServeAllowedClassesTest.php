@@ -69,7 +69,7 @@ final class OpenApiServeAllowedClassesTest extends OpenApiServeTestCase
         $response = $this->fetch('/docs.json', 'one.test');
         $response->assertOk();
         $this->assertValidOpenApi($response);
-        $this->assertSame('kept', $this->arr($this->arr($this->arr($this->document($response)['components'] ?? null)['schemas'] ?? null)['ObjectExample'] ?? null)['example'] ?? null);
+        $this->assertSame('kept', $this->arr($this->arr($this->arr($this->arr($this->document($response)['components'] ?? null)['schemas'] ?? null)['ObjectExample'] ?? null)['examples'] ?? null)[0] ?? null);
         $this->assertSame('Served to one.test', $this->arr($this->document($response)['info'] ?? null)['description'] ?? null);
     }
 
@@ -82,10 +82,10 @@ final class OpenApiServeAllowedClassesTest extends OpenApiServeTestCase
 
         $artifact = $this->store()->readServeArtifact('default');
         $this->assertNotNull($artifact);
-        $this->assertStringContainsString('"example":"kept"', $artifact->document->toJsonString());
+        $this->assertStringContainsString('"examples":["kept"]', $artifact->document->toJsonString());
 
         $response = $this->fetch('/docs.json', 'one.test');
         $response->assertOk();
-        $this->assertSame('kept', $this->arr($this->arr($this->arr($this->document($response)['components'] ?? null)['schemas'] ?? null)['ObjectExample'] ?? null)['example'] ?? null);
+        $this->assertSame('kept', $this->arr($this->arr($this->arr($this->arr($this->document($response)['components'] ?? null)['schemas'] ?? null)['ObjectExample'] ?? null)['examples'] ?? null)[0] ?? null);
     }
 }

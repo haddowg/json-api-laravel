@@ -16,7 +16,7 @@ declare(strict_types=1);
  *   - `servers[].url` — each advertised server URL derives from the app's base URI /
  *                       routing prefix (`https://music.example` vs a testbench host).
  *                       Replaced with a sentinel; every other server field is left intact.
- *   - link examples   — a link example's `href` (or the string itself, when links render
+ *   - link examples   — a link `example` or `examples` entry's `href` (or the string itself, when links render
  *                       as strings) starts with the first server URL (core builds it from
  *                       that URL), so that prefix is the same app config and gets the same
  *                       sentinel, at any depth of the example (a links component's example
@@ -103,8 +103,8 @@ if ($serverUrl !== null && $serverUrl !== '') {
             return;
         }
         foreach (\get_object_vars($node) as $key => $value) {
-            if ($key === 'example') {
-                $node->example = $example($value);
+            if ($key === 'example' || $key === 'examples') {
+                $node->{$key} = $example($value);
             } else {
                 $walk($value);
             }

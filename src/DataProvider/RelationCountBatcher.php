@@ -21,9 +21,10 @@ use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
  *
  * The requested countable relations are the intersection of the request's flat `?withCount`
  * list ({@see JsonApiRequestInterface::getCountedRelationships()}) and the type's declared
- * to-many relations marked {@see RelationInterface::isCountable()} — core has already
- * validated `?withCount` up front (a non-countable or to-one name `400`s before the handler
- * runs), so this only ever counts a sound set.
+ * to-many relations marked {@see RelationInterface::isCountable()}. Core has already
+ * validated `?withCount` up front (a name no rendered type counts `400`s before the handler
+ * runs). On a response mixing types a name may be valid for another member type only, so a
+ * name this type doesn't count is skipped and its members render no `meta.total` for it.
  *
  * Each count is over the relation's **filtered** set: the batcher builds a filters-only
  * {@see CollectionCriteria} per relation through the shared {@see RelationCriteriaFactory}
@@ -207,8 +208,8 @@ final class RelationCountBatcher
 
     /**
      * The declared to-many countable relations of `$type` whose name appears in
-     * `$requested` (the `?withCount` list). Core has already rejected a name that is not
-     * countable / not to-many, so this filter is belt-and-braces.
+     * `$requested` (the `?withCount` list). On a response mixing types core accepts a name
+     * when any member type counts it, so a name `$type` doesn't count is skipped here.
      *
      * @param list<string> $requested
      *

@@ -25,6 +25,7 @@ final class LoadedLinkageServiceProvider extends ServiceProvider
             BindingResource::class,
             ShowTemplateAction::class,
             ListTemplatesAction::class,
+            ListMixedAction::class,
             ShowBindingAction::class,
         ]);
 

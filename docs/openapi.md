@@ -231,6 +231,33 @@ final class MediaResource extends AbstractResource
 `#[AsJsonApiSerializer]` has no `singular:` argument, so a resource-less type always gets
 the inflected singular.
 
+## Sort examples and filter defaults {#sort-examples-and-filter-defaults}
+
+Every `sort` parameter carries an `example`. On a type's collection it is the resource's
+`defaultSort()`, else the first exact sort ascending. On a relation's related and
+relationship endpoints the relation's own `defaultSort()` comes first. To show a different
+order, override `sortExample()` on the resource:
+
+```php
+public function sortExample(): ?array
+{
+    return ['-releasedAt', 'title'];
+}
+```
+
+It applies to the type's collection and to the endpoints of any relation to the type that
+declares no order of its own. A type whose only sorts are families gets no example.
+
+A filter's `default()` is the `default` of its `filter[<key>]` schema. On a relation's
+related and relationship endpoints, a default the relation drops with
+[`withoutFilterDefaults()`](relationships.md#dropping-the-related-types-filter-defaults) is
+left off, since those reads never apply it.
+
+Core's [sort example](https://github.com/haddowg/json-api/blob/main/docs/sorts.md#the-sort-example)
+and [filter documentation](https://github.com/haddowg/json-api/blob/main/docs/filters.md)
+guides cover the rest: described sorts and their `x-sort-descriptions` table, presence
+filters, and filter family examples.
+
 ## Operation examples {#operation-examples}
 
 Every operation's request body and success responses carry a whole worked `example` on

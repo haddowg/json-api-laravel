@@ -142,6 +142,24 @@ abstract class LinkRowsConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    public function theRelatedPageCountsARelationOnTheMemberTypeThatDeclaresIt(): void
+    {
+        $counts = ['Accept' => self::MEDIA_TYPE . ';profile="https://haddowg.github.io/json-api/profiles/countable/"'];
+
+        // Board 1 pins note 1 and not note 2; a photo has no `pinnedOn`.
+        $response = $this->get('/api/boards/1/items?withCount=pinnedOn', $counts);
+        self::assertSame(200, $response->getStatusCode(), (string) $response->getContent());
+        /** @var list<array{type: string, id: string}> $data */
+        $data = $response->json('data');
+        $totals = \array_map(static fn(array $member): mixed => data_get($member, 'relationships.pinnedOn.meta.total'), $data);
+        self::assertSame(['photos:1' => null, 'photos:2' => null, 'notes:1' => 1, 'notes:2' => 0], \array_combine($this->members($data), $totals));
+
+        $refused = $this->get('/api/boards/1/items?withCount=title', $counts);
+        self::assertSame(400, $refused->getStatusCode(), (string) $refused->getContent());
+        self::assertSame('RELATIONSHIP_COUNT_NOT_ALLOWED', $refused->json('errors.0.code'));
+    }
+
+    #[Test]
     #[Group('spec:crud')]
     public function aReplaceWritesEachMembersPivotOntoItsRow(): void
     {

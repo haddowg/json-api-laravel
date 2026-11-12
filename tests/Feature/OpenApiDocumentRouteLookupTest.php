@@ -235,7 +235,7 @@ final class OpenApiDocumentRouteLookupTest extends Orchestra
         // The served document's link example points at the same route.
         $this->get('/api/v5/docs.json')
             ->assertOk()
-            ->assertJsonPath('components.schemas.LinkObject.example.describedby', '/api/v5/docs.json' . self::GIZMO_POINTER);
+            ->assertJsonPath('components.schemas.LinkObject.examples.0.describedby', '/api/v5/docs.json' . self::GIZMO_POINTER);
     }
 
     #[Test]

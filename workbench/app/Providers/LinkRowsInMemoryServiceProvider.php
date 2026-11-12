@@ -46,6 +46,9 @@ final class LinkRowsInMemoryServiceProvider extends ServiceProvider
                 \array_map(static fn(array $item): BoardItem => new BoardItem(['item_type' => $item['type'], 'item_id' => $item['id'], 'position' => $item['position'], 'label' => $item['label']]), $row['items']),
                 \array_values(\array_map(static fn(int $noteId, int $rank): Pin => new Pin($noteId, $rank), \array_keys($row['pins']), $row['pins'])),
             );
+            foreach (\array_keys($row['pins']) as $noteId) {
+                $notes[(string) $noteId]->pinnedOn[] = $boards[(string) $id];
+            }
         }
 
         /** @var InMemorySnapshotCoordinator $coordinator */

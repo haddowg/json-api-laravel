@@ -226,6 +226,30 @@ abstract class LoadedLinkageTestCase extends Orchestra
     }
 
     #[Test]
+    public function aMixedTypeActionResponseCountsEachTypesRelations(): void
+    {
+        // Template 1 and binding 1 share a wire id, so the count must follow the object.
+        $response = $this->action('/templates/-actions/mixed?withCount=bindings', self::MEDIA_TYPE . ';profile="' . self::COUNTABLE_PROFILE . '"');
+
+        self::assertSame(['templates', 'bindings'], \array_column((array) $response->json('data'), 'type'));
+        self::assertSame(1, $response->json('data.0.relationships.bindings.meta.total'));
+        self::assertNull($response->json('data.1.relationships.bindings'));
+        $this->assertNoHiddenBinding($response);
+    }
+
+    #[Test]
+    public function aMixedTypeActionResponseRefusesANameNoMemberTypeCounts(): void
+    {
+        $response = $this->call('POST', '/api/templates/-actions/mixed?withCount=template', server: [
+            'HTTP_ACCEPT' => self::MEDIA_TYPE . ';profile="' . self::COUNTABLE_PROFILE . '"',
+            'CONTENT_TYPE' => self::MEDIA_TYPE,
+        ]);
+
+        $response->assertStatus(400);
+        self::assertSame('RELATIONSHIP_COUNT_NOT_ALLOWED', $response->json('errors.0.code'));
+    }
+
+    #[Test]
     public function aResponseAHookSwapsInIsScopedAndFiltered(): void
     {
         $response = $this->read('/bindings/1');

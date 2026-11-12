@@ -98,7 +98,7 @@ final class AlbumResource extends AbstractResource
             HasMany::make('tracks', 'tracks')
                 ->paginate(PagePaginator::make()->withDefaultPerPage(2))
                 ->withFilters(Where::make('longerThan', 'length_seconds', '>')->integer())
-                ->withSorts(SortByField::make('duration', 'length_seconds'))
+                ->withSorts(SortByField::make('duration', 'length_seconds')->describedAs('The track\'s length in seconds.'))
                 ->countable(),
             // The same tracks without the tracks type's explicit=false default, so an
             // explicit track is a member here. The filter stays, and `tracks` takes the writes.
@@ -130,7 +130,7 @@ final class AlbumResource extends AbstractResource
     public function filters(): array
     {
         return [
-            WhereHas::make('tracks'),
+            WhereHas::make('tracks')->describedAs('Only albums with at least one track.'),
             // Declares no value constraint on purpose: `name` is a column on the related
             // Artist and core will not derive a narrower type through a relationship path,
             // so the value documents as the plain `string` a query
@@ -142,6 +142,17 @@ final class AlbumResource extends AbstractResource
             DateRange::make('releasedAt', 'released_at'),
             FullTextSearch::make('q', ['title']),
         ];
+    }
+
+    /**
+     * The `sort` example the OpenAPI document shows on `GET /albums`: newest first, then by
+     * title. Without it the document shows the default order.
+     *
+     * @return list<string>
+     */
+    public function sortExample(): array
+    {
+        return ['-releasedAt', 'title'];
     }
 
     /**

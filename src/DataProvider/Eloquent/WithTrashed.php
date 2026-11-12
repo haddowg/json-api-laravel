@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\DataProvider\Eloquent;
 
+use haddowg\JsonApi\Resource\Filter\DescribedFilter;
+use haddowg\JsonApi\Resource\Filter\PresenceTriggeredFilter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
@@ -24,13 +26,39 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
  *
  * @implements AppliesToEloquentQueryBuilder<Model>
  */
-final readonly class WithTrashed implements AppliesToEloquentQueryBuilder
+final readonly class WithTrashed implements AppliesToEloquentQueryBuilder, DescribedFilter, PresenceTriggeredFilter
 {
-    private function __construct(private string $key) {}
+    private function __construct(
+        private string $key,
+        private ?string $description = null,
+    ) {}
 
     public static function make(string $key): self
     {
         return new self($key);
+    }
+
+    /**
+     * A copy carrying a description for its `filter[<key>]` parameter in the OpenAPI
+     * document, in place of the generic one. The document still says the filter applies
+     * when present and ignores its value.
+     */
+    public function describedAs(string $description): self
+    {
+        return new self($this->key, $description);
+    }
+
+    public function getDescription(): ?string
+    {
+        return $this->description;
+    }
+
+    /**
+     * Always presence-triggered: whatever value the request sends with the key is ignored.
+     */
+    public function isPresenceTriggered(): bool
+    {
+        return true;
     }
 
     public function key(): string
