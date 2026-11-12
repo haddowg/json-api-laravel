@@ -39,12 +39,9 @@ final class ErrorScopeTest extends TestCase
         $this->assertContains('ALBUM_LOCKED', $this->offeredCodes($document, '/albums/{id}', 'patch', '409'));
         $this->assertInlineErrorDocument($document, '/albums/{id}', 'patch', '409', 'AlbumsUpdate409');
 
-        // The album create raises a 409 too, but not this one: it keeps the shared response.
+        // The album create has a 409 document of its own too, and it leaves this code out.
         $this->assertNotContains('ALBUM_LOCKED', $this->offeredCodes($document, '/albums', 'post', '409'));
-        $this->assertSame(
-            '#/components/responses/Conflict',
-            $this->stringAt($document, 'paths', '/albums', 'post', 'responses', '409', '$ref'),
-        );
+        $this->assertInlineErrorDocument($document, '/albums', 'post', '409', 'AlbumsCreate409');
     }
 
     #[Test]

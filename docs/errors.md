@@ -210,7 +210,9 @@ A catalogued code is offered by every operation's error response for its status.
 some operations raise it, scope it, and the document offers it on those operations alone.
 Each covered operation gets its own error document for the code's status, named for the
 operation, such as `ArticlesUpdate409`, and an inline response that uses it, gaining that
-status if it did not advertise it. Every other operation keeps the shared response.
+status if it did not advertise it. Every other operation keeps the shared response, unless
+one of core's own feature codes, such as `CURSOR_MALFORMED` on a cursor-paged read, already
+gives it a document of its own for that status.
 
 For an error you own, declare the scope on its descriptor. A discovered or registered class
 keeps the scope its descriptor declares:

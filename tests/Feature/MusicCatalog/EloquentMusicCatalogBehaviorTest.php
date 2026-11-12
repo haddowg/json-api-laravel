@@ -106,6 +106,22 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
         $this->readJsonApi('/api/albums/1')->assertJsonPath('data.attributes.releasedAt', '1997-05-21T00:00:00+00:00');
     }
 
+    public function test_the_reissue_action_counts_the_album_it_answers_with(): void
+    {
+        $this->actingAs($this->writer());
+        $counts = self::MEDIA_TYPE . ';profile="https://haddowg.github.io/json-api/profiles/countable/"';
+
+        $read = $this->get('/api/albums/1?withCount=tracks,tracklist', ['Accept' => $counts])->assertOk();
+        $action = $this->call('POST', '/api/albums/1/-actions/reissue?withCount=tracks,tracklist', [], [], [], [
+            'HTTP_ACCEPT' => $counts,
+            'CONTENT_TYPE' => self::MEDIA_TYPE,
+        ], (string) \json_encode($this->reissueDocument('2001-10-01T00:00:00+00:00')))->assertOk();
+
+        self::assertIsInt($read->json('data.relationships.tracks.meta.total'));
+        self::assertSame($read->json('data.relationships.tracks.meta.total'), $action->json('data.relationships.tracks.meta.total'));
+        self::assertSame($read->json('data.relationships.tracklist.meta.total'), $action->json('data.relationships.tracklist.meta.total'));
+    }
+
     // --- the `summary` album action (collection scope, meta-only) --------------------------
 
     public function test_the_summary_action_returns_the_release_lifecycle_meta(): void

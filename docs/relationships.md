@@ -121,6 +121,11 @@ GET /api/albums/1?withCount=tracks     # → relationships.tracks.meta.total
 Opt in by negotiating the Countable profile. A relation that is not `countable()` (the
 example's count-free `orderedTracks` pivot) returns a `400` to `?withCount`.
 
+The count works wherever a resource renders: a collection, a fetched resource, the resource a
+create, an update or an action answers with, and a to-one related read. The OpenAPI document
+offers `withCount` on each of those operations with the countable relations of the type it
+renders, and offers `_self_` only where there is a collection to total.
+
 When the primary data mixes types, as on a polymorphic to-many's related endpoint, a name is
 accepted when at least one member type counts it. Each member renders its own `meta.total`
 for that relation, a member whose type has no such relation renders none, and nothing is
