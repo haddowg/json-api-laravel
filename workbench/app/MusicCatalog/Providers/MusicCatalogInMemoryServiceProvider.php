@@ -357,6 +357,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
             $track = $tracks[(string) $row['track_id']] ?? null;
             if (isset($playlists[$row['playlist_id']]) && $track !== null) {
                 $playlists[$row['playlist_id']]->tracks[] = $track;
+                $track->playlists[] = $playlists[$row['playlist_id']];
             }
         }
         // The ordered pivot rows backing orderedTracks — the in-memory analogue of the

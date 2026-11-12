@@ -81,6 +81,20 @@ built it with `$context->data()` or by hand. Linkage, `?include` and `?withCount
 the related type's provider, so the scope, filter defaults and default order its
 relationship endpoint applies hold in the action's document too.
 
+A response that mixes types renders through core's `PolymorphicSerializer`. Pass it the
+serializer of every type the response may hold as its second argument, and `?withCount`
+accepts a relation any of those types counts, with each member rendering its own total.
+Built from the closure alone, it counts nothing and every `?withCount` name is a `400`:
+
+```php
+$server = $context->server();
+
+return DataResponse::fromCollection([$album, $track], new PolymorphicSerializer(
+    static fn(mixed $object): SerializerInterface => $server->serializerFor($object instanceof Track ? 'tracks' : 'albums'),
+    [$server->serializerFor('albums'), $server->serializerFor('tracks')],
+));
+```
+
 ## An action that creates a resource
 
 An action that creates the resource it returns, such as duplicating an album, declares

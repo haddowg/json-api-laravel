@@ -125,6 +125,7 @@ use haddowg\JsonApiLaravel\Event\BeforeFetchRelationshipEvent;
 use haddowg\JsonApiLaravel\Event\BeforeRelationshipMutateEvent;
 use haddowg\JsonApiLaravel\Event\BeforeSaveEvent;
 use haddowg\JsonApiLaravel\Event\BeforeUpdateEvent;
+use haddowg\JsonApiLaravel\Serializer\BatchedRelationshipCount;
 use haddowg\JsonApiLaravel\Serializer\PivotMetaSerializer;
 use haddowg\JsonApiLaravel\Serializer\PivotParentSerializer;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
@@ -322,8 +323,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
         if (\count($groups) > 1) {
             $this->relationshipPagination->set(null);
             $this->relationshipLinkage->set(null);
-            $this->relationshipCount->set(null);
             $this->preloadGroups($server, $groups, $request);
+            $this->applyGroupedRelationshipCounts($server, $groups, $request);
 
             return $response;
         }
@@ -775,15 +776,16 @@ final class CrudOperationHandler implements OperationHandlerInterface
             }
 
             // A polymorphic page spans types (no single related type), so its relations are not
-            // windowed and it carries no single related type to count. Its includes and linkage
-            // are preloaded per member type, so a member's own relation into a scoped type shows
-            // only the rows that type admits.
+            // windowed. Its includes, linkage and counts are read per member type, so a member's
+            // own relation into a scoped type shows only the rows that type admits.
             if (!$polymorphic) {
                 $this->preloadIncludes($server, $items, $relatedType, $request);
                 $this->applyRelationshipWindows($server, $relatedType, $items, $request);
                 $this->applyRelationshipCounts($server, $relatedType, $items, $request);
             } else {
-                $this->preloadPolymorphicIncludes($server, $relation, $items, $request, $identifiedTypes ?? []);
+                $groups = $this->groupByRenderedType($server, $relation, $items, $identifiedTypes ?? []);
+                $this->preloadGroups($server, $groups, $request);
+                $this->applyGroupedRelationshipCounts($server, $groups, $request);
             }
 
             // A cursor (keyset) related page: the provider minted the boundary tokens
@@ -1312,14 +1314,15 @@ final class CrudOperationHandler implements OperationHandlerInterface
     }
 
     /**
-     * {@see preloadIncludes()} for a page of mixed member types: each type's members are
-     * preloaded as their own page, and every type's scoped linkage is kept.
+     * A page of a polymorphic relation's members grouped by the type each renders as.
      *
-     * @param list<object> $items
+     * @param list<object>       $items
      * @param array<int, string> $types the type a member renders as, keyed by object id, when its
      *                                  object can't say
+     *
+     * @return array<string, list<object>>
      */
-    private function preloadPolymorphicIncludes(Server $server, RelationInterface $relation, array $items, JsonApiRequestInterface $request, array $types = []): void
+    private function groupByRenderedType(Server $server, RelationInterface $relation, array $items, array $types = []): array
     {
         $byType = [];
         foreach ($items as $item) {
@@ -1329,7 +1332,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             }
         }
 
-        $this->preloadGroups($server, $byType, $request);
+        return $byType;
     }
 
     /**
@@ -1378,6 +1381,22 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->relationshipCount->set(
             $request === null ? null : $this->countBatcher->batch($server, $type, $items, $request),
         );
+    }
+
+    /**
+     * {@see applyRelationshipCounts()} for primary resources of several types: each type
+     * counts the `?withCount` relations it declares over its own members, and the maps merge.
+     *
+     * @param array<string, list<object>> $groups
+     */
+    private function applyGroupedRelationshipCounts(Server $server, array $groups, JsonApiRequestInterface $request): void
+    {
+        $counts = [];
+        foreach ($groups as $type => $members) {
+            $counts[] = $this->countBatcher->batch($server, $type, $members, $request);
+        }
+
+        $this->relationshipCount->set(BatchedRelationshipCount::merge(...$counts));
     }
 
     /**
@@ -1511,7 +1530,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
     /**
      * A {@see PolymorphicSerializer} for the related page of a `MorphToMany` declared with
      * `identifiedBy()`: each row renders with the serializer of the type its pair named, and
-     * the `meta.pivot` of its link row.
+     * the `meta.pivot` of its link row. Every related type is a member type, so `?withCount`
+     * counts what any of them counts.
      *
      * @param array<int, string>               $types  each row's type, keyed by object id
      * @param array<int, array<string, mixed>> $pivots each row's `meta.pivot`, keyed by object id
@@ -1529,6 +1549,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
                 return $pivot === [] ? $serializer : new PivotMetaSerializer($serializer, [$serializer->getId($object) => $pivot]);
             },
+            PolymorphicSerializer::forRelation($relation, $server)->members(),
         );
     }
 
@@ -1548,15 +1569,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * A {@see PolymorphicSerializer} that renders a polymorphic to-many's mixed-type
-     * members: for each member object it resolves the serializer among the relation's
-     * declared types, throwing when no declared type serializes a related object.
+     * members, each through the serializer of its own declared type. Every related type is
+     * a member type, so a `?withCount` name any of them counts is accepted.
      */
     private function polymorphicSerializer(RelationInterface $relation, Server $server): PolymorphicSerializer
     {
-        return new PolymorphicSerializer(
-            fn(mixed $object): SerializerInterface => $relation->resolveSerializer($object, $server)
-                ?? throw new \LogicException(\sprintf('No declared type of the "%s" relationship serializes a related object.', $relation->name())),
-        );
+        return PolymorphicSerializer::forRelation($relation, $server);
     }
 
     /**

@@ -115,11 +115,17 @@ A `countable()` to-many can report its size from the primary request, pushed dow
 (no materialisation):
 
 ```
-GET /api/albums/1?withCount=tracks     # → relationships.tracks.meta.count
+GET /api/albums/1?withCount=tracks     # → relationships.tracks.meta.total
 ```
 
 Opt in by negotiating the Countable profile. A relation that is not `countable()` (the
 example's count-free `orderedTracks` pivot) returns a `400` to `?withCount`.
+
+When the primary data mixes types, as on a polymorphic to-many's related endpoint, a name is
+accepted when at least one member type counts it. Each member renders its own `meta.total`
+for that relation, a member whose type has no such relation renders none, and nothing is
+summed. `GET /api/libraries/1/items?withCount=tracks` puts a total on the album and none on
+the track or the artist. A name no member type counts is still a `400`.
 
 ## Relation-scoped filters, sorts, and pagination
 
@@ -498,7 +504,8 @@ MorphToMany::make('items', ['tracks', 'albums', 'artists'])
 ```
 
 A polymorphic to-many carries no shared filter/sort vocabulary, so `?filter`/`?sort` on its
-endpoint are a `400` while `?page` slices.
+endpoint are a `400` while `?page` slices. `?withCount` counts a relation on each member whose
+type declares it countable, as [above](#withcount-the-countable-profile).
 
 A `MorphTo` or `MorphToMany` is polymorphic however many types it lists. Declared over one type,
 it is still served and documented as polymorphic: the OpenAPI document shows its linkage and
