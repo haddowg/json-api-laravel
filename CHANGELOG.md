@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.10.0](https://github.com/haddowg/json-api-laravel/compare/v2.9.0...v2.10.0) (2026-11-12)
+
+
+### Features
+
+* document the trashed filters as presence filters ([ec42915](https://github.com/haddowg/json-api-laravel/commit/ec4291554b7486e2b4455571e274a7658779e186))
+* report sort examples and dropped filter defaults ([ec42915](https://github.com/haddowg/json-api-laravel/commit/ec4291554b7486e2b4455571e274a7658779e186))
+
+
+### Bug Fixes
+
+* count each member's relations on a mixed-type response ([ec42915](https://github.com/haddowg/json-api-laravel/commit/ec4291554b7486e2b4455571e274a7658779e186))
+* count the target of a MorphTo related endpoint ([#256](https://github.com/haddowg/json-api-laravel/issues/256)) ([6c71958](https://github.com/haddowg/json-api-laravel/commit/6c719580e19f8d3665a69606e00c588f1b34400a))
+
 ## [2.9.0](https://github.com/haddowg/json-api-laravel/compare/v2.8.0...v2.9.0) (2026-11-11)
 
 
