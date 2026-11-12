@@ -376,6 +376,40 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         self::assertNotContains('2', $this->sortedIds($this->fetch('/api/tracks')->assertOk()->json('data')));
     }
 
+    public function test_with_count_counts_on_every_single_resource_operation_the_document_offers_it_on(): void
+    {
+        $counts = self::MEDIA_TYPE . ';profile="https://haddowg.github.io/json-api/profiles/countable/"';
+        $totals = static fn(TestResponse $response): array => [
+            'tracks' => $response->json('data.relationships.tracks.meta.total'),
+            'tracklist' => $response->json('data.relationships.tracklist.meta.total'),
+        ];
+
+        $fetched = $totals($this->get('/api/albums/1?withCount=tracks,tracklist', ['Accept' => $counts])->assertOk());
+        self::assertIsInt($fetched['tracks']);
+        self::assertIsInt($fetched['tracklist']);
+        self::assertGreaterThan(0, $fetched['tracks']);
+
+        // A to-one related read counts the related resource's relations.
+        $related = $this->get('/api/tracks/1/album?withCount=tracks,tracklist', ['Accept' => $counts])->assertOk();
+        $related->assertJsonPath('data.id', '1');
+        self::assertSame($fetched, $totals($related));
+
+        // An update answering with the resource counts it as a read would.
+        $updated = $this->countedWrite('PATCH', '/api/albums/1?withCount=tracks,tracklist', $counts, [
+            'data' => ['type' => 'albums', 'id' => '1', 'attributes' => ['title' => 'OK Computer OKNOTOK']],
+        ])->assertOk();
+        self::assertSame($fetched, $totals($updated));
+
+        // A fresh album has nothing to count, and still renders the totals.
+        $created = $this->countedWrite('POST', '/api/albums?withCount=tracks,tracklist', $counts, [
+            'data' => [
+                'type' => 'albums',
+                'attributes' => ['title' => 'Amnesiac', 'status' => 'released', 'releasedAt' => '2001-06-05T00:00:00+00:00'],
+            ],
+        ])->assertStatus(201);
+        self::assertSame(['tracks' => 0, 'tracklist' => 0], $totals($created));
+    }
+
     // --- writes ----------------------------------------------------------------
 
     public function test_album_create_assigns_a_store_provided_id(): void
@@ -504,6 +538,21 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
     protected function fetch(string $uri): TestResponse
     {
         return $this->get($uri, ['Accept' => self::MEDIA_TYPE]);
+    }
+
+    /**
+     * Issues a JSON:API write accepting `$accept`, such as a profile-parameterised media type.
+     *
+     * @param array<string, mixed> $body
+     *
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    protected function countedWrite(string $method, string $uri, string $accept, array $body): TestResponse
+    {
+        return $this->call($method, $uri, [], [], [], [
+            'HTTP_ACCEPT' => $accept,
+            'CONTENT_TYPE' => self::MEDIA_TYPE,
+        ], (string) \json_encode($body));
     }
 
     /**
