@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionLinks;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresAlwaysCounted;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresDefaultSort;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresDeprecation;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresNamedOperationExtensions;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationExamples;
@@ -16,6 +17,7 @@ use haddowg\JsonApi\OpenApi\Metadata\DeclaresRelatedOnly;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresResourceClass;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresResourceLinks;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresSingularName;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresSortExample;
 use haddowg\JsonApi\OpenApi\Metadata\OperationExample;
 use haddowg\JsonApi\OpenApi\Metadata\OperationResponseInterface;
 use haddowg\JsonApi\OpenApi\Metadata\OperationResponses;
@@ -26,6 +28,7 @@ use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Link\ActionLink;
 use haddowg\JsonApi\Resource\Link\DeclaredLink;
+use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
 
 /**
@@ -62,8 +65,11 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  *
  * Through {@see DeclaresRelatedOnly} it says whether `#[AsJsonApiResource(relatedOnly:)]`
  * declares the type serves no endpoint of its own.
+ *
+ * Through {@see DeclaresDefaultSort} and {@see DeclaresSortExample} it carries the resource's
+ * `defaultSort()` and `sortExample()`, which the projector shows as the `sort` example.
  */
-final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresNamedOperationExtensions, DeclaresSingularName, DeclaresOperationExamples, DeclaresAlwaysCounted, DeclaresResourceLinks, DeclaresActionLinks, DeclaresOperationScopes, DeclaresResourceClass, DeclaresDeprecation, DeclaresRelatedOnly
+final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresNamedOperationExtensions, DeclaresSingularName, DeclaresOperationExamples, DeclaresAlwaysCounted, DeclaresResourceLinks, DeclaresActionLinks, DeclaresOperationScopes, DeclaresResourceClass, DeclaresDeprecation, DeclaresRelatedOnly, DeclaresDefaultSort, DeclaresSortExample
 {
     /**
      * @param list<FieldInterface>            $fields
@@ -91,6 +97,8 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
      * @param \DateTimeInterface|null             $sunset              the type's declared sunset date
      * @param list<string>                        $deprecatedOperations the operations deprecated on their own, by operation name
      * @param bool                                $relatedOnly          whether the type serves no endpoint of its own
+     * @param list<SortDirective>                 $defaultSort          the resource's default order
+     * @param list<string>|null                   $sortExample          the resource's declared `sort` example tokens
      */
     public function __construct(
         private string $type,
@@ -127,7 +135,19 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
         private ?\DateTimeInterface $sunset = null,
         private array $deprecatedOperations = [],
         private bool $relatedOnly = false,
+        private array $defaultSort = [],
+        private ?array $sortExample = null,
     ) {}
+
+    public function defaultSort(): array
+    {
+        return $this->defaultSort;
+    }
+
+    public function sortExample(): ?array
+    {
+        return $this->sortExample;
+    }
 
     public function isRelatedOnly(): bool
     {

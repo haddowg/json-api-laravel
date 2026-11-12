@@ -438,6 +438,8 @@ final class MetadataSource
             sunset: self::sunset($descriptor),
             deprecatedOperations: $descriptor->deprecatedOperations,
             relatedOnly: $descriptor->relatedOnly,
+            defaultSort: $resource?->defaultSort() ?? [],
+            sortExample: $resource?->sortExample(),
         );
     }
 

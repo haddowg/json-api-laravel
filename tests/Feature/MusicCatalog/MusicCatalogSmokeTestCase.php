@@ -210,6 +210,14 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         self::assertSame('RELATIONSHIP_COUNT_NOT_ALLOWED', $refused->json('errors.0.code'));
     }
 
+    public function test_the_album_title_filter_keeps_artists_with_a_matching_album_ignoring_case(): void
+    {
+        // OK Computer is artist 1's, Dummy is artist 2's.
+        self::assertSame(['1'], $this->sortedIds($this->fetch('/api/artists?filter[albumTitle]=COMPUTER')->assertOk()->json('data')));
+        self::assertSame(['2'], $this->sortedIds($this->fetch('/api/artists?filter[albumTitle]=dum')->assertOk()->json('data')));
+        self::assertSame([], $this->sortedIds($this->fetch('/api/artists?filter[albumTitle]=zzz')->assertOk()->json('data')));
+    }
+
     public function test_playlists_show(): void
     {
         $show = $this->fetch('/api/playlists/' . Fixtures::PLAYLIST_ONE)->assertOk();

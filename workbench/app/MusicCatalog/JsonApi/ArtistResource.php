@@ -13,6 +13,7 @@ use haddowg\JsonApi\Resource\Field\Integer;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Field\Url;
 use haddowg\JsonApi\Resource\Filter\Where;
+use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Operation\Operation;
 use Workbench\App\MusicCatalog\Domain\Artist as ArtistDomain;
@@ -72,6 +73,13 @@ final class ArtistResource extends AbstractResource
         return [
             Where::make('slug')->singular(),
             FullTextSearch::make('q', ['name', 'bio']),
+            // Keeps artists with an album whose title contains the value, ignoring case,
+            // on both providers. The bundle builds the same parameter from its Doctrine-only
+            // WhereHasMatching.
+            WhereThrough::make('albumTitle', 'albums.title')
+                ->operator('like')
+                ->describedAs('Only artists with an album whose title contains the value, ignoring case.')
+                ->example('computer'),
         ];
     }
 
