@@ -229,6 +229,86 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
      * relationship) runs it inline under the outer create/update transaction, which owns the
      * single commit.
      */
+    /**
+     * Whether a write to `$relation` of `$type` can be refused because a member it leaves
+     * can't be orphaned, as {@see orphan()} refuses: an inverse foreign key
+     * ({@see HasOneOrMany}) whose column is NOT NULL. A schema it can't read may refuse.
+     */
+    public function canRefuseDetachment(string $type, RelationInterface $relation): bool
+    {
+        try {
+            $eloquentRelation = $this->inverseForeignKey($type, $relation);
+            if ($eloquentRelation === null) {
+                return false;
+            }
+
+            $related = $eloquentRelation->getRelated();
+            $foreignKey = $eloquentRelation->getForeignKeyName();
+            foreach ($related->getConnection()->getSchemaBuilder()->getColumns($related->getTable()) as $column) {
+                if (($column['name'] ?? null) === $foreignKey) {
+                    return ($column['nullable'] ?? true) !== true;
+                }
+            }
+        } catch (\Throwable) {
+            return true;
+        }
+
+        return true;
+    }
+
+    /**
+     * Whether {@see currentOwners()} can report a member another parent holds for
+     * `$relation` of `$type`: an inverse foreign key ({@see HasOneOrMany}).
+     */
+    public function canMoveMembers(string $type, RelationInterface $relation): bool
+    {
+        try {
+            return $this->inverseForeignKey($type, $relation) !== null;
+        } catch (\Throwable) {
+            return true;
+        }
+    }
+
+    /**
+     * The Eloquent relation behind `$relation` of `$type` when it is an inverse foreign key.
+     *
+     * @return HasOneOrMany<Model, Model, mixed>|null
+     */
+    private function inverseForeignKey(string $type, RelationInterface $relation): ?HasOneOrMany
+    {
+        $class = $this->modelByType[$type] ?? null;
+        if ($class === null) {
+            return null;
+        }
+
+        $model = new $class();
+        $method = $relation->column() ?? $relation->name();
+        if (!\method_exists($model, $method)) {
+            return null;
+        }
+        $eloquentRelation = $model->{$method}();
+
+        return $eloquentRelation instanceof HasOneOrMany ? $eloquentRelation : null;
+    }
+
+    /**
+     * Whether linkage naming a related resource can be refused with a `404`: a related
+     * type whose ids pass an encoder, or whose key is an integer, can be sent one that names
+     * no row ({@see decodeLinkageId()}), and one whose model has global scopes may hide the
+     * row ({@see assertUnscoped()}).
+     */
+    public function canMissLinkage(RelationInterface $relation): bool
+    {
+        foreach ($relation->relatedTypes() as $relatedType) {
+            $class = $this->modelByType[$relatedType] ?? null;
+            if ($class === null || $this->encoderFor($relatedType) !== null || $this->hasIntegerKey($relatedType) || (new $class())->getGlobalScopes() !== []) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function mutateRelationship(
         string $type,
         object $entity,
@@ -1021,11 +1101,24 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
     private function decodeLinkageId(string $relatedType, string $id): mixed
     {
         $encoder = $this->encoderFor($relatedType);
-        if ($encoder === null) {
-            return $id;
+        if ($encoder !== null) {
+            return $encoder->decode($id) ?? throw new ResourceNotFound();
         }
 
-        return $encoder->decode($id) ?? throw new ResourceNotFound();
+        // An integer key is keyed by its canonical form only, as the bundle's Doctrine
+        // persister converts it, so `abc` or `01` names no row.
+        if ($this->hasIntegerKey($relatedType) && (string) (int) $id !== $id) {
+            throw new ResourceNotFound();
+        }
+
+        return $id;
+    }
+
+    private function hasIntegerKey(string $type): bool
+    {
+        $class = $this->modelByType[$type] ?? null;
+
+        return $class !== null && \in_array((new $class())->getKeyType(), ['int', 'integer'], true);
     }
 
     /**

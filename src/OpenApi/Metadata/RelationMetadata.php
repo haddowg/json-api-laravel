@@ -6,10 +6,12 @@ namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresAlwaysCounted;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresDeprecatedRelation;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresDetachmentRefusal;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresDroppedFilterDefaults;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresFixedMembership;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresIdentifiedMembers;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresIdentifierMeta;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresLinkageResolution;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresPolymorphicRelation;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresRelationDefaultSort;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresRelationExampleId;
@@ -38,11 +40,13 @@ use haddowg\JsonApiLaravel\OpenApi\PivotFields;
  * {@see \haddowg\JsonApi\Server\Server} fallback chain + the relation graph) and
  * passed in.
  */
-final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, DeclaresRelationUriFieldName, DeclaresRelationExampleId, DeclaresAlwaysCounted, DeclaresPolymorphicRelation, DeclaresIdentifiedMembers, DeclaresDeprecatedRelation, DeclaresIdentifierMeta, DeclaresRelationDefaultSort, DeclaresFixedMembership, DeclaresDroppedFilterDefaults
+final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, DeclaresRelationUriFieldName, DeclaresRelationExampleId, DeclaresAlwaysCounted, DeclaresPolymorphicRelation, DeclaresIdentifiedMembers, DeclaresDeprecatedRelation, DeclaresIdentifierMeta, DeclaresRelationDefaultSort, DeclaresFixedMembership, DeclaresDroppedFilterDefaults, DeclaresDetachmentRefusal, DeclaresLinkageResolution
 {
     /**
      * @param list<string> $relatedIncludablePaths the related type's includable paths (resolved by the source)
      * @param bool         $ownerServesEndpoints   false when the owning type is related-only, so neither endpoint exists
+     * @param \Closure(): bool|null $canRefuseDetachment whether the persister can refuse to leave a member without its required parent, read only when the projection asks; null answers yes
+     * @param \Closure(): bool|null $canMissLinkage      whether linkage can name a related resource the data layer answers `404` for, read only when the projection asks; null answers yes
      */
     public function __construct(
         private RelationInterface $relation,
@@ -50,7 +54,27 @@ final readonly class RelationMetadata implements DeclaresWriteOnlyRelation, Decl
         private array $relatedIncludablePaths,
         private bool $alwaysCounts = false,
         private bool $ownerServesEndpoints = true,
+        private ?\Closure $canRefuseDetachment = null,
+        private ?\Closure $canMissLinkage = null,
     ) {}
+
+    /**
+     * The relation definition this metadata describes.
+     */
+    public function relation(): RelationInterface
+    {
+        return $this->relation;
+    }
+
+    public function canRefuseDetachment(): bool
+    {
+        return $this->canRefuseDetachment === null || ($this->canRefuseDetachment)();
+    }
+
+    public function canMissLinkage(): bool
+    {
+        return $this->canMissLinkage === null || ($this->canMissLinkage)();
+    }
 
     public function exampleId(): ?string
     {

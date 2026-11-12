@@ -146,6 +146,35 @@ Atomic Operations codes (`ATOMIC_HREF_INVALID`, `ATOMIC_HREF_UNRESOLVABLE`,
 `ASYNC_WRITE_IN_ATOMIC_OPERATION`) on `POST /operations` alone. Your application's codes join
 them when you say where they are.
 
+Each of core's codes is offered only on the operations that can raise it, and the package
+tells core what decides that from its own runtime:
+
+- `ACCESS_DENIED` appears on an operation an ability the `Authorizer` enforces can refuse: a
+  declared `policy:` or renamed ability, an ability declared `true`, which says something
+  outside the package enforces it, or the model's policy or a `Gate::define()` the convention
+  name finds. That covers a relation's `security(read:, mutate:)` and `view{Relation}`
+  ability on its endpoints and on linkage a create or update sets, the related type's
+  `update` on a member a write takes from another parent and on an attribute flattened onto a
+  related row, the related type's `viewAny` on a to-many's reads, and an action's `ability`.
+  `can` middleware on the route adds it too.
+- `AUTHENTICATION_REQUIRED` appears on a route behind `auth` or `auth.basic` middleware. A
+  policy refuses with `403` whoever calls, so no ability adds it.
+- `FULL_REPLACEMENT_PROHIBITED` and `REMOVAL_PROHIBITED` from the data layer appear on an
+  inverse foreign key (`HasOne`, `HasMany` and their morph twins) whose column is `NOT NULL`,
+  read from the database's schema.
+- `RESOURCE_NOT_FOUND` appears on a create whose linkage can name a missing resource: a
+  related type a provider of your own serves, one with an id encoder or an integer key, or a
+  model with global scopes.
+- `INCLUSION_NOT_ALLOWED` and `INCLUSION_DEPTH_EXCEEDED` follow the root type's allowed and
+  excluded include paths and maximum depth, and `jsonapi.max_include_depth`.
+- `REQUEST_BODY_INVALID_JSON_API` appears on creates and updates, whose `attributes`,
+  `relationships` and `meta` the handler checks are objects. No response is validated, so the
+  `RESPONSE_BODY_INVALID_*` codes appear nowhere.
+
+What the package can't see offers the codes it might raise: a middleware it doesn't know, a
+persister of your own, or a table that isn't there when the document is built. Export the
+document with the database migrated and the detachment codes follow the schema.
+
 An error that wants a place in the catalogue implements core's `DescribedErrorInterface`,
 which reads the code, status and title off the class — nothing is constructed to describe
 it:

@@ -107,7 +107,10 @@ GET /api/users/1?include=playlists.owner
   never an `included` member, but it still checks `?include`. Its paths start at the parent,
   as in the spec's `GET /articles/1/relationships/comments?include=comments.author`, and a
   path naming a relationship the parent's tree doesn't have is a `400`
-  `INCLUSION_UNRECOGNIZED`.
+  `INCLUSION_UNRECOGNIZED`, checked before the parent loads. A `PATCH`, `POST` or `DELETE`
+  that answers with its linkage checks `?include` the same way, before it writes. A
+  write-only relation's mutation answers `204` with no document, so it ignores `?include`,
+  as a delete does.
 - **Per-relation opt-out** — `cannotBeIncluded()` keeps `?include=favoritable` a `400` while
   the related/relationship endpoints still render (the example's `favorites.favoritable`).
   Pass it a `fn($model, $request): bool` closure to decide per request instead. The closure

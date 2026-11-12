@@ -287,6 +287,34 @@ abstract class WriteConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    #[Group('spec:errors')]
+    public function aResourceObjectMemberThatIsNotAnObjectReturns400BeforeAnyWrite(): void
+    {
+        foreach ([
+            'attributes' => [['attributes' => 'x'], '/data/attributes'],
+            'relationships' => [['relationships' => 0], '/data/relationships'],
+            'meta' => [['meta' => []], null],
+            'a relationship' => [['relationships' => ['artist' => 'artists/2']], '/data/relationships/artist'],
+        ] as $case => [$members, $pointer]) {
+            $response = $this->writeJsonApi('PATCH', '/api/albums/1', [
+                'data' => ['type' => 'albums', 'id' => '1', ...$members],
+            ]);
+
+            if ($pointer === null) {
+                $response->assertOk();
+
+                continue;
+            }
+
+            $response->assertStatus(400);
+            self::assertSame('REQUEST_BODY_INVALID_JSON_API', $response->json('errors.0.code'), $case);
+            self::assertSame($pointer, $response->json('errors.0.source.pointer'), $case);
+        }
+
+        $this->readJsonApi('/api/albums/1/relationships/artist')->assertJsonPath('data.id', '1');
+    }
+
+    #[Test]
     #[Group('spec:atomic-operations')]
     public function creatingWithALocalIdOnThePrimaryResourceReturns400(): void
     {

@@ -25,6 +25,7 @@ use haddowg\JsonApiLaravel\Action\ActionLinkContributor;
 use haddowg\JsonApiLaravel\Action\ActionRegistry;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
 use haddowg\JsonApiLaravel\Authorization\GuardedTypes;
+use haddowg\JsonApiLaravel\Authorization\OperationSecurityFacts;
 use haddowg\JsonApiLaravel\Authorization\RelationAuthorizer;
 use haddowg\JsonApiLaravel\Authorization\ResourceAuthorization;
 use haddowg\JsonApiLaravel\Authorization\ViewableRows;
@@ -1234,6 +1235,15 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $atomicScopes,
                 $app->make(ScopeTables::class),
                 $app->tagged(self::ERROR_SOURCE_TAG),
+                new OperationSecurityFacts(
+                    $app->make(Authorizer::class),
+                    $app->make(\Illuminate\Contracts\Auth\Access\Gate::class),
+                    $app->make(DataProviderRegistry::class),
+                    $app->make(DataPersisterRegistry::class),
+                    $app->make(Router::class),
+                ),
+                $app->make(DataPersisterRegistry::class),
+                $app->make(DataProviderRegistry::class),
             );
         });
 

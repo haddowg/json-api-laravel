@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
 use PHPUnit\Framework\Attributes\CoversNothing;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\Test;
 use Workbench\App\Providers\EloquentWorkbenchServiceProvider;
 use Workbench\Database\Seeders\MusicCatalogSeeder;
 
@@ -53,5 +55,23 @@ final class EloquentWriteConformanceTest extends WriteConformanceTestCase
     protected function seedConformanceData(): void
     {
         (new MusicCatalogSeeder())->run();
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function linkageToAnIntegerKeyedTypeNamingAnIdThatIsNotAnIntegerIs404(): void
+    {
+        foreach (['abc', '01'] as $id) {
+            $response = $this->writeJsonApi('POST', '/api/albums', [
+                'data' => [
+                    'type' => 'albums',
+                    'attributes' => ['title' => 'Unattached', 'status' => 'released', 'releasedAt' => '2020-02-02T00:00:00+00:00'],
+                    'relationships' => ['artist' => ['data' => ['type' => 'artists', 'id' => $id]]],
+                ],
+            ]);
+
+            $response->assertStatus(404);
+            self::assertSame('RESOURCE_NOT_FOUND', $response->json('errors.0.code'), $id);
+        }
     }
 }

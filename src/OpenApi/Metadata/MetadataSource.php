@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
 use haddowg\JsonApi\Exception\ClassListErrorSource;
 use haddowg\JsonApi\Exception\ErrorCatalogSourceInterface;
+use haddowg\JsonApi\OpenApi\Metadata\OperationKey;
 use haddowg\JsonApi\OpenApi\Metadata\OperationType;
 use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\TypeMetadataInterface;
@@ -14,9 +15,16 @@ use haddowg\JsonApi\Pagination\CursorPaginator;
 use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Serializer\IncludeControlsInterface;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiSerializer;
+use haddowg\JsonApiLaravel\Authorization\OperationSecurityFacts;
+use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
+use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
+use haddowg\JsonApiLaravel\DataPersister\Eloquent\EloquentDataPersister;
+use haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister;
+use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
@@ -106,6 +114,9 @@ final class MetadataSource
         private readonly ?array $atomicScopes = null,
         private readonly ?ScopeTables $scopes = null,
         private readonly iterable $taggedErrorSources = [],
+        private readonly ?OperationSecurityFacts $securityFacts = null,
+        private readonly ?DataPersisterRegistry $persisters = null,
+        private readonly ?DataProviderRegistry $providers = null,
     ) {}
 
     /**
@@ -177,7 +188,32 @@ final class MetadataSource
             generatesExamples: $config->generatesExamples,
             scopes: $this->scopes,
             scopeServer: $serverName,
+            security: $this->securityFor(static fn(): string => $serverName, $types),
+            strictQueryParameters: $server->strictQueryParameters(),
+            maxIncludeDepth: $server->maxIncludeDepth(),
         );
+    }
+
+    /**
+     * Answers {@see ServerMetadata::canDenyAccess()} and
+     * {@see ServerMetadata::canRequireAuthentication()} from the Gate and route middleware
+     * of the server `$serverOf` names for a type, the batch asked about with no type.
+     *
+     * @param \Closure(?string): string   $serverOf
+     * @param list<TypeMetadataInterface> $types
+     *
+     * @return (\Closure(?TypeMetadataInterface, OperationKey, bool): bool)|null
+     */
+    private function securityFor(\Closure $serverOf, array $types): ?\Closure
+    {
+        $facts = $this->securityFacts;
+        if ($facts === null) {
+            return null;
+        }
+
+        return static fn(?TypeMetadataInterface $type, OperationKey $operation, bool $access): bool => $access
+            ? $facts->canDenyAccess($serverOf($type?->type()), $types, $type, $operation)
+            : $facts->canRequireAuthentication($serverOf($type?->type()), $types, $type, $operation);
     }
 
     /**
@@ -201,8 +237,16 @@ final class MetadataSource
         $typeNames = [];
         $advertised = [];
         $securitySchemes = [];
+        $serverOfType = [];
+        $strict = false;
+        $maxIncludeDepth = $defaultServer->maxIncludeDepth();
         foreach ($this->serverNames as $serverName) {
             $server = $this->servers->get($serverName);
+            // One document answers for every server: a code any of them can raise is offered.
+            $strict = $strict || $server->strictQueryParameters();
+            if (($maxIncludeDepth ?? 0) < 1 && ($server->maxIncludeDepth() ?? 0) > 0) {
+                $maxIncludeDepth = $server->maxIncludeDepth();
+            }
             $config = $this->configByServer[$serverName] ?? new ServerDocumentConfig();
 
             foreach ($this->typesFor($serverName, $server) as $type) {
@@ -215,6 +259,7 @@ final class MetadataSource
 
                 $types[] = $type;
                 $typeNames[] = $type->type();
+                $serverOfType[$type->type()] = $serverName;
             }
 
             foreach (($config->servers !== [] ? $config->servers : $this->defaultServers($serverName, $server)) as $advertisedServer) {
@@ -254,6 +299,10 @@ final class MetadataSource
             generatesExamples: $defaultConfig->generatesExamples,
             // The servers' tables, merged: the types do not collide, so neither do their entries.
             scopes: $this->scopes,
+            // The one atomic endpoint the document lists is the default server's.
+            security: $this->securityFor(static fn(?string $type): string => $serverOfType[$type ?? ''] ?? ServerRegistry::DEFAULT_SERVER, $types),
+            strictQueryParameters: $strict,
+            maxIncludeDepth: $maxIncludeDepth,
         );
     }
 
@@ -364,7 +413,21 @@ final class MetadataSource
             operationScopes: $this->operationScopes($descriptor->class, AsJsonApiSerializer::class),
             resourceClass: $descriptor->class,
             deprecatedOperations: $descriptor->deprecatedOperations,
+            allowedIncludePaths: self::includeControls($server, $type)?->getAllowedIncludePaths(),
+            excludedIncludePaths: self::includeControls($server, $type)?->getExcludedIncludePaths() ?? [],
+            maxIncludeDepth: self::includeControls($server, $type)?->maxIncludeDepth(),
         );
+    }
+
+    /**
+     * The include safeguards a type applies as a document's root, through the serializer
+     * the server renders it with.
+     */
+    private static function includeControls(Server $server, string $type): ?IncludeControlsInterface
+    {
+        $serializer = $server->hasSerializerFor($type) ? $server->serializerFor($type) : null;
+
+        return $serializer instanceof IncludeControlsInterface ? $serializer : null;
     }
 
     /**
@@ -379,7 +442,7 @@ final class MetadataSource
 
         $relations = [];
         foreach ($this->types->relationsFor($server, $type) as $relation) {
-            $relations[] = $this->buildRelation($server, $relation, !$descriptor->relatedOnly);
+            $relations[] = $this->buildRelation($server, $type, $relation, !$descriptor->relatedOnly);
         }
 
         $operations = $this->operations($descriptor->operations);
@@ -440,6 +503,9 @@ final class MetadataSource
             relatedOnly: $descriptor->relatedOnly,
             defaultSort: $resource?->defaultSort() ?? [],
             sortExample: $resource?->sortExample(),
+            allowedIncludePaths: self::includeControls($server, $type)?->getAllowedIncludePaths(),
+            excludedIncludePaths: self::includeControls($server, $type)?->getExcludedIncludePaths() ?? [],
+            maxIncludeDepth: self::includeControls($server, $type)?->maxIncludeDepth(),
         );
     }
 
@@ -547,8 +613,10 @@ final class MetadataSource
         return $descriptions;
     }
 
-    private function buildRelation(Server $server, RelationInterface $relation, bool $ownerServesEndpoints = true): RelationMetadata
+    private function buildRelation(Server $server, string $type, RelationInterface $relation, bool $ownerServesEndpoints = true): RelationMetadata
     {
+        $persister = $this->persisters?->supportsType($type) === true ? $this->persisters->forType($type) : null;
+
         // Only a to-many relation has a related collection to paginate. Its page schema comes
         // from the paginator the related and relationship endpoints serve, so the document
         // can't drift from the runtime's relation -> related resource -> server default chain.
@@ -570,7 +638,43 @@ final class MetadataSource
             $this->includePaths->relatedPathsFor($server, $relation),
             $alwaysCounts,
             $ownerServesEndpoints,
+            static fn(): bool => self::canRefuseDetachment($persister, $type, $relation),
+            fn(): bool => $this->canMissLinkage($persister, $relation),
         );
+    }
+
+    /**
+     * The Eloquent persister reads the foreign key's column, the in-memory one never
+     * refuses, and a persister of the application's own may.
+     */
+    private static function canRefuseDetachment(?DataPersisterInterface $persister, string $type, RelationInterface $relation): bool
+    {
+        return match (true) {
+            $persister === null, $persister instanceof InMemoryDataPersister => false,
+            $persister instanceof EloquentDataPersister => $persister->canRefuseDetachment($type, $relation),
+            default => true,
+        };
+    }
+
+    /**
+     * Linkage to a related type a provider of the application's own serves is checked
+     * against it, and the Eloquent persister refuses an id it can't decode or a global
+     * scope hides. The in-memory persister finds nothing to refuse, and a persister of the
+     * application's own may.
+     */
+    private function canMissLinkage(?DataPersisterInterface $persister, RelationInterface $relation): bool
+    {
+        foreach ($relation->relatedTypes() as $relatedType) {
+            if ($this->providers === null || $this->providers->scopingProviderFor($relatedType) !== null) {
+                return true;
+            }
+        }
+
+        return match (true) {
+            $persister === null, $persister instanceof InMemoryDataPersister => false,
+            $persister instanceof EloquentDataPersister => $persister->canMissLinkage($relation),
+            default => true,
+        };
     }
 
     /**

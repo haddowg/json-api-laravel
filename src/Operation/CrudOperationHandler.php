@@ -19,6 +19,7 @@ use haddowg\JsonApi\Exception\RelationshipCountNotAllowed;
 use haddowg\JsonApi\Exception\RelationshipNotExists;
 use haddowg\JsonApi\Exception\RelationshipTypeInappropriate;
 use haddowg\JsonApi\Exception\RemovalProhibited;
+use haddowg\JsonApi\Exception\RequestBodyInvalidJsonApi;
 use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
@@ -274,6 +275,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->idEncoders?->bind($serverName);
 
         $this->preloaded = [];
+
+        if ($operation instanceof CreateResourceOperation || $operation instanceof UpdateResourceOperation) {
+            $this->assertObjectMembers($operation->body());
+        }
 
         $response = match (true) {
             $operation instanceof FetchResourceOperation => $this->fetch($operation),
@@ -938,8 +943,6 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $target = $operation->target();
         $type = $target->type;
         $relationshipName = (string) $target->relationship;
-
-        RelationshipIncludePaths::validate($server, $this->jsonApiRequest($operation->context()), $type);
 
         $parent = $this->loadParent($type, $target->id);
         if ($parent === null) {
@@ -2658,6 +2661,38 @@ final class CrudOperationHandler implements OperationHandlerInterface
         \assert($converted instanceof JsonApiRequestInterface);
 
         return $converted;
+    }
+
+    /**
+     * Rejects a resource object whose `attributes`, `relationships` or `meta`, or one of
+     * whose relationships, is present but not an object. The write path reads each of
+     * them as a map and would otherwise skip one it can't read.
+     *
+     * @throws RequestBodyInvalidJsonApi
+     */
+    private function assertObjectMembers(JsonApiRequestInterface $body): void
+    {
+        $data = $body->getResource();
+        if (!\is_array($data)) {
+            return;
+        }
+
+        $violations = [];
+        foreach (['attributes', 'relationships', 'meta'] as $member) {
+            if (\array_key_exists($member, $data) && !\is_array($data[$member])) {
+                $violations[] = ['message' => \sprintf('the "%s" member must be an object', $member), 'property' => '/data/' . $member];
+            }
+        }
+
+        foreach (\is_array($data['relationships'] ?? null) ? $data['relationships'] : [] as $name => $relationship) {
+            if (!\is_array($relationship)) {
+                $violations[] = ['message' => \sprintf('the "%s" relationship must be an object', $name), 'property' => '/data/relationships/' . \str_replace(['~', '/'], ['~0', '~1'], (string) $name)];
+            }
+        }
+
+        if ($violations !== []) {
+            throw new RequestBodyInvalidJsonApi($violations);
+        }
     }
 
     /**

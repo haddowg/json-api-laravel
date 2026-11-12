@@ -53,6 +53,15 @@ final class MusicCatalogOpenApiExportTest extends Orchestra
         CatalogConfig::apply($config);
     }
 
+    /**
+     * The catalogue's tables, so the metadata reads each inverse foreign key's nullability
+     * as a deployed application's export would.
+     */
+    protected function defineDatabaseMigrations(): void
+    {
+        $this->loadMigrationsFrom(\dirname(__DIR__, 2) . '/workbench/database/migrations');
+    }
+
     public function test_it_exports_the_music_catalog_document_for_every_server(): void
     {
         $buildDir = \dirname(__DIR__, 2) . '/build';

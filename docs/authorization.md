@@ -400,3 +400,8 @@ schemes and the document-level default requirement; `abilities`/relation `securi
 `ability` mark operations as secured. The example declares a `bearer` scheme + a default
 requirement, so a secured operation inherits a `401`. See
 [openapi](openapi.md#security) and [configuration](configuration.md#openapi).
+
+The error codes each operation offers do follow enforcement: `ACCESS_DENIED` only where an
+ability the package enforces, or `can` middleware, can refuse it, and
+`AUTHENTICATION_REQUIRED` only behind authenticating middleware (see
+[errors](errors.md#documenting-your-own-error-codes)).

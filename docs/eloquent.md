@@ -69,6 +69,14 @@ skips the hops in between unless they changed too, and a write that sends the st
 issues no `UPDATE`. The persister finds these models by walking the parent's loaded to-one
 relations, so a loaded to-one model that a before-save hook changed is saved as well. It doesn't use `push()`, which would also save loaded to-many collections.
 
+### Client ids and linkage ids
+
+A create naming a client id that a row already has is a `409`
+`CLIENT_GENERATED_ID_ALREADY_EXISTS`. The lookup ignores global scopes, so a soft-deleted or
+scoped-out row still holds its id. A linkage id sent to a related model with an integer key
+must be the key's canonical form: `abc` or `01` names no row and is a `404`
+`RESOURCE_NOT_FOUND`, the answer the Symfony bundle's Doctrine persister gives.
+
 ### Overriding one write
 
 To change how one type's entities are built or deleted, extend `EloquentDataPersister` and

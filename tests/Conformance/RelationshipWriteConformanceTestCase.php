@@ -320,6 +320,24 @@ abstract class RelationshipWriteConformanceTestCase extends Orchestra
     // --- error families (404 / 409 / 400) --------------------------------------
 
     #[Test]
+    #[Group('spec:updating-relationships')]
+    #[Group('spec:fetching-includes')]
+    public function anUnknownIncludePathOnAnEchoingRelationshipMutationIs400BeforeTheWrite(): void
+    {
+        // A mutation that answers with its linkage checks include the way the read does,
+        // before anything is written.
+        foreach (['PATCH' => ['type' => 'artists', 'id' => '3'], 'POST' => [['type' => 'artists', 'id' => '2']], 'DELETE' => [['type' => 'artists', 'id' => '1']]] as $method => $data) {
+            $response = $this->writeJsonApi($method, '/api/albums/1/relationships/artist?include=nonsense', ['data' => $data]);
+
+            $response->assertStatus(400);
+            self::assertSame('INCLUSION_UNRECOGNIZED', $response->json('errors.0.code'), $method);
+            self::assertSame(['parameter' => 'include'], $response->json('errors.0.source'), $method);
+        }
+
+        self::assertSame(['type' => 'artists', 'id' => '1'], $this->readRel('/api/albums/1/relationships/artist')->json('data'));
+    }
+
+    #[Test]
     #[Group('spec:errors')]
     public function mutatingAnUnknownRelationshipIs404(): void
     {
