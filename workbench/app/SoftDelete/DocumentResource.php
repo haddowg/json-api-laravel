@@ -52,7 +52,7 @@ final class DocumentResource extends AbstractResource
     {
         return [
             Contains::make('title'),
-            WithTrashed::make('withTrashed'),
+            WithTrashed::make('withTrashed')->describedAs('Include trashed documents alongside live ones.'),
             OnlyTrashed::make('onlyTrashed'),
         ];
     }

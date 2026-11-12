@@ -221,6 +221,29 @@ final class EloquentSoftDeleteTest extends Orchestra
         $this->assertArrayNotHasKey('x-safety', $restore);
     }
 
+    #[Test]
+    #[Group('soft-deletes')]
+    #[Group('openapi')]
+    public function theTrashedFiltersAreDocumentedAsPresenceFilters(): void
+    {
+        $doc = $this->resolve(DocumentFactory::class)->forServer()->toArray();
+        $parameters = [];
+        foreach ($this->arrayAt($doc, 'paths', '/documents', 'get', 'parameters') as $parameter) {
+            $this->assertIsArray($parameter);
+            $parameters[$this->stringAt($parameter, 'name')] = $parameter;
+        }
+
+        // A described filter keeps its own text; either way the value is documented as ignored.
+        $with = $this->arrayAt($parameters, 'filter[withTrashed]');
+        $this->assertSame('Include trashed documents alongside live ones. Applied when present; value ignored.', $with['description'] ?? null);
+        $this->assertSame('true', $with['example'] ?? null);
+        $this->assertSame(['type' => 'string'], $with['schema'] ?? null);
+
+        $only = $this->arrayAt($parameters, 'filter[onlyTrashed]');
+        $this->assertSame('Filter the collection by `onlyTrashed`. Applied when present; value ignored.', $only['description'] ?? null);
+        $this->assertSame('true', $only['example'] ?? null);
+    }
+
     private function writer(): User
     {
         return new User(['id' => 1, 'name' => 'Writer', 'can_write' => true, 'is_admin' => false]);

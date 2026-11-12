@@ -114,6 +114,15 @@ GET /documents                         # live rows only (default)
 GET /documents?filter[onlyTrashed]=1   # the recycle bin — each carries meta.trashed: true
 ```
 
+Both are presence filters: sending the key applies them, whatever value comes with it. The
+OpenAPI document says so, ending the parameter's description with "Applied when present; value
+ignored." and showing the example `true`. Give either one `describedAs()` to replace the generic
+first sentence:
+
+```php
+WithTrashed::make('withTrashed')->describedAs('Include trashed documents alongside live ones.'),
+```
+
 `WithTrashed`/`OnlyTrashed` are [self-applying Eloquent filters](eloquent.md); they are
 Eloquent-only, so on the in-memory provider the key is undeclared and the request is a clean `400`.
 
