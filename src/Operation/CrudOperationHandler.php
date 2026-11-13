@@ -326,6 +326,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         if (\count($groups) > 1) {
+            $this->windowBatcher->refuse($request);
             $this->relationshipPagination->set(null);
             $this->relationshipLinkage->set(null);
             $this->preloadGroups($server, $groups, $request);
@@ -788,6 +789,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $this->applyRelationshipWindows($server, $relatedType, $items, $request);
                 $this->applyRelationshipCounts($server, $relatedType, $items, $request);
             } else {
+                $this->windowBatcher->refuse($request);
                 $groups = $this->groupByRenderedType($server, $relation, $items, $identifiedTypes ?? []);
                 $this->preloadGroups($server, $groups, $request);
                 $this->applyGroupedRelationshipCounts($server, $groups, $request);
@@ -851,18 +853,23 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // A polymorphic to-one (MorphTo) has no single related resource and so no shared
         // filter vocabulary — any requested filter key is unrecognised (a 400), gated on the
         // requested filter being present so a filter on an empty polymorphic to-one still 400s.
+        // It renders several types, so no `relatedQuery` path names a relation of it.
         if ($polymorphic) {
-            $filter = $this->toOneRequestedFilter($operation->queryParameters(), $relation, $request);
+            $filter = $operation->queryParameters()->filter;
             if ($filter !== []) {
                 throw new FilterParamUnrecognized((string) \array_key_first($filter));
             }
+            $this->windowBatcher->refuse($request);
         }
 
         // A relation filter that excludes the single related object nulls the to-one, so it
         // renders `data: null` — the to-one twin of the to-many endpoint's filtered
         // collection. Monomorphic only. The local `$related` is nulled (no parent mutation).
+        // The filter is the endpoint's own: a `relatedQuery` path names a relation of the
+        // related resource, never this one.
+        $windowed = !$polymorphic;
         if (\is_object($related) && !$polymorphic) {
-            $filter = $this->toOneRequestedFilter($operation->queryParameters(), $relation, $request);
+            $filter = $operation->queryParameters()->filter;
             if ($filter !== []) {
                 $relatedResource = $this->types->resourceFor($server, $relatedType);
                 $criteria = $this->relationCriteria->criteriaFor(
@@ -904,8 +911,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->preloadIncludes($server, [$related], $targetType, $request);
             // Its relationships honour the Relationship Queries profile like any rendered resource,
             // so their linkage, included members and counts come from the same filtered set.
-            $activatedProfiles = $this->applyRelationshipWindows($server, $targetType, [$related], $request);
+            if ($windowed) {
+                $activatedProfiles = $this->applyRelationshipWindows($server, $targetType, [$related], $request);
+            }
             $this->applyRelationshipCounts($server, $targetType, [$related], $request);
+        } elseif ($windowed) {
+            // An absent target still checks the `relatedQuery` paths.
+            $this->applyRelationshipWindows($server, $relatedType, [], $request);
         }
 
         $response = RelatedResponse::fromResource($related, $serializer);
@@ -1709,20 +1721,6 @@ final class CrudOperationHandler implements OperationHandlerInterface
     }
 
     /**
-     * The requested `filter[…]` for a to-one related endpoint: the operation's own `?filter`
-     * merged with any `relatedQuery[<rel>][filter]` addressed to this relation's path under
-     * the negotiated Relationship Queries profile, the relatedQuery taking precedence on a
-     * key clash. Empty when neither is present (the common case — the to-one renders
-     * unconditionally).
-     *
-     * @return array<string, mixed>
-     */
-    private function toOneRequestedFilter(QueryParameters $queryParameters, RelationInterface $relation, JsonApiRequestInterface $request): array
-    {
-        return [...$queryParameters->filter, ...$request->getRelatedQuery($relation->name())->filter];
-    }
-
-    /**
      * `POST /{type}` — create a single resource. Order mirrors the bundle's `create()`
      * arm: the document-validation and authorization seams sit before hydrate/persist.
      */
@@ -1743,6 +1741,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // owning Eloquent table for a UniqueEntity `Rule::unique` (pre-hydration);
         // it stays the target the hydrator populates below.
         $entity = $persister->instantiate($type);
+
+        // The response renders the created resource, so its `relatedQuery` is checked before
+        // anything is stored.
+        $this->windowBatcher->check($server, $type, $entity, $request);
 
         // Document-semantic validation (the always-on illuminate/validation bridge) runs
         // here, creating: true, before hydration — a `422` document-first, before the
@@ -1920,6 +1922,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // resource before the save below.
         $serverName = $this->serverNameOf($operation->context());
         $this->authorizer->authorize($type, Operation::Update, $entity, $serverName);
+        $this->windowBatcher->check($server, $type, $entity, $request);
 
         // Document-semantic validation runs here, creating: false, with the loaded target
         // so a PATCH validates the MERGED resource state (stored values overlaid by the

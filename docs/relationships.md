@@ -258,6 +258,28 @@ Windowing per parent uses the SQL push-down described in
 [eloquent](eloquent.md#windowed-relationship-queries--sql-push-down-only). A relationship
 endpoint query it cannot honour is a `400`, never silently ignored.
 
+The family applies to every response that renders resources of one type: a collection or
+single read, a create answering `201` or an update answering `200` with its resource, a
+related read of a relation over one type, and a custom action answering with a resource. Its
+paths are relations of that rendered type, addressed by name. A to-many over one type takes
+`sort` and `filter`, a to-one over one type takes `filter` only, and each uses its related
+endpoint's vocabulary. Any other path is a `400` `QUERY_PARAM_UNRECOGNIZED`: a dotted path, a
+polymorphic relation (a `MorphTo` or `MorphToMany`, even over one type), a write-only relation,
+or a `sort` on a to-one. The OpenAPI document lists `relatedQuery` on exactly these operations,
+through one `<Type>RelatedQuery` parameter component per rendered type that names each
+addressable relation and its vocabulary.
+
+On a related read the paths name relations of the related resource, never the target, so
+`GET /api/tracks/1/album?relatedQuery[album][filter][title]=…` doesn't filter the album: it is a
+`400` unless albums declare an `album` relation. The endpoint's own `filter` narrows the target.
+
+A response rendering several types has no type to address, so every path on it is that same
+`400`: a related read of a polymorphic relation, and an action answering with resources of more
+than one type. A delete, a relationship read or mutation, and an action answering without a
+resource render no resources and ignore the family. A create or update checks its
+`relatedQuery` before it writes anything, so an unknown path, sort or filter key, or a mistyped
+filter value fails the request with the same `400` and leaves nothing stored.
+
 ## Pivot (`belongsToMany`) data
 
 A `BelongsToMany` over a join table with columns renders them as `meta.pivot`, validates and

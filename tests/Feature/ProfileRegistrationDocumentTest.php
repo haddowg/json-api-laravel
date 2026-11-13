@@ -51,14 +51,14 @@ final class ProfileRegistrationDocumentTest extends TestCase
     }
 
     #[Test]
-    public function it_documents_the_relatedquery_parameter_reference_and_shared_component(): void
+    public function it_documents_the_relatedquery_parameter_reference_and_its_types_component(): void
     {
         $doc = $this->document();
 
-        // A relation-bearing type's read endpoints $ref the single shared component.
-        $this->assertContains('#/components/parameters/relatedQuery', $this->parameterRefs($doc, '/albums', 'get'));
-        $this->assertContains('#/components/parameters/relatedQuery', $this->parameterRefs($doc, '/albums/{id}', 'get'));
-        $this->assertArrayHasKey('relatedQuery', $this->arrayAt($doc, 'components', 'parameters'));
+        // A relation-bearing type's read endpoints $ref that type's own component.
+        $this->assertContains('#/components/parameters/AlbumsRelatedQuery', $this->parameterRefs($doc, '/albums', 'get'));
+        $this->assertContains('#/components/parameters/AlbumsRelatedQuery', $this->parameterRefs($doc, '/albums/{id}', 'get'));
+        $this->assertArrayHasKey('AlbumsRelatedQuery', $this->arrayAt($doc, 'components', 'parameters'));
     }
 
     #[Test]
@@ -75,7 +75,7 @@ final class ProfileRegistrationDocumentTest extends TestCase
             $this->arrayAt($doc, 'components', 'schemas', 'JsonApi', 'properties', 'profile', 'items', 'enum'),
         );
 
-        $this->assertNotContains('#/components/parameters/relatedQuery', $this->parameterRefs($doc, '/albums', 'get'));
+        $this->assertNotContains('#/components/parameters/AlbumsRelatedQuery', $this->parameterRefs($doc, '/albums', 'get'));
         $this->assertArrayNotHasKey('parameters', $this->arrayAt($doc, 'components'));
         $this->assertContains('withCount', $this->parameterNames($doc, '/artists/{id}/albums', 'get'));
     }
