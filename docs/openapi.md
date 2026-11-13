@@ -18,7 +18,10 @@ schema (`<Type><Rel>Pivot`) and a request one (`<Type><Rel>WritePivot`), and a r
 [`identifierMeta()`](relationships.md#identifier-meta) declares its `fields:` gets a
 `<Type><Rel>IdentifierMeta` schema typing each response linkage identifier's `meta`. A
 backed-enum field (`status->enum(AlbumStatus::class)`) projects a reusable
-`#/components/schemas/AlbumStatus` with described cases. [Custom actions](actions.md) and the
+`#/components/schemas/AlbumStatus` with described cases. Each reference to it carries the
+enum's backing type, `string` or `integer`, beside a single-entry `allOf` that holds it. A
+nullable field pairs that type and `null` with an `anyOf` of the reference and `null`. Either
+way the field reads the same type whether its enum is inline or hoisted. [Custom actions](actions.md) and the
 [atomic](atomic-operations.md) endpoint project too.
 
 The error codes a server can raise are catalogued as `const` branches of named shapes per
