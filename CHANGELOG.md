@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.0](https://github.com/haddowg/json-api-laravel/compare/v2.12.0...v2.13.0) (2026-11-13)
+
+
+### Features
+
+* read relatedQuery wherever core 2.17 documents it ([#263](https://github.com/haddowg/json-api-laravel/issues/263)) ([4472507](https://github.com/haddowg/json-api-laravel/commit/4472507b1cec9108fc20b71a644ce7b569ac81b6))
+
 ## [2.12.0](https://github.com/haddowg/json-api-laravel/compare/v2.11.0...v2.12.0) (2026-11-12)
 
 
