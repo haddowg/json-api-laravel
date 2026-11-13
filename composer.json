@@ -22,7 +22,7 @@
     ],
     "require": {
         "php": "^8.3",
-        "haddowg/json-api": "^2.16",
+        "haddowg/json-api": "^2.17",
         "illuminate/auth": "^12.0 || ^13.0",
         "illuminate/config": "^12.0 || ^13.0",
         "illuminate/console": "^12.0 || ^13.0",

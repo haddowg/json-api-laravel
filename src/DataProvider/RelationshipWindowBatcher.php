@@ -178,6 +178,44 @@ final class RelationshipWindowBatcher
     }
 
     /**
+     * Checks the request's `relatedQuery` against the relations of `$type` without reading
+     * anything: each path must be addressable, and each addressed relation must accept its
+     * sort and filter keys and values. A write runs this before it stores anything, so a
+     * query its response would refuse fails the request instead of answering a `400` for a
+     * write that went through. `$model` is the model the write targets.
+     */
+    public function check(Server $server, string $type, object $model, JsonApiRequestInterface $request): void
+    {
+        if (!$request->isProfileRequested(RelationshipQueriesProfile::URI)) {
+            return;
+        }
+
+        $relations = $this->types->readableRelationsFor($server, $type, $request);
+        $this->validatePaths($relations, $request);
+        $this->validateUnwindowedRelatedQueryKeys($server, $type, $model, $relations, [], $request);
+
+        foreach ($this->toOneFilteredRelations($relations, $request) as $relation) {
+            $criteria = $this->toOneCriteria($server, $relation, $request);
+            if ($criteria !== null) {
+                $this->assertRelatedQueryKeysRecognised(new RelatedQuery(filter: $request->getRelatedQuery($relation->name())->filter), $criteria);
+                $this->filterValues->validate($request->getRelatedQuery($relation->name())->filter, $criteria->filters, $request, $criteria->paths);
+            }
+        }
+    }
+
+    /**
+     * Refuses every `relatedQuery` path. A response rendering resources of several types,
+     * a polymorphic related read or an action answering with mixed types, has no single
+     * type whose relations a path could name.
+     */
+    public function refuse(JsonApiRequestInterface $request): void
+    {
+        if ($request->isProfileRequested(RelationshipQueriesProfile::URI)) {
+            $this->validatePaths([], $request);
+        }
+    }
+
+    /**
      * Windows ONE relation over the whole page of parents in a single
      * {@see DataProviderInterface::fetchRelatedCollectionBatch()} round-trip, then per parent
      * records the page-1 linkage ({@see RelationshipLinkage}, supplied to core out-of-band so
@@ -542,25 +580,10 @@ final class RelationshipWindowBatcher
     ): void {
         foreach ($toOneFiltered as $relation) {
             $relatedType = $relation->relatedTypes()[0] ?? null;
-            if ($relatedType === null || !$this->providers->supportsType($relatedType)) {
+            $criteria = $this->toOneCriteria($server, $relation, $request);
+            if ($relatedType === null || $criteria === null) {
                 continue;
             }
-
-            $relatedResource = $this->types->resourceFor($server, $relatedType);
-            $criteria = $this->relationCriteria->criteriaFor(
-                new QueryParameters(
-                    fields: [],
-                    includes: [],
-                    sort: [],
-                    filter: $request->getRelatedQuery($relation->name())->filter,
-                    pagination: $request->getPagination(),
-                ),
-                $relatedResource,
-                $relation,
-                null,
-                request: $request,
-                server: $server,
-            );
 
             // Validate the relatedQuery filter VALUE against the per-relation merged vocabulary
             // before the batched match runs, so a mistyped value on the include/linkage path is
@@ -595,6 +618,33 @@ final class RelationshipWindowBatcher
                 }
             }
         }
+    }
+
+    /**
+     * The criteria a monomorphic to-one's `relatedQuery` filter matches its target by: the
+     * related endpoint's merged vocabulary. `null` when no provider serves the related type.
+     */
+    private function toOneCriteria(Server $server, RelationInterface $relation, JsonApiRequestInterface $request): ?CollectionCriteria
+    {
+        $relatedType = $relation->relatedTypes()[0] ?? null;
+        if ($relatedType === null || !$this->providers->supportsType($relatedType)) {
+            return null;
+        }
+
+        return $this->relationCriteria->criteriaFor(
+            new QueryParameters(
+                fields: [],
+                includes: [],
+                sort: [],
+                filter: $request->getRelatedQuery($relation->name())->filter,
+                pagination: $request->getPagination(),
+            ),
+            $this->types->resourceFor($server, $relatedType),
+            $relation,
+            null,
+            request: $request,
+            server: $server,
+        );
     }
 
     /**
