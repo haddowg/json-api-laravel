@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.14.0](https://github.com/haddowg/json-api-laravel/compare/v2.13.0...v2.14.0) (2026-11-13)
+
+
+### Features
+
+* adopt haddowg/json-api 2.18 ([#265](https://github.com/haddowg/json-api-laravel/issues/265)) ([9da7f27](https://github.com/haddowg/json-api-laravel/commit/9da7f2727a1406ceeb07fccec621c02793d68b48))
+
 ## [2.13.0](https://github.com/haddowg/json-api-laravel/compare/v2.12.0...v2.13.0) (2026-11-13)
 
 
