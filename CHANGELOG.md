@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.14.1](https://github.com/haddowg/json-api-laravel/compare/v2.14.0...v2.14.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* require core 2.18.1 so relatedQuery filters keep their enum types ([#267](https://github.com/haddowg/json-api-laravel/issues/267)) ([b53be68](https://github.com/haddowg/json-api-laravel/commit/b53be68f6603da6facb05709eed2ba17b3edd159))
+
 ## [2.14.0](https://github.com/haddowg/json-api-laravel/compare/v2.13.0...v2.14.0) (2026-11-13)
 
 
