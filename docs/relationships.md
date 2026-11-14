@@ -365,7 +365,9 @@ correlates to the join row the query already holds. A path that ends on one of t
 relations compares the key of the model it reaches, decoded through the encoder of the type that
 model serves. When no type with an encoder serves that model, a value-object cast on its key,
 such as a binary UUID cast, stores the value; a primitive, enum, encrypted or JSON cast leaves
-it as sent. These filters apply
+it as sent. A related type that stores one of its own relations as `pivot` would make the
+prefix ambiguous, so route registration and `jsonapi:optimize` refuse a pivot relation that
+declares such a filter over it. These filters apply
 where the pivot column filters do.
 
 ### Computed pivot fields

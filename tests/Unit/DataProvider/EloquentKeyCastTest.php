@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Unit\DataProvider;
 
+use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
+use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentFilterHandler;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\ModelEncoders;
 use haddowg\JsonApiLaravel\Tests\Fixtures\PivotKeys\BinaryUuid;
 use Illuminate\Database\Eloquent\Model;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -78,8 +81,8 @@ final class EloquentKeyCastTest extends TestCase
 
     private function storageKey(Model $model, string $value): mixed
     {
-        $handler = new EloquentFilterHandler([], static fn(string $class, ?string $type): array => []);
+        $handler = new EloquentFilterHandler([], new ModelEncoders([], static fn(string $type): ?IdEncoderInterface => null));
 
-        return (new \ReflectionMethod($handler, 'storageKey'))->invoke($handler, $model, $value);
+        return (new \ReflectionMethod($handler, 'storageKey'))->invoke($handler, $model, $value, WhereThrough::make('key', 'rows.key')->build(), 'rows.key');
     }
 }

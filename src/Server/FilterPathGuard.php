@@ -11,12 +11,17 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\ThroughPathResolver;
 use haddowg\JsonApi\Resource\Filter\TraversesPath;
+use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
 use haddowg\JsonApi\Resource\Filter\WhereGroup;
+use haddowg\JsonApi\Resource\Filter\WhereHas;
+use haddowg\JsonApi\Resource\Filter\WhereThrough;
+use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\AmbiguousModelEncoder;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\BelongsToLeaf;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\ModelEncoders;
 use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
+use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\Eloquent\ModelMapResolver;
 use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Model;
@@ -63,6 +68,7 @@ final class FilterPathGuard
 
             $related = $resolver->serializerFor($relatedTypes[0]);
             if ($related instanceof AbstractResource) {
+                self::refusePivotClash($resource, $relation, $related);
                 $relatedFields = $related->allFields();
                 self::guardEncoders(
                     $encoders,
@@ -177,5 +183,48 @@ final class FilterPathGuard
         $container = Container::getInstance();
 
         return $container->bound(ModelMapResolver::class) ? $container->make(ModelMapResolver::class)->map() : [];
+    }
+
+    /**
+     * Refuses a relation filter whose relationship or path starts at the pivot row when
+     * the related type declares a relation stored as `pivot`, since `pivot.` would then name
+     * either the row or that relation.
+     *
+     * @throws \LogicException naming the type, relation and filter
+     */
+    private static function refusePivotClash(AbstractResource $resource, RelationInterface $relation, AbstractResource $related): void
+    {
+        $clash = null;
+        foreach ($related->allFields() as $field) {
+            if ($field instanceof RelationInterface && $field->column() === 'pivot') {
+                $clash = $field;
+
+                break;
+            }
+        }
+        if ($clash === null) {
+            return;
+        }
+
+        foreach ($relation->allFilters() as $filter) {
+            $target = match (true) {
+                $filter instanceof WhereHas, $filter instanceof WhereDoesntHave => $filter->relationship,
+                $filter instanceof WhereThrough, $filter instanceof WhereThroughIn => $filter->path,
+                default => '',
+            };
+            if (!\str_starts_with($target, RelationCriteriaFactory::PIVOT_PREFIX)) {
+                continue;
+            }
+
+            throw new \LogicException(\sprintf(
+                'Relation "%s" of type "%s" declares filter "%s" on "%s", which starts at the pivot row, but its related type "%s" has a relation "%s" stored as "pivot", so the "pivot." prefix is ambiguous. Store that relation under another name.',
+                $relation->name(),
+                $resource::$type,
+                $filter->key(),
+                $target,
+                $related::$type,
+                $clash->name(),
+            ));
+        }
     }
 }
