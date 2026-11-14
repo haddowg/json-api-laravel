@@ -14,7 +14,10 @@ namespace haddowg\JsonApiLaravel\DataProvider;
 interface TargetsTypeInterface
 {
     /**
-     * A copy of this handler that applies filters running against `$type`.
+     * A copy of this handler that applies filters running against `$type`, whose
+     * declaration names the types `$named`.
+     *
+     * @param list<string> $named
      */
-    public function forType(string $type): static;
+    public function forType(string $type, array $named = []): static;
 }

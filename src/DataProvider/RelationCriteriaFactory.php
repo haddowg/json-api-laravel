@@ -120,6 +120,7 @@ final class RelationCriteriaFactory
         ?JsonApiRequestInterface $request = null,
         ?bool $queriesPivotColumns = null,
         ?SerializerResolverInterface $server = null,
+        ?string $parentType = null,
     ): CollectionCriteria {
         $relationFilters = $includePivotFields ? $relation->allFilters() : self::withoutPivotFilters($relation->allFilters());
         $sorts = $this->sortsFor($relatedResource, $relation, $includePivotFields || ($queriesPivotColumns ?? false));
@@ -134,7 +135,7 @@ final class RelationCriteriaFactory
             wantsCount: $wantsCount,
             request: $request,
             defaultSortResolved: $resolved,
-            paths: $server !== null ? FilterPaths::of($server, $relatedResource) : null,
+            paths: $server !== null ? FilterPaths::of($server, $relatedResource, $parentType) : null,
         );
     }
 

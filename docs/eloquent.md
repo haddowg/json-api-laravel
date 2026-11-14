@@ -248,7 +248,11 @@ A path may also end on a `belongsTo` of a model that isn't a resource, such as a
 `definition`: `WhereThroughIn::make('definition', 'placeholderRows.definition')` walks the
 template's rows and compares each row's foreign key. Each value goes through the id encoder of
 the type the related model serves, so a canonical UUID matches a binary key. When several types
-serve that model, the first whose encoder recognises the value decodes it. A path naming the
+serve that model with different encoders, a type the declaration names settles it: the type
+the filters run against, the related types of its relations, or on a relation's filters the
+type declaring the relation. When none of those serves the model, route registration and
+`jsonapi:optimize` refuse the filter, naming it and the candidate types. Types that share an
+encoder, or have none, need no naming. A path naming the
 raw foreign-key column, `placeholderRows.definition_id`, compares the same way, as long as the
 model declares the `belongsTo` with a `BelongsTo` return type so it can be found. Any other
 column is compared as sent, since Eloquent knows nothing of its stored form.

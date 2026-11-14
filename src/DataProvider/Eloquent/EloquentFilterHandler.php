@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\DataProvider\Eloquent;
 
-use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\FilterHandlerInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
@@ -29,7 +28,6 @@ use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\TargetsTypeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo as EloquentBelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
 
 /**
@@ -115,18 +113,18 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     private ?string $type = null;
 
     /**
-     * The relation method whose foreign key a model's column is, by model class and column,
-     * or null when none is.
+     * The types the declaration of the filters being applied names, which settle the
+     * encoder of a model several types serve.
      *
-     * @var array<string, ?string>
+     * @var list<string>
      */
-    private static array $owningRelations = [];
+    private array $named = [];
 
     /**
      * @param iterable<EloquentFilterArmInterface<Model>>                                  $arms       author arms for custom filter types, consulted in order
-     * @param (\Closure(class-string<Model>, ?string): list<IdEncoderInterface>)|null $encoderFor the id encoder of the given type, or with no type the encoders of every type a model class serves, in registration order
+     * @param ModelEncoders|null                                                     $encoders   picks the id encoder a compared key decodes with
      */
-    public function __construct(iterable $arms = [], private readonly ?\Closure $encoderFor = null)
+    public function __construct(iterable $arms = [], private readonly ?ModelEncoders $encoders = null)
     {
         $this->arms = \is_array($arms) ? \array_values($arms) : \iterator_to_array($arms, false);
         $this->dates = new NaiveDateTimeStorage();
@@ -146,10 +144,11 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         return $handler;
     }
 
-    public function forType(string $type): static
+    public function forType(string $type, array $named = []): static
     {
         $handler = clone $this;
         $handler->type = $type;
+        $handler->named = $named !== [] ? $named : [$type];
 
         return $handler;
     }
@@ -234,7 +233,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     {
         $expected = $filter->deserialize !== null ? ($filter->deserialize)($value) : $value;
         if ($this->isKeyOf($query->getModel(), $filter->column)) {
-            $expected = $this->storageKey($query->getModel(), $expected, $this->type);
+            $expected = $this->storageKey($query->getModel(), $expected, $filter, $filter->column, $this->type);
         }
 
         $this->applyComparison($query, $filter->column, $filter->operator, $expected, $filter->key());
@@ -310,10 +309,10 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         $query->whereHas(
             $relation,
             function (Builder $sub) use ($leaf, $filter, $expected): void {
-                $belongsTo = $leaf !== null ? $this->belongsToLeaf($sub->getModel(), $leaf) ?? $this->belongsToOwning($sub->getModel(), $leaf) : null;
+                $belongsTo = $leaf !== null ? BelongsToLeaf::of($sub->getModel(), $leaf) : null;
                 if ($belongsTo !== null) {
                     $operator = \in_array($filter->operator, ['!=', '<>'], true) ? '<>' : '=';
-                    $this->compare($sub, $belongsTo->getForeignKeyName(), $operator, $this->storageKey($belongsTo->getRelated(), $expected));
+                    $this->compare($sub, $belongsTo->getForeignKeyName(), $operator, $this->storageKey($belongsTo->getRelated(), $expected, $filter, $filter->throughPath()));
 
                     return;
                 }
@@ -343,11 +342,11 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
 
         $query->whereHas(
             $relation,
-            function (Builder $sub) use ($leaf, $values): void {
-                $belongsTo = $leaf !== null ? $this->belongsToLeaf($sub->getModel(), $leaf) ?? $this->belongsToOwning($sub->getModel(), $leaf) : null;
+            function (Builder $sub) use ($leaf, $values, $filter): void {
+                $belongsTo = $leaf !== null ? BelongsToLeaf::of($sub->getModel(), $leaf) : null;
                 if ($belongsTo !== null) {
                     $related = $belongsTo->getRelated();
-                    $this->whereIn($sub, $belongsTo->getForeignKeyName(), \array_map(fn(mixed $value): mixed => $this->storageKey($related, $value), $values), false);
+                    $this->whereIn($sub, $belongsTo->getForeignKeyName(), \array_map(fn(mixed $value): mixed => $this->storageKey($related, $value, $filter, $filter->throughPath()), $values), false);
 
                     return;
                 }
@@ -385,67 +384,6 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     }
 
     /**
-     * The `belongsTo` relation `$leaf` names on `$model` when a traversal path ends on a
-     * relation method rather than a column, such as a pivot model's `definition`, so the
-     * path compares the foreign key with the id of the model it points at. Null for a
-     * column.
-     *
-     * @return EloquentBelongsTo<Model, Model>|null
-     */
-    private function belongsToLeaf(Model $model, string $leaf): ?EloquentBelongsTo
-    {
-        if (!\method_exists($model, $leaf) || $model->hasAttributeMutator($leaf) || \array_key_exists($leaf, $model->getAttributes())) {
-            return null;
-        }
-
-        $relation = $model->{$leaf}();
-
-        /** @var EloquentBelongsTo<Model, Model>|null */
-        return $relation instanceof EloquentBelongsTo ? $relation : null;
-    }
-
-    /**
-     * The `belongsTo` whose foreign key is the column `$leaf` on `$model`, such as a pivot
-     * model's `definition_id`, so a path naming the raw column compares it exactly as the
-     * path naming the relation does. Found among the model's public relation methods that
-     * declare a `BelongsTo` return type and take no argument; null when none holds it.
-     *
-     * @return EloquentBelongsTo<Model, Model>|null
-     */
-    private function belongsToOwning(Model $model, string $leaf): ?EloquentBelongsTo
-    {
-        $key = $model::class . "\0" . $leaf;
-        if (!\array_key_exists($key, self::$owningRelations)) {
-            self::$owningRelations[$key] = null;
-            foreach ((new \ReflectionClass($model))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
-                $type = $method->getReturnType();
-                if ($method->isStatic() || $method->getNumberOfRequiredParameters() > 0 || !$type instanceof \ReflectionNamedType
-                    || !\is_a($type->getName(), EloquentBelongsTo::class, true) || $method->getDeclaringClass()->getName() === Model::class) {
-                    continue;
-                }
-
-                $relation = $method->invoke($model);
-                // A morphTo's foreign key points at several models, so no one key decodes it.
-                if ($relation instanceof EloquentBelongsTo && !$relation instanceof \Illuminate\Database\Eloquent\Relations\MorphTo && $relation->getForeignKeyName() === $leaf) {
-                    self::$owningRelations[$key] = $method->getName();
-
-                    break;
-                }
-            }
-        }
-
-        $name = self::$owningRelations[$key];
-        if ($name === null) {
-            return null;
-        }
-
-        $relation = $model->{$name}();
-
-        /** @var EloquentBelongsTo<Model, Model>|null */
-        return $relation instanceof EloquentBelongsTo ? $relation : null;
-    }
-
-    /**
      * A set filter's members matched against the model key: each a wire id decoded through
      * the id encoder of the type the model serves, so a binary UUID key matches its
      * canonical string. A value the encoder doesn't recognise is compared as sent.
@@ -463,7 +401,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
 
         $model = $query->getModel();
 
-        return \array_map(fn(mixed $member): mixed => $this->storageKey($model, $member, $this->type), $members);
+        return \array_map(fn(mixed $member): mixed => $this->storageKey($model, $member, $filter, $filter->column, $this->type), $members);
     }
 
     private function isKeyOf(Model $model, string $column): bool
@@ -472,25 +410,26 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     }
 
     /**
-     * `$value` decoded through the id encoder of `$type`, the type the comparison targets.
-     * When nothing names a type, such as at a belongsTo leaf on a pivot model, the first
-     * type `$model` serves whose encoder recognises the value decodes it. As sent when no
-     * encoder recognises it.
+     * `$value` decoded through the id encoder {@see ModelEncoders} picks for `$model`: that
+     * of `$type`, the type the comparison targets, when it serves the model, otherwise the
+     * one the types serving it, or the types the declaration names, agree on. As sent when
+     * the encoder doesn't recognise it.
+     *
+     * @throws \LogicException when the types serving the model disagree and nothing names one
      */
-    private function storageKey(Model $model, mixed $value, ?string $type = null): mixed
+    private function storageKey(Model $model, mixed $value, FilterInterface $filter, string $path, ?string $type = null): mixed
     {
-        if ($this->encoderFor === null || !\is_string($value)) {
+        if ($this->encoders === null || !\is_string($value)) {
             return $value;
         }
 
-        foreach (($this->encoderFor)($model::class, $type) as $encoder) {
-            $decoded = $encoder->decode($value);
-            if ($decoded !== null) {
-                return $decoded;
-            }
+        try {
+            $encoder = $this->encoders->for($model::class, $type, $this->named);
+        } catch (AmbiguousModelEncoder $e) {
+            throw new \LogicException(AmbiguousModelEncoder::forFilter($this->type ?? '', $filter->key(), $path, $e->model, $e->candidates), 0, $e);
         }
 
-        return $value;
+        return $encoder?->decode($value) ?? $value;
     }
 
     /**

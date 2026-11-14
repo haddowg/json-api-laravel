@@ -107,7 +107,7 @@ final class CriteriaApplier
 
         $type = $criteria->paths?->type;
         if ($type !== null && $handler instanceof TargetsTypeInterface) {
-            $handler = $handler->forType($type);
+            $handler = $handler->forType($type, $criteria->paths->named);
         }
 
         foreach (FilterMatcher::directives($requested, $criteria->filters, $criteria->request) as $directive) {
