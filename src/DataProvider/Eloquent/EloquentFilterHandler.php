@@ -26,6 +26,7 @@ use haddowg\JsonApi\Resource\Filter\WhereNull;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
+use haddowg\JsonApiLaravel\DataProvider\TargetsTypeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo as EloquentBelongsTo;
@@ -81,7 +82,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMan
  *
  * @implements FilterHandlerInterface<Builder<Model>>
  */
-final class EloquentFilterHandler implements FilterHandlerInterface
+final class EloquentFilterHandler implements FilterHandlerInterface, TargetsTypeInterface
 {
     /**
      * Data-layer-specific remediation appended to the core {@see UnsupportedFilter}
@@ -108,8 +109,15 @@ final class EloquentFilterHandler implements FilterHandlerInterface
     private readonly NaiveDateTimeStorage $dates;
 
     /**
-     * @param iterable<EloquentFilterArmInterface<Model>>                    $arms         author arms for custom filter types, consulted in order
-     * @param (\Closure(class-string<Model>): ?IdEncoderInterface)|null $encoderFor the id encoder of the type a model class serves, or null when it has none
+     * The type the filters run against, whose encoder decodes an id compared with the
+     * query model's key.
+     */
+    private ?string $type = null;
+
+
+    /**
+     * @param iterable<EloquentFilterArmInterface<Model>>                                  $arms       author arms for custom filter types, consulted in order
+     * @param (\Closure(class-string<Model>, ?string): list<IdEncoderInterface>)|null $encoderFor the id encoder of the given type, or with no type the encoders of every type a model class serves, in registration order
      */
     public function __construct(iterable $arms = [], private readonly ?\Closure $encoderFor = null)
     {
@@ -127,6 +135,14 @@ final class EloquentFilterHandler implements FilterHandlerInterface
     {
         $handler = clone $this;
         $handler->pivot = $relation;
+
+        return $handler;
+    }
+
+    public function forType(string $type): static
+    {
+        $handler = clone $this;
+        $handler->type = $type;
 
         return $handler;
     }
@@ -211,7 +227,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface
     {
         $expected = $filter->deserialize !== null ? ($filter->deserialize)($value) : $value;
         if ($this->isKeyOf($query->getModel(), $filter->column)) {
-            $expected = $this->storageKey($query->getModel(), $expected);
+            $expected = $this->storageKey($query->getModel(), $expected, $this->type);
         }
 
         $this->applyComparison($query, $filter->column, $filter->operator, $expected, $filter->key());
@@ -399,7 +415,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface
 
         $model = $query->getModel();
 
-        return \array_map(fn(mixed $member): mixed => $this->storageKey($model, $member), $members);
+        return \array_map(fn(mixed $member): mixed => $this->storageKey($model, $member, $this->type), $members);
     }
 
     private function isKeyOf(Model $model, string $column): bool
@@ -408,16 +424,25 @@ final class EloquentFilterHandler implements FilterHandlerInterface
     }
 
     /**
-     * `$value` decoded through the id encoder of the type `$model` serves, or as sent
-     * when the type has no encoder or the encoder doesn't recognise it.
+     * `$value` decoded through the id encoder of `$type`, the type the comparison targets.
+     * When nothing names a type, such as at a belongsTo leaf on a pivot model, the first
+     * type `$model` serves whose encoder recognises the value decodes it. As sent when no
+     * encoder recognises it.
      */
-    private function storageKey(Model $model, mixed $value): mixed
+    private function storageKey(Model $model, mixed $value, ?string $type = null): mixed
     {
         if ($this->encoderFor === null || !\is_string($value)) {
             return $value;
         }
 
-        return ($this->encoderFor)($model::class)?->decode($value) ?? $value;
+        foreach (($this->encoderFor)($model::class, $type) as $encoder) {
+            $decoded = $encoder->decode($value);
+            if ($decoded !== null) {
+                return $decoded;
+            }
+        }
+
+        return $value;
     }
 
     /**

@@ -105,6 +105,11 @@ final class CriteriaApplier
         // path, so a family's filter resolves per request too.
         $requested = FilterDefaults::apply($criteria->queryParameters->filter, $criteria->filters);
 
+        $type = $criteria->paths?->type;
+        if ($type !== null && $handler instanceof TargetsTypeInterface) {
+            $handler = $handler->forType($type);
+        }
+
         foreach (FilterMatcher::directives($requested, $criteria->filters, $criteria->request) as $directive) {
             $filter = $criteria->paths?->resolve($directive->filter) ?? $directive->filter;
             $query = $handler->apply($filter, $query, $directive->value);

@@ -160,10 +160,10 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         $this->idEncodersResolved = $idEncoders !== null;
         $this->applier = new CriteriaApplier();
         $this->windowExecutor = new WindowExecutor();
-        $this->filterHandler = new EloquentFilterHandler($filterArms, function (string $class): ?IdEncoderInterface {
-            $type = \array_search($class, $this->modelByType, true);
+        $this->filterHandler = new EloquentFilterHandler($filterArms, function (string $class, ?string $type): array {
+            $types = $type !== null ? [$type] : \array_keys($this->modelByType, $class, true);
 
-            return \is_string($type) ? $this->encoderFor($type) : null;
+            return \array_values(\array_filter(\array_map(fn(string $served): ?IdEncoderInterface => $this->encoderFor($served), $types)));
         });
         $this->sortHandler = new EloquentSortHandler($sortArms);
         $this->arrayFilterHandler = new ArrayFilterHandler();

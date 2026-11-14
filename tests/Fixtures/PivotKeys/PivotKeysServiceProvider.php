@@ -22,9 +22,10 @@ final class PivotKeysServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([PkTemplateResource::class, PkDefinitionResource::class]);
+        JsonApi::register([PkTemplateResource::class, PkDefinitionResource::class, PkLabelledDefinitionResource::class]);
 
-        $models = ['campaign-templates' => PkTemplate::class, 'placeholder-definitions' => PkDefinition::class];
+        // Labelled definitions come first, so a lookup by model class alone would pick their encoder.
+        $models = ['labelled-definitions' => PkDefinition::class, 'campaign-templates' => PkTemplate::class, 'placeholder-definitions' => PkDefinition::class];
         JsonApi::provider(new EloquentDataProvider($models), priority: -128);
         JsonApi::persister(new EloquentDataPersister($models), priority: -128);
         $this->app->singleton(RelationshipLoadStateInterface::class, EloquentRelationshipLoadState::class);

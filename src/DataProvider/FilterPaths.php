@@ -21,10 +21,12 @@ final readonly class FilterPaths
 {
     /**
      * @param list<FieldInterface> $fields the inventory of the type the filters run against
+     * @param string|null          $type   the type the filters run against, when known
      */
     public function __construct(
         private ThroughPathResolver $resolver,
         private array $fields,
+        public ?string $type = null,
     ) {}
 
     /**
@@ -33,7 +35,7 @@ final readonly class FilterPaths
      */
     public static function of(SerializerResolverInterface $server, ?AbstractResource $resource): ?self
     {
-        return $resource === null ? null : new self(ThroughPathResolver::forResolver($server), $resource->allFields());
+        return $resource === null ? null : new self(ThroughPathResolver::forResolver($server), $resource->allFields(), $resource::$type !== '' ? $resource::$type : null);
     }
 
     /**

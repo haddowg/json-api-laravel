@@ -280,6 +280,18 @@ final class EloquentPivotKeysTest extends Orchestra
         self::assertSame([], $this->definitionNames('filter[idIs]=not-a-uuid'));
     }
 
+    #[Test]
+    public function eachTypeOfASharedModelDecodesIdsWithItsOwnEncoder(): void
+    {
+        $labelled = fn(string $query): array => \array_column(\array_column($this->rows($this->read('/api/labelled-definitions?sort=name&' . $query), 'data'), 'attributes'), 'name');
+
+        self::assertSame(['company', 'last-name'], $labelled('filter[id]=def-' . self::LAST_NAME . ',def-' . self::COMPANY));
+        self::assertSame(['first-name'], $labelled('filter[idIs]=def-' . self::FIRST_NAME));
+        self::assertSame([], $labelled('filter[idIs]=' . self::FIRST_NAME));
+        self::assertSame(['first-name'], $this->definitionNames('filter[idIs]=' . self::FIRST_NAME));
+        self::assertSame([], $this->definitionNames('filter[idIs]=def-' . self::FIRST_NAME));
+    }
+
     private function link(int $template, string $definition, ?string $override): void
     {
         $row = new PkTemplatePlaceholder(['template_id' => $template, 'definition_id' => self::bytes($definition), 'default_override' => $override]);
