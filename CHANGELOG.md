@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.15.0](https://github.com/haddowg/json-api-laravel/compare/v2.14.1...v2.15.0) (2026-11-14)
+
+
+### Features
+
+* filter a pivot relation by the pivot row's own associations ([#271](https://github.com/haddowg/json-api-laravel/issues/271)) ([d6e5aa4](https://github.com/haddowg/json-api-laravel/commit/d6e5aa4c70a251d112611b1b8aa35531cbbbcd83))
+
+
+### Bug Fixes
+
+* filter pivots through belongsTo leaves and encoded keys ([#270](https://github.com/haddowg/json-api-laravel/issues/270)) ([02a629c](https://github.com/haddowg/json-api-laravel/commit/02a629c514d3f04ae02f1e2db9623b9c5df55823))
+
 ## [2.14.1](https://github.com/haddowg/json-api-laravel/compare/v2.14.0...v2.14.1) (2026-11-13)
 
 
