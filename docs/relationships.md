@@ -363,7 +363,10 @@ have targets is still unused here, which a filter on the definition itself can't
 provider builds the `EXISTS` the way Eloquent's `whereHas` does from the pivot model, so it
 correlates to the join row the query already holds. A path that ends on one of the row's
 relations compares the key of the model it reaches, decoded through the encoder of the type that
-model serves. When no type with an encoder serves that model, a value-object cast on its key,
+model serves. The relation's related type and the type declaring the relation name the models
+they serve, so another type over the same model with a different encoder doesn't matter there;
+a model several types serve with different encoders, none of them named, is refused at route
+registration and `jsonapi:optimize`. When no type with an encoder serves that model, a value-object cast on its key,
 such as a binary UUID cast, stores the value; a primitive, enum, encrypted or JSON cast leaves
 it as sent. A related type that stores one of its own relations as `pivot` would make the
 prefix ambiguous, so route registration and `jsonapi:optimize` refuse a pivot relation that

@@ -25,6 +25,7 @@ use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\Eloquent\ModelMapResolver;
 use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
 
 /**
@@ -77,6 +78,7 @@ final class FilterPathGuard
                     $type,
                     $relatedTypes[0],
                     FilterPaths::namedTypes($relatedFields, $relatedTypes[0], $type),
+                    static fn(): ?Model => self::pivotModel($map()[$type] ?? null, $relation),
                 );
             }
         }
@@ -93,26 +95,35 @@ final class FilterPathGuard
      * @param string                                        $owner   the type whose filters these are, as messages name it
      * @param string                                        $runsOn  the type the filters run against, whose model the path starts from
      * @param list<string>                                  $named
+     * @param (\Closure(): ?Model)|null                       $pivotModel the pivot model a `pivot.`-prefixed path starts from, for a pivot relation's filters
      */
-    private static function guardEncoders(\Closure $encoders, \Closure $map, array $filters, string $owner, string $runsOn, array $named): void
+    private static function guardEncoders(\Closure $encoders, \Closure $map, array $filters, string $owner, string $runsOn, array $named, ?\Closure $pivotModel = null): void
     {
         foreach ($filters as $filter) {
             if ($filter instanceof WhereGroup) {
-                self::guardEncoders($encoders, $map, $filter->children, $owner, $runsOn, $named);
+                self::guardEncoders($encoders, $map, $filter->children, $owner, $runsOn, $named, $pivotModel);
 
                 continue;
             }
 
-            if (!$filter instanceof TraversesPath || ($filter->resolvedPath()?->endsOnRelation() ?? false)) {
+            if (!$filter instanceof TraversesPath) {
                 continue;
             }
 
-            $model = $map()[$runsOn] ?? null;
-            if ($model === null) {
-                continue;
-            }
+            // A path from the pivot row walks the pivot model, and one ending on a relation
+            // compares the key of the model it reaches.
+            $path = $filter->throughPath();
+            if (\str_starts_with($path, RelationCriteriaFactory::PIVOT_PREFIX)) {
+                $row = $pivotModel !== null ? $pivotModel() : null;
+                $target = $row !== null ? self::leafTarget($row, \explode('.', \substr($path, \strlen(RelationCriteriaFactory::PIVOT_PREFIX))), true) : null;
+            } else {
+                if ($filter->resolvedPath()?->endsOnRelation() ?? false) {
+                    continue;
+                }
 
-            $target = self::leafTarget(new $model(), \explode('.', $filter->throughPath()));
+                $model = $map()[$runsOn] ?? null;
+                $target = $model !== null ? self::leafTarget(new $model(), \explode('.', $path)) : null;
+            }
             if ($target === null) {
                 continue;
             }
@@ -129,10 +140,11 @@ final class FilterPathGuard
      * relation methods, or null when the path doesn't end on one.
      *
      * @param list<string> $segments
+     * @param bool         $relationLeaf whether a leaf naming any relation compares the key of the model it reaches, as a path from the pivot row does
      *
      * @return class-string<Model>|null
      */
-    private static function leafTarget(Model $model, array $segments): ?string
+    private static function leafTarget(Model $model, array $segments, bool $relationLeaf = false): ?string
     {
         $leaf = \array_pop($segments);
         if ($leaf === null) {
@@ -150,9 +162,39 @@ final class FilterPathGuard
             $model = $relation->getRelated();
         }
 
+        if ($relationLeaf && \method_exists($model, $leaf)) {
+            $relation = $model->{$leaf}();
+            if ($relation instanceof Relation) {
+                return $relation->getRelated()::class;
+            }
+        }
+
         $belongsTo = BelongsToLeaf::of($model, $leaf);
 
         return $belongsTo !== null ? $belongsTo->getRelated()::class : null;
+    }
+
+    /**
+     * The pivot model `$relation` joins through, from a fresh `$parent`, or null when the
+     * relation isn't a `belongsToMany` of that model.
+     *
+     * @param class-string<Model>|null $parent
+     */
+    private static function pivotModel(?string $parent, RelationInterface $relation): ?Model
+    {
+        if ($parent === null) {
+            return null;
+        }
+
+        $model = new $parent();
+        $method = $relation->column() ?? $relation->name();
+        if (!\method_exists($model, $method)) {
+            return null;
+        }
+
+        $belongsToMany = $model->{$method}();
+
+        return $belongsToMany instanceof BelongsToMany ? $belongsToMany->newPivot() : null;
     }
 
     private static function encoderOf(SerializerResolverInterface $resolver, string $type): ?IdEncoderInterface
