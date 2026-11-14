@@ -51,8 +51,29 @@ windowing; polymorphic to-many on the reference provider; a `workbench/` app rat
 `examples/`; the `InteractsWithJsonApi` trait + `TestResponse` macros rather than a browser
 helper; `jsonapi:*` artisan commands; and an `optimize` pipeline rather than cache warmers.
 
+## Release passes
+
+A release ships only when its work is complete across every repo it touches: core
+(`haddowg/json-api`), the Symfony bundle, the Laravel adapter and json-api-ts. A feature,
+enhancement or fix is not released while it has open questions, known bugs or follow-up tasks.
+Related work found while building it, in any of those repos, belongs to the same pass. Separate
+PRs keep each change small and reviewable and merge when green, but the release PRs wait until
+the whole pass is polished.
+
+- Before releasing, every caveat, edge case and deferred item from the pass is either done or
+  decided. Each new rule has its consumers in step: documented parameters and the error codes
+  they cause, runtime behaviour in both adapters, the TS client types and the MCP.
+- Build the adapters against unreleased core locally, so Laravel parity and byte-compatibility
+  hold before core releases.
+- A generator contract bump ships with codegen and MCP already accepting it, released ahead of
+  the documents that carry it.
+- Release core, then the bundle, then Laravel, then json-api-ts, approving each release PR's
+  workflow runs and reviewing its generated output.
+- A released regression that blocks a consumer ships as a patch straight away, and it is complete
+  too: related bugs or gaps found while fixing it go into the same patch pass across every repo.
+
 ## Working with the sibling core
 
 Core is developed as a sibling checkout at `../json-api`. When a change here needs a core
-change, make it in core first (with an ADR + tests), get it green and released there, then
-consume it. Prefer fixing core over working around it locally.
+change, make it in core first (with an ADR + tests) and get it green there, then build this
+package against that unreleased core locally. Both release together in one release pass. Prefer fixing core over working around it locally.
