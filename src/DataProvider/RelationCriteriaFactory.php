@@ -101,8 +101,9 @@ final class RelationCriteriaFactory
      * from the separate {@see \haddowg\JsonApi\Serializer\RelationshipCountInterface} seam).
      *
      * `$includePivotFields` keeps the relation's `pivot.`-columned filters and adds the pivot
-     * field sorts, a cursor window's keyset included. `$queriesPivotColumns` adds the pivot
-     * sorts alone, for a Relationship Queries window, which takes no pivot filter.
+     * field sorts, a cursor window's keyset included, for a read the provider runs over the
+     * join: the related and relationship endpoints, a Relationship Queries window and its
+     * count. `$queriesPivotColumns` adds the pivot sorts alone.
      *
      * `$request` rides onto the criteria so a filter or sort family can resolve a requested key.
      * `$server` lets each matched filter's traversal path resolve against the related type's
@@ -119,6 +120,7 @@ final class RelationCriteriaFactory
         ?JsonApiRequestInterface $request = null,
         ?bool $queriesPivotColumns = null,
         ?SerializerResolverInterface $server = null,
+        ?string $parentType = null,
     ): CollectionCriteria {
         $relationFilters = $includePivotFields ? $relation->allFilters() : self::withoutPivotFilters($relation->allFilters());
         $sorts = $this->sortsFor($relatedResource, $relation, $includePivotFields || ($queriesPivotColumns ?? false));
@@ -133,7 +135,7 @@ final class RelationCriteriaFactory
             wantsCount: $wantsCount,
             request: $request,
             defaultSortResolved: $resolved,
-            paths: $server !== null ? FilterPaths::of($server, $relatedResource) : null,
+            paths: $server !== null ? FilterPaths::of($server, $relatedResource, $parentType) : null,
         );
     }
 

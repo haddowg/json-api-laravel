@@ -25,6 +25,7 @@ use haddowg\JsonApi\Resource\Filter\WhereNull;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
+use haddowg\JsonApiLaravel\DataProvider\TargetsTypeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
@@ -79,7 +80,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMan
  *
  * @implements FilterHandlerInterface<Builder<Model>>
  */
-final class EloquentFilterHandler implements FilterHandlerInterface
+final class EloquentFilterHandler implements FilterHandlerInterface, TargetsTypeInterface
 {
     /**
      * Data-layer-specific remediation appended to the core {@see UnsupportedFilter}
@@ -106,9 +107,24 @@ final class EloquentFilterHandler implements FilterHandlerInterface
     private readonly NaiveDateTimeStorage $dates;
 
     /**
-     * @param iterable<EloquentFilterArmInterface<Model>> $arms author arms for custom filter types, consulted in order
+     * The type the filters run against, whose encoder decodes an id compared with the
+     * query model's key.
      */
-    public function __construct(iterable $arms = [])
+    private ?string $type = null;
+
+    /**
+     * The types the declaration of the filters being applied names, which settle the
+     * encoder of a model several types serve.
+     *
+     * @var list<string>
+     */
+    private array $named = [];
+
+    /**
+     * @param iterable<EloquentFilterArmInterface<Model>>                                  $arms       author arms for custom filter types, consulted in order
+     * @param ModelEncoders|null                                                     $encoders   picks the id encoder a compared key decodes with
+     */
+    public function __construct(iterable $arms = [], private readonly ?ModelEncoders $encoders = null)
     {
         $this->arms = \is_array($arms) ? \array_values($arms) : \iterator_to_array($arms, false);
         $this->dates = new NaiveDateTimeStorage();
@@ -124,6 +140,15 @@ final class EloquentFilterHandler implements FilterHandlerInterface
     {
         $handler = clone $this;
         $handler->pivot = $relation;
+
+        return $handler;
+    }
+
+    public function forType(string $type, array $named = []): static
+    {
+        $handler = clone $this;
+        $handler->type = $type;
+        $handler->named = $named !== [] ? $named : [$type];
 
         return $handler;
     }
@@ -161,8 +186,8 @@ final class EloquentFilterHandler implements FilterHandlerInterface
             $filter instanceof Where => $this->where($filter, $query, $value),
             $filter instanceof WhereIn => $this->whereIn($query, $filter->column, $this->members($filter, $value), false),
             $filter instanceof WhereNotIn => $this->whereIn($query, $filter->column, $this->members($filter, $value), true),
-            $filter instanceof WhereIdIn => $this->whereIn($query, $filter->column, $this->members($filter, $value), false),
-            $filter instanceof WhereIdNotIn => $this->whereIn($query, $filter->column, $this->members($filter, $value), true),
+            $filter instanceof WhereIdIn => $this->whereIn($query, $filter->column, $this->idMembers($query, $filter, $value), false),
+            $filter instanceof WhereIdNotIn => $this->whereIn($query, $filter->column, $this->idMembers($query, $filter, $value), true),
             $filter instanceof WhereNull => $query->whereNull($this->qualify($query, $filter->column)),
             $filter instanceof WhereNotNull => $query->whereNotNull($this->qualify($query, $filter->column)),
             $filter instanceof WhereThrough => $this->whereThrough($query, $filter, $value),
@@ -207,6 +232,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface
     private function where(Where $filter, Builder $query, mixed $value): void
     {
         $expected = $filter->deserialize !== null ? ($filter->deserialize)($value) : $value;
+        if ($this->isKeyOf($query->getModel(), $filter->column)) {
+            $expected = $this->storageKey($query->getModel(), $expected, $filter, $filter->column, $this->type);
+        }
 
         $this->applyComparison($query, $filter->column, $filter->operator, $expected, $filter->key());
     }
@@ -281,6 +309,14 @@ final class EloquentFilterHandler implements FilterHandlerInterface
         $query->whereHas(
             $relation,
             function (Builder $sub) use ($leaf, $filter, $expected): void {
+                $belongsTo = $leaf !== null ? BelongsToLeaf::of($sub->getModel(), $leaf) : null;
+                if ($belongsTo !== null) {
+                    $operator = \in_array($filter->operator, ['!=', '<>'], true) ? '<>' : '=';
+                    $this->compare($sub, $belongsTo->getForeignKeyName(), $operator, $this->storageKey($belongsTo->getRelated(), $expected, $filter, $filter->throughPath()));
+
+                    return;
+                }
+
                 $this->applyComparison($sub, $leaf ?? $sub->getModel()->getKeyName(), $filter->operator, $expected, $filter->key());
             },
         );
@@ -306,7 +342,15 @@ final class EloquentFilterHandler implements FilterHandlerInterface
 
         $query->whereHas(
             $relation,
-            function (Builder $sub) use ($leaf, $values): void {
+            function (Builder $sub) use ($leaf, $values, $filter): void {
+                $belongsTo = $leaf !== null ? BelongsToLeaf::of($sub->getModel(), $leaf) : null;
+                if ($belongsTo !== null) {
+                    $related = $belongsTo->getRelated();
+                    $this->whereIn($sub, $belongsTo->getForeignKeyName(), \array_map(fn(mixed $value): mixed => $this->storageKey($related, $value, $filter, $filter->throughPath()), $values), false);
+
+                    return;
+                }
+
                 $this->whereIn($sub, $leaf ?? $sub->getModel()->getKeyName(), $values, false);
             },
         );
@@ -337,6 +381,55 @@ final class EloquentFilterHandler implements FilterHandlerInterface
         }
 
         return [\implode('.', \array_slice($segments, 0, -1)), $segments[\count($segments) - 1]];
+    }
+
+    /**
+     * A set filter's members matched against the model key: each a wire id decoded through
+     * the id encoder of the type the model serves, so a binary UUID key matches its
+     * canonical string. A value the encoder doesn't recognise is compared as sent.
+     *
+     * @param Builder<Model> $query
+     *
+     * @return list<mixed>
+     */
+    private function idMembers(Builder $query, WhereIdIn|WhereIdNotIn $filter, mixed $value): array
+    {
+        $members = $this->members($filter, $value);
+        if (!$this->isKeyOf($query->getModel(), $filter->column)) {
+            return $members;
+        }
+
+        $model = $query->getModel();
+
+        return \array_map(fn(mixed $member): mixed => $this->storageKey($model, $member, $filter, $filter->column, $this->type), $members);
+    }
+
+    private function isKeyOf(Model $model, string $column): bool
+    {
+        return $this->pivot === null && !$this->rows && ($column === $model->getKeyName() || $column === $model->getQualifiedKeyName());
+    }
+
+    /**
+     * `$value` decoded through the id encoder {@see ModelEncoders} picks for `$model`: that
+     * of `$type`, the type the comparison targets, when it serves the model, otherwise the
+     * one the types serving it, or the types the declaration names, agree on. As sent when
+     * the encoder doesn't recognise it.
+     *
+     * @throws \LogicException when the types serving the model disagree and nothing names one
+     */
+    private function storageKey(Model $model, mixed $value, FilterInterface $filter, string $path, ?string $type = null): mixed
+    {
+        if ($this->encoders === null || !\is_string($value)) {
+            return $value;
+        }
+
+        try {
+            $encoder = $this->encoders->for($model::class, $type, $this->named);
+        } catch (AmbiguousModelEncoder $e) {
+            throw new \LogicException(AmbiguousModelEncoder::forFilter($this->type ?? '', $filter->key(), $path, $e->model, $e->candidates), 0, $e);
+        }
+
+        return $encoder?->decode($value) ?? $value;
     }
 
     /**

@@ -736,6 +736,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 includePivotFields: $pivotQuery,
                 request: $request,
                 server: $server,
+                parentType: $type,
             );
 
             // Validate a client-supplied filter value against the merged vocabulary (related
@@ -879,6 +880,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                     null,
                     request: $request,
                     server: $server,
+                    parentType: $type,
                 );
                 $this->filterValidator->validate($filter, $criteria->filters, $request, $criteria->paths);
 
@@ -1129,6 +1131,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             includePivotFields: $this->pivotQueryingProvider($parent, $relation) !== null,
             request: $request,
             server: $server,
+            parentType: $type,
         );
         $this->filterValidator->validate($queryParameters->filter, $criteria->filters, $request, $criteria->paths);
 
