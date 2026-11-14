@@ -18,8 +18,12 @@ use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Filter\HasDefaultValue;
 use haddowg\JsonApi\Resource\Filter\RelationFilters;
 use haddowg\JsonApi\Resource\Filter\TargetsColumn;
+use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
+use haddowg\JsonApi\Resource\Filter\WhereHas;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
+use haddowg\JsonApi\Resource\Filter\WhereThrough;
+use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
 use haddowg\JsonApi\Resource\Sort\RelationSorts;
 use haddowg\JsonApi\Resource\Sort\SortByField;
@@ -333,14 +337,17 @@ final class RelationCriteriaFactory
     }
 
     /**
-     * Whether a filter compares a `pivot.`-prefixed column. A filter with no single column
-     * (an existence or dotted-path filter, a custom filter) never targets the pivot.
+     * Whether a filter starts from the pivot row: a `pivot.`-prefixed column, or the
+     * `pivot.`-prefixed relationship of an existence filter or path of a traversal. Any
+     * other filter, a custom one or a group, never targets the pivot.
      */
     private static function targetsPivot(FilterInterface $filter): bool
     {
         $column = match (true) {
             $filter instanceof TargetsColumn => $filter->targetColumn(),
             $filter instanceof WhereNull, $filter instanceof WhereNotNull => $filter->column,
+            $filter instanceof WhereHas, $filter instanceof WhereDoesntHave => $filter->relationship,
+            $filter instanceof WhereThrough, $filter instanceof WhereThroughIn => $filter->path,
             default => '',
         };
 

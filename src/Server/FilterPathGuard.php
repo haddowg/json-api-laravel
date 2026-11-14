@@ -11,15 +11,21 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\ThroughPathResolver;
 use haddowg\JsonApi\Resource\Filter\TraversesPath;
+use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
 use haddowg\JsonApi\Resource\Filter\WhereGroup;
+use haddowg\JsonApi\Resource\Filter\WhereHas;
+use haddowg\JsonApi\Resource\Filter\WhereThrough;
+use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\AmbiguousModelEncoder;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\BelongsToLeaf;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\ModelEncoders;
 use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
+use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\Eloquent\ModelMapResolver;
 use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
 
 /**
@@ -63,6 +69,7 @@ final class FilterPathGuard
 
             $related = $resolver->serializerFor($relatedTypes[0]);
             if ($related instanceof AbstractResource) {
+                self::refusePivotClash($resource, $relation, $related);
                 $relatedFields = $related->allFields();
                 self::guardEncoders(
                     $encoders,
@@ -71,6 +78,7 @@ final class FilterPathGuard
                     $type,
                     $relatedTypes[0],
                     FilterPaths::namedTypes($relatedFields, $relatedTypes[0], $type),
+                    static fn(): ?Model => self::pivotModel($map()[$type] ?? null, $relation),
                 );
             }
         }
@@ -87,26 +95,35 @@ final class FilterPathGuard
      * @param string                                        $owner   the type whose filters these are, as messages name it
      * @param string                                        $runsOn  the type the filters run against, whose model the path starts from
      * @param list<string>                                  $named
+     * @param (\Closure(): ?Model)|null                       $pivotModel the pivot model a `pivot.`-prefixed path starts from, for a pivot relation's filters
      */
-    private static function guardEncoders(\Closure $encoders, \Closure $map, array $filters, string $owner, string $runsOn, array $named): void
+    private static function guardEncoders(\Closure $encoders, \Closure $map, array $filters, string $owner, string $runsOn, array $named, ?\Closure $pivotModel = null): void
     {
         foreach ($filters as $filter) {
             if ($filter instanceof WhereGroup) {
-                self::guardEncoders($encoders, $map, $filter->children, $owner, $runsOn, $named);
+                self::guardEncoders($encoders, $map, $filter->children, $owner, $runsOn, $named, $pivotModel);
 
                 continue;
             }
 
-            if (!$filter instanceof TraversesPath || ($filter->resolvedPath()?->endsOnRelation() ?? false)) {
+            if (!$filter instanceof TraversesPath) {
                 continue;
             }
 
-            $model = $map()[$runsOn] ?? null;
-            if ($model === null) {
-                continue;
-            }
+            // A path from the pivot row walks the pivot model, and one ending on a relation
+            // compares the key of the model it reaches.
+            $path = $filter->throughPath();
+            if (\str_starts_with($path, RelationCriteriaFactory::PIVOT_PREFIX)) {
+                $row = $pivotModel !== null ? $pivotModel() : null;
+                $target = $row !== null ? self::leafTarget($row, \explode('.', \substr($path, \strlen(RelationCriteriaFactory::PIVOT_PREFIX))), true) : null;
+            } else {
+                if ($filter->resolvedPath()?->endsOnRelation() ?? false) {
+                    continue;
+                }
 
-            $target = self::leafTarget(new $model(), \explode('.', $filter->throughPath()));
+                $model = $map()[$runsOn] ?? null;
+                $target = $model !== null ? self::leafTarget(new $model(), \explode('.', $path)) : null;
+            }
             if ($target === null) {
                 continue;
             }
@@ -123,10 +140,11 @@ final class FilterPathGuard
      * relation methods, or null when the path doesn't end on one.
      *
      * @param list<string> $segments
+     * @param bool         $relationLeaf whether a leaf naming any relation compares the key of the model it reaches, as a path from the pivot row does
      *
      * @return class-string<Model>|null
      */
-    private static function leafTarget(Model $model, array $segments): ?string
+    private static function leafTarget(Model $model, array $segments, bool $relationLeaf = false): ?string
     {
         $leaf = \array_pop($segments);
         if ($leaf === null) {
@@ -144,9 +162,39 @@ final class FilterPathGuard
             $model = $relation->getRelated();
         }
 
+        if ($relationLeaf && \method_exists($model, $leaf)) {
+            $relation = $model->{$leaf}();
+            if ($relation instanceof Relation) {
+                return $relation->getRelated()::class;
+            }
+        }
+
         $belongsTo = BelongsToLeaf::of($model, $leaf);
 
         return $belongsTo !== null ? $belongsTo->getRelated()::class : null;
+    }
+
+    /**
+     * The pivot model `$relation` joins through, from a fresh `$parent`, or null when the
+     * relation isn't a `belongsToMany` of that model.
+     *
+     * @param class-string<Model>|null $parent
+     */
+    private static function pivotModel(?string $parent, RelationInterface $relation): ?Model
+    {
+        if ($parent === null) {
+            return null;
+        }
+
+        $model = new $parent();
+        $method = $relation->column() ?? $relation->name();
+        if (!\method_exists($model, $method)) {
+            return null;
+        }
+
+        $belongsToMany = $model->{$method}();
+
+        return $belongsToMany instanceof BelongsToMany ? $belongsToMany->newPivot() : null;
     }
 
     private static function encoderOf(SerializerResolverInterface $resolver, string $type): ?IdEncoderInterface
@@ -177,5 +225,48 @@ final class FilterPathGuard
         $container = Container::getInstance();
 
         return $container->bound(ModelMapResolver::class) ? $container->make(ModelMapResolver::class)->map() : [];
+    }
+
+    /**
+     * Refuses a relation filter whose relationship or path starts at the pivot row when
+     * the related type declares a relation stored as `pivot`, since `pivot.` would then name
+     * either the row or that relation.
+     *
+     * @throws \LogicException naming the type, relation and filter
+     */
+    private static function refusePivotClash(AbstractResource $resource, RelationInterface $relation, AbstractResource $related): void
+    {
+        $clash = null;
+        foreach ($related->allFields() as $field) {
+            if ($field instanceof RelationInterface && $field->column() === 'pivot') {
+                $clash = $field;
+
+                break;
+            }
+        }
+        if ($clash === null) {
+            return;
+        }
+
+        foreach ($relation->allFilters() as $filter) {
+            $target = match (true) {
+                $filter instanceof WhereHas, $filter instanceof WhereDoesntHave => $filter->relationship,
+                $filter instanceof WhereThrough, $filter instanceof WhereThroughIn => $filter->path,
+                default => '',
+            };
+            if (!\str_starts_with($target, RelationCriteriaFactory::PIVOT_PREFIX)) {
+                continue;
+            }
+
+            throw new \LogicException(\sprintf(
+                'Relation "%s" of type "%s" declares filter "%s" on "%s", which starts at the pivot row, but its related type "%s" has a relation "%s" stored as "pivot", so the "pivot." prefix is ambiguous. Store that relation under another name.',
+                $relation->name(),
+                $resource::$type,
+                $filter->key(),
+                $target,
+                $related::$type,
+                $clash->name(),
+            ));
+        }
     }
 }

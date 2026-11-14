@@ -13,6 +13,7 @@ use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\FilterFamily;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\Where;
+use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
 
 /**
  * `rankedBooks` carries a `rank` pivot column, filtered by the exact `rank` key and by the
@@ -34,7 +35,10 @@ final class ReadingListResource extends AbstractResource
                     FilterFamily::make('join', static fn(string $suffix, JsonApiRequestInterface $request): ?FilterInterface => $suffix === 'rank'
                         ? Where::make('join.rank', 'pivot.rank')->integer()->build()
                         : null),
-                ),
+                    // A filter that starts at the pivot row, dropped wherever the pivot column filters are.
+                    WhereDoesntHave::make('unannotated', 'pivot.notes'),
+                )
+                ->countable(),
         ];
     }
 }
