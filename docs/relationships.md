@@ -342,6 +342,30 @@ one documents as the plain `string` every query parameter is on the wire, not as
 or date its column really holds. The constraint buys both a `400` on a mistyped value and
 the narrower OpenAPI type.
 
+The relationship filters can start from the pivot row too, through the relations its pivot
+model declares. A `pivot.` prefix on the relationship or path makes `WhereHas`,
+`WhereDoesntHave`, `WhereThrough` and `WhereThroughIn` test the row that links this parent to
+each member, not the member itself. The relation needs a pivot model, named with `->using()`:
+
+```php
+BelongsToMany::make('placeholders', 'placeholder-definitions')
+    ->fields(Str::make('defaultOverride')->storedAs('default_override')->nullable())
+    ->withFilters(
+        WhereDoesntHave::make('unused', 'pivot.targets'),            // filter[unused]: no target on this template's row
+        WhereThrough::make('targetName', 'pivot.targets.name'),      // filter[targetName]=header
+        WhereThroughIn::make('target', 'pivot.targets')->uuid(),     // filter[target]=<id>,<id>
+    ),
+```
+
+`GET /campaign-templates/7/placeholders?filter[unused]` lists the definitions template 7 uses
+whose row on template 7 has no targets. A definition shared with another template where it does
+have targets is still unused here, which a filter on the definition itself can't express. The
+provider builds the `EXISTS` the way Eloquent's `whereHas` does from the pivot model, so it
+correlates to the join row the query already holds. A path that ends on one of the row's
+relations compares the key of the model it reaches, decoded through the encoder of the type that
+model serves, or set through the cast on its key when no type serves it. These filters apply
+where the pivot column filters do.
+
 ### Computed pivot fields
 
 A pivot field declared with `computed()` or `computedUsing()` is computed: it has no column,

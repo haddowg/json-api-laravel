@@ -10,6 +10,7 @@ use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\Where;
+use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
 use haddowg\JsonApi\Resource\Filter\WhereHas;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
@@ -25,7 +26,15 @@ final class PkTemplateResource extends AbstractResource
             Str::make('name')->sortable(),
             BelongsToMany::make('placeholders', 'placeholder-definitions')
                 ->fields(Str::make('defaultOverride')->storedAs('default_override')->nullable()->sortable()->build())
-                ->withFilters(Where::make('defaultOverride', 'pivot.default_override'))
+                ->withFilters(
+                    Where::make('defaultOverride', 'pivot.default_override'),
+                    // Filters on the pivot row's own relations: a definition is unused on
+                    // this template when its row here has no target.
+                    WhereDoesntHave::make('unused', 'pivot.targets'),
+                    WhereHas::make('used', 'pivot.targets'),
+                    WhereThrough::make('targetName', 'pivot.targets.name'),
+                    WhereThroughIn::make('target', 'pivot.targets')->uuid(),
+                )
                 ->withData()
                 ->paginate(PagePaginator::make())
                 ->countable(),

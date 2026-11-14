@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Fixtures\PivotKeys;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 use Illuminate\Support\Str;
 
@@ -57,4 +58,11 @@ final class PkTemplatePlaceholder extends Pivot
         return $this->belongsTo(PkDefinition::class, 'definition_id');
     }
 
+    /**
+     * @return BelongsToMany<PkPlaceholderTarget, $this>
+     */
+    public function targets(): BelongsToMany
+    {
+        return $this->belongsToMany(PkPlaceholderTarget::class, 'pk_placeholder_target_links', 'placeholder_id', 'target_id');
+    }
 }

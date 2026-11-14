@@ -29,6 +29,7 @@ use haddowg\JsonApiLaravel\DataProvider\TargetsTypeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
+use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
 
 /**
  * Executes core's filter value objects against an Eloquent query {@see Builder},
@@ -179,6 +180,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         // Each arm mutates the builder in place (Eloquent's `where*` are fluent
         // setters); the same `$query` is returned so the applier threads one builder.
         match (true) {
+            // A pivot relation's `pivot.`-prefixed relationship filters start from the row
+            // that links the parent to each member.
+            $this->startsFromRow($filter) => $this->applyOnRow($query, $filter, $value),
             // Server-composed boolean groups: recurse each child into a nested
             // where()/orWhere() closure, fanning the group's value uniformly.
             $filter instanceof WhereAll => $this->whereAll($query, $filter, $value),
@@ -384,6 +388,135 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     }
 
     /**
+     * Whether `$filter` is a relationship filter whose relationship or path starts with
+     * `pivot.`, on a query built off a pivot `belongsToMany`.
+     */
+    private function startsFromRow(FilterInterface $filter): bool
+    {
+        if ($this->pivot === null) {
+            return false;
+        }
+
+        $path = match (true) {
+            $filter instanceof WhereHas, $filter instanceof WhereDoesntHave => $filter->relationship,
+            $filter instanceof WhereThrough, $filter instanceof WhereThroughIn => $filter->path,
+            default => '',
+        };
+
+        return \str_starts_with($path, RelationCriteriaFactory::PIVOT_PREFIX);
+    }
+
+    /**
+     * Applies a relationship filter that starts from the pivot row: an `EXISTS` over the
+     * first relation of the pivot model, built as Eloquent builds a `whereHas` from the
+     * pivot model, so it correlates to the join table row the query already holds. The
+     * rest of the path walks on from there, and a path that ends on a relation compares
+     * the key of the model it reaches, as stored.
+     *
+     * @param Builder<Model> $query
+     */
+    private function applyOnRow(Builder $query, FilterInterface $filter, mixed $value): void
+    {
+        \assert($this->pivot !== null);
+        [$path, $negate] = match (true) {
+            $filter instanceof WhereHas => [$filter->relationship, false],
+            $filter instanceof WhereDoesntHave => [$filter->relationship, true],
+            $filter instanceof WhereThrough => [$filter->path, false],
+            $filter instanceof WhereThroughIn => [$filter->path, false],
+            default => throw new \LogicException('Only relationship filters start from the pivot row.'),
+        };
+
+        $values = [];
+        if ($filter instanceof WhereThroughIn) {
+            $values = $filter->list->members($value);
+            if ($values === []) {
+                $query->whereRaw('1 = 0');
+
+                return;
+            }
+        }
+
+        $segments = \explode('.', \substr($path, \strlen(RelationCriteriaFactory::PIVOT_PREFIX)));
+        $name = \array_shift($segments);
+        $row = $this->pivot->newPivot();
+        $relation = \method_exists($row, $name) ? $row->{$name}() : null;
+        if (!$relation instanceof EloquentRelation) {
+            throw new \LogicException(\sprintf('Filter "%s" starts from the pivot row, but "%s" is not a relation of %s.', $filter->key(), $name, $row::class));
+        }
+
+        /** @var Builder<Model> $rowQuery */
+        $rowQuery = $row->newQueryWithoutRelationships();
+        /** @var Builder<Model> $exists */
+        $exists = $relation->getRelationExistenceQuery($relation->getRelated()->newQueryWithoutRelationships(), $rowQuery);
+
+        $leaf = match (true) {
+            $filter instanceof WhereThrough => fn(Builder $sub, ?string $column) => $this->compareLeaf($sub, $column, $filter, $value),
+            $filter instanceof WhereThroughIn => fn(Builder $sub, ?string $column) => $this->leafIn($sub, $column, $filter, $values),
+            default => null,
+        };
+
+        if ($leaf === null) {
+            if ($segments !== []) {
+                $exists->whereHas(\implode('.', $segments));
+            }
+        } else {
+            $column = \array_pop($segments);
+            if ($segments === []) {
+                $leaf($exists, $column);
+            } else {
+                $exists->whereHas(\implode('.', $segments), static fn(Builder $sub) => $leaf($sub, $column));
+            }
+        }
+
+        $query->addWhereExistsQuery($exists->toBase(), 'and', $negate);
+    }
+
+    /**
+     * A row-rooted traversal's comparison at the end of its path: a column, the foreign key
+     * of a `belongsTo` it names, or, when the path ends on a relation, the key of the model
+     * reached, each value in the form the model stores.
+     *
+     * @param Builder<Model> $query
+     */
+    private function compareLeaf(Builder $query, ?string $column, WhereThrough $filter, mixed $value): void
+    {
+        $operator = $filter->operator;
+        $belongsTo = $column !== null ? BelongsToLeaf::of($query->getModel(), $column) : null;
+        if ($column !== null && $belongsTo === null) {
+            $this->applyComparison($query, $column, $operator, $value, $filter->key());
+
+            return;
+        }
+
+        $model = $belongsTo?->getRelated() ?? $query->getModel();
+        $this->compare(
+            $query,
+            $belongsTo?->getForeignKeyName() ?? $model->getKeyName(),
+            \in_array($operator, ['!=', '<>'], true) ? '<>' : '=',
+            $this->storageKey($model, $value, $filter, $filter->path),
+        );
+    }
+
+    /**
+     * {@see compareLeaf()} for a list of values, as an `IN`.
+     *
+     * @param Builder<Model> $query
+     * @param list<mixed>    $values
+     */
+    private function leafIn(Builder $query, ?string $column, WhereThroughIn $filter, array $values): void
+    {
+        $belongsTo = $column !== null ? BelongsToLeaf::of($query->getModel(), $column) : null;
+        if ($column !== null && $belongsTo === null) {
+            $this->whereIn($query, $column, $values, false);
+
+            return;
+        }
+
+        $model = $belongsTo?->getRelated() ?? $query->getModel();
+        $this->whereIn($query, $belongsTo?->getForeignKeyName() ?? $model->getKeyName(), \array_map(fn(mixed $value): mixed => $this->storageKey($model, $value, $filter, $filter->path), $values), false);
+    }
+
+    /**
      * A set filter's members matched against the model key: each a wire id decoded through
      * the id encoder of the type the model serves, so a binary UUID key matches its
      * canonical string. A value the encoder doesn't recognise is compared as sent.
@@ -413,23 +546,44 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      * `$value` decoded through the id encoder {@see ModelEncoders} picks for `$model`: that
      * of `$type`, the type the comparison targets, when it serves the model, otherwise the
      * one the types serving it, or the types the declaration names, agree on. As sent when
-     * the encoder doesn't recognise it.
+     * the encoder doesn't recognise it. A model no type with an encoder serves, such as a
+     * target only a pivot model reaches, stores its key through its own cast when it
+     * declares one.
      *
      * @throws \LogicException when the types serving the model disagree and nothing names one
      */
     private function storageKey(Model $model, mixed $value, FilterInterface $filter, string $path, ?string $type = null): mixed
     {
-        if ($this->encoders === null || !\is_string($value)) {
+        if (!\is_string($value)) {
             return $value;
         }
 
         try {
-            $encoder = $this->encoders->for($model::class, $type, $this->named);
+            $encoder = $this->encoders?->for($model::class, $type, $this->named);
         } catch (AmbiguousModelEncoder $e) {
             throw new \LogicException(AmbiguousModelEncoder::forFilter($this->type ?? '', $filter->key(), $path, $e->model, $e->candidates), 0, $e);
         }
 
-        return $encoder?->decode($value) ?? $value;
+        return $encoder !== null ? $encoder->decode($value) ?? $value : $this->castKey($model, $value);
+    }
+
+    /**
+     * `$value` as `$model` stores its key, set through the cast on it when it declares one.
+     */
+    private function castKey(Model $model, string $value): mixed
+    {
+        if (!$model->hasCast($model->getKeyName())) {
+            return $value;
+        }
+
+        try {
+            $stored = $model->newInstance();
+            $stored->setAttribute($model->getKeyName(), $value);
+
+            return $stored->getAttributes()[$model->getKeyName()] ?? $value;
+        } catch (\Throwable) {
+            return $value;
+        }
     }
 
     /**
