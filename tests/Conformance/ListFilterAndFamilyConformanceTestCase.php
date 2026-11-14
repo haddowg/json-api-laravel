@@ -267,12 +267,26 @@ abstract class ListFilterAndFamilyConformanceTestCase extends Orchestra
     #[Test]
     #[Group('spec:profiles')]
     #[Group('spec:fetching-filtering')]
-    public function aRelatedQueryDropsAFamilysPivotFilterLikeTheExactOne(): void
+    public function aRelatedQueryTreatsAFamilysPivotFilterLikeTheExactOne(): void
     {
+        $responses = [];
         foreach (['rank', 'join.rank'] as $key) {
             $response = $this->get('/api/readingLists/1?include=rankedBooks&relatedQuery[rankedBooks][filter][' . $key . ']=1', $this->profileHeaders(self::RELATIONSHIP_QUERIES_PROFILE));
 
-            $this->assertUnrecognized($response, $key);
+            if (!$this->queriesPivotColumns()) {
+                // A provider without the pivot join drops the pivot filter, whichever key named it.
+                $this->assertUnrecognized($response, $key);
+
+                continue;
+            }
+
+            $response->assertOk();
+            $responses[$key] = $response->json('data.relationships.rankedBooks.data');
+        }
+
+        if ($this->queriesPivotColumns()) {
+            self::assertSame([['type' => 'books', 'id' => '2']], $responses['rank'] ?? null);
+            self::assertSame($responses['rank'] ?? null, $responses['join.rank'] ?? null);
         }
     }
 

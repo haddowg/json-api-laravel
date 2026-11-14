@@ -244,6 +244,14 @@ and a `uuid()` id anything that isn't a UUID. A bad member, or an id the encoder
 is a `400 FILTER_VALUE_INVALID` at `filter[<key>]` before the query runs. The
 OpenAPI document types each list's items by the related id.
 
+A path may also end on a `belongsTo` of a model that isn't a resource, such as a pivot model's
+`definition`: `WhereThroughIn::make('definition', 'placeholderRows.definition')` walks the
+template's rows and compares each row's foreign key. Each value goes through the id encoder of
+the type the related model serves, so a canonical UUID matches a binary key. The id filters do
+the same for the model's own key: `WhereIdIn`, `WhereIdNotIn` and a `Where` on the key decode
+each value through the type's encoder, and compare a value the encoder doesn't recognise as
+sent.
+
 A path ending on a `MorphTo` or `MorphToMany` has no single id to compare. Route registration
 and `jsonapi:optimize` resolve every declared filter, relation-scoped ones included, and fail
 with the path that ends on one, as they do for a `WhereThrough` on a relationship that declares

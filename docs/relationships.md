@@ -327,10 +327,11 @@ a `DateTime` by default), and a `DateTime` follows the server's
 the column: one it leaves uncast is read the way a `datetime` cast would read it, in the
 app's timezone.
 
-Each stored pivot field is also a sort key (`?sort=-position`), and the declared pivot filters apply,
-on both the related endpoint and the relationship endpoint. Both page at the relation's
-paginator, and both read each member's pivot row in the same query as the page, so `meta.pivot`
-costs no extra query. The Eloquent provider resolves the `pivot.` prefix against the join table.
+Each stored pivot field is also a sort key (`?sort=-position`), and the declared pivot filters apply
+on the related endpoint, the relationship endpoint, a Relationship Queries
+`relatedQuery[<relation>][filter]` window on an include, and the `?withCount` total that window
+reports. The endpoints page at the relation's paginator, and both read each member's pivot row in
+the same query as the page, so `meta.pivot` costs no extra query. The Eloquent provider resolves the `pivot.` prefix against the join table.
 A provider that stores no pivot columns, such as the in-memory one, answers a pivot sort or
 filter key with a `400`.
 

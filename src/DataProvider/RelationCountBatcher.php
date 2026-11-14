@@ -85,7 +85,7 @@ final class RelationCountBatcher
 
         $counts = [];
         foreach ($relations as $relation) {
-            $criteria = $this->countCriteria($server, $relation, $request);
+            $criteria = $this->countCriteria($server, $relation, $request, $provider instanceof QueriesPivotColumnsInterface && $provider->queriesPivotColumns($parents[0], $relation));
 
             // An identified MorphToMany counts its pairs, with each scoped type admitted first.
             if ($this->identifiedMembers !== null && IdentifiedMorphMembers::identifies($relation)) {
@@ -168,7 +168,7 @@ final class RelationCountBatcher
      * related column). In the common no-relatedQuery case the request's filter is empty, so
      * the criteria is inert and the count is raw membership.
      */
-    private function countCriteria(Server $server, RelationInterface $relation, JsonApiRequestInterface $request): CollectionCriteria
+    private function countCriteria(Server $server, RelationInterface $relation, JsonApiRequestInterface $request, bool $pivotColumns): CollectionCriteria
     {
         $relatedType = $relation->relatedTypes()[0] ?? null;
         $relatedResource = $relatedType !== null && Polymorphism::isMonomorphic($relation)
@@ -188,6 +188,7 @@ final class RelationCountBatcher
             $relatedResource,
             $relation,
             null,
+            includePivotFields: $pivotColumns,
             request: $request,
             server: $server,
         );

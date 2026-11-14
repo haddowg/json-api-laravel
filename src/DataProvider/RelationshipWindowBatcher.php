@@ -285,7 +285,7 @@ final class RelationshipWindowBatcher
             $relation,
             $window,
             wantsCount: $wantsCount,
-            queriesPivotColumns: $this->queriesPivotColumns($type, $parents[0], $relation),
+            includePivotFields: $this->queriesPivotColumns($type, $parents[0], $relation),
             request: $request,
             server: $server,
         );
@@ -477,7 +477,7 @@ final class RelationshipWindowBatcher
                 $relatedResource,
                 $relation,
                 null,
-                queriesPivotColumns: $this->queriesPivotColumns($type, $parent, $relation),
+                includePivotFields: $this->queriesPivotColumns($type, $parent, $relation),
                 request: $request,
                 server: $server,
             );

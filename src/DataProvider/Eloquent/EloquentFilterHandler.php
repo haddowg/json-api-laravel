@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\DataProvider\Eloquent;
 
+use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\FilterHandlerInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
@@ -27,6 +28,7 @@ use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo as EloquentBelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
 
 /**
@@ -106,9 +108,10 @@ final class EloquentFilterHandler implements FilterHandlerInterface
     private readonly NaiveDateTimeStorage $dates;
 
     /**
-     * @param iterable<EloquentFilterArmInterface<Model>> $arms author arms for custom filter types, consulted in order
+     * @param iterable<EloquentFilterArmInterface<Model>>                    $arms         author arms for custom filter types, consulted in order
+     * @param (\Closure(class-string<Model>): ?IdEncoderInterface)|null $encoderFor the id encoder of the type a model class serves, or null when it has none
      */
-    public function __construct(iterable $arms = [])
+    public function __construct(iterable $arms = [], private readonly ?\Closure $encoderFor = null)
     {
         $this->arms = \is_array($arms) ? \array_values($arms) : \iterator_to_array($arms, false);
         $this->dates = new NaiveDateTimeStorage();
@@ -161,8 +164,8 @@ final class EloquentFilterHandler implements FilterHandlerInterface
             $filter instanceof Where => $this->where($filter, $query, $value),
             $filter instanceof WhereIn => $this->whereIn($query, $filter->column, $this->members($filter, $value), false),
             $filter instanceof WhereNotIn => $this->whereIn($query, $filter->column, $this->members($filter, $value), true),
-            $filter instanceof WhereIdIn => $this->whereIn($query, $filter->column, $this->members($filter, $value), false),
-            $filter instanceof WhereIdNotIn => $this->whereIn($query, $filter->column, $this->members($filter, $value), true),
+            $filter instanceof WhereIdIn => $this->whereIn($query, $filter->column, $this->idMembers($query, $filter, $value), false),
+            $filter instanceof WhereIdNotIn => $this->whereIn($query, $filter->column, $this->idMembers($query, $filter, $value), true),
             $filter instanceof WhereNull => $query->whereNull($this->qualify($query, $filter->column)),
             $filter instanceof WhereNotNull => $query->whereNotNull($this->qualify($query, $filter->column)),
             $filter instanceof WhereThrough => $this->whereThrough($query, $filter, $value),
@@ -207,6 +210,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface
     private function where(Where $filter, Builder $query, mixed $value): void
     {
         $expected = $filter->deserialize !== null ? ($filter->deserialize)($value) : $value;
+        if ($this->isKeyOf($query->getModel(), $filter->column)) {
+            $expected = $this->storageKey($query->getModel(), $expected);
+        }
 
         $this->applyComparison($query, $filter->column, $filter->operator, $expected, $filter->key());
     }
@@ -281,6 +287,14 @@ final class EloquentFilterHandler implements FilterHandlerInterface
         $query->whereHas(
             $relation,
             function (Builder $sub) use ($leaf, $filter, $expected): void {
+                $belongsTo = $leaf !== null ? $this->belongsToLeaf($sub->getModel(), $leaf) : null;
+                if ($belongsTo !== null) {
+                    $operator = \in_array($filter->operator, ['!=', '<>'], true) ? '<>' : '=';
+                    $this->compare($sub, $belongsTo->getForeignKeyName(), $operator, $this->storageKey($belongsTo->getRelated(), $expected));
+
+                    return;
+                }
+
                 $this->applyComparison($sub, $leaf ?? $sub->getModel()->getKeyName(), $filter->operator, $expected, $filter->key());
             },
         );
@@ -307,6 +321,14 @@ final class EloquentFilterHandler implements FilterHandlerInterface
         $query->whereHas(
             $relation,
             function (Builder $sub) use ($leaf, $values): void {
+                $belongsTo = $leaf !== null ? $this->belongsToLeaf($sub->getModel(), $leaf) : null;
+                if ($belongsTo !== null) {
+                    $related = $belongsTo->getRelated();
+                    $this->whereIn($sub, $belongsTo->getForeignKeyName(), \array_map(fn(mixed $value): mixed => $this->storageKey($related, $value), $values), false);
+
+                    return;
+                }
+
                 $this->whereIn($sub, $leaf ?? $sub->getModel()->getKeyName(), $values, false);
             },
         );
@@ -337,6 +359,65 @@ final class EloquentFilterHandler implements FilterHandlerInterface
         }
 
         return [\implode('.', \array_slice($segments, 0, -1)), $segments[\count($segments) - 1]];
+    }
+
+    /**
+     * The `belongsTo` relation `$leaf` names on `$model` when a traversal path ends on a
+     * relation method rather than a column, such as a pivot model's `definition`, so the
+     * path compares the foreign key with the id of the model it points at. Null for a
+     * column.
+     *
+     * @return EloquentBelongsTo<Model, Model>|null
+     */
+    private function belongsToLeaf(Model $model, string $leaf): ?EloquentBelongsTo
+    {
+        if (!\method_exists($model, $leaf) || $model->hasAttributeMutator($leaf) || \array_key_exists($leaf, $model->getAttributes())) {
+            return null;
+        }
+
+        $relation = $model->{$leaf}();
+
+        /** @var EloquentBelongsTo<Model, Model>|null */
+        return $relation instanceof EloquentBelongsTo ? $relation : null;
+    }
+
+    /**
+     * A set filter's members matched against the model key: each a wire id decoded through
+     * the id encoder of the type the model serves, so a binary UUID key matches its
+     * canonical string. A value the encoder doesn't recognise is compared as sent.
+     *
+     * @param Builder<Model> $query
+     *
+     * @return list<mixed>
+     */
+    private function idMembers(Builder $query, WhereIdIn|WhereIdNotIn $filter, mixed $value): array
+    {
+        $members = $this->members($filter, $value);
+        if (!$this->isKeyOf($query->getModel(), $filter->column)) {
+            return $members;
+        }
+
+        $model = $query->getModel();
+
+        return \array_map(fn(mixed $member): mixed => $this->storageKey($model, $member), $members);
+    }
+
+    private function isKeyOf(Model $model, string $column): bool
+    {
+        return $this->pivot === null && !$this->rows && ($column === $model->getKeyName() || $column === $model->getQualifiedKeyName());
+    }
+
+    /**
+     * `$value` decoded through the id encoder of the type `$model` serves, or as sent
+     * when the type has no encoder or the encoder doesn't recognise it.
+     */
+    private function storageKey(Model $model, mixed $value): mixed
+    {
+        if ($this->encoderFor === null || !\is_string($value)) {
+            return $value;
+        }
+
+        return ($this->encoderFor)($model::class)?->decode($value) ?? $value;
     }
 
     /**
