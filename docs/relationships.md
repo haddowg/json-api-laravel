@@ -363,7 +363,9 @@ have targets is still unused here, which a filter on the definition itself can't
 provider builds the `EXISTS` the way Eloquent's `whereHas` does from the pivot model, so it
 correlates to the join row the query already holds. A path that ends on one of the row's
 relations compares the key of the model it reaches, decoded through the encoder of the type that
-model serves, or set through the cast on its key when no type serves it. These filters apply
+model serves. When no type with an encoder serves that model, a value-object cast on its key,
+such as a binary UUID cast, stores the value; a primitive, enum, encrypted or JSON cast leaves
+it as sent. These filters apply
 where the pivot column filters do.
 
 ### Computed pivot fields

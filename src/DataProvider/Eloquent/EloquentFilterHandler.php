@@ -26,6 +26,8 @@ use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\TargetsTypeInterface;
+use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Contracts\Database\Eloquent\CastsInboundAttributes;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
@@ -547,8 +549,8 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      * of `$type`, the type the comparison targets, when it serves the model, otherwise the
      * one the types serving it, or the types the declaration names, agree on. As sent when
      * the encoder doesn't recognise it. A model no type with an encoder serves, such as a
-     * target only a pivot model reaches, stores its key through its own cast when it
-     * declares one.
+     * target only a pivot model reaches, stores its key through its own value-object
+     * cast when it declares one.
      *
      * @throws \LogicException when the types serving the model disagree and nothing names one
      */
@@ -568,11 +570,16 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     }
 
     /**
-     * `$value` as `$model` stores its key, set through the cast on it when it declares one.
+     * `$value` as `$model` stores its key, when the key declares a value-object cast, a
+     * class implementing `CastsAttributes` or `CastsInboundAttributes` such as a binary UUID
+     * cast. A primitive cast, an enum, an encrypted or a JSON cast leaves the value as sent,
+     * since setting it would store nothing a client's value could match.
      */
     private function castKey(Model $model, string $value): mixed
     {
-        if (!$model->hasCast($model->getKeyName())) {
+        $cast = $model->getCasts()[$model->getKeyName()] ?? null;
+        $class = \is_string($cast) ? \explode(':', $cast, 2)[0] : null;
+        if ($class === null || !\class_exists($class) || !(\is_a($class, CastsAttributes::class, true) || \is_a($class, CastsInboundAttributes::class, true))) {
             return $value;
         }
 
