@@ -290,6 +290,24 @@ abstract class ListFilterAndFamilyConformanceTestCase extends Orchestra
         }
     }
 
+    #[Test]
+    #[Group('spec:profiles')]
+    #[Group('spec:fetching-filtering')]
+    public function aPivotRowFilterIsDroppedWhereverThePivotColumnFiltersAre(): void
+    {
+        if ($this->queriesPivotColumns()) {
+            self::markTestSkipped('The Eloquent provider applies pivot filters; EloquentPivotRowFiltersTest covers its row filters.');
+        }
+
+        $queries = $this->profileHeaders(self::RELATIONSHIP_QUERIES_PROFILE . ' ' . self::COUNTABLE_PROFILE);
+        foreach (['rank' => '1', 'unannotated' => '1'] as $key => $value) {
+            $this->assertUnrecognized($this->request('/api/readingLists/1/rankedBooks?filter[' . $key . ']=' . $value), $key);
+            $this->assertUnrecognized($this->request('/api/readingLists/1/relationships/rankedBooks?filter[' . $key . ']=' . $value), $key);
+            $this->assertUnrecognized($this->get('/api/readingLists/1?include=rankedBooks&relatedQuery[rankedBooks][filter][' . $key . ']=' . $value, $queries), $key);
+            $this->assertUnrecognized($this->get('/api/readingLists?withCount=rankedBooks&relatedQuery[rankedBooks][filter][' . $key . ']=' . $value, $queries), $key);
+        }
+    }
+
     // --- relationship queries ------------------------------------------------
 
     #[Test]
