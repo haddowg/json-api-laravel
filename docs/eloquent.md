@@ -247,10 +247,16 @@ OpenAPI document types each list's items by the related id.
 A path may also end on a `belongsTo` of a model that isn't a resource, such as a pivot model's
 `definition`: `WhereThroughIn::make('definition', 'placeholderRows.definition')` walks the
 template's rows and compares each row's foreign key. Each value goes through the id encoder of
-the type the related model serves, so a canonical UUID matches a binary key. The id filters do
-the same for the model's own key: `WhereIdIn`, `WhereIdNotIn` and a `Where` on the key decode
-each value through the type's encoder, and compare a value the encoder doesn't recognise as
-sent.
+the type the related model serves, so a canonical UUID matches a binary key. When several types
+serve that model, the first whose encoder recognises the value decodes it. A path naming the
+raw foreign-key column, `placeholderRows.definition_id`, compares the same way, as long as the
+model declares the `belongsTo` with a `BelongsTo` return type so it can be found. Any other
+column is compared as sent, since Eloquent knows nothing of its stored form.
+
+The id filters decode the model's own key too: `WhereIdIn`, `WhereIdNotIn` and a `Where` on
+the key decode each value through the encoder of the type the filter runs against, the related
+type on a relation's endpoints and windows, and compare a value the encoder doesn't recognise
+as sent. Two types sharing one model each decode with their own encoder.
 
 A path ending on a `MorphTo` or `MorphToMany` has no single id to compare. Route registration
 and `jsonapi:optimize` resolve every declared filter, relation-scoped ones included, and fail

@@ -256,6 +256,16 @@ final class EloquentPivotKeysTest extends Orchestra
     }
 
     #[Test]
+    public function aPathNamingTheRawForeignKeyColumnComparesLikeTheRelation(): void
+    {
+        self::assertSame(['10', '20'], $this->templateIds('filter[definitionColumn]=' . self::FIRST_NAME));
+        self::assertSame(['10', '20'], $this->templateIds('filter[definitionColumn]=' . self::LAST_NAME . ',' . self::COMPANY));
+        self::assertSame(['20'], $this->templateIds('filter[definitionColumnIs]=' . self::COMPANY));
+        self::assertSame([], $this->templateIds('filter[definitionColumnIs]=01932f5e-1a2b-7c3d-8e4f-0000000000ff'));
+        self::assertSame(['20'], $this->templateIds('filter[overrideIs]=Acme'));
+    }
+
+    #[Test]
     public function aTemplateIsFilteredThroughItsPivotRelation(): void
     {
         self::assertSame(['10'], $this->templateIds('filter[placeholder]=' . self::LAST_NAME));

@@ -114,6 +114,13 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      */
     private ?string $type = null;
 
+    /**
+     * The relation method whose foreign key a model's column is, by model class and column,
+     * or null when none is.
+     *
+     * @var array<string, ?string>
+     */
+    private static array $owningRelations = [];
 
     /**
      * @param iterable<EloquentFilterArmInterface<Model>>                                  $arms       author arms for custom filter types, consulted in order
@@ -303,7 +310,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         $query->whereHas(
             $relation,
             function (Builder $sub) use ($leaf, $filter, $expected): void {
-                $belongsTo = $leaf !== null ? $this->belongsToLeaf($sub->getModel(), $leaf) : null;
+                $belongsTo = $leaf !== null ? $this->belongsToLeaf($sub->getModel(), $leaf) ?? $this->belongsToOwning($sub->getModel(), $leaf) : null;
                 if ($belongsTo !== null) {
                     $operator = \in_array($filter->operator, ['!=', '<>'], true) ? '<>' : '=';
                     $this->compare($sub, $belongsTo->getForeignKeyName(), $operator, $this->storageKey($belongsTo->getRelated(), $expected));
@@ -337,7 +344,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         $query->whereHas(
             $relation,
             function (Builder $sub) use ($leaf, $values): void {
-                $belongsTo = $leaf !== null ? $this->belongsToLeaf($sub->getModel(), $leaf) : null;
+                $belongsTo = $leaf !== null ? $this->belongsToLeaf($sub->getModel(), $leaf) ?? $this->belongsToOwning($sub->getModel(), $leaf) : null;
                 if ($belongsTo !== null) {
                     $related = $belongsTo->getRelated();
                     $this->whereIn($sub, $belongsTo->getForeignKeyName(), \array_map(fn(mixed $value): mixed => $this->storageKey($related, $value), $values), false);
@@ -392,6 +399,47 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         }
 
         $relation = $model->{$leaf}();
+
+        /** @var EloquentBelongsTo<Model, Model>|null */
+        return $relation instanceof EloquentBelongsTo ? $relation : null;
+    }
+
+    /**
+     * The `belongsTo` whose foreign key is the column `$leaf` on `$model`, such as a pivot
+     * model's `definition_id`, so a path naming the raw column compares it exactly as the
+     * path naming the relation does. Found among the model's public relation methods that
+     * declare a `BelongsTo` return type and take no argument; null when none holds it.
+     *
+     * @return EloquentBelongsTo<Model, Model>|null
+     */
+    private function belongsToOwning(Model $model, string $leaf): ?EloquentBelongsTo
+    {
+        $key = $model::class . "\0" . $leaf;
+        if (!\array_key_exists($key, self::$owningRelations)) {
+            self::$owningRelations[$key] = null;
+            foreach ((new \ReflectionClass($model))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
+                $type = $method->getReturnType();
+                if ($method->isStatic() || $method->getNumberOfRequiredParameters() > 0 || !$type instanceof \ReflectionNamedType
+                    || !\is_a($type->getName(), EloquentBelongsTo::class, true) || $method->getDeclaringClass()->getName() === Model::class) {
+                    continue;
+                }
+
+                $relation = $method->invoke($model);
+                // A morphTo's foreign key points at several models, so no one key decodes it.
+                if ($relation instanceof EloquentBelongsTo && !$relation instanceof \Illuminate\Database\Eloquent\Relations\MorphTo && $relation->getForeignKeyName() === $leaf) {
+                    self::$owningRelations[$key] = $method->getName();
+
+                    break;
+                }
+            }
+        }
+
+        $name = self::$owningRelations[$key];
+        if ($name === null) {
+            return null;
+        }
+
+        $relation = $model->{$name}();
 
         /** @var EloquentBelongsTo<Model, Model>|null */
         return $relation instanceof EloquentBelongsTo ? $relation : null;
