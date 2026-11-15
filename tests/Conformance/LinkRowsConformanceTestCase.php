@@ -215,6 +215,30 @@ abstract class LinkRowsConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:crud')]
+    public function aWriteNamingAMissingMemberIsNotFoundAndWritesNoRow(): void
+    {
+        $before = ['items' => $this->members($this->data('/api/boards/1/relationships/items')), 'looseItems' => $this->members($this->data('/api/boards/1/relationships/looseItems'))];
+        $writes = [
+            ['PATCH', '/api/boards/1/relationships/items', ['data' => [['type' => 'notes', 'id' => '1'], ['type' => 'notes', 'id' => '99']]]],
+            ['POST', '/api/boards/1/relationships/items', ['data' => [['type' => 'photos', 'id' => '99']]]],
+            ['PATCH', '/api/boards/1', ['data' => ['type' => 'boards', 'id' => '1', 'relationships' => ['items' => ['data' => [['type' => 'notes', 'id' => '99']]]]]]],
+            ['PATCH', '/api/boards/1/relationships/looseItems', ['data' => [['type' => 'notes', 'id' => '99']]]],
+            ['POST', '/api/boards/1/relationships/looseItems', ['data' => [['type' => 'photos', 'id' => '99']]]],
+        ];
+        foreach ($writes as [$method, $uri, $document]) {
+            $response = $this->write($method, $uri, $document);
+            self::assertSame(404, $response->getStatusCode(), $method . ' ' . $uri . ': ' . $response->getContent());
+        }
+
+        self::assertSame($before, ['items' => $this->members($this->data('/api/boards/1/relationships/items')), 'looseItems' => $this->members($this->data('/api/boards/1/relationships/looseItems'))]);
+
+        $response = $this->write('DELETE', '/api/boards/1/relationships/items', ['data' => [['type' => 'notes', 'id' => '99']]]);
+        self::assertSame(200, $response->getStatusCode(), (string) $response->getContent());
+        self::assertSame($before['items'], $this->members($this->data('/api/boards/1/relationships/items')));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
     public function aMistypedPivotValueIsRefused(): void
     {
         $response = $this->write('PATCH', '/api/boards/1/relationships/items', ['data' => [

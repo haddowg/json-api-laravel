@@ -8,6 +8,7 @@ use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApi\Server\Server;
@@ -22,7 +23,10 @@ use haddowg\JsonApi\Server\Server;
  * type's own endpoint makes; one that doesn't is a `404`, whether the row is hidden or absent.
  * A to-many replace also keeps the members the client cannot see: they are added back to the
  * linkage the persister applies, so the replace changes only the visible members. Types served
- * by a reference provider (Eloquent, in-memory) are left to the persister, as before.
+ * by a reference provider (Eloquent, in-memory) are left to the persister, unless the write
+ * stores the ids without the persister resolving them, as a `fillUsing()` hook or a declared
+ * relation's link rows do: then each must still be a row its provider serves, checked in one
+ * batch per type where the provider offers one.
  */
 final class ScopedRelationshipWrites
 {
@@ -33,12 +37,20 @@ final class ScopedRelationshipWrites
 
     /**
      * Throws {@see ResourceNotFound} when an id in `$linkage` names a row its type's scoping
-     * provider does not return.
+     * provider does not return, or, when the write stores the ids `$unresolved`, a row any
+     * provider serving its type does not hold. A remove is never checked that way, as removing
+     * a non-member changes nothing.
      *
      * @throws ResourceNotFound
      */
-    public function assertVisible(RelationInterface $relation, ToOneRelationship|ToManyRelationship $linkage): void
-    {
+    public function assertVisible(
+        RelationInterface $relation,
+        ToOneRelationship|ToManyRelationship $linkage,
+        Mode $mode = Mode::Replace,
+        bool $unresolved = false,
+        ?Server $server = null,
+    ): void {
+        $unchecked = [];
         foreach ($this->identifiers($linkage) as $identifier) {
             if ($identifier->id === null) {
                 continue;
@@ -47,6 +59,42 @@ final class ScopedRelationshipWrites
             $type = $this->typeOf($relation, $identifier);
             $provider = $this->providers->scopingProviderFor($type);
             if ($provider !== null && $provider->fetchOne($type, $identifier->id) === null) {
+                throw new ResourceNotFound();
+            }
+            if ($provider === null && $unresolved && $mode !== Mode::Remove && $this->providers->supportsType($type)) {
+                $unchecked[$type][$identifier->id] = $identifier->id;
+            }
+        }
+
+        foreach ($unchecked as $type => $ids) {
+            $this->assertServed($type, \array_values($ids), $server);
+        }
+    }
+
+    /**
+     * Throws when a row of `$type` among `$ids` is one its provider does not serve: one batched
+     * read when the provider offers it, with each id the batch left out asked again through
+     * `fetchOne()`, since a batch can leave out a row it cannot key.
+     *
+     * @param list<string> $ids wire ids
+     *
+     * @throws ResourceNotFound
+     */
+    private function assertServed(string $type, array $ids, ?Server $server): void
+    {
+        $provider = $this->providers->forType($type);
+        $served = match (true) {
+            $provider instanceof AdmitsIdsInterface => $provider->admitIds($type, $ids),
+            $provider instanceof FetchesManyInterface && $server !== null && $server->hasSerializerFor($type) => \array_map(
+                static fn(object $row): string => $server->serializerFor($type)->getId($row),
+                $provider->fetchMany($type, $ids),
+            ),
+            default => [],
+        };
+        $served = \array_fill_keys($served, true);
+
+        foreach ($ids as $id) {
+            if (!isset($served[$id]) && $provider->fetchOne($type, $id) === null) {
                 throw new ResourceNotFound();
             }
         }

@@ -517,8 +517,15 @@ MorphTo::make('target', ['boards', 'cards'])
 ```
 
 The hook gets wire ids, so a type with an id encoder decodes them itself. Validation, the
-`cannot*` prohibitions, the policy gates and related-id scoping still run first. A hooked
-relation in a `POST` applies before the insert, like an attribute.
+`cannot*` prohibitions, the policy gates and related-id scoping still run first. No persister
+resolves the ids the hook gets, so each must also be one its type's provider serves, the
+Eloquent and in-memory providers included. One that isn't is a `404` (`RESOURCE_NOT_FOUND`),
+raised before the hook runs. A provider that implements `AdmitsIdsInterface` or
+`FetchesManyInterface` is asked once per type, any other through `fetchOne()`. A `DELETE` isn't
+checked against a reference provider, since removing a member the relation doesn't hold changes
+nothing, and a type no provider serves has nothing to check against. A declared relation's link
+rows are checked the same way before they're written. A hooked relation in a `POST` applies
+before the insert, like an attribute.
 
 ## Hidden relations
 

@@ -33,6 +33,7 @@ use haddowg\JsonApiLaravel\Discovery\SerializerDescriptor;
 use haddowg\JsonApiLaravel\Http\SunsetDate;
 use haddowg\JsonApiLaravel\OpenApi\DocumentUrlProvider;
 use haddowg\JsonApiLaravel\Operation\Operation;
+use haddowg\JsonApiLaravel\Operation\RelationFillHook;
 use haddowg\JsonApiLaravel\Scope\ScopeTables;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
@@ -658,14 +659,16 @@ final class MetadataSource
 
     /**
      * Linkage to a related type a provider of the application's own serves is checked
-     * against it, and the Eloquent persister refuses an id it can't decode or a global
-     * scope hides. The in-memory persister finds nothing to refuse, and a persister of the
-     * application's own may.
+     * against it, as is linkage a write stores without the persister resolving it, and the
+     * Eloquent persister refuses an id it can't decode or a global scope hides. The in-memory
+     * persister finds nothing to refuse, and a persister of the application's own may.
      */
     private function canMissLinkage(?DataPersisterInterface $persister, RelationInterface $relation): bool
     {
+        $unresolved = RelationFillHook::storesUnresolved($relation);
         foreach ($relation->relatedTypes() as $relatedType) {
-            if ($this->providers === null || $this->providers->scopingProviderFor($relatedType) !== null) {
+            if ($this->providers === null || $this->providers->scopingProviderFor($relatedType) !== null
+                || ($unresolved && $this->providers->supportsType($relatedType))) {
                 return true;
             }
         }
