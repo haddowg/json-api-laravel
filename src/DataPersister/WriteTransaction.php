@@ -17,8 +17,8 @@ namespace haddowg\JsonApiLaravel\DataPersister;
  *
  * Each write also opens an {@see AfterCommit} scope, with or without a transaction: the
  * callbacks registered during the write run once it commits, or once it returns when no
- * transaction opened, and are dropped when it throws. They wait for an application
- * transaction still open on the persister's connection.
+ * transaction opened, and are dropped when it throws. They wait for a transaction the
+ * application still holds open.
  */
 final class WriteTransaction
 {
@@ -33,8 +33,7 @@ final class WriteTransaction
     {
         $transaction = $persister instanceof TransactionalDataPersisterInterface && !($context?->isActive() ?? false) ? $persister : null;
 
-        $connection = $persister instanceof UsesDatabaseConnection ? $persister->transactionConnection() : null;
-        $afterCommit?->open($connection !== null ? [$connection] : []);
+        $afterCommit?->open();
         try {
             $transaction?->beginTransaction();
             try {

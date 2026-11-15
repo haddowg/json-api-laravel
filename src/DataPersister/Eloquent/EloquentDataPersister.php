@@ -27,7 +27,6 @@ use haddowg\JsonApiLaravel\DataPersister\PositionColumn;
 use haddowg\JsonApiLaravel\DataPersister\ReportsCurrentOwners;
 use haddowg\JsonApiLaravel\DataPersister\SoftDeleteCapable;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
-use haddowg\JsonApiLaravel\DataPersister\UsesDatabaseConnection;
 use haddowg\JsonApiLaravel\DataPersister\WritesLinkRowsInterface;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\NaiveDateTimeStorage;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
@@ -79,7 +78,7 @@ use Illuminate\Support\Facades\DB;
  * An application may extend it to override {@see instantiate()} or {@see delete()} for the
  * types it registers the subclass for, keeping every other write and capability.
  */
-class EloquentDataPersister extends AbstractDataPersister implements WritesLinkRowsInterface, TransactionalDataPersisterInterface, UsesDatabaseConnection, SoftDeleteCapable, ReportsCurrentOwners
+class EloquentDataPersister extends AbstractDataPersister implements WritesLinkRowsInterface, TransactionalDataPersisterInterface, SoftDeleteCapable, ReportsCurrentOwners
 {
     /**
      * @var array<string, class-string<Model>>
@@ -380,11 +379,6 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         }
 
         return $entity;
-    }
-
-    public function transactionConnection(): ConnectionInterface
-    {
-        return $this->connection();
     }
 
     /**

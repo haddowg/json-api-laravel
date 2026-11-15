@@ -168,13 +168,15 @@ the whole batch commits. Called outside any write, from an After* listener for i
 runs the callback at once.
 
 A write can itself run inside a transaction your application opened, for example when a
-command or a test calls the API from inside `DB::transaction()`. The write's commit then only
-closes a savepoint, so the callbacks wait for the application's transaction: the package hands
-them to `afterCommit()` on the persister's connection, they run when the application commits,
-after the write's After* events, and the application's rollback drops them. The Eloquent
-persister reports its connection through `UsesDatabaseConnection`; a custom persister on a
-database connection, or a decorator around the Eloquent one, implements it too to get the same
-wait.
+command calls the API from inside `DB::transaction()`. The write's commit then only closes a
+savepoint, so the callbacks wait for the application's transaction: when any database
+connection Laravel has resolved is still inside a transaction, the package hands them to that
+connection's `afterCommit()`. They run when the application commits, after the write's After*
+events, and the application's rollback drops them. The check doesn't know which connection the
+write used, so an open transaction on an unrelated connection holds the callbacks too, and its
+rollback drops them. A test using `DatabaseTransactions` or `RefreshDatabase` is not held back:
+Laravel's test transaction manager ignores the test's own transaction, so callbacks run when
+the write commits, as they do in production.
 
 The write has committed by the time a callback runs, so a callback that throws is logged at
 error level, the rest still run and the response goes out unchanged. `AfterCommit` is a

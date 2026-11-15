@@ -25,7 +25,7 @@ The transaction a single create, update, delete, relationship write, or action c
 _Avoid_: savepoint (a listener's own transaction nests as one inside it)
 
 **After-commit callback**:
-A callable added to the `AfterCommit` service, or through `ActionContext::afterCommit()`, during a write. It runs once the outermost write transaction commits, before the After* events, and is dropped on a rollback. A write with no transaction runs its callbacks once it returns, an Atomic Operations batch once the batch commits, and outside any write a callback runs at once. Inside a transaction the application opened on the persister's connection, they wait for the application's commit.
+A callable added to the `AfterCommit` service, or through `ActionContext::afterCommit()`, during a write. It runs once the outermost write transaction commits, before the After* events, and is dropped on a rollback. A write with no transaction runs its callbacks once it returns, an Atomic Operations batch once the batch commits, and outside any write a callback runs at once. While the application holds a transaction open on any resolved connection, they wait for its commit.
 _Avoid_: post-commit hook (the deferred After* dispatch an Atomic Operations batch queues)
 
 **Reference pair**:

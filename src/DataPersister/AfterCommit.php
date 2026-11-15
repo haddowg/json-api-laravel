@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\DataPersister;
 
 use Illuminate\Database\Connection;
-use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\DatabaseManager;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
@@ -25,9 +25,10 @@ use Psr\Log\NullLogger;
  *
  * A write can itself run inside a transaction the application opened, such as a test or a
  * command calling the package from inside `DB::transaction()`. When the outermost scope
- * commits while a connection its persister {@see UsesDatabaseConnection uses} is still in a
+ * commits while any connection the database manager has resolved is still in a
  * transaction, the callbacks go to that connection's `afterCommit()` instead: they run when
- * the application commits and are dropped when it rolls back.
+ * the application commits and are dropped when it rolls back. An open transaction on an
+ * unrelated connection holds them the same way.
  *
  * The write has committed by the time a callback runs, so a callback that throws is logged at
  * error level and the rest still run; the response goes out as it would have.
@@ -40,16 +41,15 @@ use Psr\Log\NullLogger;
 final class AfterCommit
 {
     /**
-     * The open scopes, innermost last: the callbacks registered inside each and the database
-     * connections its writes ran on.
+     * The open scopes, innermost last, each holding the callbacks registered inside it.
      *
-     * @var list<array{callbacks: list<callable(): mixed>, connections: list<ConnectionInterface>}>
+     * @var list<list<callable(): mixed>>
      */
     private array $scopes = [];
 
     private readonly LoggerInterface $logger;
 
-    public function __construct(?LoggerInterface $logger = null)
+    public function __construct(?LoggerInterface $logger = null, private readonly ?DatabaseManager $databases = null)
     {
         $this->logger = $logger ?? new NullLogger();
     }
@@ -68,45 +68,39 @@ final class AfterCommit
             return;
         }
 
-        $this->scopes[$last]['callbacks'][] = $callback;
+        $this->scopes[$last][] = $callback;
     }
 
     /**
-     * Opens a scope for a write on the given database connections.
-     *
-     * @param list<ConnectionInterface> $connections
+     * Opens a scope for a write.
      *
      * @internal
      */
-    public function open(array $connections = []): void
+    public function open(): void
     {
-        $this->scopes[] = ['callbacks' => [], 'connections' => $connections];
+        $this->scopes[] = [];
     }
 
     /**
      * Closes the innermost scope after its write committed. Its callbacks move to the scope
      * around it. When it was the outermost they run, or wait for the application's own
-     * transaction when one is still open on a connection the write used.
+     * transaction when one is still open.
      *
      * @internal
      */
     public function commit(): void
     {
-        $scope = \array_pop($this->scopes);
-        if ($scope === null) {
-            return;
-        }
+        $callbacks = \array_pop($this->scopes) ?? [];
 
         $outer = \array_key_last($this->scopes);
         if ($outer !== null) {
-            $this->scopes[$outer]['callbacks'] = [...$this->scopes[$outer]['callbacks'], ...$scope['callbacks']];
-            $this->scopes[$outer]['connections'] = [...$this->scopes[$outer]['connections'], ...$scope['connections']];
+            $this->scopes[$outer] = [...$this->scopes[$outer], ...$callbacks];
 
             return;
         }
 
-        if ($scope['callbacks'] !== []) {
-            $this->deliver($scope['callbacks'], $scope['connections']);
+        if ($callbacks !== []) {
+            $this->deliver($callbacks, \array_values($this->databases?->getConnections() ?? []));
         }
     }
 
@@ -131,17 +125,17 @@ final class AfterCommit
     }
 
     /**
-     * Runs the callbacks, or hands them to the first connection still inside a transaction
-     * the application opened, checking the rest again once that one commits.
+     * Runs the callbacks, or hands them to the first resolved connection still inside a
+     * transaction the application opened, checking the rest again once that one commits.
      *
-     * @param list<callable(): mixed>   $callbacks
-     * @param list<ConnectionInterface> $connections
+     * @param list<callable(): mixed> $callbacks
+     * @param list<Connection>        $connections
      */
     private function deliver(array $callbacks, array $connections): void
     {
         while ($connections !== []) {
             $connection = \array_shift($connections);
-            if ($connection instanceof Connection && $connection->transactionLevel() > 0) {
+            if ($connection->transactionLevel() > 0) {
                 $connection->afterCommit(function () use ($callbacks, $connections): void {
                     $this->deliver($callbacks, $connections);
                 });

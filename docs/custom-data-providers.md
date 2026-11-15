@@ -124,11 +124,6 @@ refused. `rollback()` has to undo everything since the matching `beginTransactio
 a transaction a listener opened inside it and left open, and must be safe to call after a
 failed `commit()`.
 
-A persister that writes through a Laravel database connection should also implement
-`UsesDatabaseConnection`, whose `transactionConnection()` returns that connection. Then
-[after-commit callbacks](lifecycle.md#running-code-after-the-commit) registered during a write
-wait for a transaction the application opened around it, as they do on the Eloquent persister.
-
 If your store has relations where a related row has one parent (a has-many over a foreign key
 on the related row), implement `ReportsCurrentOwners`. Its `currentOwners()` returns the
 incoming linkage members the parent doesn't hold yet, each with the parent that holds it now or
