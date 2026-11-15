@@ -4,11 +4,12 @@ Since every write and action runs in one package-owned transaction (ADR 0051), c
 
 ## Considered Options
 
-- **Build on `DB::afterCommit`.** Rejected: it follows an Eloquent connection only, so it has nothing to wait for on a persister that can't transact or on the in-memory witness, and it passes a callback's exception up into a response whose write has already committed.
+- **Build on `DB::afterCommit` alone.** Rejected: it follows an Eloquent connection only, so it has nothing to wait for on a persister that can't transact or on the in-memory witness, and it passes a callback's exception up into a response whose write has already committed. The package uses it only for the case below, wrapping each callback.
 
 ## Consequences
 
 - Callbacks follow the commit, not the status code. An action that returns `ErrorResponse::fromException()` commits, so its callbacks run.
 - A callback that throws is logged at error level and the rest still run, as the deferred After* hooks of an Atomic Operations batch are.
 - `AfterActionEvent` fires inside an action's transaction, so it runs before that action's callbacks, while a CRUD write's After* events run after them.
+- Callbacks wait for an outer application transaction. When the outermost scope commits while a connection the write's persister reports through `UsesDatabaseConnection` is still inside a transaction the application opened, as in a command or test wrapped in `DB::transaction()`, the callbacks go to that connection's `afterCommit()`: they run when the application commits, after the write's After* events, and its rollback drops them. A persister that reports no connection runs them when the package's write commits.
 - The handler resets `AfterCommit` at the start of each outermost dispatch, so a scope a failed request left open never reaches the next request an Octane or queue worker serves.

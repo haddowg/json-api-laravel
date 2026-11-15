@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
 use haddowg\JsonApiLaravel\Event\BeforeCreateEvent;
+use haddowg\JsonApiLaravel\Event\BeforeSaveEvent;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Test;
@@ -114,6 +115,53 @@ final class EloquentWriteTransactionConformanceTest extends WriteTransactionConf
         $this->atomic([['op' => 'add', 'data' => ['type' => 'txWidgets', 'attributes' => ['name' => 'fourth']]]])->assertStatus(200);
 
         self::assertSame([0, 0, 0], TxScenario::$callbackLevels);
+    }
+
+    #[Test]
+    public function callbacksWaitForTheApplicationsOwnTransactionToCommit(): void
+    {
+        TxScenario::$afterCommitOn = BeforeSaveEvent::class;
+        TxScenario::$actionAfterCommit = true;
+        TxScenario::$callbackThrows = true;
+
+        DB::transaction(function (): void {
+            $this->jsonApi()->withDocument($this->widget('third'))->post('/api/txWidgets')->assertStatus(201);
+            $this->jsonApi()->withHeader('Content-Type', 'application/vnd.api+json')->post('/api/txWidgets/1/-actions/stamp')->assertStatus(204);
+
+            self::assertSame(['AfterCreateEvent', 'AfterSaveEvent', 'AfterActionEvent'], TxScenario::$log);
+            self::assertSame(1, DB::connection()->transactionLevel());
+        });
+
+        self::assertSame(['AfterCreateEvent', 'AfterSaveEvent', 'AfterActionEvent', 'callback from BeforeSaveEvent', 'callback from stamp'], TxScenario::$log);
+        self::assertSame([0, 0], TxScenario::$callbackLevels);
+    }
+
+    #[Test]
+    public function callbacksAreDroppedWhenTheApplicationsOwnTransactionRollsBack(): void
+    {
+        TxScenario::$afterCommitOn = BeforeSaveEvent::class;
+
+        DB::beginTransaction();
+        $this->jsonApi()->withDocument($this->widget('third'))->post('/api/txWidgets')->assertStatus(201);
+        $this->atomic([['op' => 'add', 'data' => ['type' => 'txWidgets', 'attributes' => ['name' => 'fourth']]]])->assertStatus(200);
+        DB::rollBack();
+
+        self::assertSame(['AfterCreateEvent', 'AfterSaveEvent', 'AfterCreateEvent', 'AfterSaveEvent'], TxScenario::$log);
+        self::assertSame(['first', 'second'], $this->widgetNames());
+    }
+
+    #[Test]
+    public function anAtomicBatchsCallbacksWaitForTheApplicationsOwnTransaction(): void
+    {
+        TxScenario::$afterCommitOn = BeforeSaveEvent::class;
+
+        DB::transaction(function (): void {
+            $this->atomic([['op' => 'add', 'data' => ['type' => 'txWidgets', 'attributes' => ['name' => 'third']]]])->assertStatus(200);
+
+            self::assertSame(['AfterCreateEvent', 'AfterSaveEvent'], TxScenario::$log);
+        });
+
+        self::assertSame(['AfterCreateEvent', 'AfterSaveEvent', 'callback from BeforeSaveEvent'], TxScenario::$log);
     }
 
     protected function assertNoTransactionOpen(): void

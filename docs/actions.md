@@ -529,7 +529,9 @@ Callbacks run in the order the action registered them, after `AfterActionEvent` 
 response renders. They follow the commit, not the status code: an action that
 [returns an error response](#recording-a-rejection) still commits, so its callbacks run, while
 one that throws drops them. A `GET` action has no transaction, so its callbacks run once it
-returns, and a throw drops them there too. A callback that throws is logged at error level, the
+returns, and a throw drops them there too. When the action runs inside a transaction the
+application opened on the persister's connection, the callbacks
+[wait for that one](lifecycle.md#running-code-after-the-commit) to commit. A callback that throws is logged at error level, the
 remaining callbacks still run, and the response goes out as it would have.
 
 `afterCommit()` hands the callback to the `AfterCommit` service

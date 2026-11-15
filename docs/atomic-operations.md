@@ -67,7 +67,8 @@ after commit** — so a post-commit side effect never fires for an operation tha
 failure rolls back. Callbacks an operation adds to
 [`AfterCommit`](lifecycle.md#running-code-after-the-commit) wait for the batch in the same
 way: they run once the whole batch commits, in the order the operations added them and before
-the deferred After\* events, and a rollback drops every one of them. Note the split:
+the deferred After\* events, and a rollback drops every one of them. A batch sent from inside
+a transaction the application opened holds them until the application commits. Note the split:
 
 > [!NOTE]
 > **Eloquent model events fire mid-transaction** (on each `$model->save()`), while the

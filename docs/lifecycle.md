@@ -167,6 +167,15 @@ them once it returns, and an [Atomic Operations](atomic-operations.md) batch hol
 the whole batch commits. Called outside any write, from an After* listener for instance, `register()`
 runs the callback at once.
 
+A write can itself run inside a transaction your application opened, for example when a
+command or a test calls the API from inside `DB::transaction()`. The write's commit then only
+closes a savepoint, so the callbacks wait for the application's transaction: the package hands
+them to `afterCommit()` on the persister's connection, they run when the application commits,
+after the write's After* events, and the application's rollback drops them. The Eloquent
+persister reports its connection through `UsesDatabaseConnection`; a custom persister on a
+database connection, or a decorator around the Eloquent one, implements it too to get the same
+wait.
+
 The write has committed by the time a callback runs, so a callback that throws is logged at
 error level, the rest still run and the response goes out unchanged. `AfterCommit` is a
 singleton that the package clears at the start of each request, so an Octane or queue worker

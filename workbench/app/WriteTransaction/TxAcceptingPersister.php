@@ -12,6 +12,8 @@ use haddowg\JsonApiLaravel\DataPersister\AcceptedForProcessing;
 use haddowg\JsonApiLaravel\DataPersister\AfterCommit;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
+use haddowg\JsonApiLaravel\DataPersister\UsesDatabaseConnection;
+use Illuminate\Database\ConnectionInterface;
 
 /**
  * The `txWidgets` persister: passes every write to the store's own, except that with
@@ -19,7 +21,7 @@ use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
  * instead of writing it, registering an after-commit callback with {@see TxScenario::$queueOnAccept}
  * set, as a persister that queues its job once the accept commits does.
  */
-final readonly class TxAcceptingPersister implements DataPersisterInterface, TransactionalDataPersisterInterface
+final readonly class TxAcceptingPersister implements DataPersisterInterface, TransactionalDataPersisterInterface, UsesDatabaseConnection
 {
     public function __construct(
         private DataPersisterInterface&TransactionalDataPersisterInterface $inner,
@@ -54,6 +56,11 @@ final readonly class TxAcceptingPersister implements DataPersisterInterface, Tra
     public function mutateRelationship(string $type, object $entity, RelationInterface $relation, ToOneRelationship|ToManyRelationship $linkage, Mode $mode, bool $flush = true): object
     {
         return $this->inner->mutateRelationship($type, $entity, $relation, $linkage, $mode, $flush);
+    }
+
+    public function transactionConnection(): ?ConnectionInterface
+    {
+        return $this->inner instanceof UsesDatabaseConnection ? $this->inner->transactionConnection() : null;
     }
 
     public function beginTransaction(): void

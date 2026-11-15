@@ -34,6 +34,7 @@ use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\DataPersister\AfterCommit;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
+use haddowg\JsonApiLaravel\DataPersister\UsesDatabaseConnection;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\Http\JsonApiController;
 use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
@@ -174,7 +175,14 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
             throw $throwable;
         }
 
-        $this->afterCommit?->open();
+        $connections = [];
+        foreach ($this->transactional as $persister) {
+            $connection = $persister instanceof UsesDatabaseConnection ? $persister->transactionConnection() : null;
+            if ($connection !== null) {
+                $connections[] = $connection;
+            }
+        }
+        $this->afterCommit?->open($connections);
         $this->context->activate();
         $this->opened = true;
     }
