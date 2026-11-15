@@ -55,6 +55,10 @@ priority (`0`) shadows it, and it in turn shadows the `-256` auto pair.
 
 The provider owns the base query per type; the persister owns create/update/delete inside a
 `DB::transaction`, returning `201` + `Location` on create, `200` on update, `204` on delete.
+Each of those nests as a savepoint in the transaction the package opens around the whole write
+through the persister's `beginTransaction()`, so a row a Before* listener saved rolls back with
+it (see [lifecycle](lifecycle.md#the-writes-transaction)). `rollback()` returns the connection
+to the level it began at, closing any transaction a listener opened inside it.
 
 ### Writes through `on()` attributes
 
@@ -680,6 +684,7 @@ JSON:API operation context and defer After* work post-commit. Use model events f
 persistence concerns, JSON:API events for API concerns.
 
 > [!NOTE]
-> Inside an [atomic operations](atomic-operations.md) batch, model events fire **mid
-> transaction** (on each `save()`), while the JSON:API After* events defer to after the batch
-> commits. Keep side effects that must not fire on a rolled-back operation in an After* hook.
+> Model events fire **mid transaction** (on each `save()`), in a single write's transaction or
+> an [atomic operations](atomic-operations.md) batch's, while the JSON:API After* events fire
+> after the commit. Keep side effects that must not fire on a rolled-back operation in an
+> After* hook.

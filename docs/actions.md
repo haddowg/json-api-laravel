@@ -483,6 +483,37 @@ document describes both responses of a download action: the `200` location docum
 [location responses](https://github.com/haddowg/json-api/blob/main/docs/responses.md#location-responses)
 covers the rest, including `withType()` for a file whose type varies.
 
+## Transactions
+
+An action called with `POST`, `PATCH`, `PUT` or `DELETE` runs in one transaction on a
+persister, when that persister implements `TransactionalDataPersisterInterface`. The
+transaction opens before `BeforeActionEvent` and commits after `AfterActionEvent`, so it covers
+the ability gate, the handler and everything after it that can still throw before the response
+value object is returned. If any of it throws, everything written through that connection is
+rolled back: a `save()` in the handler, a write through a persister, a row a listener saved. A
+`GET` action runs without one. The synthesized [soft-delete](soft-deletes.md) `restore` and
+`force-delete` actions are `POST`s, so they run in one.
+
+The persister is the mount `type`'s, for collection and resource actions alike. When the mount
+type has none, as a read-only type may not, the `inputType`'s persister is used, and with
+neither the action runs without a transaction. The Eloquent persister's transaction is on its
+configured connection, so it covers every model on that connection whichever type the action
+mounts on.
+
+Unlike a CRUD write, whose After* events fire once the write has committed, `AfterActionEvent`
+fires inside the action's transaction, so a listener that throws there undoes the action.
+Rendering the response comes after the commit.
+
+A rollback can't take back what left the database. A queued job dispatched, a mail sent or an
+HTTP call made during the action has already happened when a later step throws, and a worker
+may pick up a job before the transaction commits. Dispatch queued work after the commit, with
+`after_commit` on the queue connection or `ShouldQueueAfterCommit` on the job, so a rollback
+drops it and a worker only sees it once it commits, or make the external call the action's last
+step.
+
+A collection action that works through many rows holds one transaction for all of them, along
+with the locks it takes. Nothing it writes commits until it returns.
+
 ## `ActionContext`
 
 The handler's single argument carries everything resolved for the call. Its shape drives the

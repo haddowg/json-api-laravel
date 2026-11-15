@@ -84,18 +84,57 @@ to end on both provider arms: a committed write appends exactly one entry, a fai
 
 ## Before vs after semantics
 
-- **Before events** run before persistence. Throwing from a before listener **aborts** the
-  operation; the thrown exception renders through the [error pipeline](errors.md) (throw a
-  `409`/`422` to veto a write).
+- **Before events** run before persistence, inside the
+  [write's transaction](#the-writes-transaction). Throwing from a before listener **aborts** the
+  operation and rolls back anything an earlier listener wrote; the thrown exception renders
+  through the [error pipeline](errors.md) (throw a `409`/`422` to veto a write).
 - **After events** run after the operation. An after handler may **replace the response** by
   returning a response value object (this is how the [hook trait](lifecycle-hooks.md) shapes a
   custom response).
 
+## The write's transaction
+
+Every create, update, delete and relationship write runs in one transaction on its type's
+persister, when the persister implements `TransactionalDataPersisterInterface` as the Eloquent
+and in-memory ones do. The transaction opens before the write's first step and commits once the
+persister has written:
+
+| Write | Inside the transaction |
+| --- | --- |
+| create | the body's relationships, hydration, entity validation, `BeforeSaveEvent`, `BeforeCreateEvent`, the persister's `create()` and the to-many relationships applied after it |
+| update | the body's relationships, hydration, entity validation, `BeforeSaveEvent`, `BeforeUpdateEvent`, the policy check on the changed resource, the persister's `update()` |
+| delete | `BeforeDeleteEvent`, the persister's `delete()` |
+| relationship endpoints | `BeforeRelationshipMutateEvent`, the apply, entity validation, the policy check on the changed parent |
+
+A before listener that writes joins the transaction. A row it saves is undone if a later
+listener, a validation, a policy or the persister's own write throws, so a listener that has to
+save something early, for example to give a new row its key, needs no transaction of its own
+to stay undoable. The After* events fire once the transaction has committed: what they read is
+durable, and a throw from one fails the response without undoing the write.
+
+There is no switch to turn this off. Inside an [Atomic Operations](atomic-operations.md) batch
+the batch's transaction covers the write instead, and a persister that can't transact runs the
+write without one. [Custom actions](actions.md#transactions) called with `POST`, `PATCH`, `PUT`
+or `DELETE` run in one too.
+
+A listener may still open its own transaction. It nests inside the write's as a savepoint, and
+committing it closes that level only. If the write fails, the rollback also closes a
+transaction the listener opened and has not committed, so the connection is never left
+mid-transaction for the next request an Octane or queue worker serves. Eloquent keeps no
+identity map, so there is nothing to clear, but a model instance the request changed keeps its
+in-memory attributes after a rollback; read it again before using it.
+
+A rollback undoes only what went through the connection. A queued job or listener, a mail or an
+HTTP call made from a before listener has already left. Make queued work wait for the commit,
+with `after_commit` on the queue connection or `ShouldQueueAfterCommit` on the job or listener,
+so a rollback drops it, or do the work in an After* listener.
+
 ## Two event systems, one write
 
 The Eloquent persister calls `$model->save()`/`$model->delete()`, so **Eloquent model events
-fire untouched** on any write path. The package's JSON:API events are distinct: they carry
-API operation context and defer After* work post-commit inside an atomic batch. Use model
+fire untouched** on any write path, inside the write's transaction. The package's JSON:API
+events are distinct: they carry API operation context, and the After* events fire once the
+write, or the atomic batch, has committed. Use model
 events for persistence concerns, JSON:API events for API concerns — see
 [eloquent](eloquent.md#eloquent-model-events-still-fire).
 

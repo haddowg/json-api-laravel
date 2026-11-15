@@ -178,6 +178,14 @@ So a polling client sees `202` (with `Retry-After`) until the work finishes, the
   batch's all-or-nothing commit — so a persister that returns `AcceptedForProcessing`
   inside a batch fails that sub-operation (`422`, code `ASYNC_WRITE_IN_ATOMIC_OPERATION`)
   and the batch rolls back. Keep async types out of atomic batches.
+- **Transactions.** When the persister is transactional, the write still runs in its
+  [transaction](lifecycle.md#the-writes-transaction), and the accept commits it: whatever the
+  Before* listeners wrote, and anything the persister stored to track the job, is durable when
+  the `202` goes out. The change the client asked for is the job's to make, so the persister
+  must not save the hydrated model. A job it dispatches leaves before the commit, so a worker
+  can start on it first; with `after_commit` on the queue connection, or a job implementing
+  `ShouldQueueAfterCommit`, it waits for the commit and is dropped on a rollback. The After*
+  events don't fire for a `202`.
 - **Scope.** The seam covers `create()` and `update()`. `delete()` returns `void`, so
   an async delete is not expressible through it today.
 - **Queue workers.** The seam is the HTTP half only. Your queued job owns the actual

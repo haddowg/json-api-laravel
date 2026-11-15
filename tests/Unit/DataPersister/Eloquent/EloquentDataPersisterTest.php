@@ -127,6 +127,58 @@ final class EloquentDataPersisterTest extends EloquentTestCase
     }
 
     #[Test]
+    public function aRollbackAlsoClosesATransactionAListenerOpenedInsideIt(): void
+    {
+        $persister = $this->persister();
+
+        $persister->beginTransaction();
+        // A listener opens its own and throws before it commits.
+        DB::beginTransaction();
+        $persister->create('albums', $this->albumEntity());
+        self::assertSame(2, DB::transactionLevel());
+
+        $persister->rollback();
+
+        self::assertSame(0, DB::transactionLevel());
+        self::assertSame(0, Album::query()->count());
+    }
+
+    #[Test]
+    public function aCommitLeavesATransactionAListenerOpenedForTheListenerToCommit(): void
+    {
+        $persister = $this->persister();
+
+        $persister->beginTransaction();
+        DB::beginTransaction();
+        $persister->create('albums', $this->albumEntity());
+
+        $persister->commit();
+        self::assertSame(1, DB::transactionLevel());
+
+        // The listener's own commit, in an After* listener, closes the outermost level.
+        DB::commit();
+        self::assertSame(0, DB::transactionLevel());
+        self::assertSame(1, Album::query()->count());
+    }
+
+    #[Test]
+    public function aRollbackAfterAListenerClosedItsOwnTransactionClosesOnlyThePersisters(): void
+    {
+        $persister = $this->persister();
+
+        DB::beginTransaction();
+        $persister->beginTransaction();
+        $persister->create('albums', $this->albumEntity());
+
+        $persister->rollback();
+
+        self::assertSame(1, DB::transactionLevel());
+        DB::rollBack();
+        self::assertSame(0, DB::transactionLevel());
+        self::assertSame(0, Album::query()->count());
+    }
+
+    #[Test]
     public function instantiateReturnsAFreshUnsavedModelOfTheType(): void
     {
         $persister = $this->persister();

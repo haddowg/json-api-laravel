@@ -64,10 +64,9 @@ use Illuminate\Support\Facades\DB;
  *
  * Each write runs inside a `transaction()` on the model's own connection: a single write
  * is atomic on its own, but the wrap makes the rollback-on-throw boundary explicit and —
- * because Laravel nests an inner transaction as a savepoint — it composes cleanly under an
- * outer batch transaction opened through {@see TransactionalDataPersisterInterface}. On
- * the single-op path (no batch open) it simply auto-commits, exactly like the Doctrine
- * reference.
+ * because Laravel nests an inner transaction as a savepoint — it composes cleanly under the
+ * outer transaction the package opens around every write through
+ * {@see TransactionalDataPersisterInterface}, a single write's or an atomic batch's.
  *
  * The segregated {@see TransactionalDataPersisterInterface} drives an Atomic Operations
  * batch: {@see beginTransaction()}/{@see commit()}/{@see rollback()} open, commit
@@ -91,6 +90,14 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
      * once per persister rather than on every transaction open.
      */
     private bool $connectionsVerified = false;
+
+    /**
+     * The connection's transaction level before each transaction this persister opened,
+     * innermost last.
+     *
+     * @var list<int>
+     */
+    private array $openedAt = [];
 
     /**
      * The id-encoder resolver linkage wire ids decode through — injected, or
@@ -374,27 +381,56 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         return $entity;
     }
 
+    /**
+     * Opens a transaction on the configured connection, keeping the level it opened at so
+     * {@see rollback()} can close every level opened inside this one as well.
+     */
     public function beginTransaction(): void
     {
         $this->assertModelsShareTheBatchConnection();
-        $this->connection()->beginTransaction();
+        $connection = $this->connection();
+        $level = $connection->transactionLevel();
+        $connection->beginTransaction();
+        $this->openedAt[] = $level;
     }
 
+    /**
+     * Commits one level. A transaction a lifecycle listener opened inside this one and has
+     * not closed yet stays open: the listener's own commit closes the outermost level.
+     */
     public function commit(): void
     {
+        $this->forgetClosedLevels();
         $this->connection()->commit();
+        \array_pop($this->openedAt);
     }
 
+    /**
+     * Rolls back every level the connection opened since the matching
+     * {@see beginTransaction()}, including one a listener opened inside it and left open, so
+     * the connection is never left mid-transaction for the next request a worker serves.
+     * Guarded, mirroring the Doctrine reference: nothing is issued when no transaction is
+     * open, so a rollback after a failed begin or commit is a safe no-op.
+     */
     public function rollback(): void
     {
+        $this->forgetClosedLevels();
+        $level = \array_pop($this->openedAt) ?? 0;
         $connection = $this->connection();
-
-        // Guarded, mirroring the Doctrine reference: a rollback is only issued when a
-        // transaction is actually open, so a rollback after a failed begin (or a nested
-        // failure that already unwound) is a safe no-op rather than a "no active
-        // transaction" error.
-        if ($connection->transactionLevel() > 0) {
+        while ($connection->transactionLevel() > $level) {
             $connection->rollBack();
+        }
+    }
+
+    /**
+     * Drops the levels the connection has already closed, when code outside the persister
+     * committed or rolled back the transaction it opened.
+     */
+    private function forgetClosedLevels(): void
+    {
+        $current = $this->connection()->transactionLevel();
+        while ($this->openedAt !== [] && \end($this->openedAt) >= $current) {
+            \array_pop($this->openedAt);
         }
     }
 

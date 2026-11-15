@@ -22,7 +22,10 @@ use haddowg\JsonApi\Response\RawResponse;
 use haddowg\JsonApi\Response\SeeOtherResponse;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
+use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
+use haddowg\JsonApiLaravel\DataPersister\WriteTransaction;
+use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
@@ -77,6 +80,7 @@ final readonly class ActionInvoker
         private ?Dispatcher $dispatcher = null,
         private ?ServerNames $serverNames = null,
         private ?FilterValueValidator $filterValidator = null,
+        private ?WriteTransactionContext $txContext = null,
     ) {}
 
     public function invoke(CustomActionOperation $operation): DataResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|ErrorResponse|RawResponse
@@ -136,26 +140,6 @@ final readonly class ActionInvoker
             $this->validateFilter($requestedFilter, $filters, $this->request($operation), $paths);
         }
 
-        // The before-action lifecycle event: fired after entity
-        // resolution + input validation and before the ability gate + handler. A listener
-        // that throws a JsonApiException aborts. The subject is the resolved entity
-        // (resource scope) or null (collection scope); the declared ability rides along.
-        $this->dispatcher?->dispatch(new BeforeActionEvent($type, $operation->action(), $entity, $descriptor->ability));
-
-        if ($filters !== []) {
-            // Reading the type's filtered rows needs what listing the collection needs.
-            $listSubject = $this->persisters->supportsType($type) ? $this->persisters->forType($type)->instantiate($type) : null;
-            $this->authorizer->authorize($type, Operation::FetchCollection, $listSubject, $serverName);
-        }
-
-        // The per-action ability gate: enforced AFTER input validation so
-        // a 422 precedes a 403 (the CRUD ordering). The subject is the resolved entity
-        // (resource scope) or null (collection scope → the resource-class token). A null
-        // ability is an unsecured action.
-        if ($descriptor->ability !== null) {
-            $this->authorizer->authorizeAction($type, $descriptor->ability, $entity, $serverName);
-        }
-
         $context = new ActionContext(
             $server,
             $descriptor,
@@ -176,24 +160,75 @@ final readonly class ActionInvoker
             ),
         );
 
-        $response = $handler->handle($context);
+        // An action called with a writing method runs from its before event to its after event
+        // in one transaction on its type's persister, so a write it made is undone when
+        // anything up to the response throws.
+        $persister = $this->writes($operation) ? $this->persisterFor($descriptor) : null;
 
-        if ($response instanceof RawResponse && MediaType::essence($response->contentType()) !== $responseMediaType) {
-            throw new \LogicException(\sprintf(
-                'The JSON:API action "%s" on type "%s" answered with a "%s" body, but the request negotiated "%s".',
-                $operation->action(),
-                $type,
-                $response->contentType(),
-                $responseMediaType,
-            ));
+        return WriteTransaction::run($persister, $this->txContext, function () use ($type, $operation, $entity, $descriptor, $filters, $serverName, $handler, $context, $responseMediaType): DataResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|ErrorResponse|RawResponse {
+            // The before-action lifecycle event: fired after entity
+            // resolution + input validation and before the ability gate + handler. A listener
+            // that throws a JsonApiException aborts. The subject is the resolved entity
+            // (resource scope) or null (collection scope); the declared ability rides along.
+            $this->dispatcher?->dispatch(new BeforeActionEvent($type, $operation->action(), $entity, $descriptor->ability));
+
+            if ($filters !== []) {
+                // Reading the type's filtered rows needs what listing the collection needs.
+                $listSubject = $this->persisters->supportsType($type) ? $this->persisters->forType($type)->instantiate($type) : null;
+                $this->authorizer->authorize($type, Operation::FetchCollection, $listSubject, $serverName);
+            }
+
+            // The per-action ability gate: enforced AFTER input validation so
+            // a 422 precedes a 403 (the CRUD ordering). The subject is the resolved entity
+            // (resource scope) or null (collection scope → the resource-class token). A null
+            // ability is an unsecured action.
+            if ($descriptor->ability !== null) {
+                $this->authorizer->authorizeAction($type, $descriptor->ability, $entity, $serverName);
+            }
+
+            $response = $handler->handle($context);
+
+            if ($response instanceof RawResponse && MediaType::essence($response->contentType()) !== $responseMediaType) {
+                throw new \LogicException(\sprintf(
+                    'The JSON:API action "%s" on type "%s" answered with a "%s" body, but the request negotiated "%s".',
+                    $operation->action(),
+                    $type,
+                    $response->contentType(),
+                    $responseMediaType,
+                ));
+            }
+
+            // The after-action lifecycle event, for symmetry with the CRUD after-hooks. A
+            // custom action is never part of an Atomic Operations batch, so it always fires
+            // inline (no post-commit deferral), inside the action's transaction.
+            $this->dispatcher?->dispatch(new AfterActionEvent($type, $operation->action(), $entity));
+
+            return $response;
+        });
+    }
+
+    /**
+     * Whether the action was called with a method that writes: POST, PATCH, PUT or DELETE.
+     */
+    private function writes(CustomActionOperation $operation): bool
+    {
+        return \in_array(\strtoupper($this->request($operation)->getMethod()), ['POST', 'PATCH', 'PUT', 'DELETE'], true);
+    }
+
+    /**
+     * The persister whose transaction a writing action runs in: its mount type's, else, for
+     * a mount type with no persister, the persister of the type its document reads in.
+     * Null when neither has one, and the action runs as it is.
+     */
+    private function persisterFor(ActionDescriptor $descriptor): ?DataPersisterInterface
+    {
+        foreach ([$descriptor->type, $descriptor->inputType] as $type) {
+            if ($type !== '' && $this->persisters->supportsType($type)) {
+                return $this->persisters->forType($type);
+            }
         }
 
-        // The after-action lifecycle event, for symmetry with the CRUD after-hooks. A
-        // custom action is never part of an Atomic Operations batch, so it always fires
-        // inline (no post-commit deferral).
-        $this->dispatcher?->dispatch(new AfterActionEvent($type, $operation->action(), $entity));
-
-        return $response;
+        return null;
     }
 
     /**

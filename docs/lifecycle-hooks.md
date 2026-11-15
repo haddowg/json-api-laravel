@@ -58,10 +58,12 @@ you need.
 
 ## Before vs after
 
-- **A before hook** runs before persistence. Mutating the entity there is durable (the example
-  derives `slug`/`externalId` in `beforeCreate`). **Throwing aborts** the operation and
-  renders through the [error pipeline](errors.md) — the clean way to veto a write
-  (`beforeDelete` throwing a `409`).
+- **A before hook** runs before persistence, inside the
+  [write's transaction](lifecycle.md#the-writes-transaction). Mutating the entity there is
+  durable (the example derives `slug`/`externalId` in `beforeCreate`), and so is a row it
+  saves, unless a later step throws. **Throwing aborts** the operation, rolls back what the
+  earlier hooks wrote, and renders through the [error pipeline](errors.md) — the clean way to
+  veto a write (`beforeDelete` throwing a `409`).
 - **An after hook** runs after the operation and, by returning a response value object, **may
   replace the response** — reshape the rendered document, or return a `204` from
   `afterDelete`. Returning `null` keeps the default response. A replacement `DataResponse`
