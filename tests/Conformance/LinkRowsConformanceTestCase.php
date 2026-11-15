@@ -233,6 +233,9 @@ abstract class LinkRowsConformanceTestCase extends Orchestra
         self::assertSame($before, ['items' => $this->members($this->data('/api/boards/1/relationships/items')), 'looseItems' => $this->members($this->data('/api/boards/1/relationships/looseItems'))]);
 
         $response = $this->write('DELETE', '/api/boards/1/relationships/items', ['data' => [['type' => 'notes', 'id' => '99']]]);
+        self::assertSame(404, $response->getStatusCode(), (string) $response->getContent());
+        // An existing note the board doesn't link is no member, so removing it changes nothing.
+        $response = $this->write('DELETE', '/api/boards/1/relationships/items', ['data' => [['type' => 'notes', 'id' => '3']]]);
         self::assertSame(200, $response->getStatusCode(), (string) $response->getContent());
         self::assertSame($before['items'], $this->members($this->data('/api/boards/1/relationships/items')));
     }

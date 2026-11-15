@@ -8,25 +8,23 @@ use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
-use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApi\Server\Server;
 
 /**
- * Applies a related type's own scoping provider (see {@see DataProviderRegistry::scopingProviderFor()})
- * to a relationship write, the write twin of {@see ScopedToOneTargets}. A persister resolves
- * linkage ids against its storage and never asks a provider, so without this a write could
- * attach, replace or remove a row that provider never serves.
+ * Checks the linkage a relationship write sends against each related type's provider, the
+ * write twin of {@see ScopedToOneTargets}, before anything is stored.
  *
- * Every id the client names must come back from that provider's `fetchOne()`, the read the
- * type's own endpoint makes; one that doesn't is a `404`, whether the row is hidden or absent.
- * A to-many replace also keeps the members the client cannot see: they are added back to the
- * linkage the persister applies, so the replace changes only the visible members. Types served
- * by a reference provider (Eloquent, in-memory) are left to the persister, unless the write
- * stores the ids without the persister resolving them, as a `fillUsing()` hook or a declared
- * relation's link rows do: then each must still be a row its provider serves, checked in one
- * batch per type where the provider offers one.
+ * Every id the client names must be a row its type's provider serves, the read the type's own
+ * endpoint makes; one that isn't is a `404`, whether the row is absent or a scoping provider
+ * (see {@see DataProviderRegistry::scopingProviderFor()}) hides it. That holds on every mode:
+ * a remove may name an existing resource that is not a member, which changes nothing, but not
+ * one that does not exist. A type no provider serves has nothing to check against. Each type
+ * is asked once per write, through {@see AdmitsIdsInterface} or {@see FetchesManyInterface}
+ * where its provider offers either. A to-many replace also keeps the members the client cannot
+ * see: they are added back to the linkage the persister applies, so the replace changes only
+ * the visible members.
  */
 final class ScopedRelationshipWrites
 {
@@ -36,65 +34,28 @@ final class ScopedRelationshipWrites
     ) {}
 
     /**
-     * Throws {@see ResourceNotFound} when an id in `$linkage` names a row its type's scoping
-     * provider does not return, or, when the write stores the ids `$unresolved`, a row any
-     * provider serving its type does not hold. A remove is never checked that way, as removing
-     * a non-member changes nothing.
+     * Throws {@see ResourceNotFound} when an id in `$linkage` names a row its type's provider
+     * does not serve.
      *
      * @throws ResourceNotFound
      */
-    public function assertVisible(
-        RelationInterface $relation,
-        ToOneRelationship|ToManyRelationship $linkage,
-        Mode $mode = Mode::Replace,
-        bool $unresolved = false,
-        ?Server $server = null,
-    ): void {
-        $unchecked = [];
+    public function assertVisible(RelationInterface $relation, ToOneRelationship|ToManyRelationship $linkage, ?Server $server = null): void
+    {
+        $byType = [];
         foreach ($this->identifiers($linkage) as $identifier) {
-            if ($identifier->id === null) {
+            if ($identifier->id !== null) {
+                $byType[$this->typeOf($relation, $identifier)][$identifier->id] = $identifier->id;
+            }
+        }
+
+        foreach ($byType as $type => $ids) {
+            $type = (string) $type;
+            if (!$this->providers->supportsType($type)) {
                 continue;
             }
 
-            $type = $this->typeOf($relation, $identifier);
-            $provider = $this->providers->scopingProviderFor($type);
-            if ($provider !== null && $provider->fetchOne($type, $identifier->id) === null) {
-                throw new ResourceNotFound();
-            }
-            if ($provider === null && $unresolved && $mode !== Mode::Remove && $this->providers->supportsType($type)) {
-                $unchecked[$type][$identifier->id] = $identifier->id;
-            }
-        }
-
-        foreach ($unchecked as $type => $ids) {
-            $this->assertServed($type, \array_values($ids), $server);
-        }
-    }
-
-    /**
-     * Throws when a row of `$type` among `$ids` is one its provider does not serve: one batched
-     * read when the provider offers it, with each id the batch left out asked again through
-     * `fetchOne()`, since a batch can leave out a row it cannot key.
-     *
-     * @param list<string> $ids wire ids
-     *
-     * @throws ResourceNotFound
-     */
-    private function assertServed(string $type, array $ids, ?Server $server): void
-    {
-        $provider = $this->providers->forType($type);
-        $served = match (true) {
-            $provider instanceof AdmitsIdsInterface => $provider->admitIds($type, $ids),
-            $provider instanceof FetchesManyInterface && $server !== null && $server->hasSerializerFor($type) => \array_map(
-                static fn(object $row): string => $server->serializerFor($type)->getId($row),
-                $provider->fetchMany($type, $ids),
-            ),
-            default => [],
-        };
-        $served = \array_fill_keys($served, true);
-
-        foreach ($ids as $id) {
-            if (!isset($served[$id]) && $provider->fetchOne($type, $id) === null) {
+            $ids = \array_values(\array_map('strval', $ids));
+            if (\count($this->served($this->providers->forType($type), $type, $ids, $server)) !== \count($ids)) {
                 throw new ResourceNotFound();
             }
         }
@@ -141,7 +102,7 @@ final class ScopedRelationshipWrites
             return $linkage;
         }
 
-        $hidden = [];
+        $candidates = [];
         foreach ($current as $member) {
             if (!\is_object($member)) {
                 continue;
@@ -153,14 +114,58 @@ final class ScopedRelationshipWrites
             }
 
             $type = $serializer->getType($member);
+            if ($this->providers->scopingProviderFor($type) !== null) {
+                $id = $serializer->getId($member);
+                $candidates[$type][$id] = $id;
+            }
+        }
+
+        $hidden = [];
+        foreach ($candidates as $type => $ids) {
+            $type = (string) $type;
             $provider = $this->providers->scopingProviderFor($type);
-            $id = $serializer->getId($member);
-            if ($provider !== null && $provider->fetchOne($type, $id) === null) {
-                $hidden[] = new ResourceIdentifier($type, $id);
+            \assert($provider !== null);
+            $served = $this->served($provider, $type, \array_values(\array_map('strval', $ids)), $server);
+            foreach ($ids as $id) {
+                if (!isset($served[(string) $id])) {
+                    $hidden[] = new ResourceIdentifier($type, (string) $id);
+                }
             }
         }
 
         return $hidden === [] ? $linkage : new ToManyRelationship([...$linkage->resourceIdentifiers, ...$hidden]);
+    }
+
+    /**
+     * The ids among `$ids`, wire ids of `$type`, whose rows `$provider` serves, as keys: one
+     * batched read when the provider offers it, with each id the batch left out asked again
+     * through `fetchOne()`, since a batch can leave out a row it cannot key.
+     *
+     * @param DataProviderInterface<object> $provider
+     * @param list<string>                  $ids
+     *
+     * @return array<string, true>
+     */
+    private function served(DataProviderInterface $provider, string $type, array $ids, ?Server $server): array
+    {
+        $found = match (true) {
+            $provider instanceof AdmitsIdsInterface => $provider->admitIds($type, $ids),
+            $provider instanceof FetchesManyInterface && $server !== null && $server->hasSerializerFor($type) => \array_map(
+                static fn(object $row): string => $server->serializerFor($type)->getId($row),
+                $provider->fetchMany($type, $ids),
+            ),
+            default => [],
+        };
+        $found = \array_fill_keys($found, true);
+
+        $served = [];
+        foreach ($ids as $id) {
+            if (isset($found[$id]) || $provider->fetchOne($type, $id) !== null) {
+                $served[$id] = true;
+            }
+        }
+
+        return $served;
     }
 
     /**

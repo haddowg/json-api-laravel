@@ -9,7 +9,6 @@ use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\Resource\Field\AbstractFieldValue;
 use haddowg\JsonApi\Resource\Field\FieldState;
 use haddowg\JsonApi\Resource\Field\Mode;
-use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 
 /**
@@ -43,16 +42,6 @@ final class RelationFillHook
         }
 
         return self::$declared[$relation];
-    }
-
-    /**
-     * Whether a write to `$relation` stores its linkage without the persister resolving each
-     * target: the hook takes the bare identifiers, and a declared `MorphToMany` writes them
-     * onto its link rows.
-     */
-    public static function storesUnresolved(RelationInterface $relation): bool
-    {
-        return self::declaredBy($relation) || ($relation instanceof MorphToMany && $relation->linkRowFields() !== null);
     }
 
     /**

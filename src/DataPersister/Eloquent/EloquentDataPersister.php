@@ -1036,8 +1036,9 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
     /**
      * A model instance for a to-one {@see BelongsTo}/{@see MorphTo} target to associate:
      * the persisted row when it exists, else a keyed blank of the mapped class so
-     * {@see BelongsTo::associate()} can still set the FK (and the morph `*_type`) — any FK
-     * constraint surfaces the referential error on save.
+     * {@see BelongsTo::associate()} can still set the FK (and the morph `*_type`). The handler
+     * has already refused an id no row holds with a `404`, so a blank only stands in for a row
+     * the find could not see.
      */
     private function referenceFor(RelationInterface $relation, ResourceIdentifier $identifier): Model
     {

@@ -2533,7 +2533,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         bool $creating = false,
     ): ToOneRelationship|ToManyRelationship {
         $this->scopedWrites ??= new ScopedRelationshipWrites($this->providers, $this->relationshipLinkage->members());
-        $this->scopedWrites->assertVisible($relation, $linkage, $mode, RelationFillHook::storesUnresolved($relation), $server);
+        $this->scopedWrites->assertVisible($relation, $linkage, $server);
 
         if ($creating || $mode !== Mode::Replace || !$linkage instanceof ToManyRelationship) {
             return $linkage;

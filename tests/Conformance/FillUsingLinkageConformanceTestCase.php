@@ -143,9 +143,12 @@ abstract class FillUsingLinkageConformanceTestCase extends Orchestra
     }
 
     #[Test]
-    public function removingAMissingLabelLeavesTheLabelsAlone(): void
+    public function removingAMissingRowIsNotFoundAndRemovingANonMemberChangesNothing(): void
     {
-        $this->write('DELETE', '/api/memos/1/relationships/labels', ['data' => [['type' => 'labels', 'id' => '9']]])->assertOk();
+        $this->assertNotFound($this->write('DELETE', '/api/memos/1/relationships/labels', ['data' => [['type' => 'labels', 'id' => '9']]]), 'labels');
+        $this->assertNotFound($this->write('DELETE', '/api/memos/1/relationships/settings', ['data' => [['type' => 'template-settings', 'id' => '9']]]), 'settings');
+        $this->write('DELETE', '/api/memos/1/relationships/labels', ['data' => [['type' => 'labels', 'id' => '2']]])->assertOk();
+        $this->write('DELETE', '/api/memos/1/relationships/settings', ['data' => [['type' => 'template-settings', 'id' => '2']]])->assertOk();
 
         self::assertSame(['1', ['1'], '1', ['1']], $this->stored('1'));
     }

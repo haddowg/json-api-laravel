@@ -456,12 +456,17 @@ parent, and the OpenAPI document lists no mutation operations for it. `readOnly(
 judged per request, so the document keeps them. Embedded
 belongs-to-many writes in a whole-resource `POST` are applied after the parent is created, since the join row needs the parent's key.
 
-A related id is resolved through the same scope its type's own endpoint reads through: an
-Eloquent global scope on the related model (soft deletes included), or a
+Every relationship write checks its linkage before anything is stored: a create, an update,
+each relationship endpoint and atomic operations, to-one and to-many. Each related id must be a
+row its type's provider serves, read through the same scope its type's own endpoint reads
+through: an Eloquent global scope on the related model (soft deletes included), or a
 [provider that scopes its rows](custom-data-providers.md#a-provider-that-scopes-its-rows). An id
-that scope hides is a `404`, the same as an id with no row, and a full replacement leaves the
-hidden members attached. A related model without global scopes, served by the reference
-providers, resolves ids as it always has.
+no row holds, or one the scope hides, is a `404` (`RESOURCE_NOT_FOUND`), and a full replacement
+leaves the hidden members attached. A `DELETE` naming a missing id is the same `404`, while
+removing an existing row the parent doesn't hold changes nothing. Each type is asked once per
+write, through `AdmitsIdsInterface` or `FetchesManyInterface` when its provider implements
+either, and through `fetchOne()` when it implements neither or for an id the batch left out.
+A type no provider serves has nothing to check against.
 
 On a `HasMany`/`HasOne` (the foreign key is on the related row, so a row has one parent),
 adding a row that another parent holds moves it. That needs the `update` ability on the parent
@@ -517,14 +522,8 @@ MorphTo::make('target', ['boards', 'cards'])
 ```
 
 The hook gets wire ids, so a type with an id encoder decodes them itself. Validation, the
-`cannot*` prohibitions, the policy gates and related-id scoping still run first. No persister
-resolves the ids the hook gets, so each must also be one its type's provider serves, the
-Eloquent and in-memory providers included. One that isn't is a `404` (`RESOURCE_NOT_FOUND`),
-raised before the hook runs. A provider that implements `AdmitsIdsInterface` or
-`FetchesManyInterface` is asked once per type, any other through `fetchOne()`. A `DELETE` isn't
-checked against a reference provider, since removing a member the relation doesn't hold changes
-nothing, and a type no provider serves has nothing to check against. A declared relation's link
-rows are checked the same way before they're written. A hooked relation in a `POST` applies
+`cannot*` prohibitions, the policy gates and the related-id check above still run first, so an
+id no row holds is a `404` before the hook runs. A hooked relation in a `POST` applies
 before the insert, like an attribute.
 
 ## Hidden relations
