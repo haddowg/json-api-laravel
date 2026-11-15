@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.0](https://github.com/haddowg/json-api-laravel/compare/v2.15.0...v2.16.0) (2026-11-15)
+
+
+### Bug Fixes
+
+* refuse linkage to a missing resource on every relationship write ([e3dd802](https://github.com/haddowg/json-api-laravel/commit/e3dd8021e2b088a02389ad0e8deefb650a15cad4))
+
 ## [2.15.0](https://github.com/haddowg/json-api-laravel/compare/v2.14.1...v2.15.0) (2026-11-14)
 
 
