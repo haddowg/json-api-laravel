@@ -62,8 +62,10 @@ you need.
   [write's transaction](lifecycle.md#the-writes-transaction). Mutating the entity there is
   durable (the example derives `slug`/`externalId` in `beforeCreate`), and so is a row it
   saves, unless a later step throws. **Throwing aborts** the operation, rolls back what the
-  earlier hooks wrote, and renders through the [error pipeline](errors.md) — the clean way to
-  veto a write (`beforeDelete` throwing a `409`). A hook that opens its own transaction on the
+  hook and the earlier hooks wrote, and renders through the [error pipeline](errors.md), the
+  clean way to veto a write (`beforeDelete` throwing a `409`). A hook that has to record the
+  rejection makes the record outside the transaction (see
+  [lifecycle](lifecycle.md#the-writes-transaction)). A hook that opens its own transaction on the
   `DB` connection needs nothing more; one that calls `beginTransaction()` on the persister
   instance itself must close it, because the persister can't tell that level from the
   write's own.
