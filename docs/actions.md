@@ -514,6 +514,40 @@ step.
 A collection action that works through many rows holds one transaction for all of them, along
 with the locks it takes. Nothing it writes commits until it returns.
 
+### Recording a rejection
+
+Since 2.17 everything an action saves before it throws is rolled back, and so is what a
+`BeforeActionEvent` listener saved. An action that records a failure and then throws loses the
+record. Take an action that completes an upload: it marks the file failed when the upload
+doesn't check out, saves it, then throws to answer `422`. Before 2.17 the mark stayed in the
+database. Now the throw rolls it back, and the file looks as though nothing happened.
+
+Return the error instead of throwing it. A response value object returned from `handle()`
+commits the transaction, so the mark is kept and the client still gets the error document:
+
+```php
+public function handle(ActionContext $context): NoContentResponse|ErrorResponse
+{
+    $file = $context->entity();
+
+    try {
+        $this->uploads->complete($file);
+    } catch (UploadRejected $rejected) { // your own JsonApiExceptionInterface
+        $file->status = FileStatus::Failed;
+        $file->save();
+
+        return ErrorResponse::fromException($rejected);
+    }
+
+    return $context->noContent();
+}
+```
+
+Throw only when nothing the action saved should survive. Eloquent keeps no identity map, so a
+rollback detaches nothing: the authenticated user and every other model instance stay as they
+are in memory. A model the action saved keeps the attributes it was saved with and still counts
+as stored after the rollback, so read it again before using it.
+
 ## `ActionContext`
 
 The handler's single argument carries everything resolved for the call. Its shape drives the

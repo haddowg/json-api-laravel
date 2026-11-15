@@ -128,6 +128,13 @@ mid-transaction for the next request an Octane or queue worker serves. Eloquent 
 identity map, so there is nothing to clear, but a model instance the request changed keeps its
 in-memory attributes after a rollback; read it again before using it.
 
+Since 2.17 a before listener can't keep a row of its own when it throws. Whatever it, or any
+earlier listener, saved is rolled back with the rest of the write. A listener that rejects a
+write and needs a record of the rejection has to make it outside the transaction: after the
+response, from a terminating callback registered with `app()->terminating()`, or on a second
+database connection. An [action](actions.md#recording-a-rejection) can instead return its
+error as a response, which commits.
+
 A rollback undoes only what went through the connection. A queued job or listener, a mail or an
 HTTP call made from a before listener has already left. Make queued work wait for the commit,
 with `after_commit` on the queue connection or `ShouldQueueAfterCommit` on the job or listener,
