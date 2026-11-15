@@ -93,8 +93,8 @@ use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataPersister\PositionColumn;
 use haddowg\JsonApiLaravel\DataPersister\ReportsCurrentOwners;
-use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\WritesLinkRowsInterface;
+use haddowg\JsonApiLaravel\DataPersister\WriteTransaction;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
@@ -209,6 +209,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
      */
     private array $preloaded = [];
 
+    /**
+     * Whether an Atomic Operations batch is running through this handler, whose
+     * sub-operations come back through {@see handle()} with the transaction context active.
+     */
+    private bool $inBatch = false;
+
     public function __construct(
         private readonly DataProviderRegistry $providers,
         private readonly DataPersisterRegistry $persisters,
@@ -275,6 +281,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->idEncoders?->bind($serverName);
 
         $this->preloaded = [];
+
+        // A context left active outside a batch is one a batch failed to deactivate in this
+        // long-lived handler; left alone, every later single write would skip its transaction.
+        if (!$this->inBatch && ($this->txContext?->isActive() ?? false)) {
+            $this->txContext->reset();
+        }
 
         if ($operation instanceof CreateResourceOperation || $operation instanceof UpdateResourceOperation) {
             $this->assertObjectMembers($operation->body());
@@ -384,7 +396,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->types,
         );
 
-        return (new AtomicLoop())->run($operation->descriptors(), $backend);
+        $this->inBatch = true;
+        try {
+            return (new AtomicLoop())->run($operation->descriptors(), $backend);
+        } finally {
+            $this->inBatch = false;
+        }
     }
 
     /**
@@ -1794,38 +1811,40 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
         $this->gateEmbeddedMutations($type, $entity, $relationships, $serverName);
         [$beforeCreate, $deferred] = $this->partitionForCreateOrder($relationships);
-        $entity = $this->applyRelationships($persister, $type, $entity, $beforeCreate, $body, true, $server, $request, flush: false);
 
-        // Core's hydrator applies the id policy (client vs server-generated; a wrong
-        // `type` 409s, a forbidden client id 403s) then allow-list-hydrates the
-        // attributes; the throws propagate to the exception renderer. The
-        // relationships are stripped so core never scalar-hydrates an association.
-        $entity = $server->hydratorFor($type)->hydrate($this->datesInStorageZone($resource, $entity, $this->withoutRelationships($body)), $entity);
-        \assert(\is_object($entity));
-        $this->unionsInStoredForm($resource, $entity, $body, true);
+        // From the first association applied through the persister's create and the deferred
+        // (join / inverse-FK) applies, everything runs in ONE transaction, so a flush a
+        // Before* listener makes is undone when a later step throws. create() opens its own
+        // transaction, which nests as a savepoint under this one, so a failing deferred apply
+        // (a QueryException on a join insert, an FK violation) rolls the parent row back too
+        // — no orphaned, partially-related resource. This restores the atomicity the bundle's
+        // single flush guarantees, despite the Eloquent PK-before-join reordering; a
+        // non-transactional persister runs the closure directly (it owns its own atomicity).
+        $entity = WriteTransaction::run($persister, $this->txContext, function () use ($persister, $type, $entity, $beforeCreate, $deferred, $body, $server, $request, $resource): object {
+            $entity = $this->applyRelationships($persister, $type, $entity, $beforeCreate, $body, true, $server, $request, flush: false);
 
-        // The post-hydration entity seam (uniqueness's custom cousin): a resource's
-        // EntityConstraintInterface constraints validate the hydrated entity before
-        // persist. A no-op for a resource that declares none (UniqueEntity is folded into
-        // the pre-hydration Rule::unique above).
-        if ($resource !== null) {
-            $this->validator->validateEntity($resource, $entity, true);
-        }
+            // Core's hydrator applies the id policy (client vs server-generated; a wrong
+            // `type` 409s, a forbidden client id 403s) then allow-list-hydrates the
+            // attributes; the throws propagate to the exception renderer. The
+            // relationships are stripped so core never scalar-hydrates an association.
+            $entity = $server->hydratorFor($type)->hydrate($this->datesInStorageZone($resource, $entity, $this->withoutRelationships($body)), $entity);
+            \assert(\is_object($entity));
+            $this->unionsInStoredForm($resource, $entity, $body, true);
 
-        // Before-save then before-create lifecycle gates: a listener/hook may mutate the
-        // entity (persisted by the commit below) or throw to abort — the throw propagates
-        // to the exception renderer, so the persister never runs and nothing commits.
-        $this->dispatch(new BeforeSaveEvent($type, $request, $entity, true, $this->serverName($request)));
-        $this->dispatch(new BeforeCreateEvent($type, $request, $entity, $this->serverName($request)));
+            // The post-hydration entity seam (uniqueness's custom cousin): a resource's
+            // EntityConstraintInterface constraints validate the hydrated entity before
+            // persist. A no-op for a resource that declares none (UniqueEntity is folded into
+            // the pre-hydration Rule::unique above).
+            if ($resource !== null) {
+                $this->validator->validateEntity($resource, $entity, true);
+            }
 
-        // The create() and the deferred (join / inverse-FK) relationship applies commit as
-        // ONE unit: create() opens its own transaction, which nests as a savepoint under this
-        // outer boundary, so a failing deferred apply (a QueryException on a join insert, an FK
-        // violation) rolls the parent row back too — no orphaned, partially-related resource.
-        // This restores the atomicity the bundle's single flush guarantees, despite the
-        // Eloquent PK-before-join reordering; a non-transactional persister
-        // runs the closure directly (it owns its own atomicity).
-        $entity = $this->writeTransactionally($persister, function () use ($persister, $type, $entity, $deferred, $body, $server, $request): object {
+            // Before-save then before-create lifecycle gates: a listener/hook may mutate the
+            // entity (persisted by the create below) or throw to abort — the throw propagates
+            // to the exception renderer, so the persister never runs and nothing commits.
+            $this->dispatch(new BeforeSaveEvent($type, $request, $entity, true, $this->serverName($request)));
+            $this->dispatch(new BeforeCreateEvent($type, $request, $entity, $this->serverName($request)));
+
             // The persister commits and returns the entity with any store-generated id
             // populated (Eloquent auto-increment / the in-memory store's minted id). The
             // deferred embeds then apply now the parent carries its key (an Eloquent join
@@ -1967,7 +1986,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // back to its pre-hydration state — the in-memory analogue of Eloquent's
         // rollback-on-throw, keeping the two providers' failed-write semantics identical.
         $hydrator = $server->hydratorFor($type);
-        $entity = $this->writeTransactionally($persister, function () use ($hydrator, $body, $resource, $type, $persister, $entity, $original, $request, $relationships, $server, $serverName): object {
+        $entity = WriteTransaction::run($persister, $this->txContext, function () use ($hydrator, $body, $resource, $type, $persister, $entity, $original, $request, $relationships, $server, $serverName): object {
             // The embedded associations apply on the loaded (keyed) parent BEFORE hydration,
             // each gated by the relation's request-aware `cannot*` flags in Mode::Replace —
             // the same `403` a PATCH …/relationships/{rel} would raise.
@@ -1983,7 +2002,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
             // Before-save then before-update lifecycle gates (the entity is mutable,
             // `$original` is the pre-change snapshot): a throw aborts before the persister
-            // commits — inside this savepoint boundary, so writeTransactionally rolls back.
+            // commits — inside the write's transaction, so the whole write rolls back.
             $this->dispatch(new BeforeSaveEvent($type, $request, $entity, false, $this->serverName($request)));
             $this->dispatch(new BeforeUpdateEvent($type, $request, $entity, $original, $this->serverName($request)));
 
@@ -2085,10 +2104,14 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->authorizer->authorize($type, Operation::Delete, $entity, $this->serverNameOf($operation->context()));
 
         // The before-delete lifecycle gate (a throw aborts before the persister deletes
-        // — a delete guard's natural seam, e.g. a 409 when the resource is referenced).
-        $this->dispatch(new BeforeDeleteEvent($type, $request, $entity, $this->serverName($request)));
+        // — a delete guard's natural seam, e.g. a 409 when the resource is referenced), then
+        // the delete, in one transaction: a write the gate made is undone when the delete fails.
+        $persister = $this->persisters->forType($type);
+        WriteTransaction::run($persister, $this->txContext, function () use ($type, $request, $entity, $persister): void {
+            $this->dispatch(new BeforeDeleteEvent($type, $request, $entity, $this->serverName($request)));
 
-        $this->persisters->forType($type)->delete($type, $entity);
+            $persister->delete($type, $entity);
+        });
 
         $response = NoContentResponse::create();
 
@@ -2133,7 +2156,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         AddToRelationshipOperation|UpdateRelationshipOperation|RemoveFromRelationshipOperation $operation,
         JsonApiRequestInterface $body,
         Mode $mode,
-    ): IdentifierResponse|ErrorResponse {
+    ): IdentifierResponse|AcceptedResponse|ErrorResponse {
         $server = $operation->context()->server;
         \assert($server instanceof Server);
 
@@ -2205,23 +2228,29 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $writeOnly = $relation->isWriteOnlyFor($request);
         $scopeEcho = !$writeOnly && $relation->isToMany() && $this->providers->relatesToScopedType($type, $relation);
 
-        // The before-relationship-mutate lifecycle gate (a throw aborts before the
-        // persister applies the change), then the storage-correct apply, then the after
-        // hook which may replace the linkage response (post-commit).
-        $this->dispatch(new BeforeRelationshipMutateEvent($type, $request, $parent, $relation, $linkage, $mode, $this->serverName($request)));
-
-        // The changed parent must still pass its entity-level constraints, and the mutation gate
-        // runs again on it, before the change commits, so a caller can't leave the parent in a
-        // state that is invalid or that they couldn't update. Either failure rolls it back.
+        // From the before-relationship-mutate lifecycle gate (a throw aborts before the
+        // persister applies the change) through the storage-correct apply, everything runs in
+        // one transaction; the after hook, which may replace the linkage response, runs
+        // post-commit. The changed parent must still pass its entity-level constraints, and the
+        // mutation gate runs again on it, before the change commits, so a caller can't leave the
+        // parent in a state that is invalid or that they couldn't update. Either failure rolls
+        // it back, with anything a before listener wrote.
         $persister = $this->persisters->forType($type);
         $resource = $server->hasResourceFor($type) ? $server->resourceFor($type) : null;
-        $parent = $this->writeTransactionally($persister, function () use ($persister, $type, $parent, $relation, $applied, $mode, $serverName, $resource, $server, $request): object {
+        $parent = WriteTransaction::run($persister, $this->txContext, function () use ($persister, $type, $parent, $relation, $linkage, $applied, $mode, $serverName, $resource, $server, $request): object {
+            $this->dispatch(new BeforeRelationshipMutateEvent($type, $request, $parent, $relation, $linkage, $mode, $this->serverName($request)));
+
             $this->queueLinkRowWrite($server, $parent, $relation, $applied, $mode, $request);
             $changed = match (true) {
                 $this->declaresLinkRows($relation) => $this->writeDeclaredLinkRows($server, $persister, $type, $parent, $relation, $applied, $mode, $request, flush: true),
                 RelationFillHook::declaredBy($relation) => $persister->update($type, RelationFillHook::apply($relation, $parent, $applied, $mode)),
                 default => $persister->mutateRelationship($type, $parent, $relation, $applied, $mode),
             };
+            // A relation that declares fillUsing() saves its parent through update(), which a
+            // persister may accept for asynchronous processing, as the bundle does.
+            if ($changed instanceof AcceptedForProcessing) {
+                return $changed;
+            }
             $this->writeLinkRows($server, $changed, $request);
             if ($resource !== null) {
                 $this->validator->validateEntity($resource, $changed, false);
@@ -2230,6 +2259,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
             return $changed;
         });
+        if ($parent instanceof AcceptedForProcessing) {
+            return $this->accepted($parent, $server);
+        }
         if ($scopeEcho) {
             $this->scopeRelationshipEndpoint($server, $type, $parent, $relation, $request);
         }
@@ -2963,41 +2995,6 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         return $existingPivots;
-    }
-
-    /**
-     * Runs `$work` inside the persister's transaction when it is
-     * {@see TransactionalDataPersisterInterface} — a rollback boundary around the mutating
-     * write tail (hydrate → validateEntity → commit) so a post-hydration failure discards
-     * the partial write rather than leaking it. A persister that cannot transact runs
-     * `$work` directly (it owns its own atomicity). A throwable rolls the transaction back
-     * and re-propagates unchanged (rendered by the exception renderer).
-     *
-     * @template T
-     *
-     * @param \Closure(): T $work
-     *
-     * @return T
-     */
-    private function writeTransactionally(DataPersisterInterface $persister, \Closure $work): mixed
-    {
-        if (!$persister instanceof TransactionalDataPersisterInterface) {
-            return $work();
-        }
-
-        $persister->beginTransaction();
-
-        try {
-            $result = $work();
-        } catch (\Throwable $throwable) {
-            $persister->rollback();
-
-            throw $throwable;
-        }
-
-        $persister->commit();
-
-        return $result;
     }
 
     /**

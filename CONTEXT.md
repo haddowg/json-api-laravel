@@ -20,6 +20,10 @@ The write half of the data-access SPI: the component that instantiates, creates,
 and mutates relationships for the types it `supports()`.
 _Avoid_: writer, saver
 
+**Write transaction**:
+The transaction a single create, update, delete, relationship write, or action called with a writing method runs in, on a persister that implements `TransactionalDataPersisterInterface`: from its first write step and every Before* event through the persister's write. A CRUD write's After* events fire once it commits; an action's `AfterActionEvent` fires inside it.
+_Avoid_: savepoint (a listener's own transaction nests as one inside it)
+
 **Reference pair**:
 The `EloquentDataProvider` and `EloquentDataPersister` that serve any type with a resolved model,
 at a priority every application provider shadows.

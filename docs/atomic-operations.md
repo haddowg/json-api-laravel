@@ -60,7 +60,9 @@ persisted, so the whole graph is created in one transaction.
 
 ## The transaction and deferred work
 
-The batch runs inside `DB::transaction`. **After\*** JSON:API events/hooks are **deferred to
+The batch runs inside `DB::transaction`. A write outside a batch runs in a transaction of its
+own (see [lifecycle](lifecycle.md#the-writes-transaction)); inside one, each operation runs in
+the batch's. **After\*** JSON:API events/hooks are **deferred to
 after commit** — so a post-commit side effect never fires for an operation that a later
 failure rolls back. Note the split:
 

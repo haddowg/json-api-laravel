@@ -113,9 +113,16 @@ interface DataPersisterInterface
 ```
 
 `instantiate()` exists because the persister owns the storage mapping. `mutateRelationship()`
-applies a relationship endpoint write. Implement `TransactionalDataPersisterInterface` to wrap
-a write (and its deferred After* work) in a transaction — the Eloquent persister does this
-over `DB::transaction`.
+applies a relationship endpoint write. Implement `TransactionalDataPersisterInterface`
+(`beginTransaction()`, `commit()`, `rollback()`) and every write through the persister runs in
+one transaction, from its first step and every Before* listener through the persister's write
+(see [lifecycle](lifecycle.md#the-writes-transaction)); a writing
+[action](actions.md#transactions) runs in one too, and an [atomic](atomic-operations.md) batch
+runs all its writes in one. The Eloquent persister does this over its connection. A persister
+that doesn't implement it writes without a transaction, and a batch that touches its type is
+refused. `rollback()` has to undo everything since the matching `beginTransaction()`, including
+a transaction a listener opened inside it and left open, and must be safe to call after a
+failed `commit()`.
 
 If your store has relations where a related row has one parent (a has-many over a foreign key
 on the related row), implement `ReportsCurrentOwners`. Its `currentOwners()` returns the
