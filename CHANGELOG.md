@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.18.0](https://github.com/haddowg/json-api-laravel/compare/v2.17.0...v2.18.0) (2026-11-15)
+
+
+### Features
+
+* run callbacks after a write commits ([#278](https://github.com/haddowg/json-api-laravel/issues/278)) ([90d1dba](https://github.com/haddowg/json-api-laravel/commit/90d1dbaad01f13c438b32fee87868d07010cb075))
+
 ## [2.17.0](https://github.com/haddowg/json-api-laravel/compare/v2.16.0...v2.17.0) (2026-11-15)
 
 
