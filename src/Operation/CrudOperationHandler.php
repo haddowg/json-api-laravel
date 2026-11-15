@@ -209,6 +209,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
      */
     private array $preloaded = [];
 
+    /**
+     * Whether an Atomic Operations batch is running through this handler, whose
+     * sub-operations come back through {@see handle()} with the transaction context active.
+     */
+    private bool $inBatch = false;
+
     public function __construct(
         private readonly DataProviderRegistry $providers,
         private readonly DataPersisterRegistry $persisters,
@@ -275,6 +281,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->idEncoders?->bind($serverName);
 
         $this->preloaded = [];
+
+        // A context left active outside a batch is one a batch failed to deactivate in this
+        // long-lived handler; left alone, every later single write would skip its transaction.
+        if (!$this->inBatch && ($this->txContext?->isActive() ?? false)) {
+            $this->txContext->reset();
+        }
 
         if ($operation instanceof CreateResourceOperation || $operation instanceof UpdateResourceOperation) {
             $this->assertObjectMembers($operation->body());
@@ -384,7 +396,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->types,
         );
 
-        return (new AtomicLoop())->run($operation->descriptors(), $backend);
+        $this->inBatch = true;
+        try {
+            return (new AtomicLoop())->run($operation->descriptors(), $backend);
+        } finally {
+            $this->inBatch = false;
+        }
     }
 
     /**

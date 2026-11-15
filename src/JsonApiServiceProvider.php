@@ -357,8 +357,9 @@ final class JsonApiServiceProvider extends ServiceProvider
      * (and leave any other resolver observing a different instance than the handler's). A
      * singleton makes the binding honest — one instance everywhere — and cross-batch
      * cleanliness rests on the executor's always-run {@see WriteTransactionContext::deactivate()}
-     * (in a `finally` on both the commit and rollback paths); {@see WriteTransactionContext::reset()}
-     * is available for an Octane/queue worker reset hook.
+     * (in a `finally` on both the commit and rollback paths), and the handler resets a context it
+     * finds active at the start of a dispatch outside a batch, as it clears its other
+     * per-request state there.
      *
      * The cross-store {@see InMemorySnapshotCoordinator} stays `scoped()` (the reference
      * in-memory witness's per-request snapshot holder). The

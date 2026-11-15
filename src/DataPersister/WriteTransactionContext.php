@@ -29,8 +29,10 @@ namespace haddowg\JsonApiLaravel\DataPersister;
  * keeps one consistent instance everywhere. Cross-batch cleanliness rests on the executor's
  * always-run {@see deactivate()} (called in a `finally` on both the commit and rollback
  * paths), so no batch ever leaves the context active or partly queued; {@see reset()} clears
- * it for an Octane/queue worker reset hook. (PHP serves one request at a time per worker, so
- * the shared singleton is never touched concurrently.)
+ * it, and the handler calls it at the start of any dispatch that isn't a batch's own
+ * sub-operation while the context is still active, so an Octane or queue worker never carries
+ * a leaked batch into its next request. (PHP serves one request at a time per worker, so the
+ * shared singleton is never touched concurrently.)
  */
 final class WriteTransactionContext
 {

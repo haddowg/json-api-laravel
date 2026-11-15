@@ -110,7 +110,9 @@ A before listener that writes joins the transaction. A row it saves is undone if
 listener, a validation, a policy or the persister's own write throws, so a listener that has to
 save something early, for example to give a new row its key, needs no transaction of its own
 to stay undoable. The After* events fire once the transaction has committed: what they read is
-durable, and a throw from one fails the response without undoing the write.
+durable, and a throw from one fails the response without undoing the write. The response is
+rendered after the commit too, so a failure while serializing it returns an error with the
+write already stored.
 
 There is no switch to turn this off. Inside an [Atomic Operations](atomic-operations.md) batch
 the batch's transaction covers the write instead, and a persister that can't transact runs the
@@ -118,7 +120,9 @@ write without one. [Custom actions](actions.md#transactions) called with `POST`,
 or `DELETE` run in one too.
 
 A listener may still open its own transaction. It nests inside the write's as a savepoint, and
-committing it closes that level only. If the write fails, the rollback also closes a
+committing it closes that level only. Open it on the `DB` connection, which the rollback below
+handles in full; a listener that calls `beginTransaction()` on the persister instance itself
+must also close it, because the persister can't tell that level from the write's own. If the write fails, the rollback also closes a
 transaction the listener opened and has not committed, so the connection is never left
 mid-transaction for the next request an Octane or queue worker serves. Eloquent keeps no
 identity map, so there is nothing to clear, but a model instance the request changed keeps its
