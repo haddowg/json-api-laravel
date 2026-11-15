@@ -64,13 +64,17 @@ The batch runs inside `DB::transaction`. A write outside a batch runs in a trans
 own (see [lifecycle](lifecycle.md#the-writes-transaction)); inside one, each operation runs in
 the batch's. **After\*** JSON:API events/hooks are **deferred to
 after commit** — so a post-commit side effect never fires for an operation that a later
-failure rolls back. Note the split:
+failure rolls back. Callbacks an operation adds to
+[`AfterCommit`](lifecycle.md#running-code-after-the-commit) wait for the batch in the same
+way: they run once the whole batch commits, in the order the operations added them and before
+the deferred After\* events, and a rollback drops every one of them. A batch sent from inside
+a transaction the application opened holds them until the application commits. Note the split:
 
 > [!NOTE]
 > **Eloquent model events fire mid-transaction** (on each `$model->save()`), while the
 > package's After\* events/hooks defer to after the batch commits. If a side effect must not
-> run on a rolled-back operation, put it in an After\* [hook](lifecycle-hooks.md), not a
-> model observer. See [eloquent](eloquent.md#eloquent-model-events-still-fire).
+> run on a rolled-back operation, put it in an After\* [hook](lifecycle-hooks.md) or an
+> `AfterCommit` callback, not a model observer. See [eloquent](eloquent.md#eloquent-model-events-still-fire).
 
 ## OAuth scopes
 

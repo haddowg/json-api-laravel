@@ -504,15 +504,46 @@ Unlike a CRUD write, whose After* events fire once the write has committed, `Aft
 fires inside the action's transaction, so a listener that throws there undoes the action.
 Rendering the response comes after the commit.
 
-A rollback can't take back what left the database. A queued job dispatched, a mail sent or an
-HTTP call made during the action has already happened when a later step throws, and a worker
-may pick up a job before the transaction commits. Dispatch queued work after the commit, with
-`after_commit` on the queue connection or `ShouldQueueAfterCommit` on the job, so a rollback
-drops it and a worker only sees it once it commits, or make the external call the action's last
-step.
-
 A collection action that works through many rows holds one transaction for all of them, along
 with the locks it takes. Nothing it writes commits until it returns.
+
+### Running code after the commit
+
+A rollback can't take back what left the database. A queued job dispatched, a mail sent or an
+HTTP call made during the action has already happened when a later step throws, and a worker
+may pick up a job before the transaction commits. Hand that work to `$context->afterCommit()`
+instead. The callback runs once the action's transaction commits, and a rollback drops it:
+
+```php
+public function handle(ActionContext $context): DataResponse
+{
+    $run = $this->runs->start($context->entity());
+
+    $context->afterCommit(static fn() => ProcessRun::dispatch($run->id));
+
+    return $context->data($run);
+}
+```
+
+Callbacks run in the order the action registered them, after `AfterActionEvent` and before the
+response renders. They follow the commit, not the status code: an action that
+[returns an error response](#recording-a-rejection) still commits, so its callbacks run, while
+one that throws drops them. A `GET` action has no transaction, so its callbacks run once it
+returns, and a throw drops them there too. When the action runs inside a transaction the
+application opened, the callbacks
+[wait for that one](lifecycle.md#running-code-after-the-commit) to commit. A callback that throws is logged at error level, the
+remaining callbacks still run, and the response goes out as it would have.
+
+`afterCommit()` hands the callback to the `AfterCommit` service
+(`haddowg\JsonApiLaravel\DataPersister\AfterCommit`), which a `BeforeActionEvent` listener, a
+persister or any other service the write calls can inject and call `register()` on. Called outside
+any write, `register()` runs the callback at once.
+
+Laravel's own after-commit support still works for queued work: `after_commit` on the queue
+connection, or `ShouldQueueAfterCommit` on the job, holds the job until the database
+connection's transaction commits. It covers queued jobs and listeners on that connection
+only, while `afterCommit()` takes any callable and follows the package's write whichever
+persister the action runs on, including one with no transaction.
 
 ### Recording a rejection
 
@@ -543,6 +574,10 @@ public function handle(ActionContext $context): NoContentResponse|ErrorResponse
 }
 ```
 
+The callbacks it registered with [`afterCommit()`](#running-code-after-the-commit) run as
+well, since the transaction committed, so register only what should follow the recorded state,
+or register after the check passes.
+
 Throw only when nothing the action saved should survive. Eloquent keeps no identity map, so a
 rollback detaches nothing: the authenticated user and every other model instance stay as they
 are in memory. A model the action saved keeps the attributes it was saved with and still counts
@@ -565,6 +600,7 @@ OpenAPI projection so the generated document matches what the handler returns.
 | `descriptor()` | the action's resolved declaration |
 | `serializer()` | the serializer for the action's response type (the mount type unless `responds` names another) |
 | `filtered()` | the rows the request's filters select, for an action declaring `filters` ([above](#a-collection-action-that-takes-the-types-filters)) |
+| `afterCommit($callback)` | runs `$callback` once the action's transaction commits, or drops it on a rollback ([above](#running-code-after-the-commit)) |
 
 And the response builders:
 

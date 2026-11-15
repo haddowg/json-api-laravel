@@ -31,6 +31,7 @@ use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
 use haddowg\JsonApi\Scope\ScopeEnforcer;
 use haddowg\JsonApi\Server\Server;
+use haddowg\JsonApiLaravel\DataPersister\AfterCommit;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
@@ -129,6 +130,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         private readonly array $exposedOperations = [],
         ?LoggerInterface $logger = null,
         private readonly TypeMetadataResolver $types = new TypeMetadataResolver(),
+        private readonly ?AfterCommit $afterCommit = null,
     ) {
         $this->logger = $logger ?? new NullLogger();
 
@@ -172,6 +174,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
             throw $throwable;
         }
 
+        $this->afterCommit?->open();
         $this->context->activate();
         $this->opened = true;
     }
@@ -241,11 +244,14 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
             throw $throwable;
         }
 
-        // The data is durable: drain the deferred After* hooks (FIFO), best-effort — a
+        // The data is durable: run the callbacks the operations registered to run after the
+        // commit, then drain the deferred After* hooks (FIFO), best-effort — a
         // throwing hook must NOT turn a durably-committed batch into a failure, so each
         // exception is caught + logged and the remaining hooks still run. The context is
         // ALWAYS deactivated.
+        $this->opened = false;
         try {
+            $this->afterCommit?->commit();
             $this->context->drain(function (\Throwable $throwable): void {
                 $this->logger->error(
                     'A deferred After* lifecycle hook threw after an Atomic Operations batch committed; '
@@ -267,6 +273,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
             foreach ($this->transactional as $persister) {
                 $persister->rollback();
             }
+            $this->afterCommit?->discard();
             $this->opened = false;
         }
 

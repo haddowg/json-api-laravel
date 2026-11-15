@@ -88,6 +88,7 @@ use haddowg\JsonApiLaravel\Atomic\AtomicOperationsUnavailable;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
 use haddowg\JsonApiLaravel\Authorization\ViewableRows;
 use haddowg\JsonApiLaravel\DataPersister\AcceptedForProcessing;
+use haddowg\JsonApiLaravel\DataPersister\AfterCommit;
 use haddowg\JsonApiLaravel\DataPersister\AsyncWriteNotAllowedInAtomicOperation;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
@@ -215,6 +216,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
      */
     private bool $inBatch = false;
 
+    /**
+     * How many dispatches are running through this handler: a batch's operations and an
+     * operation an action dispatches come back through {@see handle()} inside another.
+     */
+    private int $depth = 0;
+
     public function __construct(
         private readonly DataProviderRegistry $providers,
         private readonly DataPersisterRegistry $persisters,
@@ -258,9 +265,28 @@ final class CrudOperationHandler implements OperationHandlerInterface
         private readonly ?ServerNames $serverNames = null,
         // Decodes wire ids through the encoder of the dispatching server's resource class.
         private readonly ?IdEncoderResolver $idEncoders = null,
+        // Runs the callbacks a write registers once it commits. Null on a stripped-down
+        // wiring leaves a write with no after-commit scope.
+        private readonly ?AfterCommit $afterCommit = null,
     ) {}
 
     public function handle(JsonApiOperationInterface $operation): DataResponse|RelatedResponse|IdentifierResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|AtomicResultsResponse|ErrorResponse|RawResponse
+    {
+        // A scope still open when a request starts is one an earlier request left behind
+        // in this long-lived handler; its callbacks must never run in this one.
+        if ($this->depth === 0) {
+            $this->afterCommit?->reset();
+        }
+
+        ++$this->depth;
+        try {
+            return $this->dispatchOperation($operation);
+        } finally {
+            --$this->depth;
+        }
+    }
+
+    private function dispatchOperation(JsonApiOperationInterface $operation): DataResponse|RelatedResponse|IdentifierResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|AtomicResultsResponse|ErrorResponse|RawResponse
     {
         // Clear the request-scoped `?withCount` seam at the very start of EVERY dispatch, so a
         // prior request's batched counts can never bleed into an arm that does not itself
@@ -394,6 +420,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->exposedOperations($this->serverName($request)),
             $this->logger,
             $this->types,
+            $this->afterCommit,
         );
 
         $this->inBatch = true;
@@ -1820,7 +1847,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // — no orphaned, partially-related resource. This restores the atomicity the bundle's
         // single flush guarantees, despite the Eloquent PK-before-join reordering; a
         // non-transactional persister runs the closure directly (it owns its own atomicity).
-        $entity = WriteTransaction::run($persister, $this->txContext, function () use ($persister, $type, $entity, $beforeCreate, $deferred, $body, $server, $request, $resource): object {
+        $entity = $this->transact($persister, function () use ($persister, $type, $entity, $beforeCreate, $deferred, $body, $server, $request, $resource): object {
             $entity = $this->applyRelationships($persister, $type, $entity, $beforeCreate, $body, true, $server, $request, flush: false);
 
             // Core's hydrator applies the id policy (client vs server-generated; a wrong
@@ -1986,7 +2013,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // back to its pre-hydration state — the in-memory analogue of Eloquent's
         // rollback-on-throw, keeping the two providers' failed-write semantics identical.
         $hydrator = $server->hydratorFor($type);
-        $entity = WriteTransaction::run($persister, $this->txContext, function () use ($hydrator, $body, $resource, $type, $persister, $entity, $original, $request, $relationships, $server, $serverName): object {
+        $entity = $this->transact($persister, function () use ($hydrator, $body, $resource, $type, $persister, $entity, $original, $request, $relationships, $server, $serverName): object {
             // The embedded associations apply on the loaded (keyed) parent BEFORE hydration,
             // each gated by the relation's request-aware `cannot*` flags in Mode::Replace —
             // the same `403` a PATCH …/relationships/{rel} would raise.
@@ -2107,7 +2134,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // — a delete guard's natural seam, e.g. a 409 when the resource is referenced), then
         // the delete, in one transaction: a write the gate made is undone when the delete fails.
         $persister = $this->persisters->forType($type);
-        WriteTransaction::run($persister, $this->txContext, function () use ($type, $request, $entity, $persister): void {
+        $this->transact($persister, function () use ($type, $request, $entity, $persister): void {
             $this->dispatch(new BeforeDeleteEvent($type, $request, $entity, $this->serverName($request)));
 
             $persister->delete($type, $entity);
@@ -2237,7 +2264,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // it back, with anything a before listener wrote.
         $persister = $this->persisters->forType($type);
         $resource = $server->hasResourceFor($type) ? $server->resourceFor($type) : null;
-        $parent = WriteTransaction::run($persister, $this->txContext, function () use ($persister, $type, $parent, $relation, $linkage, $applied, $mode, $serverName, $resource, $server, $request): object {
+        $parent = $this->transact($persister, function () use ($persister, $type, $parent, $relation, $linkage, $applied, $mode, $serverName, $resource, $server, $request): object {
             $this->dispatch(new BeforeRelationshipMutateEvent($type, $request, $parent, $relation, $linkage, $mode, $this->serverName($request)));
 
             $this->queueLinkRowWrite($server, $parent, $relation, $applied, $mode, $request);
@@ -3079,6 +3106,20 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         return $activatedProfiles === [] ? $response : $response->withActivatedProfiles(...$activatedProfiles);
+    }
+
+    /**
+     * Runs a write in its persister's transaction and its after-commit scope.
+     *
+     * @template T
+     *
+     * @param \Closure(): T $write
+     *
+     * @return T
+     */
+    private function transact(DataPersisterInterface $persister, \Closure $write): mixed
+    {
+        return WriteTransaction::run($persister, $this->txContext, $write, $this->afterCommit);
     }
 
     /**

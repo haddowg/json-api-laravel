@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Workbench\App\Providers;
 
+use haddowg\JsonApiLaravel\DataPersister\AfterCommit;
 use haddowg\JsonApiLaravel\DataPersister\Eloquent\EloquentDataPersister;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
@@ -33,7 +34,7 @@ final class TxEloquentServiceProvider extends ServiceProvider
 
         JsonApi::provider(new EloquentDataProvider($modelByType), priority: -128);
         JsonApi::persister($persister, priority: -128);
-        JsonApi::persister(new TxAcceptingPersister($persister));
+        JsonApi::persister(new TxAcceptingPersister($persister, $this->app->make(AfterCommit::class)));
     }
 
     public function boot(Dispatcher $events): void

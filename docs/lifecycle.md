@@ -135,10 +135,60 @@ response, from a terminating callback registered with `app()->terminating()`, or
 database connection. An [action](actions.md#recording-a-rejection) can instead return its
 error as a response, which commits.
 
+### Running code after the commit
+
 A rollback undoes only what went through the connection. A queued job or listener, a mail or an
-HTTP call made from a before listener has already left. Make queued work wait for the commit,
-with `after_commit` on the queue connection or `ShouldQueueAfterCommit` on the job or listener,
-so a rollback drops it, or do the work in an After* listener.
+HTTP call made from a before listener has already left. Register that work with the
+`AfterCommit` service instead, and it runs once the write commits:
+
+```php
+use haddowg\JsonApiLaravel\DataPersister\AfterCommit;
+use haddowg\JsonApiLaravel\Event\BeforeCreateEvent;
+
+final readonly class QueueWelcomeMail
+{
+    public function __construct(private AfterCommit $afterCommit) {}
+
+    public function handle(BeforeCreateEvent $event): void
+    {
+        $user = $event->entity;
+
+        $this->afterCommit->register(static fn() => SendWelcomeMail::dispatch($user));
+    }
+}
+```
+
+`register()` works from any code the write runs: a Before* listener or [hook](lifecycle-hooks.md), a
+persister, or an [action](actions.md#running-code-after-the-commit), which has
+`$context->afterCommit()` for the same thing. The callbacks run in the order they were added,
+after the commit and before the After* events and the response, so an After* listener sees
+their effects. A write that rolls back drops them. A write whose persister can't transact runs
+them once it returns, and an [Atomic Operations](atomic-operations.md) batch holds them until
+the whole batch commits. Called outside any write, from an After* listener for instance, `register()`
+runs the callback at once.
+
+A write can itself run inside a transaction your application opened, for example when a
+command calls the API from inside `DB::transaction()`. The write's commit then only closes a
+savepoint, so the callbacks wait for the application's transaction: when any database
+connection Laravel has resolved is still inside a transaction, the package hands them to that
+connection's `afterCommit()`. They run when the application commits, after the write's After*
+events, and the application's rollback drops them. The check doesn't know which connection the
+write used, so an open transaction on an unrelated connection holds the callbacks too, and its
+rollback drops them. A test using `DatabaseTransactions` or `RefreshDatabase` is not held back:
+Laravel's test transaction manager ignores the test's own transaction, so callbacks run when
+the write commits, as they do in production.
+
+The write has committed by the time a callback runs, so a callback that throws is logged at
+error level, the rest still run and the response goes out unchanged. `AfterCommit` is a
+singleton that the package clears at the start of each request, so an Octane or queue worker
+never carries a callback into the next one.
+
+For queued work, Laravel's own after-commit support is the alternative: `after_commit` on the
+queue connection, or `ShouldQueueAfterCommit` on the job or listener, holds it until the
+database connection's transaction commits and drops it on a rollback. That follows the
+connection, so it covers Eloquent writes, while `AfterCommit` follows the package's write on
+any persister and takes any callable. Work that only needs the commit to have happened can
+also go in an After* listener.
 
 ## Two event systems, one write
 

@@ -14,6 +14,7 @@ use haddowg\JsonApi\Response\RawResponse;
 use haddowg\JsonApi\Response\SeeOtherResponse;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApi\Server\ResolvingServerInterface;
+use haddowg\JsonApiLaravel\DataPersister\AfterCommit;
 use Psr\Http\Message\StreamInterface;
 
 /**
@@ -26,7 +27,8 @@ use Psr\Http\Message\StreamInterface;
  * action) and the {@see QueryParameters}.
  *
  * {@see filtered()} reads the rows the request's filters select, for a collection action
- * that takes its type's filters.
+ * that takes its type's filters, and {@see afterCommit()} runs code once the action's write
+ * has committed.
  *
  * {@see serializer()} resolves the `outputType` serializer once, and the convenience
  * factories {@see data()}/{@see meta()}/{@see noContent()} pre-wire it, so the handler
@@ -52,6 +54,7 @@ final class ActionContext
 
     /**
      * @param (\Closure(): FilteredCollection)|null $filteredFactory builds the action's filtered rows on first use; null when the action takes no filters
+     * @param AfterCommit|null                      $afterCommit     the scope the action runs in; null runs a callback at once
      */
     public function __construct(
         private readonly ResolvingServerInterface $server,
@@ -62,7 +65,22 @@ final class ActionContext
         private readonly QueryParameters $queryParameters,
         private readonly string $responseMediaType = 'application/vnd.api+json',
         private readonly ?\Closure $filteredFactory = null,
+        private readonly ?AfterCommit $afterCommit = null,
     ) {}
+
+    /**
+     * Runs `$callback` once the action's transaction commits, after the action returns and
+     * before the response renders. It runs when the action returns an error response, is
+     * dropped when the action throws, and runs once the action returns when it opened no
+     * transaction, as a GET action does. A callback that throws is logged and the response
+     * goes out as normal.
+     *
+     * @param callable(): mixed $callback
+     */
+    public function afterCommit(callable $callback): void
+    {
+        ($this->afterCommit ?? new AfterCommit())->register($callback);
+    }
 
     /**
      * The mount type's rows the request's validated `filter[...]` parameters select, for a

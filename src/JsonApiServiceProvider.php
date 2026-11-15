@@ -35,6 +35,7 @@ use haddowg\JsonApiLaravel\Console\ClearCommand;
 use haddowg\JsonApiLaravel\Console\JsonSchemaExportCommand;
 use haddowg\JsonApiLaravel\Console\OpenApiExportCommand;
 use haddowg\JsonApiLaravel\Console\OptimizeCommand;
+use haddowg\JsonApiLaravel\DataPersister\AfterCommit;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataPersister\Eloquent\EloquentDataPersister;
@@ -361,6 +362,10 @@ final class JsonApiServiceProvider extends ServiceProvider
      * finds active at the start of a dispatch outside a batch, as it clears its other
      * per-request state there.
      *
+     * {@see AfterCommit} is a singleton for the same reason: the handler, the action invoker
+     * and any persister capture it at construction. Each write closes its scope whether it commits or
+     * throws, and the handler resets it at the start of each outermost dispatch.
+     *
      * The cross-store {@see InMemorySnapshotCoordinator} stays `scoped()` (the reference
      * in-memory witness's per-request snapshot holder). The
      * {@see \haddowg\JsonApiLaravel\Atomic\AtomicLoopBackend} is built per-batch by the
@@ -369,6 +374,7 @@ final class JsonApiServiceProvider extends ServiceProvider
     private function registerAtomic(): void
     {
         $this->app->singleton(WriteTransactionContext::class);
+        $this->app->singleton(AfterCommit::class);
         $this->app->scoped(InMemorySnapshotCoordinator::class);
     }
 

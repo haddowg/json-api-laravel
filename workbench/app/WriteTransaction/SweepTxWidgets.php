@@ -6,6 +6,7 @@ namespace Workbench\App\WriteTransaction;
 
 use haddowg\JsonApi\Exception\AccessDenied;
 use haddowg\JsonApi\OpenApi\Metadata\NoContent;
+use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
 use haddowg\JsonApiLaravel\Action\ActionContext;
 use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
@@ -20,10 +21,16 @@ final readonly class SweepTxWidgets implements ActionHandlerInterface
 {
     public function __construct(private TxSideWriter $writer) {}
 
-    public function handle(ActionContext $context): NoContentResponse
+    public function handle(ActionContext $context): NoContentResponse|ErrorResponse
     {
         $this->writer->write('swept');
 
+        if (TxScenario::$actionAfterCommit) {
+            TxScenario::registerCallback($context->afterCommit(...), 'callback from sweep');
+        }
+        if (TxScenario::$actionReturnsError) {
+            return ErrorResponse::fromException(new AccessDenied('Refused by the test action.'));
+        }
         if (TxScenario::$actionThrows) {
             throw new AccessDenied('Refused by the test action.');
         }

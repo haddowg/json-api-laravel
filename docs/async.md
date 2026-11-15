@@ -182,12 +182,16 @@ So a polling client sees `202` (with `Retry-After`) until the work finishes, the
   [transaction](lifecycle.md#the-writes-transaction), and the accept commits it: whatever the
   Before* listeners wrote, and anything the persister stored to track the job, is durable when
   the `202` goes out. The change the client asked for is the job's to make, so the persister
-  must not save the hydrated model. The After* events don't fire for a `202`, and the package
-  has no hook after the commit, so a persister that dispatches from inside the write should
-  use its queue's after-commit support: set `after_commit` on the queue connection, or have
-  the job implement `ShouldQueueAfterCommit`, so it is queued once the transaction commits and
-  dropped on a rollback. Otherwise a worker can start on the job before the write commits, or
-  after it rolled back.
+  must not save the hydrated model. The After* events don't fire for a `202`, so a persister
+  that queues the job should inject the
+  [`AfterCommit`](lifecycle.md#running-code-after-the-commit) service and dispatch from a
+  callback it adds there, as in
+  `$this->afterCommit->register(static fn() => ImportAlbum::dispatch($job->id))`. The callback
+  runs once the accept commits and is dropped on a rollback. Laravel's own after-commit
+  support does the same for a queued job on the database connection: set `after_commit` on
+  the queue connection, or have the job implement `ShouldQueueAfterCommit`. Dispatching
+  straight from the write with neither lets a worker start on the job before the write
+  commits, or after it rolled back.
 - **Scope.** The seam covers `create()` and `update()`. `delete()` returns `void`, so
   an async delete is not expressible through it today.
 - **Queue workers.** The seam is the HTTP half only. Your queued job owns the actual
