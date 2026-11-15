@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Workbench\App\Providers;
 
 use haddowg\JsonApi\Resource\Field\Accessor;
+use haddowg\JsonApiLaravel\DataPersister\AfterCommit;
 use haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\InMemorySnapshotCoordinator;
@@ -48,7 +49,7 @@ final class TxInMemoryServiceProvider extends ServiceProvider
         );
         JsonApi::provider($widgets);
         $resolver = static fn(string $type, string $id): ?object => $type === 'txNotes' ? $notes->store()->find($id) : null;
-        JsonApi::persister(new TxAcceptingPersister(new InMemoryDataPersister('txWidgets', $widgets->store(), static fn(): TxWidget => new TxWidget(), $resolver)));
+        JsonApi::persister(new TxAcceptingPersister(new InMemoryDataPersister('txWidgets', $widgets->store(), static fn(): TxWidget => new TxWidget(), $resolver), $this->app->make(AfterCommit::class)));
     }
 
     public function boot(Dispatcher $events): void

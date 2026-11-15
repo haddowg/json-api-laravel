@@ -9,17 +9,22 @@ use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApiLaravel\DataPersister\AcceptedForProcessing;
+use haddowg\JsonApiLaravel\DataPersister\AfterCommit;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 
 /**
  * The `txWidgets` persister: passes every write to the store's own, except that with
  * {@see TxScenario::$accept} set it accepts a create or update for asynchronous processing
- * instead of writing it.
+ * instead of writing it, registering an after-commit callback with {@see TxScenario::$queueOnAccept}
+ * set, as a persister that queues its job once the accept commits does.
  */
 final readonly class TxAcceptingPersister implements DataPersisterInterface, TransactionalDataPersisterInterface
 {
-    public function __construct(private DataPersisterInterface&TransactionalDataPersisterInterface $inner) {}
+    public function __construct(
+        private DataPersisterInterface&TransactionalDataPersisterInterface $inner,
+        private ?AfterCommit $afterCommit = null,
+    ) {}
 
     public function supports(string $type): bool
     {
@@ -68,6 +73,10 @@ final readonly class TxAcceptingPersister implements DataPersisterInterface, Tra
 
     private function accepted(): AcceptedForProcessing
     {
+        if (TxScenario::$queueOnAccept && $this->afterCommit !== null) {
+            TxScenario::registerCallback($this->afterCommit->register(...), 'callback from persister');
+        }
+
         return AcceptedForProcessing::poll('https://example.test/jobs/1')->withMeta(['status' => 'queued']);
     }
 }

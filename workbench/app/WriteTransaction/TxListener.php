@@ -6,6 +6,7 @@ namespace Workbench\App\WriteTransaction;
 
 use haddowg\JsonApi\Exception\AccessDenied;
 use haddowg\JsonApi\Resource\Field\Accessor;
+use haddowg\JsonApiLaravel\DataPersister\AfterCommit;
 use haddowg\JsonApiLaravel\Event\AfterActionEvent;
 use haddowg\JsonApiLaravel\Event\AfterCreateEvent;
 use haddowg\JsonApiLaravel\Event\AfterDeleteEvent;
@@ -40,7 +41,7 @@ final readonly class TxListener
         AfterRelationshipMutateEvent::class,
     ];
 
-    public function __construct(private TxSideWriter $writer) {}
+    public function __construct(private TxSideWriter $writer, private AfterCommit $afterCommit) {}
 
     public static function listen(Dispatcher $events): void
     {
@@ -58,11 +59,18 @@ final readonly class TxListener
         }
 
         $class = $event::class;
+        $name = (new \ReflectionClass($event))->getShortName();
+        if (\str_starts_with($name, 'After')) {
+            TxScenario::$log[] = $name;
+        }
+        if (TxScenario::$afterCommitOn === $class) {
+            TxScenario::registerCallback($this->afterCommit->register(...), 'callback from ' . $name);
+        }
         if (TxScenario::$nestOn === $class) {
             $this->writer->begin();
         }
         if (TxScenario::$sideWriteOn === $class) {
-            $this->writer->write('by ' . (new \ReflectionClass($event))->getShortName());
+            $this->writer->write('by ' . $name);
         }
         if (TxScenario::$unnestOn === $class) {
             $this->writer->commit();

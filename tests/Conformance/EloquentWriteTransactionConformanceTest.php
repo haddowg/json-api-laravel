@@ -103,6 +103,19 @@ final class EloquentWriteTransactionConformanceTest extends WriteTransactionConf
         self::assertSame(['first', 'second'], $this->widgetNames());
     }
 
+    #[Test]
+    public function callbacksRunOnceTheConnectionHasCommitted(): void
+    {
+        TxScenario::$afterCommitOn = BeforeCreateEvent::class;
+        TxScenario::$actionAfterCommit = true;
+
+        $this->jsonApi()->withDocument($this->widget('third'))->post('/api/txWidgets')->assertStatus(201);
+        $this->jsonApi()->withHeader('Content-Type', 'application/vnd.api+json')->post('/api/txWidgets/1/-actions/stamp')->assertStatus(204);
+        $this->atomic([['op' => 'add', 'data' => ['type' => 'txWidgets', 'attributes' => ['name' => 'fourth']]]])->assertStatus(200);
+
+        self::assertSame([0, 0, 0], TxScenario::$callbackLevels);
+    }
+
     protected function assertNoTransactionOpen(): void
     {
         self::assertSame(0, DB::connection()->transactionLevel());

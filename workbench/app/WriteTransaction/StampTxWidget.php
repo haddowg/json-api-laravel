@@ -7,6 +7,7 @@ namespace Workbench\App\WriteTransaction;
 use haddowg\JsonApi\Exception\AccessDenied;
 use haddowg\JsonApi\OpenApi\Metadata\NoContent;
 use haddowg\JsonApi\Resource\Field\Accessor;
+use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
 use haddowg\JsonApiLaravel\Action\ActionContext;
 use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
@@ -21,7 +22,7 @@ final readonly class StampTxWidget implements ActionHandlerInterface
 {
     public function __construct(private DataPersisterRegistry $persisters, private TxSideWriter $writer) {}
 
-    public function handle(ActionContext $context): NoContentResponse
+    public function handle(ActionContext $context): NoContentResponse|ErrorResponse
     {
         $widget = $context->entity();
         \assert($widget !== null);
@@ -30,6 +31,12 @@ final readonly class StampTxWidget implements ActionHandlerInterface
         $this->persisters->forType('txWidgets')->update('txWidgets', $widget);
         $this->writer->write('stamped');
 
+        if (TxScenario::$actionAfterCommit) {
+            TxScenario::registerCallback($context->afterCommit(...), 'callback from stamp');
+        }
+        if (TxScenario::$actionReturnsError) {
+            return ErrorResponse::fromException(new AccessDenied('Refused by the test action.'));
+        }
         if (TxScenario::$actionThrows) {
             throw new AccessDenied('Refused by the test action.');
         }

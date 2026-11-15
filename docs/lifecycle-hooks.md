@@ -68,7 +68,9 @@ you need.
   [lifecycle](lifecycle.md#the-writes-transaction)). A hook that opens its own transaction on the
   `DB` connection needs nothing more; one that calls `beginTransaction()` on the persister
   instance itself must close it, because the persister can't tell that level from the
-  write's own.
+  write's own. Work that must wait for the commit, such as queueing a job, goes to the
+  [`AfterCommit`](lifecycle.md#running-code-after-the-commit) service, which the resource
+  can take in its constructor.
 - **After hooks and the response** come after the commit, so a failure while serializing the
   response returns an error with the write already stored.
 - **An after hook** runs after the operation and, by returning a response value object, **may

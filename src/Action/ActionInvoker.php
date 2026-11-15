@@ -22,6 +22,7 @@ use haddowg\JsonApi\Response\RawResponse;
 use haddowg\JsonApi\Response\SeeOtherResponse;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
+use haddowg\JsonApiLaravel\DataPersister\AfterCommit;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransaction;
@@ -81,6 +82,7 @@ final readonly class ActionInvoker
         private ?ServerNames $serverNames = null,
         private ?FilterValueValidator $filterValidator = null,
         private ?WriteTransactionContext $txContext = null,
+        private ?AfterCommit $afterCommit = null,
     ) {}
 
     public function invoke(CustomActionOperation $operation): DataResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|ErrorResponse|RawResponse
@@ -158,11 +160,14 @@ final readonly class ActionInvoker
                     paths: $paths,
                 ),
             ),
+            $this->afterCommit,
         );
 
         // An action called with a writing method runs from its before event to its after event
         // in one transaction on its type's persister, so a write it made is undone when
-        // anything up to the response throws.
+        // anything up to the response throws. Every action runs in an after-commit scope, so
+        // the callbacks it registers run once it commits, or once it returns without a
+        // transaction.
         $persister = $this->writes($operation) ? $this->persisterFor($descriptor) : null;
 
         return WriteTransaction::run($persister, $this->txContext, function () use ($type, $operation, $entity, $descriptor, $filters, $serverName, $handler, $context, $responseMediaType): DataResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|ErrorResponse|RawResponse {
@@ -204,7 +209,7 @@ final readonly class ActionInvoker
             $this->dispatcher?->dispatch(new AfterActionEvent($type, $operation->action(), $entity));
 
             return $response;
-        });
+        }, $this->afterCommit);
     }
 
     /**
