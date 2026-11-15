@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.17.0](https://github.com/haddowg/json-api-laravel/compare/v2.16.0...v2.17.0) (2026-11-15)
+
+
+### Features
+
+* run every single write in one transaction ([#275](https://github.com/haddowg/json-api-laravel/issues/275)) ([4be1aa6](https://github.com/haddowg/json-api-laravel/commit/4be1aa62d0da4c17defa44db782315250bf8fad2))
+
 ## [2.16.0](https://github.com/haddowg/json-api-laravel/compare/v2.15.0...v2.16.0) (2026-11-15)
 
 
