@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Test;
 /**
  * Every relationship write refuses linkage to a resource that does not exist with a `404`,
  * before anything is stored, whichever persister applies it: a create, an update, each
- * relationship endpoint, to-one and to-many ({@see AtomicConformanceTestCase} covers a batch). A remove naming a missing
+ * relationship endpoint and an atomic batch, to-one and to-many. A remove naming a missing
  * resource is refused the same way, and one naming an existing resource that is not a member
  * changes nothing. Asserted identically on the in-memory witness
  * ({@see InMemoryMissingLinkageConformanceTest}) and the reference Eloquent provider
@@ -23,6 +23,8 @@ use PHPUnit\Framework\Attributes\Test;
 abstract class MissingLinkageConformanceTestCase extends Orchestra
 {
     private const string MEDIA_TYPE = 'application/vnd.api+json';
+
+    private const string ATOMIC = 'application/vnd.api+json; ext="https://jsonapi.org/ext/atomic"';
 
     /**
      * @return class-string
@@ -39,6 +41,16 @@ abstract class MissingLinkageConformanceTestCase extends Orchestra
     protected function getPackageProviders($app): array
     {
         return [JsonApiServiceProvider::class, $this->conformanceServiceProvider()];
+    }
+
+    /**
+     * @param \Illuminate\Foundation\Application $app
+     */
+    protected function defineEnvironment($app): void
+    {
+        /** @var \Illuminate\Contracts\Config\Repository $config */
+        $config = $app['config'];
+        $config->set('jsonapi.atomic_operations.enabled', true);
     }
 
     protected function setUp(): void
@@ -111,6 +123,34 @@ abstract class MissingLinkageConformanceTestCase extends Orchestra
     {
         $this->write('DELETE', '/api/playlists/1/relationships/tracks', ['data' => [['type' => 'tracks', 'id' => '5']]])->assertOk();
 
+        self::assertSame(['1', '2', '3', '4'], $this->trackIds());
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
+    public function anAtomicBatchNamingAMissingResourceIsNotFoundAndRollsBackEveryType(): void
+    {
+        $title = $this->read('/api/albums/1')->json('data.attributes.title');
+        $artist = $this->read('/api/albums/1/relationships/artist')->json('data');
+        $failing = [
+            ['op' => 'add', 'ref' => ['type' => 'playlists', 'id' => '1', 'relationship' => 'tracks'], 'data' => [['type' => 'tracks', 'id' => '999']]],
+            ['op' => 'update', 'ref' => ['type' => 'albums', 'id' => '1', 'relationship' => 'artist'], 'data' => ['type' => 'artists', 'id' => '999']],
+        ];
+        foreach ($failing as $operation) {
+            $body = (string) \json_encode(['atomic:operations' => [
+                ['op' => 'update', 'ref' => ['type' => 'albums', 'id' => '1'], 'data' => ['type' => 'albums', 'id' => '1', 'attributes' => ['title' => 'Rolled back']]],
+                $operation,
+            ]]);
+
+            $response = $this->call('POST', '/api/operations', [], [], [], ['HTTP_ACCEPT' => self::ATOMIC, 'CONTENT_TYPE' => self::ATOMIC], $body);
+
+            $this->assertNotFound($response);
+        }
+
+        // The first operation wrote albums, the second failed on another type, and the whole
+        // batch rolled back.
+        self::assertSame($title, $this->read('/api/albums/1')->json('data.attributes.title'));
+        self::assertSame($artist, $this->read('/api/albums/1/relationships/artist')->json('data'));
         self::assertSame(['1', '2', '3', '4'], $this->trackIds());
     }
 

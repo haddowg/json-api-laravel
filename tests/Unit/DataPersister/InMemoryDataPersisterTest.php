@@ -82,6 +82,29 @@ final class InMemoryDataPersisterTest extends TestCase
     }
 
     #[Test]
+    public function anOuterRollbackUndoesAWriteItsInnerTransactionCommitted(): void
+    {
+        $store = $this->store(['1' => new Widget(1, 'One')]);
+        $persister = $this->persister($store);
+
+        // An atomic batch opens the outer transaction, and each write in it an inner one.
+        $persister->beginTransaction();
+        $persister->beginTransaction();
+        $widget = $store->find('1');
+        \assert($widget instanceof Widget);
+        $widget->name = 'Changed';
+        $persister->update('widgets', $widget);
+        $persister->commit();
+
+        // A later operation fails, so the batch rolls back past the committed inner write.
+        $persister->rollback();
+
+        $restored = $store->find('1');
+        \assert($restored instanceof Widget);
+        self::assertSame('One', $restored->name);
+    }
+
+    #[Test]
     public function rollbackUndoesAnInPlaceUpdate(): void
     {
         $store = $this->store(['1' => new Widget(1, 'One')]);

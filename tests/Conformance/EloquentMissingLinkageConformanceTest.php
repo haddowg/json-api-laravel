@@ -26,6 +26,8 @@ final class EloquentMissingLinkageConformanceTest extends MissingLinkageConforma
      */
     protected function defineEnvironment($app): void
     {
+        parent::defineEnvironment($app);
+
         /** @var \Illuminate\Contracts\Config\Repository $config */
         $config = $app['config'];
         $config->set('database.default', 'testing');

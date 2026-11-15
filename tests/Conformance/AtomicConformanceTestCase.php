@@ -140,33 +140,6 @@ abstract class AtomicConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:atomic')]
-    public function linkageToAMissingResourceIs404AndRollsBackTheWholeBatch(): void
-    {
-        $before = $this->readJsonApi('/api/artists')->json('data');
-        $this->assertIsArray($before);
-        $artist = $this->readJsonApi('/api/albums/1/relationships/artist')->json('data');
-
-        $failing = [
-            ['op' => 'update', 'ref' => ['type' => 'albums', 'id' => '1', 'relationship' => 'artist'], 'data' => ['type' => 'artists', 'id' => '999']],
-            ['op' => 'add', 'data' => ['type' => 'albums', 'attributes' => ['title' => 'Orphan', 'status' => 'released', 'releasedAt' => '2020-02-02T00:00:00+00:00'], 'relationships' => ['artist' => ['data' => ['type' => 'artists', 'id' => '999']]]]],
-        ];
-        foreach ($failing as $operation) {
-            $response = $this->atomic([
-                ['op' => 'add', 'data' => ['type' => 'artists', 'attributes' => ['name' => 'Ghost', 'slug' => 'ghost']]],
-                $operation,
-            ]);
-
-            $response->assertStatus(404)->assertJsonPath('errors.0.code', 'RESOURCE_NOT_FOUND');
-        }
-
-        $after = $this->readJsonApi('/api/artists')->json('data');
-        $this->assertIsArray($after);
-        $this->assertCount(\count($before), $after);
-        $this->assertSame($artist, $this->readJsonApi('/api/albums/1/relationships/artist')->json('data'));
-    }
-
-    #[Test]
-    #[Group('spec:atomic')]
     public function anOperationCanTargetItsEndpointByHref(): void
     {
         // An `href` target is resolved by matching it against the router (the same defaults a
