@@ -80,7 +80,9 @@ second lookup, as PostgreSQL does in a failed transaction, the violation stays a
 
 A linkage id sent to a related model with an integer key
 must be the key's canonical form: `abc` or `01` names no row and is a `404`
-`RESOURCE_NOT_FOUND`, the answer the Symfony bundle's Doctrine persister gives.
+`RESOURCE_NOT_FOUND`, the answer the Symfony bundle's Doctrine persister gives. An id no row
+holds never reaches the persister: the handler checks every linkage id against the related
+type's provider first and answers the same `404`.
 
 ### Overriding one write
 

@@ -657,15 +657,15 @@ final class MetadataSource
     }
 
     /**
-     * Linkage to a related type a provider of the application's own serves is checked
-     * against it, and the Eloquent persister refuses an id it can't decode or a global
-     * scope hides. The in-memory persister finds nothing to refuse, and a persister of the
-     * application's own may.
+     * Linkage to a related type a provider serves is checked against it before the write,
+     * and the Eloquent persister refuses an id it can't decode or a global scope hides. The
+     * in-memory persister finds nothing to refuse, and a persister of the application's own
+     * may.
      */
     private function canMissLinkage(?DataPersisterInterface $persister, RelationInterface $relation): bool
     {
         foreach ($relation->relatedTypes() as $relatedType) {
-            if ($this->providers === null || $this->providers->scopingProviderFor($relatedType) !== null) {
+            if ($this->providers === null || $this->providers->supportsType($relatedType)) {
                 return true;
             }
         }

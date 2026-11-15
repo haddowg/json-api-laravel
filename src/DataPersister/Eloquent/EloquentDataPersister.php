@@ -671,9 +671,13 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             ? ($linkage->resourceIdentifier !== null ? [$linkage->resourceIdentifier] : [])
             : $linkage->resourceIdentifiers;
 
-        $owners = [];
-        foreach ($identifiers as $identifier) {
-            $member = $this->findRelated($relation, $identifier);
+        // Every member, then every owner class's owners, in one query each, so the check costs
+        // the same however many members the write names.
+        $members = $this->findAllRelated($relation, \array_values($identifiers));
+        $moving = [];
+        $ownerKeys = [];
+        foreach (\array_values($identifiers) as $index => $identifier) {
+            $member = $members[$index] ?? null;
             if (!$member instanceof Model || $this->isMemberOf($eloquentRelation, $member)) {
                 continue;
             }
@@ -688,13 +692,34 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
 
             // A row with no key, or a key no row answers to, has no parent: it is reported
             // with a null owner, so the handler checks the row alone.
-            $owner = null;
+            $ownerKey = \is_scalar($ownerKey) && \is_string($ownerClass) && \is_a($ownerClass, Model::class, true) ? (string) $ownerKey : null;
+            if ($ownerKey !== null) {
+                \assert(\is_string($ownerClass));
+                $ownerKeys[$ownerClass][$ownerKey] = $ownerKey;
+            }
+            $moving[] = [$identifier, $member, $ownerClass, $ownerKey];
+        }
+
+        $ownersByClass = [];
+        foreach ($ownerKeys as $ownerClass => $keys) {
+            \assert(\is_a($ownerClass, Model::class, true));
+            $localKey = $eloquentRelation->getLocalKeyName();
+            // Unscoped, so an owner hidden by a global scope is still found and checked.
+            foreach ($ownerClass::query()->withoutGlobalScopes()->whereIn($localKey, \array_values($keys))->get() as $owner) {
+                $value = $owner->getAttribute($localKey);
+                if (\is_scalar($value)) {
+                    $ownersByClass[$ownerClass][(string) $value] = $owner;
+                }
+            }
+        }
+
+        $owners = [];
+        foreach ($moving as [$identifier, $member, $ownerClass, $ownerKey]) {
+            $owner = $ownerKey !== null && \is_string($ownerClass) ? ($ownersByClass[$ownerClass][$ownerKey] ?? null) : null;
             $ownerType = null;
-            if ($ownerKey !== null && \is_string($ownerClass) && \is_a($ownerClass, Model::class, true)) {
-                // Unscoped, so an owner hidden by a global scope is still found and checked.
-                $owner = $ownerClass::query()->withoutGlobalScopes()->where($eloquentRelation->getLocalKeyName(), $ownerKey)->first();
+            if ($owner instanceof Model && \is_string($ownerClass)) {
                 $mapped = $ownerClass === $parent::class ? $type : \array_search($ownerClass, $this->modelByType, true);
-                $ownerType = $owner instanceof Model && \is_string($mapped) ? $mapped : null;
+                $ownerType = \is_string($mapped) ? $mapped : null;
             }
 
             $owners[] = [
@@ -1000,9 +1025,10 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             ? ($linkage->resourceIdentifier !== null ? [$linkage->resourceIdentifier] : [])
             : $linkage->resourceIdentifiers;
 
+        $found = $this->findAllRelated($relation, $identifiers);
         $models = [];
-        foreach ($identifiers as $identifier) {
-            $model = $this->findRelated($relation, $identifier);
+        foreach ($identifiers as $index => $identifier) {
+            $model = $found[$index] ?? null;
             if ($model instanceof Model) {
                 $models[] = $model;
             } else {
@@ -1034,10 +1060,64 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
     }
 
     /**
+     * The persisted related models for `$identifiers`, keyed by each identifier's index, read
+     * with one query per related type, so resolving a to-many costs the same for 2 ids as for
+     * 200. An identifier whose type is unmapped or whose id no row holds is left out.
+     *
+     * @param array<int, ResourceIdentifier> $identifiers
+     *
+     * @return array<int, Model>
+     */
+    private function findAllRelated(RelationInterface $relation, array $identifiers): array
+    {
+        $keysByType = [];
+        foreach ($identifiers as $identifier) {
+            $relatedType = $this->relatedType($relation, $identifier);
+            if ($identifier->id === null || !isset($this->modelByType[$relatedType])) {
+                continue;
+            }
+
+            /** @var mixed $key */
+            $key = $this->decodeLinkageId($relatedType, $identifier->id);
+            if (\is_int($key) || \is_string($key)) {
+                $keysByType[$relatedType][(string) $key] = $key;
+            }
+        }
+
+        $byKey = [];
+        foreach ($keysByType as $relatedType => $keys) {
+            $class = $this->modelByType[$relatedType];
+            foreach ($class::query()->findMany(\array_values($keys)) as $model) {
+                if ($model instanceof Model) {
+                    $byKey[$relatedType][$this->key($model)] = $model;
+                }
+            }
+        }
+
+        $found = [];
+        foreach ($identifiers as $index => $identifier) {
+            $relatedType = $this->relatedType($relation, $identifier);
+            if ($identifier->id === null || !isset($this->modelByType[$relatedType])) {
+                continue;
+            }
+
+            /** @var mixed $key */
+            $key = $this->decodeLinkageId($relatedType, $identifier->id);
+            $model = \is_int($key) || \is_string($key) ? ($byKey[$relatedType][(string) $key] ?? null) : null;
+            if ($model !== null) {
+                $found[$index] = $model;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
      * A model instance for a to-one {@see BelongsTo}/{@see MorphTo} target to associate:
      * the persisted row when it exists, else a keyed blank of the mapped class so
-     * {@see BelongsTo::associate()} can still set the FK (and the morph `*_type`) — any FK
-     * constraint surfaces the referential error on save.
+     * {@see BelongsTo::associate()} can still set the FK (and the morph `*_type`). The handler
+     * has already refused an id no row holds with a `404`, so a blank only stands in for a row
+     * the find could not see.
      */
     private function referenceFor(RelationInterface $relation, ResourceIdentifier $identifier): Model
     {
