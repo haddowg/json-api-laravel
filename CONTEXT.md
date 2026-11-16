@@ -81,6 +81,12 @@ A type declared `#[AsJsonApiResource(relatedOnly: true)]`: it serves no endpoint
 reached only as another type's related or included resources, or as a custom action's `inputType`.
 _Avoid_: embedded type, endpointless type
 
+**Singleton type**:
+A type with one resource per caller, served at `/{uriType}` with no `{id}`. It resolves the
+caller's id once per request and then runs the ordinary fetch, update, relationship and action
+paths with it; it keeps its real id everywhere else.
+_Avoid_: current-user resource, me endpoint
+
 **Operation allow-list**:
 The set of CRUD operations a type exposes, which decides the routes registered for it.
 

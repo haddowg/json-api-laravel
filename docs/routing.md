@@ -24,6 +24,12 @@ Only the operations a resource allows are emitted (`readOnly`/`operations` — s
 [`relatedOnly`](resources.md#related-only-types) type gets no route at all, not even its
 own relationship and related routes.
 
+A [singleton](resources.md#singleton-types) type is served at its type's path with no
+`{id}`: `GET` and `PATCH /api/inbox`, its relationship and related routes under
+`/api/inbox`, and its actions at `/api/inbox/-actions/{name}`. Its routes keep the usual
+names, so `jsonapi.inboxes.show` is `/api/inbox`, and each carries the `_jsonapi_singleton`
+default.
+
 ## Relation segments
 
 The `{relationship}` segment is the relation's **URI field name**: its name, unless the

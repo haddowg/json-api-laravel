@@ -9,7 +9,9 @@ workbench's `albums` actions.
 ## A resource-scoped action
 
 The default scope mounts `POST /{type}/{id}/-actions/{path}` and resolves the `{id}` to an
-entity before the handler runs:
+entity before the handler runs. On a [singleton](resources.md#singleton-types) it is
+`POST /{type}/-actions/{path}` and the entity is the caller's resource; a singleton takes no
+collection-scope action.
 
 ```php
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
