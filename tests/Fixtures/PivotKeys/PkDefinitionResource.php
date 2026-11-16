@@ -11,6 +11,7 @@ use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApi\Resource\Filter\WhereIdIn;
+use haddowg\JsonApi\Resource\Filter\WhereSet;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApiLaravel\Eloquent\BinaryUuidEncoder;
 
@@ -25,7 +26,7 @@ final class PkDefinitionResource extends AbstractResource
             Str::make('name')->sortable(),
             BelongsToMany::make('templates', 'campaign-templates')
                 ->fields(Str::make('defaultOverride')->storedAs('default_override')->nullable()->sortable()->build())
-                ->withFilters(Where::make('defaultOverride', 'pivot.default_override'))
+                ->withFilters(Where::make('defaultOverride', 'pivot.default_override'), WhereSet::make('overridden', 'pivot.default_override'))
                 ->withData()
                 ->paginate(PagePaginator::make())
                 ->countable(),
