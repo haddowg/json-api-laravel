@@ -21,7 +21,7 @@ open http://localhost:8080/docs                                                 
 open http://localhost:8080/docs.json                                             # the OpenAPI document
 ```
 
-The container serves the whole twelve-type domain: the multi-server witness (`albums` on both
+The container serves the whole eighteen-type domain: the multi-server witness (`albums` on both
 `/api` and `/admin`, `users` admin-only), declarative cache headers on `genres`, the encoded
 ids on `products`, the polymorphic reads, and every id strategy.
 
