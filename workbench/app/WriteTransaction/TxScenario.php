@@ -68,6 +68,12 @@ final class TxScenario
      */
     public static array $callbackLevels = [];
 
+    /** Whether a BeforeCreateEvent listener saves the new widget or tag through its persister. */
+    public static bool $saveOnCreate = false;
+
+    /** Whether that listener throws once it has saved. */
+    public static bool $throwAfterSave = false;
+
     public static function reset(): void
     {
         self::$sideWriteOn = null;
@@ -83,6 +89,8 @@ final class TxScenario
         self::$actionReturnsError = false;
         self::$queueOnAccept = false;
         self::$callbackThrows = false;
+        self::$saveOnCreate = false;
+        self::$throwAfterSave = false;
         self::$log = [];
         self::$callbackLevels = [];
     }

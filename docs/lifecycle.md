@@ -110,7 +110,9 @@ persister has written:
 A before listener that writes joins the transaction. A row it saves is undone if a later
 listener, a validation, a policy or the persister's own write throws, so a listener that has to
 save something early, for example to give a new row its key, needs no transaction of its own
-to stay undoable. The After* events fire once the transaction has committed: what they read is
+to stay undoable. That includes saving the model being created: the persister saves it as
+usual afterwards, without reading its row as a taken
+[client id](eloquent.md#client-ids-and-linkage-ids). The After* events fire once the transaction has committed: what they read is
 durable, and a throw from one fails the response without undoing the write. The response is
 rendered after the commit too, so a failure while serializing it returns an error with the
 write already stored.

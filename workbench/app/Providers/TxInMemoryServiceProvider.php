@@ -19,6 +19,8 @@ use Workbench\App\WriteTransaction\TxAcceptingPersister;
 use Workbench\App\WriteTransaction\TxListener;
 use Workbench\App\WriteTransaction\TxNote;
 use Workbench\App\WriteTransaction\TxNoteResource;
+use Workbench\App\WriteTransaction\TxTag;
+use Workbench\App\WriteTransaction\TxTagResource;
 use Workbench\App\WriteTransaction\TxWidget;
 use Workbench\App\WriteTransaction\TxWidgetResource;
 
@@ -30,7 +32,7 @@ final class TxInMemoryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([TxWidgetResource::class, TxNoteResource::class, StampTxWidget::class, SweepTxWidgets::class, PeekTxWidget::class]);
+        JsonApi::register([TxWidgetResource::class, TxNoteResource::class, TxTagResource::class, StampTxWidget::class, SweepTxWidgets::class, PeekTxWidget::class]);
 
         /** @var InMemorySnapshotCoordinator $coordinator */
         $coordinator = $this->app->make(InMemorySnapshotCoordinator::class);
@@ -39,6 +41,10 @@ final class TxInMemoryServiceProvider extends ServiceProvider
         $notes = new InMemoryDataProvider('txNotes', ['1' => $note], identify: self::identify(), assignId: self::assignId(), coordinator: $coordinator);
         JsonApi::provider($notes);
         JsonApi::persister(new InMemoryDataPersister('txNotes', $notes->store(), static fn(): TxNote => new TxNote()));
+
+        $tags = new InMemoryDataProvider('txTags', [], identify: self::identify(), coordinator: $coordinator);
+        JsonApi::provider($tags);
+        JsonApi::persister(new InMemoryDataPersister('txTags', $tags->store(), static fn(): TxTag => new TxTag()));
 
         $widgets = new InMemoryDataProvider(
             'txWidgets',

@@ -84,6 +84,13 @@ second lookup, as PostgreSQL does in a failed transaction, the violation stays a
 the write's transaction the insert runs in a savepoint, which Laravel rolls back to when it
 fails, so PostgreSQL still answers the lookup.
 
+A before hook may save the new model itself, for example to read its generated key. The
+model then exists, so the persister saves it as usual rather than reading its own row as a
+taken id. A client id another row holds is still refused, but the hook's `save()` meets it
+first, as the database's unique violation, a `500`, since the persister checks the id only
+after the hooks have run. The in-memory persister likewise accepts the entity a hook already
+saved.
+
 A linkage id sent to a related model with an integer key
 must be the key's canonical form: `abc` or `01` names no row and is a `404`
 `RESOURCE_NOT_FOUND`, the answer the Symfony bundle's Doctrine persister gives. An id no row

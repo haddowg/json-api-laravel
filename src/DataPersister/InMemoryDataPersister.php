@@ -99,7 +99,9 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
         // server-generated create carries no id yet (idOf() is null — the store mints one
         // in save()), so it never trips this.
         $id = $this->store->idOf($entity);
-        if ($id !== null && $this->store->find($id) !== null) {
+        $stored = $id !== null ? $this->store->find($id) : null;
+        // A before hook that saved the entity already holds its own id.
+        if ($id !== null && $stored !== null && $stored !== $entity) {
             throw new ClientGeneratedIdAlreadyExists($id);
         }
 

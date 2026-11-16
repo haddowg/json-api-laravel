@@ -11,6 +11,7 @@ use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\Models\TxNote;
+use Workbench\App\Models\TxTag;
 use Workbench\App\Models\TxWidget;
 use Workbench\App\WriteTransaction\PeekTxWidget;
 use Workbench\App\WriteTransaction\StampTxWidget;
@@ -18,6 +19,7 @@ use Workbench\App\WriteTransaction\SweepTxWidgets;
 use Workbench\App\WriteTransaction\TxAcceptingPersister;
 use Workbench\App\WriteTransaction\TxListener;
 use Workbench\App\WriteTransaction\TxNoteResource;
+use Workbench\App\WriteTransaction\TxTagResource;
 use Workbench\App\WriteTransaction\TxWidgetResource;
 
 /**
@@ -27,9 +29,9 @@ final class TxEloquentServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([TxWidgetResource::class, TxNoteResource::class, StampTxWidget::class, SweepTxWidgets::class, PeekTxWidget::class]);
+        JsonApi::register([TxWidgetResource::class, TxNoteResource::class, TxTagResource::class, StampTxWidget::class, SweepTxWidgets::class, PeekTxWidget::class]);
 
-        $modelByType = ['txWidgets' => TxWidget::class, 'txNotes' => TxNote::class];
+        $modelByType = ['txWidgets' => TxWidget::class, 'txNotes' => TxNote::class, 'txTags' => TxTag::class];
         $persister = new EloquentDataPersister($modelByType);
 
         JsonApi::provider(new EloquentDataProvider($modelByType), priority: -128);
