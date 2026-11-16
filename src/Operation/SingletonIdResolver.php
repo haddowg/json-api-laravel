@@ -17,9 +17,9 @@ use Psr\Http\Message\ServerRequestInterface;
  *
  * The type's `resolveSingletonId()` receives a {@see SingletonContext} carrying the PSR-7
  * request and two attributes: {@see USER_ATTRIBUTE}, the authenticated user or `null`, and
- * {@see REQUEST_ATTRIBUTE}, the Illuminate request. The id is remembered on the request,
- * so every later read of its target, such as `$request->jsonApi()->target()`, carries it.
- * A type that names no resource for the caller answers `404`.
+ * {@see REQUEST_ATTRIBUTE}, the Illuminate request. The id is remembered on the request, so
+ * an Atomic Operations batch addressing the type more than once resolves it once. A type that
+ * names no resource for the caller answers `404`.
  */
 final readonly class SingletonIdResolver
 {
@@ -67,17 +67,6 @@ final readonly class SingletonIdResolver
         }
 
         return $target->withId($id);
-    }
-
-    /**
-     * The id already resolved on `$request` for the singleton type `$type`, or `null` when
-     * none has been.
-     */
-    public static function resolvedId(Request $request, string $type): ?string
-    {
-        $id = self::resolvedIds($request)[$type] ?? null;
-
-        return $id === '' ? null : $id;
     }
 
     /**

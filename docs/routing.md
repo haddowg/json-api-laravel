@@ -159,6 +159,7 @@ $route?->isRelationshipEndpoint;  // true only for /relationships/{relationship}
 $route?->action;                  // 'publish' from /albums/1/-actions/publish
 $route?->actionScope;             // ActionScope::Resource or ActionScope::Collection
 $route?->isAtomic;                // true on the atomic operations route
+$route?->singleton;               // true on a singleton type's routes, which carry no id
 $route?->target();                // core's Target for the endpoint; null on the atomic route
 ```
 

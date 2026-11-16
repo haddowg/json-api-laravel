@@ -296,6 +296,17 @@ abstract class SingletonConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    public function anAtomicUpdateNamingAnotherIdIsA409(): void
+    {
+        $this->actingAs($this->user(1));
+
+        $this->atomic([['op' => 'update', 'href' => '/api/inbox', 'data' => $this->inbox('2', 'Hijacked')['data']]])->assertStatus(409);
+
+        $this->actingAs($this->user(2));
+        $this->jsonApi()->get('/api/inbox')->assertJsonPath('data.attributes.title', 'Bob inbox');
+    }
+
+    #[Test]
     public function anAtomicHrefForACallerWithNoResourceIsA404(): void
     {
         $this->atomic([['op' => 'update', 'href' => '/api/inbox', 'data' => $this->inbox('1', 'Nobody')['data']]])->assertStatus(404);

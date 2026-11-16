@@ -171,6 +171,18 @@ abstract class AtomicConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:atomic')]
+    public function anUpdateNamingAnotherResourceThanItsTargetIsAConflict(): void
+    {
+        // The resource object names the resource it updates, as a PATCH body does.
+        $this->atomic([
+            ['op' => 'update', 'href' => '/api/albums/1', 'data' => ['type' => 'albums', 'id' => '2', 'attributes' => ['title' => 'Kid A']]],
+        ])->assertStatus(409);
+
+        $this->readJsonApi('/api/albums/1')->assertJsonPath('data.attributes.title', 'OK Computer');
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
     public function aRelationshipTargetOperationSetsLinkageAfterCommit(): void
     {
         // op0 creates an artist under a local id; op1 targets album 1's `artist` relationship

@@ -19,8 +19,8 @@ use Illuminate\Routing\Route;
  * has swapped a relation's URI field name in `{relationship}` for the relation's name.
  *
  * A route carrying {@see self::SINGLETON_ATTRIBUTE} serves a singleton type at `/{uriType}`,
- * so it maps to a {@see Target::singleton()} target, with no id until the
- * {@see SingletonIdResolver} has resolved the caller's for the request, and with that id after.
+ * so it maps to a {@see Target::singleton()} target with no id, since the URL names none; the
+ * {@see SingletonIdResolver} resolves the caller's before the operation is built.
  *
  * It is a pure mapper with no container or I/O — the public seam an explicit-route
  * user (the `Route::jsonApi()` macro) relies on, and trivially unit-testable.
@@ -66,7 +66,7 @@ final class TargetResolver
         $isRelationshipEndpoint = $relationship !== null && ($route->defaults[self::RELATIONSHIP_ENDPOINT_ATTRIBUTE] ?? false) === true;
 
         if (($route->defaults[self::SINGLETON_ATTRIBUTE] ?? false) === true) {
-            return Target::singleton($type, SingletonIdResolver::resolvedId($request, $type), $relationship, $isRelationshipEndpoint);
+            return Target::singleton($type, null, $relationship, $isRelationshipEndpoint);
         }
 
         return new Target(

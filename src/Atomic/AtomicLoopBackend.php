@@ -12,6 +12,7 @@ use haddowg\JsonApi\Atomic\LocalIdRegistry;
 use haddowg\JsonApi\Atomic\OperationDescriptor;
 use haddowg\JsonApi\Atomic\Ref;
 use haddowg\JsonApi\Exception\AtomicOperationsInvalid;
+use haddowg\JsonApi\Exception\ResourceIdConflict;
 use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\OpenApi\Metadata\OperationKey;
 use haddowg\JsonApi\OpenApi\Metadata\OperationType;
@@ -31,6 +32,7 @@ use haddowg\JsonApi\Response\AbstractResponse;
 use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
 use haddowg\JsonApi\Scope\ScopeEnforcer;
+use haddowg\JsonApi\Serializer\UriTypeAwareInterface;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\DataPersister\AfterCommit;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
@@ -483,6 +485,13 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
             };
         }
 
+        // An update's resource object names the resource it updates, as a PATCH body does, so
+        // an id other than the target's is the same 409 a direct PATCH answers.
+        $bodyId = \is_array($data) ? ($data['id'] ?? null) : null;
+        if ($opCode === AtomicOperationCode::Update && \is_string($bodyId) && $bodyId !== '' && $target->id !== null && $bodyId !== $target->id) {
+            throw new ResourceIdConflict($bodyId, $target->id);
+        }
+
         $body = $this->subRequest($target, $method, $data, $index);
         $context = new OperationContext($this->server, $body);
 
@@ -529,11 +538,14 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
 
     /**
      * The URL path a sub-operation addresses (its self link / route), built from the
-     * resolved target. A singleton's path has no id segment.
+     * resolved target under the type's URI segment. A singleton's path has no id segment.
      */
     private function pathFor(Target $target): string
     {
-        $path = '/' . $target->type;
+        $serializer = $this->server->hasSerializerFor($target->type) ? $this->server->serializerFor($target->type) : null;
+        $uriType = $serializer instanceof UriTypeAwareInterface && $serializer->uriType() !== '' ? $serializer->uriType() : $target->type;
+
+        $path = '/' . $uriType;
         // A singleton's endpoints take no id, however the operation addressed it.
         if ($target->id !== null && !$target->singleton && !$this->server->isSingleton($target->type)) {
             $path .= '/' . $target->id;
@@ -599,7 +611,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
 
         if ($match['_jsonapi_singleton'] === true) {
             if ($relationship === null && $op->opCode === AtomicOperationCode::Add) {
-                throw new AtomicHrefInvalid($href, "addresses a singleton resource; an 'add' targets a collection or a relationship", $pointer);
+                throw new AtomicHrefInvalid($href, "addresses a single resource; an 'add' targets the collection or a relationship", $pointer);
             }
 
             if ($relationship !== null) {

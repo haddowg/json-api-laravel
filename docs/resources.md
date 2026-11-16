@@ -136,8 +136,8 @@ they do for any other type. `resolveSingletonId()` gets a `SingletonContext` car
 PSR-7 request, the authenticated user, or `null` for a guest, as
 `SingletonIdResolver::USER_ATTRIBUTE`, and the Illuminate request as
 `SingletonIdResolver::REQUEST_ATTRIBUTE`. A `null` id is a `404`, and so is an id the data
-layer doesn't find. `$request->jsonApi()->target()` carries the resolved id once the
-controller has resolved it.
+layer doesn't find. `$request->jsonApi()` reports `singleton: true` on the type's routes, and
+its target carries no id, since the URL names none.
 
 A `PATCH` body still carries the resource's `id`, as the spec requires of every update, and
 the package doesn't fill it in. A client reads the singleton first, or otherwise knows the
