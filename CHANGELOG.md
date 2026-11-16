@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.20.0](https://github.com/haddowg/json-api-laravel/compare/v2.19.0...v2.20.0) (2026-11-16)
+
+
+### Bug Fixes
+
+* render an included to-many's first page ([0ee1e8c](https://github.com/haddowg/json-api-laravel/commit/0ee1e8c3e489cd2dabc99b985f1de0b1fecd1ca2))
+
 ## [2.19.0](https://github.com/haddowg/json-api-laravel/compare/v2.18.0...v2.19.0) (2026-11-16)
 
 
