@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Workbench\App\Singleton;
 
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\HasMany;
 use haddowg\JsonApi\Resource\Field\Id;
+use haddowg\JsonApi\Resource\Field\PivotEdge;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\SingletonContext;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
@@ -34,6 +36,15 @@ final class InboxResource extends AbstractResource
             Str::make('title'),
             HasMany::make('items', 'inboxItems'),
             BelongsToMany::make('labels', 'inboxLabels'),
+            // The same labels with a computed pivot field, so its linkage renders through
+            // the pivot parent serializer.
+            BelongsToMany::make('taggedLabels', 'inboxLabels')
+                ->storedAs('labels')
+                ->fields(Str::make('tag')->computedUsing(static function (mixed $edge): string {
+                    $name = $edge instanceof PivotEdge ? Accessor::get($edge->related, 'name') : null;
+
+                    return '#' . (\is_string($name) ? $name : '');
+                })),
         ];
     }
 

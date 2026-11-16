@@ -196,6 +196,18 @@ abstract class SingletonConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    public function aRelationshipWithPivotFieldsLinksAtTheTypesPath(): void
+    {
+        $this->actingAs($this->user(1));
+
+        $response = $this->jsonApi()->get('/api/inbox/relationships/taggedLabels')->assertOk();
+
+        $response->assertJsonPath('data.0.meta.pivot.tag', '#urgent');
+        $response->assertJsonPath('links.self.href', 'https://example.test/api/inbox/relationships/taggedLabels');
+        $response->assertJsonPath('links.related.href', 'https://example.test/api/inbox/taggedLabels');
+    }
+
+    #[Test]
     public function itsRelationshipsAreWrittenOnTheCallersResource(): void
     {
         $this->actingAs($this->user(1));
@@ -332,6 +344,8 @@ abstract class SingletonConformanceTestCase extends Orchestra
             '/inbox/labels',
             '/inbox/relationships/items',
             '/inbox/relationships/labels',
+            '/inbox/relationships/taggedLabels',
+            '/inbox/taggedLabels',
         ], $inboxPaths);
         self::assertIsArray($paths['/inbox']);
         self::assertSame(['get', 'patch'], \array_keys($paths['/inbox']));

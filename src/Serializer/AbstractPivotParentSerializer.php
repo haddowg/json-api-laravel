@@ -16,6 +16,7 @@ use haddowg\JsonApi\Serializer\IncludeControlsInterface;
 use haddowg\JsonApi\Serializer\RendersDeclaredLinksInterface;
 use haddowg\JsonApi\Serializer\SelfLinkAwareInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
+use haddowg\JsonApi\Serializer\UriTypeAwareInterface;
 
 /**
  * The base for the pivot parent-serializer decorator ({@see PivotParentSerializer}): it
@@ -26,8 +27,9 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  * Crucially it **transparently forwards every optional serializer-render interface** the
  * inner serializer (an {@see \haddowg\JsonApi\Resource\AbstractResource}) implements —
  * counting ({@see CountableControlsInterface}/{@see CountableSelfInterface}),
- * strict-fieldset/eager/relation declarations, the self-link toggle and declared links — by implementing
- * each and `instanceof`-delegating. A decorator that dropped one of these would silently
+ * strict-fieldset/eager/relation declarations, the self-link toggle, declared links and the URI
+ * type, which keeps the relationship links on the type's own path — by implementing each and
+ * `instanceof`-delegating. A decorator that dropped one of these would silently
  * break the corresponding feature on the decorated render (e.g. core's count gate reads
  * {@see CountableControlsInterface} off the *primary* serializer, so a non-forwarding
  * decorator turns a valid `?withCount` into a `400`). Each method is a no-op-safe delegate:
@@ -43,7 +45,8 @@ abstract class AbstractPivotParentSerializer implements
     DeclaresEagerLoadsInterface,
     DeclaresRelationsInterface,
     SelfLinkAwareInterface,
-    RendersDeclaredLinksInterface
+    RendersDeclaredLinksInterface,
+    UriTypeAwareInterface
 {
     use RebindsPivotLinkage;
 
@@ -174,5 +177,12 @@ abstract class AbstractPivotParentSerializer implements
         // The base resource emits a self link by default; absent the interface a
         // serializer keeps that default rather than suppressing the link.
         return !$inner instanceof SelfLinkAwareInterface || $inner->emitsSelfLink();
+    }
+
+    public function uriType(): string
+    {
+        $inner = $this->inner();
+
+        return $inner instanceof UriTypeAwareInterface ? $inner->uriType() : '';
     }
 }

@@ -133,6 +133,7 @@ use haddowg\JsonApiLaravel\Serializer\PivotParentSerializer;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipPagination;
+use haddowg\JsonApiLaravel\Serializer\SingletonPivotParentSerializer;
 use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipPagination;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
@@ -1673,13 +1674,15 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         $relatedType = $relation->relatedTypes()[0] ?? $type;
 
-        return new PivotParentSerializer(
+        $decorated = new PivotParentSerializer(
             $serializer,
             $relationshipName,
             $relation,
             $server,
             new PivotMetaSerializer($server->serializerFor($relatedType), $pivotMap, $relation instanceof BelongsToMany ? $relation : null, $parent, $server->outputTimezone()),
         );
+
+        return $server->isSingleton($type) ? new SingletonPivotParentSerializer($decorated, $server, $type) : $decorated;
     }
 
     /**
