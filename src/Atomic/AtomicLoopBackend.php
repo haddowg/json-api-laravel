@@ -197,6 +197,12 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         // endpoint's data has references only inside `relationships[*]`).
         $data = $this->resolveDataLids($op->data, $target->hasRelationship(), $lids);
 
+        // An update's resource object names an existing resource, so its own `lid` refers
+        // to one an earlier operation created, and it hydrates with the id that resolves to.
+        if ($op->opCode === AtomicOperationCode::Update && !$target->hasRelationship()) {
+            $data = $this->resolveIdentifierLid($data, $lids);
+        }
+
         // (c)/(d) build the matching core CRUD operation VO off a synthetic per-op request
         // and dispatch it through the handler IN-PROCESS (handle(), never Server::dispatch).
         $operation = $this->buildOperation($op->opCode, $target, $data, $op->index);

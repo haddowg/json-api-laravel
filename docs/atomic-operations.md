@@ -56,7 +56,9 @@ JSON:API route answers `ATOMIC_HREF_UNRESOLVABLE`.
 A `lid` (local id) lets one operation reference a resource created earlier **in the same
 batch**: the first `add` mints an artist under `lid: "a1"`; the second references it as its
 `artist` relationship. The package's lid registry resolves the reference once the referent is
-persisted, so the whole graph is created in one transaction.
+persisted, so the whole graph is created in one transaction. An `update` of a resource
+created earlier names it by the same `lid`, in its `ref` and in its resource object, which
+must carry an `id` or a `lid` as every update body does.
 
 ## The transaction and deferred work
 
