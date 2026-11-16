@@ -30,6 +30,7 @@ use Workbench\App\MusicCatalog\Domain\Product;
 use Workbench\App\MusicCatalog\Domain\Release;
 use Workbench\App\MusicCatalog\Domain\Track;
 use Workbench\App\MusicCatalog\Domain\User;
+use Workbench\App\MusicCatalog\JsonApi\AccountResource;
 use Workbench\App\MusicCatalog\JsonApi\AlbumResource;
 use Workbench\App\MusicCatalog\JsonApi\ArtistResource;
 use Workbench\App\MusicCatalog\JsonApi\CatalogExportResource;
@@ -52,6 +53,7 @@ use Workbench\App\MusicCatalog\Provider\CatalogExportProvider;
 use Workbench\App\MusicCatalog\Provider\ChartProvider;
 use Workbench\App\MusicCatalog\Provider\CountryProvider;
 use Workbench\App\MusicCatalog\Provider\ExportJobProvider;
+use Workbench\App\MusicCatalog\Provider\OwnAccountProvider;
 use Workbench\App\MusicCatalog\Query\ArrayFullTextSearchArm;
 use Workbench\App\MusicCatalog\Security\PlaylistApiPolicy;
 use Workbench\App\MusicCatalog\Serializer\ChartSerializer;
@@ -93,6 +95,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
         // OpenAPI `paths` follow discovery order, and the byte-compat contract requires them
         // to match the bundle's alphabetical-by-type descriptor order.
         JsonApi::register([
+            AccountResource::class,
             AlbumResource::class,
             ArtistResource::class,
             CatalogExportResource::class,
@@ -161,6 +164,11 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
 
         // public-profiles is a curated read-only second view of the SAME user rows.
         JsonApi::provider(new InMemoryDataProvider('public-profiles', $graph['users'], identify: self::identify()));
+
+        // accounts is the signed-in user's own row of the SAME users, and only that row.
+        $accounts = new OwnAccountProvider($graph['users']);
+        JsonApi::provider($accounts);
+        JsonApi::persister(new InMemoryDataPersister('accounts', (new InMemoryDataProvider('accounts', $graph['users'], identify: self::identify()))->store(), static fn(): User => new User()));
 
         $libraries = new InMemoryDataProvider('libraries', $graph['libraries'], identify: self::identify(), assignId: self::assignId());
         JsonApi::provider($libraries);

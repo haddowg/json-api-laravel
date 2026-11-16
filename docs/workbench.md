@@ -19,6 +19,7 @@ Twelve types, each chosen to witness a distinct capability:
 | `playlists` | UUID id; lifecycle hooks; API-distinct policy; per-relation security; one-model-two-types; pivot (`orderedTracks`) |
 | `users` | admin-only server; `Email`/`Ip`/`ArrayHash`; write-only `password`; validation composition; `Rule::unique`; include whitelist |
 | `public-profiles` | one model, two types (a curated read-only `User` view) |
+| `accounts` | a [singleton](resources.md#singleton-types) at `/me`: the signed-in user's own `User` row, `GET`/`PATCH /me` and `/me/playlists`, narrowed to that row by the `Account` model's global scope |
 | `favorites` | polymorphic to-one (`MorphTo`); `cannotBeIncluded()` |
 | `libraries` | **polymorphic to-many** (`MorphToMany`) running on the reference provider — the over-parity headline |
 | `genres` | client-supplied natural-key id; declarative cache headers |
