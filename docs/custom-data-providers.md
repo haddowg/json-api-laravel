@@ -78,6 +78,12 @@ it, and the Relationship Queries window and `?withCount` read it with
 `fetchRelatedCollection()`. So the inherited default, an empty batch, is safe: your relations
 render in full, one parent at a time. Override it only to save the queries.
 
+A paginated to-many's include or rendered linkage is its
+[first page](pagination.md#included-relationships-show-their-first-page): the criteria carry the
+paginator's window, and the result's `total` or `hasMore` drives the page's links. A parent you
+leave out of that batch is read with `fetchRelatedCollection()`, as the related endpoint reads
+it, rather than rendered as the parent holds it.
+
 The batcher never writes what it loads onto a parent object. An Eloquent model takes the
 batched value as its loaded relation, exactly as its own lazy load would. Any other object is
 left as it is, and the batched value renders from the request's own linkage. A filter in

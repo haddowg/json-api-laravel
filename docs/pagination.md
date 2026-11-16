@@ -98,6 +98,50 @@ include renders the **first** cursor page per parent (`next` carries the minted 
 `prev`/`last`), minted through the same per-parent keyset fetch the related endpoint runs — and the
 document advertises the cursor-pagination profile even when the primary collection is page-based.
 
+## Included relationships show their first page
+
+Every to-many whose linkage renders, because it is included or declared `withData()`, renders
+the **first page** of its members under its effective paginator: the relation's own
+`paginate()`, else its related resource's `pagination()`, else the server default. The
+relationship object carries the page's links against the relationship endpoint (`first`,
+`next` and, when the page is counted, `last`), and `included` holds exactly the members its
+linkage lists. With `albums.tracks` paged two at a time, an album of five tracks included with
+`?include=tracks` renders its first two, not its whole tracklist:
+
+```json
+"tracks": {
+  "links": {
+    "self": "…/albums/1/relationships/tracks",
+    "related": "…/albums/1/tracks",
+    "first": "…/albums/1/relationships/tracks?page%5Bnumber%5D=1&page%5Bsize%5D=2",
+    "next": "…/albums/1/relationships/tracks?page%5Bnumber%5D=2&page%5Bsize%5D=2"
+  },
+  "data": [ { "type": "tracks", "id": "1" }, { "type": "tracks", "id": "2" } ]
+}
+```
+
+The page is the one the related endpoint serves first: in the relation's default order,
+narrowed by the filter defaults its endpoint folds in. A page is counted when the paginator
+counts (`withCount()`) or the request names the relation in
+[`?withCount`](relationships.md#withcount-the-countable-profile); a `countable()` relation then
+also carries `meta.total`. A page counted because the request asked for it carries
+`withCount=_self_` in its links, so the pages they reach are counted too. A polymorphic
+to-many's links address its related endpoint, since its relationship endpoint renders the
+whole linkage. Each level of a nested include (`?include=tracks.playlists`) is cut under its
+own relation's paginator, and so is the include of a singleton, of a related collection and of
+an atomic result. A [`relatedQuery`](relationships.md#the-relationship-queries-profile) sort or
+filter reorders or narrows the same first page.
+
+A relation keeps its whole set when it is declared `withoutPagination()`, or when it exposes
+neither its relationship nor its related endpoint, which leaves its pages nothing to link to:
+
+```php
+HasMany::make('tags', 'tags')->withoutPagination(),
+```
+
+The Eloquent provider reads a relation's first pages for the whole page of parents in one
+bounded query (see [eloquent](eloquent.md#windowed-relationship-queries--sql-push-down-only)).
+
 ## Relationship pagination
 
 A related to-many paginates independently — declare it on the relation. Per-parent windowing

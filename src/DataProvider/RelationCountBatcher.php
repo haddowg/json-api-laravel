@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\DataProvider;
 use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Serializer\RelationshipPaginationInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Serializer\BatchedRelationshipCount;
@@ -54,9 +55,12 @@ final class RelationCountBatcher
      * `$type`, or `null` when the request named none (so the handler clears the seam and
      * renders exactly as before).
      *
+     * A relation whose first page `$pages` holds counted for every parent takes its totals
+     * from those pages, which counted the same members, rather than counting again.
+     *
      * @param list<object> $parents the already-fetched page of parents
      */
-    public function batch(Server $server, string $type, array $parents, JsonApiRequestInterface $request): ?BatchedRelationshipCount
+    public function batch(Server $server, string $type, array $parents, JsonApiRequestInterface $request, ?RelationshipPaginationInterface $pages = null): ?BatchedRelationshipCount
     {
         if ($parents === []) {
             return null;
@@ -85,6 +89,15 @@ final class RelationCountBatcher
 
         $counts = [];
         foreach ($relations as $relation) {
+            $paged = $pages === null ? null : $this->pagedTotals($pages, $parents, $relation, $request);
+            if ($paged !== null) {
+                foreach ($paged as $index => $total) {
+                    $counts[\spl_object_id($parents[$index])][$relation->name()] = $total;
+                }
+
+                continue;
+            }
+
             $criteria = $this->countCriteria($server, $type, $relation, $request, $provider instanceof QueriesPivotColumnsInterface && $provider->queriesPivotColumns($parents[0], $relation));
 
             // An identified MorphToMany counts its pairs, with each scoped type admitted first.
@@ -107,6 +120,28 @@ final class RelationCountBatcher
         }
 
         return $counts === [] ? null : new BatchedRelationshipCount($counts);
+    }
+
+    /**
+     * Each parent's total of `$relation` from its counted first page in `$pages`, in `$parents`
+     * order, or `null` unless every parent has one.
+     *
+     * @param list<object> $parents
+     *
+     * @return list<int>|null
+     */
+    private function pagedTotals(RelationshipPaginationInterface $pages, array $parents, RelationInterface $relation, JsonApiRequestInterface $request): ?array
+    {
+        $totals = [];
+        foreach ($parents as $parent) {
+            $total = $pages->paginateRelationship($parent, $relation, $request)?->total;
+            if ($total === null) {
+                return null;
+            }
+            $totals[] = $total;
+        }
+
+        return $totals;
     }
 
     /**

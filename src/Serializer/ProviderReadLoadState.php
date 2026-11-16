@@ -17,7 +17,8 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * The load state a server renders with. A model's to-many whose members come from its
  * provider's read, because the related type has a provider of its own, a filter default
- * narrows it or it has a read order, never counts as loaded here. Core asks only when no
+ * narrows it, it has a read order or its linkage is cut to a first page, never counts as
+ * loaded here. Core asks only when no
  * linkage was supplied for the relation, so its data is then left out rather than read
  * off the model, where a relation something else loaded after the
  * {@see \haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher} ran still holds
@@ -57,6 +58,11 @@ final class ProviderReadLoadState implements RelationshipLoadStateInterface
 
     private function readsThroughProvider(RelationInterface $relation): bool
     {
+        // Its rendered linkage is a first page, never the whole set the model holds.
+        if (($this->server)()->linkagePaginator($relation) !== null) {
+            return true;
+        }
+
         $providers = ($this->providers)();
         foreach ($relation->relatedTypes() as $relatedType) {
             if (!$providers->supportsType($relatedType)) {

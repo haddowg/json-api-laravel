@@ -6,11 +6,17 @@ namespace haddowg\JsonApiLaravel\DataProvider;
 
 use haddowg\JsonApi\Collection\CollectionResult;
 use haddowg\JsonApi\Operation\QueryParameters;
+use haddowg\JsonApi\Pagination\CursorPaginator;
+use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Request\RelatedQuery;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterDefaults;
+use haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile;
+use haddowg\JsonApi\Schema\Relationship\IdentifiedMember;
 use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
+use haddowg\JsonApi\Schema\Relationship\RelationshipPagination;
 use haddowg\JsonApi\Schema\Relationship\ToOneRelationshipLinkage;
 use haddowg\JsonApi\Serializer\IncludeControlsInterface;
 use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
@@ -18,6 +24,7 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Serializer\ProviderReadLoadState;
 use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipLinkage;
+use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipPagination;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
@@ -69,6 +76,12 @@ use Illuminate\Database\Eloquent\Model;
  *    to-one and is checked against the provider when it renders.
  * A polymorphic relation reaching such a type has its members narrowed per member type instead.
  *
+ * A to-many with a paginator ({@see Server::linkagePaginator()}) loads only its first page
+ * wherever its linkage renders, at every level and batching on or off, read the way its related
+ * endpoint reads it ({@see RelationshipWindowBatcher::firstPages()}), and the walk descends into
+ * that page alone. A primary-level page the Relationship Queries window already supplies is used
+ * as it is. The pages' pagination is read back through {@see pagination()}.
+ *
  * Beyond the `?include` tree it also preloads the one relation class that renders linkage
  * on EVERY read regardless of `?include` — an **eager monomorphic to-one** (`BelongsTo`/
  * `MorphTo`, or a `withData()` override) — for an Eloquent page ({@see preloadEagerLinkage()}).
@@ -108,6 +121,19 @@ final class RelatedIncludeBatcher
      */
     private bool $enabled = true;
 
+    /**
+     * The first pages the last {@see preload()} cut, keyed by parent object id then relation name.
+     *
+     * @var array<int, array<string, RelationshipPagination>>
+     */
+    private array $pages = [];
+
+    /**
+     * The Relationship Queries pages of the primary resources the current {@see preload()}
+     * descends into instead of loading them again.
+     */
+    private ?RelationshipLinkageInterface $windowed = null;
+
     public function __construct(
         private readonly DataProviderRegistry $providers,
         private readonly TypeMetadataResolver $types,
@@ -116,7 +142,17 @@ final class RelatedIncludeBatcher
         private readonly ?IdentifiedMorphMembers $members = null,
         private readonly RelationCriteriaFactory $relationCriteria = new RelationCriteriaFactory(),
         private readonly ?ScopedToOneTargets $toOne = null,
+        private readonly ?RelationshipWindowBatcher $windows = null,
     ) {}
+
+    /**
+     * The pagination of every first page the last {@see preload()} cut, or `null` when it cut
+     * none.
+     */
+    public function pagination(): ?WindowedRelationshipPagination
+    {
+        return $this->pages === [] ? null : new WindowedRelationshipPagination($this->pages);
+    }
 
     /**
      * Disables include batching process-wide (the witness's cold-read seam). Batching is a
@@ -143,14 +179,18 @@ final class RelatedIncludeBatcher
     /**
      * Batch-loads the effective include tree rooted at the `$type` entities in
      * `$entities`, recursing one level per `.`-separated include segment, and returns the
-     * linkage of every rendered to-many whose related type is served by its own scoping
-     * provider (see {@see DataProviderRegistry::scopedRelatedProvider()}), for the caller to
-     * supply out-of-band. `null` when there is none.
+     * out-of-band linkage the walk loaded: every rendered to-many cut to its first page, and
+     * every rendered relation whose related type is served by its own scoping provider (see
+     * {@see DataProviderRegistry::scopedRelatedProvider()}). `null` when there is none.
      *
      * Those scoped relations are loaded through the related type's provider whether batching is
      * enabled or not, included or only rendered as linkage: the related endpoint reads them
      * that way, and nothing else may show more. A polymorphic relation reaching a scoped type
      * has no such read, so rendering its members is refused rather than read off the parent.
+     *
+     * `$windowed` supplies the Relationship Queries pages already windowed for the primary
+     * resources: those pages are what renders, so the walk descends into them instead of
+     * loading the relation again.
      *
      * @param iterable<object> $entities
      */
@@ -159,66 +199,18 @@ final class RelatedIncludeBatcher
         iterable $entities,
         string $type,
         JsonApiRequestInterface $request,
+        ?RelationshipLinkageInterface $windowed = null,
     ): ?WindowedRelationshipLinkage {
-        $linkages = [];
-        $reach = [];
-        $this->preloadLevel($server, $this->materialize($entities), $type, $request, '', null, null, false, $this->enabled, $linkages, $reach);
-
-        return $linkages === [] ? null : new WindowedRelationshipLinkage($linkages);
-    }
-
-    /**
-     * Continues {@see preload()} below the windowed to-many relations of `$parents`: the
-     * Relationship Queries window fetches its own copies of the members it renders, so the
-     * preload never saw them. Only relations whose related type has its own scoping provider
-     * are loaded here (batching stays as it was), returning their out-of-band linkage.
-     *
-     * @param list<object> $parents
-     */
-    public function preloadWindowed(
-        Server $server,
-        string $type,
-        array $parents,
-        RelationshipLinkageInterface $windowed,
-        JsonApiRequestInterface $request,
-    ): ?WindowedRelationshipLinkage {
-        if ($parents === [] || !$server->hasSerializerFor($type)) {
-            return null;
-        }
-
-        $serializer = $server->serializerFor($type);
-        $maxDepth = $this->effectiveMaxDepth($serializer, $server);
-        $allowedPaths = $serializer instanceof IncludeControlsInterface ? $serializer->getAllowedIncludePaths() : null;
-        $resource = $this->types->resourceFor($server, $type);
-        $defaults = $resource === null ? [] : \array_flip($resource->getDefaultIncludedRelationships($parents[0]));
+        $this->pages = [];
+        $this->windowed = $windowed;
+        $this->windows?->forget();
 
         $linkages = [];
         $reach = [];
-        foreach ($this->types->readableRelationsFor($server, $type, $request) as $relation) {
-            $relatedTypes = $relation->relatedTypes();
-            if (!$relation->isToMany()
-                || \count($relatedTypes) !== 1
-                || !$relation->isIncludableFor($request, $parents[0])
-                || !$request->isIncludedRelationship('', $relation->name(), $defaults)
-                || ($maxDepth !== null && $maxDepth < 1)
-                || ($allowedPaths !== null && !\in_array($relation->name(), $allowedPaths, true))
-                || !$this->reachesScopedRelation($server, $relatedTypes, $request, $reach)) {
-                continue;
-            }
-
-            $targets = [];
-            foreach ($parents as $parent) {
-                $page = $windowed->linkageForRelationship($parent, $relation, $request);
-                if (\is_iterable($page?->data)) {
-                    foreach ($page->data as $target) {
-                        if (\is_object($target)) {
-                            $targets[] = $target;
-                        }
-                    }
-                }
-            }
-
-            $this->preloadLevel($server, $targets, $relatedTypes[0], $request, $relation->name(), $maxDepth, $allowedPaths, true, false, $linkages, $reach);
+        try {
+            $this->preloadLevel($server, $this->materialize($entities), $type, $request, '', null, null, false, $this->enabled, $linkages, $reach);
+        } finally {
+            $this->windowed = null;
         }
 
         return $linkages === [] ? null : new WindowedRelationshipLinkage($linkages);
@@ -299,12 +291,55 @@ final class RelatedIncludeBatcher
                 continue;
             }
 
+            // A paginated to-many whose linkage renders holds its first page, read the way its
+            // related endpoint reads it; one the Relationship Queries window already paged at
+            // the primary level renders that page.
+            if ($relation->isToMany() && !IdentifiedMorphMembers::identifies($relation)) {
+                $windowedTargets = $basePath === '' ? $this->windowedTargets($server, $entities, $relation, $request) : null;
+                if ($windowedTargets === null) {
+                    $rendering = match (true) {
+                        $included => $entities,
+                        !$request->isIncludedField($type, $relation->name()) => [],
+                        default => \array_values(\array_filter($entities, fn(object $entity): bool => $this->rendersData($server, $entity, $relation))),
+                    };
+                    $windowedTargets = $rendering === [] ? null : $this->loadFirstPages($server, $type, $rendering, $relation, $request, $basePath === '', $linkages);
+                }
+
+                if ($windowedTargets !== null) {
+                    if ($included) {
+                        foreach ($windowedTargets as $targetType => $targets) {
+                            $this->preloadLevel($server, $targets, $targetType, $request, $childPath, $maxDepth, $allowedPaths, true, $batch, $linkages, $reach);
+                        }
+                    }
+
+                    continue;
+                }
+            }
+
             // An identified MorphToMany admits each scoped type's pairs for its linkage, and loads
-            // every member's row, one read per type, when it is included.
+            // every member's row, one read per type, when it is included. One with a paginator
+            // renders its first page.
             if ($this->members !== null && IdentifiedMorphMembers::identifies($relation)) {
-                if ($included || $this->rendersData($server, $entities[0], $relation)) {
+                if (!$included && !$request->isIncludedField($type, $relation->name())) {
+                    continue;
+                }
+
+                $renders = $included || $this->rendersData($server, $entities[0], $relation);
+                if ($renders) {
                     $this->loadLinkRows($entities, $relation);
                 }
+
+                $paginator = $renders ? $server->linkagePaginator($relation) : null;
+                if ($paginator !== null) {
+                    foreach ($this->loadIdentifiedFirstPages($server, $this->members, $type, $entities, $relation, $paginator, $request, $included, $basePath === '') as $targetType => $targets) {
+                        if ($included) {
+                            $this->preloadLevel($server, $targets, $targetType, $request, $childPath, $maxDepth, $allowedPaths, true, $batch, $linkages, $reach);
+                        }
+                    }
+
+                    continue;
+                }
+
                 foreach ($this->members->load($entities, $relation, $request, $included, $type) as $targetType => $targets) {
                     if ($included) {
                         $this->preloadLevel($server, $targets, $targetType, $request, $childPath, $maxDepth, $allowedPaths, true, $batch, $linkages, $reach);
@@ -338,6 +373,11 @@ final class RelatedIncludeBatcher
                 continue;
             }
 
+            // A relation the sparse fieldset leaves out renders no linkage to load.
+            if (!$request->isIncludedField($type, $relation->name())) {
+                continue;
+            }
+
             // A to-many with a read order renders its linkage in that order wherever it renders,
             // so it loads ordered whether batching is on or not.
             if ($this->ordersLinkage($server, $type, $entities[0], $relation, $request)) {
@@ -361,6 +401,132 @@ final class RelatedIncludeBatcher
                 $this->preloadEagerLinkage($server, $entities, $type, $relation, $request, $linkages);
             }
         }
+    }
+
+    /**
+     * The members of a primary-level to-many the Relationship Queries window already supplies,
+     * by type, or `null` when it is not windowed for every one of `$entities`.
+     *
+     * @param list<object> $entities
+     *
+     * @return array<string, list<object>>|null
+     */
+    private function windowedTargets(Server $server, array $entities, RelationInterface $relation, JsonApiRequestInterface $request): ?array
+    {
+        if ($this->windowed === null) {
+            return null;
+        }
+
+        $targets = [];
+        foreach ($entities as $entity) {
+            $linkage = $this->windowed->linkageForRelationship($entity, $relation, $request);
+            if ($linkage === null) {
+                return null;
+            }
+
+            foreach (\is_iterable($linkage->data) ? $linkage->data : [] as $member) {
+                if (\is_object($member)) {
+                    $targets[] = $member;
+                }
+            }
+        }
+
+        return $this->byType($server, $relation, $targets);
+    }
+
+    /**
+     * Cuts a to-many `$relation` to its first page for each of `$entities` and supplies each
+     * page's members and pagination, returning the loaded targets by type, or `null` when the
+     * relation has no page to cut ({@see RelationshipWindowBatcher::firstPages()}).
+     *
+     * @param list<object>                                                            $entities
+     * @param array<int, array<string, RelationshipLinkage|ToOneRelationshipLinkage>> $linkages
+     *
+     * @return array<string, list<object>>|null
+     */
+    private function loadFirstPages(Server $server, string $type, array $entities, RelationInterface $relation, JsonApiRequestInterface $request, bool $root, array &$linkages): ?array
+    {
+        // A primary-level relation the window left alone still takes the request's relatedQuery.
+        $relatedQuery = $root && $request->isProfileRequested(RelationshipQueriesProfile::URI) ? $request->getRelatedQuery($relation->name()) : null;
+        $pages = $this->windows?->firstPages($server, $type, $entities, $relation, $request, $relatedQuery, $root);
+        if ($pages === null) {
+            return null;
+        }
+
+        $targets = [];
+        foreach ($pages as $objectId => $page) {
+            $linkages[$objectId][$relation->name()] = new RelationshipLinkage($page['items']);
+            if ($page['page'] !== null) {
+                $this->pages[$objectId][$relation->name()] = $page['page'];
+            }
+            foreach ($page['items'] as $item) {
+                $targets[] = $item;
+            }
+        }
+
+        return $this->byType($server, $relation, $targets);
+    }
+
+    /**
+     * Cuts an identified `MorphToMany` to its first page under `$paginator` for each of
+     * `$entities`, its members supplied through {@see IdentifiedMorphMembers}, and returns the
+     * rows it loaded by type: every page member's when `$rows`, none otherwise.
+     *
+     * @param list<object> $entities
+     *
+     * @return array<string, list<object>>
+     */
+    private function loadIdentifiedFirstPages(Server $server, IdentifiedMorphMembers $members, string $type, array $entities, MorphToMany $relation, PaginatorInterface $paginator, JsonApiRequestInterface $request, bool $rows, bool $root): array
+    {
+        $pageRequest = RelationshipPagination::firstPageRequest($request);
+        $paginator = $paginator->resolve($pageRequest);
+        $counted = !$paginator instanceof CursorPaginator
+            && ($paginator->wantsCount() || ($root && $relation->isCountable() && $request->countsRelationship($relation->name())));
+        $queryString = (new RelatedQuery())->toPlainQueryString(counted: $counted && !$paginator->wantsCount());
+        $criteria = new CollectionCriteria(
+            new QueryParameters(fields: [], includes: [], sort: [], filter: [], pagination: $pageRequest->getPagination()),
+            window: $paginator->window($pageRequest),
+            wantsCount: $counted,
+            request: $pageRequest,
+        );
+
+        $targets = [];
+        foreach ($members->firstPages($server, $entities, $relation, $criteria, $request, $rows, $type) as $index => $result) {
+            $page = [];
+            foreach ($result->items as $member) {
+                if ($member instanceof IdentifiedMember) {
+                    $page[] = $member;
+                    if ($member->target !== null) {
+                        $targets[$member->type][\spl_object_id($member->target)] = $member->target;
+                    }
+                }
+            }
+
+            $this->pages[\spl_object_id($entities[$index])][$relation->name()] = RelationshipPagination::firstPage($paginator, $pageRequest, $page, $result, $counted, $queryString);
+        }
+
+        return \array_map(\array_values(...), $targets);
+    }
+
+    /**
+     * `$targets` without repeats, grouped by the type each renders as.
+     *
+     * @param list<object> $targets
+     *
+     * @return array<string, list<object>>
+     */
+    private function byType(Server $server, RelationInterface $relation, array $targets): array
+    {
+        $relatedTypes = $relation->relatedTypes();
+        $byType = [];
+        foreach ($targets as $target) {
+            $targetType = \count($relatedTypes) === 1 ? $relatedTypes[0] : $relation->resolveSerializer($target, $server)?->getType($target);
+            if ($targetType !== null) {
+                $byType[$targetType][\spl_object_id($target)] = $target;
+            }
+        }
+
+        return \array_map(\array_values(...), $byType);
     }
 
     /**
@@ -514,7 +680,7 @@ final class RelatedIncludeBatcher
      */
     private function rendersData(Server $server, object $entity, RelationInterface $relation): bool
     {
-        if (!$relation->emitsDataOnlyWhenLoaded() || !$relation->includesLinks()) {
+        if (!$relation->emitsDataOnlyWhenLoaded() || !self::rendersLinks($relation)) {
             return true;
         }
 
@@ -524,6 +690,16 @@ final class RelatedIncludeBatcher
         }
 
         return $loadState === null || $loadState->isRelationshipLoaded($entity, $relation);
+    }
+
+    /**
+     * Whether `$relation`'s relationship object carries links: it includes them and exposes an
+     * endpoint for them to address. One without leaves its relationship nothing to render but
+     * data.
+     */
+    private static function rendersLinks(RelationInterface $relation): bool
+    {
+        return $relation->includesLinks() && ($relation->exposesRelatedEndpoint() || $relation->exposesRelationshipEndpoint());
     }
 
     /**
@@ -601,7 +777,8 @@ final class RelatedIncludeBatcher
      *    would be pure overhead and is skipped, leaving the witness's document and its
      *    (zero) query profile untouched;
      *  - the relation is **eager** ({@see RelationInterface::emitsDataOnlyWhenLoaded()} is
-     *    `false`) — a lazy relation renders links-only via the load-state seam until it is
+     *    `false`), or renders no links ({@see rendersLinks()}), which leaves its linkage `data`
+     *    to render on every read — any other lazy relation renders links-only via the load-state seam until it is
      *    `?include`d, so it is never read off the parent here;
      *  - the relation is **monomorphic** — a polymorphic to-one (`MorphTo`) has no single
      *    batching provider, so the orchestrator leaves it lazy exactly as the include path does.
@@ -618,7 +795,7 @@ final class RelatedIncludeBatcher
         array &$linkages,
     ): void {
         if (!$entities[0] instanceof Model
-            || $relation->emitsDataOnlyWhenLoaded()
+            || ($relation->emitsDataOnlyWhenLoaded() && self::rendersLinks($relation))
             || \count($relation->relatedTypes()) !== 1) {
             return;
         }

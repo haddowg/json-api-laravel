@@ -35,6 +35,21 @@ final class WindowedRelationshipPagination implements RelationshipPaginationInte
      */
     public function __construct(private readonly array $pages) {}
 
+    /**
+     * One lookup over every page of `$paginations`, or `null` when none holds a page.
+     */
+    public static function merge(?self ...$paginations): ?self
+    {
+        $pages = [];
+        foreach ($paginations as $pagination) {
+            foreach ($pagination->pages ?? [] as $objectId => $byRelation) {
+                $pages[$objectId] = [...$pages[$objectId] ?? [], ...$byRelation];
+            }
+        }
+
+        return $pages === [] ? null : new self($pages);
+    }
+
     public function paginateRelationship(
         mixed $model,
         RelationInterface $relation,

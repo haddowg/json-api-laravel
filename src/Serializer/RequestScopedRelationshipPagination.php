@@ -37,6 +37,8 @@ final class RequestScopedRelationshipPagination implements RelationshipPaginatio
 {
     private ?RelationshipPaginationInterface $delegate = null;
 
+    private ?RelationshipPaginationInterface $included = null;
+
     /**
      * Installs (or clears, with `null`) the windowed page-1 backing for the read currently
      * being handled, so the render that follows reads this request's relationship pages. The
@@ -48,11 +50,23 @@ final class RequestScopedRelationshipPagination implements RelationshipPaginatio
         $this->delegate = $delegate;
     }
 
+    /**
+     * Installs (or clears) the first pages the
+     * {@see \haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher} cut for the read being
+     * handled. A page from {@see set()} wins for a relation both supply, since it is the
+     * Relationship Queries page of the same relation.
+     */
+    public function setIncluded(?RelationshipPaginationInterface $included): void
+    {
+        $this->included = $included;
+    }
+
     public function paginateRelationship(
         mixed $model,
         RelationInterface $relation,
         JsonApiRequestInterface $request,
     ): ?RelationshipPagination {
-        return $this->delegate?->paginateRelationship($model, $relation, $request);
+        return $this->delegate?->paginateRelationship($model, $relation, $request)
+            ?? $this->included?->paginateRelationship($model, $relation, $request);
     }
 }
