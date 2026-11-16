@@ -667,6 +667,23 @@ abstract class WriteConformanceTestCase extends Orchestra
         $this->readJsonApi('/api/albums/1')->assertJsonPath('data.attributes.title', 'OK Computer');
     }
 
+    #[Test]
+    #[Group('spec:crud')]
+    public function aPatchBodyWithNoIdIsRefused(): void
+    {
+        // The spec requires an update body to name its resource, so an absent id is a 400
+        // at /data rather than an update of the URL's resource.
+        $patch = $this->writeJsonApi('PATCH', '/api/albums/1', [
+            'data' => ['type' => 'albums', 'attributes' => ['title' => 'Renamed']],
+        ]);
+
+        $patch->assertStatus(400);
+        $patch->assertJsonPath('errors.0.code', 'RESOURCE_ID_MISSING');
+        $patch->assertJsonPath('errors.0.source.pointer', '/data');
+
+        $this->readJsonApi('/api/albums/1')->assertJsonPath('data.attributes.title', 'OK Computer');
+    }
+
     /**
      * POST/PATCH/DELETE a JSON:API document through the shipped {@see InteractsWithJsonApi}
      * kit, which negotiates the JSON:API media type on both the request `Content-Type` and

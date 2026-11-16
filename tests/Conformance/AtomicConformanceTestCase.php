@@ -212,6 +212,23 @@ abstract class AtomicConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:atomic')]
+    public function anUpdateWhoseResourceObjectNamesNoIdIsRefusedAtItsData(): void
+    {
+        $response = $this->atomic([
+            ['op' => 'update', 'ref' => ['type' => 'albums', 'id' => '1'], 'data' => ['type' => 'albums', 'id' => '1', 'attributes' => ['title' => 'First']]],
+            ['op' => 'update', 'ref' => ['type' => 'albums', 'id' => '1'], 'data' => ['type' => 'albums', 'attributes' => ['title' => 'Second']]],
+        ]);
+
+        $response->assertStatus(400)
+            ->assertJsonPath('errors.0.code', 'RESOURCE_ID_MISSING')
+            ->assertJsonPath('errors.0.source.pointer', '/atomic:operations/1/data');
+
+        // The batch rolled back, the first update included.
+        $this->readJsonApi('/api/albums/1')->assertJsonPath('data.attributes.title', 'OK Computer');
+    }
+
+    #[Test]
+    #[Group('spec:atomic')]
     public function anUnresolvableHrefIsRefused(): void
     {
         $this->assertBadHref(['op' => 'remove', 'href' => '/api/no-such-type/1'], 'ATOMIC_HREF_UNRESOLVABLE');
