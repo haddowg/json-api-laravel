@@ -174,6 +174,19 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         $this->fetch('/api/favorites/2/favoritable')->assertOk()->assertJsonPath('data.type', 'albums');
     }
 
+    public function test_favorites_filter_by_their_stored_target_and_leave_undated_ones_out(): void
+    {
+        // favorite 1 → track 1, favorite 2 → album 2; the stored pair is compared, never loaded.
+        $ids = fn(string $query): array => \array_column((array) $this->fetch('/api/favorites?' . $query)->assertOk()->json('data'), 'id');
+
+        self::assertSame(['2'], $ids('filter[favoritable][type]=albums'));
+        self::assertSame(['1'], $ids('filter[favoritable][type]=tracks&filter[favoritable][id]=1'));
+        self::assertSame([], $ids('filter[favoritable][type]=tracks&filter[favoritable][id][]=2'));
+        self::assertSame([], $ids('filter[dated]=false'));
+        self::assertSame(['1', '2'], $ids('filter[dated]=true,false'));
+        $this->fetch('/api/favorites?filter[favoritable][type]=playlists')->assertStatus(400);
+    }
+
     public function test_libraries_polymorphic_to_many_returns_a_mixed_collection(): void
     {
         // The over-parity headline: a mixed track + album + artist collection off ONE relation.
