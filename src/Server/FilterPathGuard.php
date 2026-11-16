@@ -7,6 +7,8 @@ namespace haddowg\JsonApiLaravel\Server;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
+use haddowg\JsonApi\Resource\Field\MorphTo;
+use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\ThroughPathResolver;
@@ -14,6 +16,7 @@ use haddowg\JsonApi\Resource\Filter\TraversesPath;
 use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
 use haddowg\JsonApi\Resource\Filter\WhereGroup;
 use haddowg\JsonApi\Resource\Filter\WhereHas;
+use haddowg\JsonApi\Resource\Filter\WhereMorph;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
@@ -26,6 +29,7 @@ use haddowg\JsonApiLaravel\Eloquent\ModelMapResolver;
 use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo as EloquentMorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
 
 /**
@@ -40,11 +44,12 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 final class FilterPathGuard
 {
     /**
-     * @param array<string, class-string<Model>>|null $modelByType the Eloquent model map, read from the container when not given
+     * @param array<string, class-string<Model>>|null                      $modelByType the Eloquent model map, read from the container when not given
+     * @param (\Closure(string): (class-string<Model>|false|null))|null $servedBy    the model of the Eloquent provider serving a type, `false` when another provider serves it, or `null` when that isn't known yet
      *
      * @throws \LogicException when a declared filter's path can't be resolved, or its encoder can't be settled
      */
-    public static function check(SerializerResolverInterface $resolver, AbstractResource $resource, ?array $modelByType = null): void
+    public static function check(SerializerResolverInterface $resolver, AbstractResource $resource, ?array $modelByType = null, ?\Closure $servedBy = null): void
     {
         $paths = ThroughPathResolver::forResolver($resolver);
         $fields = $resource->allFields();
@@ -55,7 +60,7 @@ final class FilterPathGuard
         };
         $encoders = static fn(): ModelEncoders => new ModelEncoders($map(), static fn(string $served): ?IdEncoderInterface => self::encoderOf($resolver, $served));
 
-        self::guardEncoders($encoders, $map, $paths->resolveAll($resource->allFilters(), $fields), $type, $type, FilterPaths::namedTypes($fields, $type));
+        self::guardEncoders($encoders, $map, $paths->resolveAll($resource->allFilters(), $fields), $type, $type, FilterPaths::namedTypes($fields, $type), servedBy: $servedBy);
 
         foreach ($fields as $relation) {
             if (!$relation instanceof RelationInterface || $relation->allFilters() === []) {
@@ -79,6 +84,7 @@ final class FilterPathGuard
                     $relatedTypes[0],
                     FilterPaths::namedTypes($relatedFields, $relatedTypes[0], $type),
                     static fn(): ?Model => self::pivotModel($map()[$type] ?? null, $relation),
+                    $servedBy,
                 );
             }
         }
@@ -96,12 +102,19 @@ final class FilterPathGuard
      * @param string                                        $runsOn  the type the filters run against, whose model the path starts from
      * @param list<string>                                  $named
      * @param (\Closure(): ?Model)|null                       $pivotModel the pivot model a `pivot.`-prefixed path starts from, for a pivot relation's filters
+     * @param (\Closure(string): (class-string<Model>|false|null))|null $servedBy
      */
-    private static function guardEncoders(\Closure $encoders, \Closure $map, array $filters, string $owner, string $runsOn, array $named, ?\Closure $pivotModel = null): void
+    private static function guardEncoders(\Closure $encoders, \Closure $map, array $filters, string $owner, string $runsOn, array $named, ?\Closure $pivotModel = null, ?\Closure $servedBy = null): void
     {
         foreach ($filters as $filter) {
             if ($filter instanceof WhereGroup) {
-                self::guardEncoders($encoders, $map, $filter->children, $owner, $runsOn, $named, $pivotModel);
+                self::guardEncoders($encoders, $map, $filter->children, $owner, $runsOn, $named, $pivotModel, $servedBy);
+
+                continue;
+            }
+
+            if ($filter instanceof WhereMorph) {
+                self::guardMorph($filter, $servedBy !== null ? $servedBy($runsOn) : ($map()[$runsOn] ?? null), $owner);
 
                 continue;
             }
@@ -133,6 +146,43 @@ final class FilterPathGuard
                 throw new \LogicException(AmbiguousModelEncoder::forFilter($owner, $filter->key(), $filter->throughPath(), $target, $candidates));
             }
         }
+    }
+
+    /**
+     * Refuses a resolved {@see WhereMorph} its provider can't compare: over a `MorphTo` that
+     * neither a `morphTo` relation of the type's Eloquent model nor `identifiedByColumns()`
+     * locates, or over a `MorphToMany` without `identifiedByRows()`. While the provider isn't
+     * known, a `MorphTo` identified by a closure is left to the request.
+     *
+     * @param class-string<Model>|false|null $model the Eloquent model serving the type the filter runs against, `false` for another provider, `null` when unknown
+     */
+    private static function guardMorph(WhereMorph $filter, string|false|null $model, string $owner): void
+    {
+        $relation = $filter->resolvedTarget()?->relation;
+        if ($relation instanceof MorphToMany && $relation->linkRowFields() !== null) {
+            return;
+        }
+
+        if ($relation instanceof MorphTo) {
+            if ($relation->identifierColumns() !== null) {
+                return;
+            }
+
+            $method = $relation->column() ?? $relation->name();
+            if ($model === null || (\is_string($model) && \method_exists($model, $method) && (new $model())->{$method}() instanceof EloquentMorphTo)) {
+                return;
+            }
+        }
+
+        throw new \LogicException(\sprintf(
+            'The filter "%s" on JSON:API type "%s" is a WhereMorph over the relation "%s", which no provider can query: %s',
+            $filter->key(),
+            $owner,
+            $filter->relation,
+            $relation instanceof MorphToMany
+                ? 'declare the MorphToMany with through() and identifiedByRows(), naming its link rows\' owner, type and id fields.'
+                : 'define it as a morphTo relation on the model, or declare the MorphTo with identifiedByColumns(type: ..., id: ...). A closure from identifiedBy() can\'t be compared in a query.',
+        ));
     }
 
     /**

@@ -28,6 +28,16 @@ final readonly class ModelEncoders
     ) {}
 
     /**
+     * The model class serving `$type`, or null when no Eloquent model does.
+     *
+     * @return class-string<Model>|null
+     */
+    public function modelFor(string $type): ?string
+    {
+        return $this->modelByType[$type] ?? null;
+    }
+
+    /**
      * The encoder for a key of `$class`, or null when wire ids are its keys.
      *
      * @param class-string<Model> $class

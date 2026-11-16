@@ -388,6 +388,8 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
                 favorited_at: $row['favorited_at'],
                 user: $user,
                 favoritable: $target,
+                favoritable_type: $row['favoritable_type'] !== null ? \array_flip(FavoriteResource::TYPE_MAP)[$row['favoritable_type']] ?? null : null,
+                favoritable_id: $row['favoritable_id'],
             );
         }
 

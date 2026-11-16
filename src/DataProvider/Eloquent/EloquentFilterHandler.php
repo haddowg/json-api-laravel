@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\DataProvider\Eloquent;
 
+use haddowg\JsonApi\Resource\Field\MorphTo;
+use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\FilterHandlerInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
@@ -19,9 +21,12 @@ use haddowg\JsonApi\Resource\Filter\WhereHas;
 use haddowg\JsonApi\Resource\Filter\WhereIdIn;
 use haddowg\JsonApi\Resource\Filter\WhereIdNotIn;
 use haddowg\JsonApi\Resource\Filter\WhereIn;
+use haddowg\JsonApi\Resource\Filter\WhereMorph;
 use haddowg\JsonApi\Resource\Filter\WhereNotIn;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
+use haddowg\JsonApi\Resource\Filter\WhereSet;
+use haddowg\JsonApi\Resource\Filter\WhereSetMatch;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
@@ -30,8 +35,11 @@ use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Database\Eloquent\CastsInboundAttributes;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo as EloquentBelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo as EloquentMorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 
 /**
  * Executes core's filter value objects against an Eloquent query {@see Builder},
@@ -196,6 +204,8 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             $filter instanceof WhereIdNotIn => $this->whereIn($query, $filter->column, $this->idMembers($query, $filter, $value), true),
             $filter instanceof WhereNull => $query->whereNull($this->qualify($query, $filter->column)),
             $filter instanceof WhereNotNull => $query->whereNotNull($this->qualify($query, $filter->column)),
+            $filter instanceof WhereSet => $this->whereSet($query, $filter, $value),
+            $filter instanceof WhereMorph => $this->whereMorph($query, $filter, $value),
             $filter instanceof WhereThrough => $this->whereThrough($query, $filter, $value),
             $filter instanceof WhereThroughIn => $this->whereThroughIn($query, $filter, $value),
             $filter instanceof WhereHas => $query->whereHas($filter->relationship),
@@ -360,6 +370,106 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
                 $this->whereIn($sub, $leaf ?? $sub->getModel()->getKeyName(), $values, false);
             },
         );
+    }
+
+    /**
+     * @param Builder<Model> $query
+     */
+    private function whereSet(Builder $query, WhereSet $filter, mixed $value): void
+    {
+        $column = $this->qualify($query, $filter->column);
+
+        match ($filter->match($value)) {
+            WhereSetMatch::Set => $query->whereNotNull($column),
+            WhereSetMatch::NotSet => $query->whereNull($column),
+            WhereSetMatch::Either => null,
+            WhereSetMatch::Neither => $query->whereRaw('1 = 0'),
+        };
+    }
+
+    /**
+     * A {@see WhereMorph} over a `MorphTo` compares the morph type and id columns of the
+     * model's own `morphTo` relation of that name, its stored type the morph class of the
+     * model serving the requested type, so a morph map is honoured; a relation the model
+     * doesn't define falls back to the columns `identifiedByColumns()` names. Over a
+     * `MorphToMany` it is one `EXISTS` over the link rows `identifiedByRows()` names.
+     *
+     * @param Builder<Model> $query
+     */
+    private function whereMorph(Builder $query, WhereMorph $filter, mixed $value): void
+    {
+        $selection = $filter->selection($value);
+        $relation = $filter->resolvedTarget()?->relation;
+        $model = $query->getModel();
+
+        if ($relation instanceof MorphTo) {
+            $storage = $relation->column() ?? $relation->name();
+            $eloquent = \method_exists($model, $storage) ? $model->{$storage}() : null;
+            if ($eloquent instanceof EloquentMorphTo) {
+                $class = $this->encoders?->modelFor($selection->type);
+                $stored = $class !== null ? [(new $class())->getMorphClass()] : [$selection->type];
+                $this->morphPredicate($query, $model->qualifyColumn($eloquent->getMorphType()), $stored, $model->qualifyColumn($eloquent->getForeignKeyName()), $selection->ids);
+
+                return;
+            }
+
+            $columns = $relation->identifierColumns();
+            if ($columns !== null) {
+                $this->morphPredicate($query, $this->qualify($query, $columns->type), $columns->storedValues($selection->type), $this->qualify($query, $columns->id), $selection->ids);
+
+                return;
+            }
+        }
+
+        if ($relation instanceof MorphToMany && ($rows = $relation->linkRowFields()) !== null) {
+            $class = $rows->through;
+            \assert(\is_a($class, Model::class, true));
+            $row = new $class();
+            $owner = \method_exists($row, $rows->owner) ? $row->{$rows->owner}() : null;
+
+            $query->whereExists(function (QueryBuilder $sub) use ($row, $owner, $rows, $model, $selection): void {
+                $sub->selectRaw('1')->from($row->getTable());
+                if ($owner instanceof EloquentMorphTo) {
+                    $sub->whereColumn($row->qualifyColumn($owner->getForeignKeyName()), $model->getQualifiedKeyName())
+                        ->where($row->qualifyColumn($owner->getMorphType()), $model->getMorphClass());
+                } elseif ($owner instanceof EloquentBelongsTo) {
+                    $sub->whereColumn($row->qualifyColumn($owner->getForeignKeyName()), $model->qualifyColumn($owner->getOwnerKeyName()));
+                } else {
+                    $sub->whereColumn($row->qualifyColumn($rows->owner), $model->getQualifiedKeyName());
+                }
+                $this->morphPredicate($sub, $row->qualifyColumn($rows->type), $rows->storedValues($selection->type), $row->qualifyColumn($rows->id), $selection->ids);
+            });
+
+            return;
+        }
+
+        throw new \LogicException(\sprintf(
+            'WhereMorph filter "%s" compares the relation "%s", which the Eloquent provider cannot query: define it as a morphTo relation on %s, or declare the MorphTo with identifiedByColumns() or the MorphToMany with identifiedByRows().',
+            $filter->key,
+            $filter->relation,
+            $model::class,
+        ));
+    }
+
+    /**
+     * `$typeColumn` among `$stored` and, when the request names ids, `$idColumn` among them.
+     *
+     * @param Builder<Model>|QueryBuilder $query
+     * @param list<string>                                        $stored
+     * @param list<mixed>|null                                    $ids
+     */
+    private function morphPredicate(Builder|QueryBuilder $query, string $typeColumn, array $stored, string $idColumn, ?array $ids): void
+    {
+        if ($stored === [] || $ids === []) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->whereIn($typeColumn, $stored);
+        if ($ids !== null) {
+            $query->whereIn($idColumn, $ids);
+        }
     }
 
     /**
