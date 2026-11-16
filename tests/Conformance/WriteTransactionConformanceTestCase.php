@@ -513,6 +513,80 @@ abstract class WriteTransactionConformanceTestCase extends Orchestra
     /**
      * Asserts nothing the request opened is still open, on stores that can tell.
      */
+    #[Test]
+    public function aBeforeCreateListenerThatSavesTheNewWidgetCreatesItOnce(): void
+    {
+        TxScenario::$saveOnCreate = true;
+
+        $response = $this->jsonApi()->withDocument($this->widget('third'))->post('/api/txWidgets')->assertStatus(201);
+
+        self::assertSame('3', $response->json('data.id'));
+        self::assertSame(['first', 'second', 'third'], $this->widgetNames());
+        $this->assertNoTransactionOpen();
+    }
+
+    #[Test]
+    public function aBeforeCreateListenerThatSavesANewClientIdCreatesIt(): void
+    {
+        TxScenario::$saveOnCreate = true;
+
+        $this->jsonApi()->withDocument($this->tag('red'))->post('/api/txTags')->assertStatus(201);
+
+        self::assertSame(['Red'], $this->column('/api/txTags', 'label'));
+        $this->assertNoTransactionOpen();
+    }
+
+    #[Test]
+    public function aBeforeCreateListenerThatSavesThenThrowsRollsTheWidgetBack(): void
+    {
+        TxScenario::$saveOnCreate = true;
+        TxScenario::$throwAfterSave = true;
+
+        $this->jsonApi()->withDocument($this->widget('third'))->post('/api/txWidgets')->assertStatus(403);
+
+        self::assertSame(['first', 'second'], $this->widgetNames());
+        $this->assertNoTransactionOpen();
+
+        TxScenario::reset();
+        $this->jsonApi()->withDocument($this->widget('third'))->post('/api/txWidgets')->assertStatus(201);
+        self::assertSame(['first', 'second', 'third'], $this->widgetNames());
+    }
+
+    #[Test]
+    public function aBeforeCreateListenerThatSavesANewClientIdThenThrowsRollsTheTagBack(): void
+    {
+        TxScenario::$saveOnCreate = true;
+        TxScenario::$throwAfterSave = true;
+
+        $this->jsonApi()->withDocument($this->tag('red'))->post('/api/txTags')->assertStatus(403);
+
+        self::assertSame([], $this->column('/api/txTags', 'label'));
+        $this->assertNoTransactionOpen();
+
+        // The id is free again.
+        TxScenario::reset();
+        $this->jsonApi()->withDocument($this->tag('red'))->post('/api/txTags')->assertStatus(201);
+        self::assertSame(['Red'], $this->column('/api/txTags', 'label'));
+    }
+
+    #[Test]
+    public function aTakenClientIdIsStillAConflict(): void
+    {
+        $this->jsonApi()->withDocument($this->tag('red'))->post('/api/txTags')->assertStatus(201);
+
+        $this->jsonApi()->withDocument($this->tag('red', 'Crimson'))->post('/api/txTags')->assertStatus(409);
+
+        self::assertSame(['Red'], $this->column('/api/txTags', 'label'));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function tag(string $id, string $label = 'Red'): array
+    {
+        return ['data' => ['type' => 'txTags', 'id' => $id, 'attributes' => ['label' => $label]]];
+    }
+
     protected function assertNoTransactionOpen(): void {}
 
     /**

@@ -7,6 +7,7 @@ namespace Workbench\App\WriteTransaction;
 use haddowg\JsonApi\Exception\AccessDenied;
 use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApiLaravel\DataPersister\AfterCommit;
+use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\Event\AfterActionEvent;
 use haddowg\JsonApiLaravel\Event\AfterCreateEvent;
 use haddowg\JsonApiLaravel\Event\AfterDeleteEvent;
@@ -41,7 +42,7 @@ final readonly class TxListener
         AfterRelationshipMutateEvent::class,
     ];
 
-    public function __construct(private TxSideWriter $writer, private AfterCommit $afterCommit) {}
+    public function __construct(private TxSideWriter $writer, private AfterCommit $afterCommit, private DataPersisterRegistry $persisters) {}
 
     public static function listen(Dispatcher $events): void
     {
@@ -54,6 +55,14 @@ final readonly class TxListener
 
     public function on(object $event): void
     {
+        if ($event instanceof BeforeCreateEvent && TxScenario::$saveOnCreate && \in_array($event->type, ['txWidgets', 'txTags'], true)) {
+            // As an application does to read a generated key before the write finishes.
+            $this->persisters->forType($event->type)->create($event->type, $event->entity);
+            if (TxScenario::$throwAfterSave) {
+                throw new AccessDenied('Refused by the test listener after it saved.');
+            }
+        }
+
         if ((\property_exists($event, 'type') ? $event->{'type'} : null) !== 'txWidgets') {
             return;
         }

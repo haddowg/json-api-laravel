@@ -144,9 +144,10 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         // CLIENT_GENERATED_ID_ALREADY_EXISTS (core defines the exception; the write layer
         // enforces it) rather than an unhandled duplicate-PK `QueryException` (`500`). A
         // server-generated create carries no key yet (`getKey()` is null), so it never
-        // trips this — matching the in-memory witness's existence check.
+        // trips this — matching the in-memory witness's existence check. A model a before
+        // hook already saved exists under its own key, so its row is no conflict.
         $key = $entity->getKey();
-        if ($key !== null && $entity->newQueryWithoutScopes()->whereKey($key)->exists()) {
+        if ($key !== null && !$entity->exists && $entity->newQueryWithoutScopes()->whereKey($key)->exists()) {
             throw new ClientGeneratedIdAlreadyExists(\is_scalar($key) ? (string) $key : '');
         }
 
