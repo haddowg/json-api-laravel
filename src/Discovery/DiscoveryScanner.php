@@ -13,9 +13,12 @@ use haddowg\JsonApi\OpenApi\Metadata\ActionResource;
 use haddowg\JsonApi\OpenApi\Metadata\MetaResult;
 use haddowg\JsonApi\OpenApi\Metadata\NoContent;
 use haddowg\JsonApi\OpenApi\Metadata\OperationResponseInterface;
+use haddowg\JsonApi\OpenApi\Metadata\OperationType;
 use haddowg\JsonApi\OpenApi\Metadata\RawResult;
 use haddowg\JsonApi\OpenApi\Metadata\SeeOther;
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\SingletonMisdeclared;
+use haddowg\JsonApi\Resource\SingletonResourceInterface;
 use haddowg\JsonApi\Response\MetaResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
 use haddowg\JsonApi\Response\RawResponse;
@@ -200,7 +203,10 @@ final class DiscoveryScanner
             }
         }
 
+        $serializers = self::singletonSerializerOperations($serializers, $hydrators);
+
         self::guardRelatedOnlyMounts($resources, $actions);
+        self::guardSingletons([...$resources, ...$serializers], $actions);
         self::guardActionDeclarations($actions);
 
         // Class-name order (case-insensitive, so a longer name is not split by a shorter
@@ -252,6 +258,105 @@ final class DiscoveryScanner
                     $action->type,
                 ));
             }
+        }
+    }
+
+    /**
+     * Whether `$class` declares its type a singleton through core's
+     * {@see SingletonResourceInterface}, read statically.
+     */
+    private static function declaresSingleton(string $class): bool
+    {
+        return \is_a($class, SingletonResourceInterface::class, true) && $class::isSingleton();
+    }
+
+    /**
+     * Refuses a singleton that can never serve a request: one that is also related-only,
+     * or a resource class that doesn't override `resolveSingletonId()`, which core would
+     * refuse anyway the first time it registers the type.
+     *
+     * @param class-string<AbstractResource> $class
+     *
+     * @throws \LogicException
+     */
+    private static function guardSingletonResolves(string $class, string $type, bool $relatedOnly): void
+    {
+        if ($relatedOnly) {
+            throw new \LogicException(\sprintf(
+                'The JSON:API type "%s" is a singleton and related-only; a singleton is served at its own path, so drop one.',
+                $type,
+            ));
+        }
+
+        if ($class::isSingleton()
+            && (new \ReflectionMethod($class, 'resolveSingletonId'))->getDeclaringClass()->getName() === AbstractResource::class) {
+            throw new \LogicException(\sprintf(
+                'Resource "%s" is a singleton, so it must override resolveSingletonId() to name the caller\'s resource.',
+                $class,
+            ));
+        }
+    }
+
+    /**
+     * A singleton standalone serializer that declares no operations serves its fetch, and
+     * its update when a hydrator is registered for the type.
+     *
+     * @param list<SerializerDescriptor> $serializers
+     * @param list<HydratorDescriptor>   $hydrators
+     *
+     * @return list<SerializerDescriptor>
+     */
+    private static function singletonSerializerOperations(array $serializers, array $hydrators): array
+    {
+        $hydrated = [];
+        foreach ($hydrators as $hydrator) {
+            $hydrated[$hydrator->type] = true;
+        }
+
+        return \array_map(static fn(SerializerDescriptor $descriptor): SerializerDescriptor => $descriptor->singleton && $descriptor->operations === []
+            ? new SerializerDescriptor(
+                $descriptor->class,
+                $descriptor->type,
+                $descriptor->uriType,
+                $descriptor->servers,
+                isset($hydrated[$descriptor->type]) ? [Operation::FetchOne->value, Operation::Update->value] : [Operation::FetchOne->value],
+                $descriptor->tags,
+                $descriptor->extensions,
+                $descriptor->operationExtensions,
+                $descriptor->deprecatedOperations,
+                true,
+            )
+            : $descriptor, $serializers);
+    }
+
+    /**
+     * Refuses a singleton type that exposes a collection fetch, a create or a delete, or
+     * that mounts a collection-scope action, through core's
+     * {@see SingletonMisdeclared::assertExclusive()}.
+     *
+     * @param list<ResourceDescriptor|SerializerDescriptor> $types
+     * @param list<ActionDescriptor>                        $actions
+     */
+    private static function guardSingletons(array $types, array $actions): void
+    {
+        foreach ($types as $descriptor) {
+            if (!$descriptor->singleton) {
+                continue;
+            }
+
+            $operations = [];
+            foreach ($descriptor->operations as $operation) {
+                $operations[] = OperationType::from($operation);
+            }
+
+            $collectionActions = [];
+            foreach ($actions as $action) {
+                if ($action->type === $descriptor->type && $action->scope === ActionScope::Collection && $descriptor->exposedOn($action->server)) {
+                    $collectionActions[] = $action->path;
+                }
+            }
+
+            SingletonMisdeclared::assertExclusive($descriptor->type, $operations, $collectionActions);
         }
     }
 
@@ -362,6 +467,7 @@ final class DiscoveryScanner
 
         /** @var class-string<SerializerInterface> $class */
         $class = $reflection->getName();
+        $singleton = self::declaresSingleton($class);
 
         return new SerializerDescriptor(
             $class,
@@ -373,6 +479,7 @@ final class DiscoveryScanner
             $attribute->extensions,
             $attribute->operationExtensions,
             $attribute->deprecatedOperations,
+            $singleton,
         );
     }
 
@@ -450,18 +557,26 @@ final class DiscoveryScanner
 
         /** @var class-string<AbstractResource> $class */
         $class = $reflection->getName();
+        $serializer = $this->overrideClass($attribute?->serializer, SerializerInterface::class, 'serializer', $class);
+
+        // Core reads a singleton from the resource class, or from the serializer that
+        // renders it, without building either; so does discovery.
+        $singleton = self::declaresSingleton($class) || ($serializer !== null && self::declaresSingleton($serializer));
+        if ($singleton) {
+            self::guardSingletonResolves($class, $type, $attribute !== null && $attribute->relatedOnly);
+        }
 
         return new ResourceDescriptor(
             $class,
             $type,
             $uriType,
             $this->servers($attribute),
-            $this->operations($attribute),
+            $this->operations($attribute, $singleton),
             $attribute?->policy,
             $attribute !== null ? $attribute->abilities : [],
             $this->headers($attribute),
             $attribute !== null ? \array_values($attribute->tags) : [],
-            $this->overrideClass($attribute?->serializer, SerializerInterface::class, 'serializer', $class),
+            $serializer,
             $this->overrideClass($attribute?->hydrator, HydratorInterface::class, 'hydrator', $class),
             $this->modelClass($attribute?->model, $class),
             $this->responses($attribute),
@@ -471,6 +586,7 @@ final class DiscoveryScanner
             $attribute?->singular !== null ? \trim($attribute->singular) : null,
             $attribute !== null ? $attribute->deprecatedOperations : [],
             $attribute !== null && $attribute->relatedOnly,
+            $singleton,
         );
     }
 
@@ -870,11 +986,12 @@ final class DiscoveryScanner
     /**
      * The exposed operations as {@see Operation} case-value strings: none for a
      * `relatedOnly` type, the attribute's `readOnly` shorthand (the two fetch operations), an explicit `operations`
-     * allow-list, or — the default — all five operations.
+     * allow-list, or — the default — all five operations. A singleton serves only fetch and
+     * update, so its `readOnly` is fetch alone and its default is fetch and update.
      *
      * @return list<string>
      */
-    private function operations(?AsJsonApiResource $attribute): array
+    private function operations(?AsJsonApiResource $attribute, bool $singleton = false): array
     {
         // A related-only type serves no endpoint of its own, so it has no operations.
         if ($attribute !== null && $attribute->relatedOnly) {
@@ -882,11 +999,15 @@ final class DiscoveryScanner
         }
 
         if ($attribute !== null && $attribute->readOnly) {
-            return [Operation::FetchCollection->value, Operation::FetchOne->value];
+            return $singleton ? [Operation::FetchOne->value] : [Operation::FetchCollection->value, Operation::FetchOne->value];
         }
 
         if ($attribute !== null && $attribute->operations !== []) {
             return \array_values(\array_map(static fn(Operation $op): string => $op->value, $attribute->operations));
+        }
+
+        if ($singleton) {
+            return [Operation::FetchOne->value, Operation::Update->value];
         }
 
         return \array_map(static fn(Operation $op): string => $op->value, Operation::cases());

@@ -31,6 +31,10 @@ use Illuminate\Routing\Router;
  *  - {@see Operation::Update}          → `PATCH /{uriType}/{id}` — `{type}.update`
  *  - {@see Operation::Delete}          → `DELETE /{uriType}/{id}` — `{type}.delete`
  *
+ * A singleton type ({@see \haddowg\JsonApi\Resource\SingletonResourceInterface}) is served at
+ * `/{uriType}` with no `{id}`: `GET` and `PATCH` there, its relationship, related and action
+ * routes under it, and nothing else ({@see addSingletonRoutes()}).
+ *
  * A fetchable-by-id type additionally gets the two parametric relation GET routes (linkage
  * first so its literal `relationships` segment is never captured as a `{relationship}`), and
  * a writable type the three relationship-mutation routes.
@@ -168,6 +172,12 @@ final class RouteRegistrar
             ));
         }
 
+        if ($descriptor->singleton) {
+            $this->addSingletonRoutes($router, $server, $namePrefix, $type, $collectionPath, $descriptor->operations, relations: false);
+
+            return;
+        }
+
         if ($descriptor->exposes(Operation::FetchCollection)) {
             $this->configure($router->get($collectionPath, JsonApiController::class), $server, $type)
                 ->name($namePrefix . $type . '.index');
@@ -199,6 +209,12 @@ final class RouteRegistrar
 
     private function addResourceRoutes(Router $router, string $server, string $namePrefix, ResourceDescriptor $descriptor): void
     {
+        if ($descriptor->singleton) {
+            $this->addSingletonRoutes($router, $server, $namePrefix, $descriptor->type, '/' . $descriptor->uriType, $descriptor->operations, relations: true);
+
+            return;
+        }
+
         $type = $descriptor->type;
         $collectionPath = '/' . $descriptor->uriType;
         $resourcePath = $collectionPath . '/{id}';
@@ -268,6 +284,62 @@ final class RouteRegistrar
 
             $this->configure($router->delete($relationshipPath, JsonApiController::class), $server, $type)
                 ->where('id', $idRequirement)
+                ->defaults(TargetResolver::RELATIONSHIP_ENDPOINT_ATTRIBUTE, true)
+                ->name($namePrefix . $type . '.relationship.remove');
+        }
+    }
+
+    /**
+     * Emits a singleton type's routes at `/{uriType}` with no `{id}` segment: `GET` for
+     * {@see Operation::FetchOne} and `PATCH` for {@see Operation::Update}, and for a
+     * resource the relationship and related routes under that path. Discovery has already
+     * refused a singleton exposing a collection fetch, a create or a delete, so nothing else
+     * is emitted for the type, and a `POST` or `DELETE` on `/{uriType}` is the router's `405`.
+     * Each route carries {@see TargetResolver::SINGLETON_ATTRIBUTE}, so the target resolver
+     * builds a singleton target and resolves the caller's id.
+     *
+     * @param list<string> $operations the type's operation allow-list, as {@see Operation} case values
+     */
+    private function addSingletonRoutes(Router $router, string $server, string $namePrefix, string $type, string $path, array $operations, bool $relations): void
+    {
+        $fetches = \in_array(Operation::FetchOne->value, $operations, true);
+        $updates = \in_array(Operation::Update->value, $operations, true);
+
+        if ($fetches) {
+            $this->configureSingleton($router->get($path, JsonApiController::class), $server, $type)
+                ->name($namePrefix . $type . '.show');
+        }
+
+        if ($updates) {
+            $this->configureSingleton($router->patch($path, JsonApiController::class), $server, $type)
+                ->name($namePrefix . $type . '.update');
+        }
+
+        if (!$relations) {
+            return;
+        }
+
+        $relationshipPath = $path . '/relationships/{relationship}';
+
+        if ($fetches) {
+            $this->configureSingleton($router->get($relationshipPath, JsonApiController::class), $server, $type)
+                ->defaults(TargetResolver::RELATIONSHIP_ENDPOINT_ATTRIBUTE, true)
+                ->name($namePrefix . $type . '.relationship.show');
+
+            $this->configureSingleton($router->get($path . '/{relationship}', JsonApiController::class), $server, $type)
+                ->name($namePrefix . $type . '.related.show');
+        }
+
+        if ($updates) {
+            $this->configureSingleton($router->patch($relationshipPath, JsonApiController::class), $server, $type)
+                ->defaults(TargetResolver::RELATIONSHIP_ENDPOINT_ATTRIBUTE, true)
+                ->name($namePrefix . $type . '.relationship.update');
+
+            $this->configureSingleton($router->post($relationshipPath, JsonApiController::class), $server, $type)
+                ->defaults(TargetResolver::RELATIONSHIP_ENDPOINT_ATTRIBUTE, true)
+                ->name($namePrefix . $type . '.relationship.add');
+
+            $this->configureSingleton($router->delete($relationshipPath, JsonApiController::class), $server, $type)
                 ->defaults(TargetResolver::RELATIONSHIP_ENDPOINT_ATTRIBUTE, true)
                 ->name($namePrefix . $type . '.relationship.remove');
         }
@@ -358,7 +430,7 @@ final class RouteRegistrar
         ];
 
         foreach ($descriptors as $descriptor) {
-            if ('/' . $descriptor->uriType !== $this->atomicPath) {
+            if ($descriptor->singleton || '/' . $descriptor->uriType !== $this->atomicPath) {
                 continue;
             }
 
@@ -391,9 +463,12 @@ final class RouteRegistrar
     {
         foreach ($this->discovery->actionsFor($server) as $action) {
             $resourceScope = $action->scope === ActionScope::Resource;
+            // A singleton's actions are all resource-scoped and take no {id}: the caller's
+            // resource is resolved per request.
+            $singleton = $this->isSingleton($server, $action->type);
 
             $uriType = $this->uriTypeFor($server, $action->type);
-            $path = $resourceScope
+            $path = $resourceScope && !$singleton
                 ? \sprintf('/%s/{id}/%s/%s', $uriType, self::RESERVED_ACTIONS_SEGMENT, $action->path)
                 : \sprintf('/%s/%s/%s', $uriType, self::RESERVED_ACTIONS_SEGMENT, $action->path);
 
@@ -408,7 +483,9 @@ final class RouteRegistrar
 
             $this->guardActionFilters($server, $action);
 
-            if ($resourceScope) {
+            if ($singleton) {
+                $route->defaults(TargetResolver::SINGLETON_ATTRIBUTE, true);
+            } elseif ($resourceScope) {
                 // The resource-scope action's `{id}` carries the mount type's own declared Id
                 // route pattern, so a malformed id 404s consistently with the CRUD routes.
                 $route->where('id', $this->idRequirementFor($this->classFor($server, $action->type)));
@@ -475,6 +552,21 @@ final class RouteRegistrar
     }
 
     /**
+     * Whether `$type` is a singleton on `$server`, declared by its resource or by its
+     * standalone serializer.
+     */
+    private function isSingleton(string $server, string $type): bool
+    {
+        foreach ([...$this->discovery->resourcesFor($server), ...$this->discovery->serializersFor($server)] as $descriptor) {
+            if ($descriptor->type === $type) {
+                return $descriptor->singleton;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The resource class-string backing an action's mount type on `$server`, or `null` when
      * the mount is a bare type with no scanned resource (then the `{id}` uses the default
      * single-segment requirement).
@@ -506,6 +598,11 @@ final class RouteRegistrar
             ->defaults(TargetResolver::SERVER_ATTRIBUTE, $server)
             ->defaults(JsonApiRoute::MARKER, true)
             ->middleware(ResponseHeadersMiddleware::class);
+    }
+
+    private function configureSingleton(Route $route, string $server, string $type): Route
+    {
+        return $this->configure($route, $server, $type)->defaults(TargetResolver::SINGLETON_ATTRIBUTE, true);
     }
 
     /**

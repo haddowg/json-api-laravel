@@ -416,6 +416,7 @@ final class MetadataSource
             allowedIncludePaths: self::includeControls($server, $type)?->getAllowedIncludePaths(),
             excludedIncludePaths: self::includeControls($server, $type)?->getExcludedIncludePaths() ?? [],
             maxIncludeDepth: self::includeControls($server, $type)?->maxIncludeDepth(),
+            singleton: $descriptor->singleton,
         );
     }
 
@@ -506,6 +507,7 @@ final class MetadataSource
             allowedIncludePaths: self::includeControls($server, $type)?->getAllowedIncludePaths(),
             excludedIncludePaths: self::includeControls($server, $type)?->getExcludedIncludePaths() ?? [],
             maxIncludeDepth: self::includeControls($server, $type)?->maxIncludeDepth(),
+            singleton: $descriptor->singleton,
         );
     }
 

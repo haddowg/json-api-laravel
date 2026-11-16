@@ -386,7 +386,8 @@ final class OperationSecurityFacts
         $uri = $route->uri();
         $relationship = \str_contains($uri, '{relationship}');
         $linkage = ($defaults[TargetResolver::RELATIONSHIP_ENDPOINT_ATTRIBUTE] ?? false) === true;
-        $hasId = \str_contains($uri, '{id}');
+        // A singleton's routes address its one resource with no {id} segment.
+        $hasId = \str_contains($uri, '{id}') || ($defaults[TargetResolver::SINGLETON_ATTRIBUTE] ?? false) === true;
 
         return match ($operation->kind) {
             OperationKind::FetchCollection, OperationKind::Create => !$hasId,

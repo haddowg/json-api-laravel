@@ -8,7 +8,10 @@ use haddowg\JsonApi\OpenApi\Metadata\ActionScope as OpenApiActionScope;
 use haddowg\JsonApi\OpenApi\Metadata\OperationKey;
 use haddowg\JsonApi\OpenApi\OperationReference;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\DeclaresSingletonTypesInterface;
 use haddowg\JsonApi\Resource\Link\ActionLink;
+use haddowg\JsonApi\Resource\SerializerResolverAwareInterface;
+use haddowg\JsonApi\Resource\SingletonResourceInterface;
 use haddowg\JsonApi\Schema\Link\OperationLink;
 use haddowg\JsonApi\Scope\ScopeEnforcer;
 use haddowg\JsonApi\Serializer\ResourceLinkContributorInterface;
@@ -52,6 +55,7 @@ use haddowg\JsonApiLaravel\Authorization\Authorizer;
  * even when the action also sets `asLink`.
  *
  * The href is the action route's path relative to the server, `/{uriType}/{id}/-actions/{path}`,
+ * or `/{uriType}/-actions/{path}` on a singleton type,
  * and core prefixes it with the same base as the resource's `self` link: the configured
  * `base_uri`, or the request origin plus the route prefix when that is empty.
  * Generating it through the URL generator instead would base it on the request host and
@@ -116,6 +120,8 @@ final class ActionLinkContributor implements ResourceLinkContributorInterface
         }
 
         $uriType = $serializer instanceof UriTypeAwareInterface && $serializer->uriType() !== '' ? $serializer->uriType() : $type;
+        // A singleton's actions hang off its type's path, with no id.
+        $base = self::isSingleton($serializer, $type) ? '/' . $uriType : '/' . $uriType . '/' . $id;
 
         $scopes = $this->serverResolver === null ? null : ScopeEnforcer::forServer(($this->serverResolver)());
         $granted = $scopes?->grantedFor($request);
@@ -144,12 +150,27 @@ final class ActionLinkContributor implements ResourceLinkContributorInterface
             // Names the action's operation, by its first declared method as the OpenAPI
             // projection does, so the link can carry a `describedby`.
             $links[$descriptor->path] = new OperationLink(
-                '/' . $uriType . '/' . $id . '/-actions/' . $descriptor->path,
-                OperationReference::action($uriType, $descriptor->path, OpenApiActionScope::Resource, $method),
+                $base . '/-actions/' . $descriptor->path,
+                OperationReference::action($uriType, $descriptor->path, OpenApiActionScope::Resource, $method, $base === '/' . $uriType),
             );
         }
 
         return $links;
+    }
+
+    /**
+     * Whether `$type`, rendered by `$serializer`, is a singleton: the serializer declares
+     * itself one, or the resolver injected into it says so, as core's transformer reads it.
+     */
+    private static function isSingleton(SerializerInterface $serializer, string $type): bool
+    {
+        if ($serializer instanceof SingletonResourceInterface && $serializer::isSingleton()) {
+            return true;
+        }
+
+        $resolver = $serializer instanceof SerializerResolverAwareInterface ? $serializer->serializerResolver() : null;
+
+        return $resolver instanceof DeclaresSingletonTypesInterface && $resolver->isSingleton($type);
     }
 
     /**

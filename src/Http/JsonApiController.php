@@ -24,6 +24,7 @@ use haddowg\JsonApiLaravel\Action\ActionContext;
 use haddowg\JsonApiLaravel\Action\ActionInput;
 use haddowg\JsonApiLaravel\Action\ActionRegistry;
 use haddowg\JsonApiLaravel\Action\ActionScope;
+use haddowg\JsonApiLaravel\Operation\SingletonIdResolver;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use Illuminate\Http\Request;
@@ -82,6 +83,7 @@ final class JsonApiController
         // The atomic endpoint's path as the OpenAPI document keys it, so an Atomic
         // Operations result's `describedby` can name its `POST` operation.
         private readonly string $atomicPath = '/operations',
+        private readonly SingletonIdResolver $singletons = new SingletonIdResolver(),
     ) {}
 
     public function __invoke(Request $request): Response
@@ -117,7 +119,7 @@ final class JsonApiController
         // declared input mode (None/Document/Raw) and builds a CustomActionOperation.
         $actionName = $defaults[self::ACTION_ATTRIBUTE] ?? null;
         if (\is_string($actionName) && $actionName !== '') {
-            $operation = $this->actionOperation($jsonApiRequest, $target, $server, $serverName, $actionName, $defaults);
+            $operation = $this->actionOperation($jsonApiRequest, $target, $server, $serverName, $actionName, $defaults, $request);
         } else {
             $validator = new RequestValidator();
             $validator->negotiate($jsonApiRequest, strictContentType: StrictContentType::appliesTo($jsonApiRequest));
@@ -133,7 +135,7 @@ final class JsonApiController
 
             $operation = $this->operationFactory->fromRequest(
                 $jsonApiRequest,
-                $target,
+                $this->singletons->resolve($server, $target, $jsonApiRequest, $request),
                 new OperationContext($server, $jsonApiRequest),
             );
         }
@@ -224,6 +226,7 @@ final class JsonApiController
         string $serverName,
         string $actionName,
         array $defaults,
+        Request $request,
     ): CustomActionOperation {
         $scope = ($defaults[self::ACTION_SCOPE_ATTRIBUTE] ?? null) === ActionScope::Collection->name
             ? ActionScope::Collection
@@ -264,7 +267,7 @@ final class JsonApiController
         }
 
         return new CustomActionOperation(
-            $target,
+            $this->singletons->resolve($server, $target, $jsonApiRequest, $request),
             QueryParameters::fromRequest($jsonApiRequest),
             new OperationContext($server, $jsonApiRequest),
             $actionName,

@@ -27,7 +27,7 @@ enum ResponseHeaderOperation: string
     /**
      * The shape a `GET` {@see Target} reads as: a relationship-linkage endpoint is
      * {@see self::Relationship}; a related endpoint {@see self::Related}; a target
-     * carrying an `{id}` {@see self::Read}; otherwise the collection.
+     * carrying an `{id}`, or a singleton target, {@see self::Read}; otherwise the collection.
      */
     public static function fromTarget(Target $target): self
     {
@@ -35,6 +35,6 @@ enum ResponseHeaderOperation: string
             return $target->isRelationshipEndpoint ? self::Relationship : self::Related;
         }
 
-        return $target->id !== null ? self::Read : self::Collection;
+        return $target->addressesResource() ? self::Read : self::Collection;
     }
 }
