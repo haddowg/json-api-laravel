@@ -171,12 +171,6 @@ final readonly class ActionInvoker
         $persister = $this->writes($operation) ? $this->persisterFor($descriptor) : null;
 
         return WriteTransaction::run($persister, $this->txContext, function () use ($type, $operation, $entity, $descriptor, $filters, $serverName, $handler, $context, $responseMediaType): DataResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|ErrorResponse|RawResponse {
-            // The before-action lifecycle event: fired after entity
-            // resolution + input validation and before the ability gate + handler. A listener
-            // that throws a JsonApiException aborts. The subject is the resolved entity
-            // (resource scope) or null (collection scope); the declared ability rides along.
-            $this->dispatcher?->dispatch(new BeforeActionEvent($type, $operation->action(), $entity, $descriptor->ability));
-
             if ($filters !== []) {
                 // Reading the type's filtered rows needs what listing the collection needs.
                 $listSubject = $this->persisters->supportsType($type) ? $this->persisters->forType($type)->instantiate($type) : null;
@@ -190,6 +184,13 @@ final readonly class ActionInvoker
             if ($descriptor->ability !== null) {
                 $this->authorizer->authorizeAction($type, $descriptor->ability, $entity, $serverName);
             }
+
+            // The before-action lifecycle event: fired after entity resolution, input
+            // validation and the gates above, so a caller they refuse reaches no listener, and
+            // before the handler. A listener that throws a JsonApiException aborts. The subject
+            // is the resolved entity (resource scope) or null (collection scope); the declared
+            // ability rides along.
+            $this->dispatcher?->dispatch(new BeforeActionEvent($type, $operation->action(), $entity, $descriptor->ability));
 
             $response = $handler->handle($context);
 

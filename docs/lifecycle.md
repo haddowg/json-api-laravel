@@ -85,7 +85,8 @@ to end on both provider arms: a committed write appends exactly one entry, a fai
 ## Before vs after semantics
 
 - **Before events** run before persistence, inside the
-  [write's transaction](#the-writes-transaction). Throwing from a before listener **aborts** the
+  [write's transaction](#the-writes-transaction), and after the
+  [policy checks](authorization.md#policies-run-before-hooks-and-events) that guard them. Throwing from a before listener **aborts** the
   operation and rolls back anything an earlier listener wrote; the thrown exception renders
   through the [error pipeline](errors.md) (throw a `409`/`422` to veto a write).
 - **After events** run after the operation. An after handler may **replace the response** by
@@ -102,7 +103,7 @@ persister has written:
 | Write | Inside the transaction |
 | --- | --- |
 | create | the body's relationships, hydration, entity validation, `BeforeSaveEvent`, `BeforeCreateEvent`, the persister's `create()` and the to-many relationships applied after it |
-| update | the body's relationships, hydration, entity validation, `BeforeSaveEvent`, `BeforeUpdateEvent`, the policy check on the changed resource, the persister's `update()` |
+| update | the body's relationships, hydration, entity validation, the policy check on the changed resource, `BeforeSaveEvent`, `BeforeUpdateEvent`, the persister's `update()` |
 | delete | `BeforeDeleteEvent`, the persister's `delete()` |
 | relationship endpoints | `BeforeRelationshipMutateEvent`, the apply, entity validation, the policy check on the changed parent |
 

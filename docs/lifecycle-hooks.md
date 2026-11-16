@@ -59,7 +59,8 @@ you need.
 ## Before vs after
 
 - **A before hook** runs before persistence, inside the
-  [write's transaction](lifecycle.md#the-writes-transaction). Mutating the entity there is
+  [write's transaction](lifecycle.md#the-writes-transaction), and only for a caller the
+  [policy checks](authorization.md#policies-run-before-hooks-and-events) let through. Mutating the entity there is
   durable (the example derives `slug`/`externalId` in `beforeCreate`), and so is a row it
   saves, unless a later step throws. **Throwing aborts** the operation, rolls back what the
   hook and the earlier hooks wrote, and renders through the [error pipeline](errors.md), the

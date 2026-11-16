@@ -487,8 +487,8 @@ covers the rest, including `withType()` for a file whose type varies.
 
 An action called with `POST`, `PATCH`, `PUT` or `DELETE` runs in one transaction on a
 persister, when that persister implements `TransactionalDataPersisterInterface`. The
-transaction opens before `BeforeActionEvent` and commits after `AfterActionEvent`, so it covers
-the ability gate, the handler and everything after it that can still throw before the response
+transaction opens before the ability gate and commits after `AfterActionEvent`, so it covers
+the gate, `BeforeActionEvent`, the handler and everything after it that can still throw before the response
 value object is returned. If any of it throws, everything written through that connection is
 rolled back: a `save()` in the handler, a write through a persister, a row a listener saved. A
 `GET` action runs without one. The synthesized [soft-delete](soft-deletes.md) `restore` and
