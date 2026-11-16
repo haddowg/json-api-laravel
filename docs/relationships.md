@@ -80,6 +80,15 @@ always-emitted linkage fold in the same filter defaults as the related endpoint,
 the members it serves with no `filter` sent, the set `?withCount` counts. A relation that
 [drops those defaults](#dropping-the-related-types-filter-defaults) drops them on all of these.
 
+### Rendered to-manys show their first page
+
+Wherever a to-many's `data` renders, included or declared `withData()`, it is the
+[first page](pagination.md#included-relationships-show-their-first-page) its related endpoint
+serves under the relation's paginator, and its `links` carry `first`, `next` and, for a counted
+page, `last`. `included` holds the same members. A paginated to-many the model happens to hold
+loaded still renders only its first page, since the load-state seam never reports it loaded.
+Declare `withoutPagination()` on a relation whose whole set should render.
+
 ## `?include`
 
 Compound documents assemble through a provider-agnostic batcher over the SPI (not top-level
@@ -678,8 +687,11 @@ hide rows. A `view` check doesn't count here, since it never filters a list.
   is never short and `?withCount=_self_` is exact. `?filter` and `?sort` work only over pivot
   fields, described below, and anything else is a `400`.
 - `?withCount=companies` counts the admitted pairs.
-- `?include=companies` loads every member's row, one query per type, and leaves out a row that
-  doesn't come back.
+- `?include=companies` loads the rows of its first page's members, one query per type, and
+  leaves out a row that doesn't come back. A relation declared `withoutPagination()` loads every
+  member's row.
+- Wherever the linkage renders it is the first page the relationship endpoint serves, with that
+  page's links.
 - `GET /users/{id}/relationships/companies` pages the admitted pairs exactly as the related
   endpoint does, with the same paginator, `page`, `sort` and `filter` parameters and
   `?withCount=_self_`, but loads no rows. Other polymorphic to-many relationship endpoints still

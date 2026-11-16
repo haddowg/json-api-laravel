@@ -683,6 +683,12 @@ FK-projection for the to-one arm), then writes the result back with `$parent->se
 — so `relationLoaded()` is true and the load-state seam renders linkage without a second
 fetch.
 
+A paginated to-many renders its
+[first page](pagination.md#included-relationships-show-their-first-page) instead, read for the
+whole level in one bounded query per relation (see the next section) and handed to the
+document beside the model, never written onto it. The write-back above describes a relation
+that keeps its whole set: one declared `withoutPagination()`, or one exposing no endpoint.
+
 ## Windowed relationship queries — SQL push-down only
 
 Per-parent relationship paging (the Relationship Queries profile, `?withCount`, a related
@@ -690,7 +696,16 @@ collection with its own `page[]`) is a **SQL push-down only** — no toggle, no 
 It uses Eloquent's relation `limit()` → `Builder::groupLimit()` →
 `ROW_NUMBER() OVER (PARTITION BY …)` with the relation's order plus a deterministic id
 tie-breaker; `hasMore` is an N+1 probe on the same query; countable totals are a grouped
-`COUNT`. Every first-party Laravel driver has window functions, so the Doctrine toggle's
+`COUNT`.
+
+Every rendered to-many's first page takes the same path: one bounded query per relation for
+the whole page of parents, at every level of a nested include. The related model's global
+scopes run inside that query, so a row a scope hides never takes a place on the page. A
+relation with no default order is cut in the order its relation method's `orderBy` gives it,
+the order the related endpoint serves. Relations over one relation method read with the same
+page, order and count share one query, and a first cursor page, a `belongsToMany`'s included,
+is the same window ordered by the keyset. A `?withCount` total a counted first page already
+holds is taken from the page rather than counted again. Every first-party Laravel driver has window functions, so the Doctrine toggle's
 portability rationale does not transfer. The in-memory witness runs core's `WindowExecutor`
 with the same id tiebreak, so the conformance suite referees SQL vs PHP windowing on every
 run.

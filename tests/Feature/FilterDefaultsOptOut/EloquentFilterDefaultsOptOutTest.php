@@ -67,9 +67,12 @@ final class EloquentFilterDefaultsOptOutTest extends FilterDefaultsOptOutTestCas
             self::assertSame($before[$path], $this->bookQueries($path, '1, 2, 3, 4, 5, 6'), $path);
         }
 
-        // The opt-out relations read the books unfiltered, the others through their defaults.
-        self::assertContains('select * from "fd_books" where "fd_books"."shelf_id" in (1, 2)', $before['/shelves?include=allBooks']);
-        self::assertContains('select * from "fd_books" where "fd_books"."draft" = ? and "fd_books"."shelf_id" in (1, 2)', $before['/shelves?include=withArchived']);
+        // The opt-out relations read their first page of books unfiltered, the others through
+        // their defaults.
+        $window = static fn(string $where): string => 'select * from (select *, row_number() over (partition by "fd_books"."shelf_id" order by "fd_books"."id" asc) as "laravel_row" from "fd_books" where '
+            . $where . '"fd_books"."shelf_id" in (1, 2)) as "laravel_table" where "laravel_row" <= 16 order by "laravel_row"';
+        self::assertContains($window(''), $before['/shelves?include=allBooks']);
+        self::assertContains($window('"fd_books"."draft" = ? and '), $before['/shelves?include=withArchived']);
     }
 
     /**
@@ -92,7 +95,7 @@ final class EloquentFilterDefaultsOptOutTest extends FilterDefaultsOptOutTestCas
             if (!\str_contains($query, '"fd_books"')) {
                 continue;
             }
-            self::assertStringEndsWith('"fd_books"."shelf_id" in (' . $shelfIds . ')', $query, $path);
+            self::assertStringContainsString('"fd_books"."shelf_id" in (' . $shelfIds . ')', $query, $path);
             $queries[] = \str_replace($shelfIds, '1, 2', $query);
         }
 

@@ -114,11 +114,13 @@ abstract class RelationUriFieldNameTestCase extends Orchestra
     {
         $response = $this->read('/articles/1')->assertOk();
 
-        // The relationship member keeps the relation's name; only its URLs move.
+        // The relationship member keeps the relation's name; only its URLs move, its
+        // first page's link among them.
         self::assertSame(
             [
                 'self' => ['href' => self::BASE_URI . '/articles/1/relationships/article-remarks'],
                 'related' => ['href' => self::BASE_URI . '/articles/1/article-remarks'],
+                'first' => ['href' => self::BASE_URI . '/articles/1/relationships/article-remarks?page%5Bnumber%5D=1&page%5Bsize%5D=15'],
             ],
             $response->json('data.relationships.remarks.links'),
         );

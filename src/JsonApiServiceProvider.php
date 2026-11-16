@@ -827,6 +827,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(IdentifiedMorphTargets::class),
                 $app->make(IdentifiedMorphMembers::class),
                 toOne: $app->make(ScopedToOneTargets::class),
+                windows: $app->make(RelationshipWindowBatcher::class),
             );
         });
 
@@ -851,6 +852,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(RelationCriteriaFactory::class),
                 $app->make(FilterValueValidator::class),
                 $app->make(ScopedToOneTargets::class),
+                $app->make(ScopedPolymorphicMembers::class),
             );
         });
     }

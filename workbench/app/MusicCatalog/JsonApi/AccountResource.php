@@ -50,8 +50,10 @@ final class AccountResource extends AbstractResource
     {
         return [
             Id::make()->example('1'),
-            Email::make('email')->example('ada@example.com')->readOnly(),
-            Str::make('displayName')->example('Ada')->storedAs('display_name')->minLength(1),
+            // The user row always holds both, so a read never renders `null`. A type with no
+            // create has no required() to infer that from.
+            Email::make('email')->example('ada@example.com')->readOnly()->guaranteed(),
+            Str::make('displayName')->example('Ada')->storedAs('display_name')->minLength(1)->guaranteed(),
             HasMany::make('playlists', 'playlists'),
         ];
     }

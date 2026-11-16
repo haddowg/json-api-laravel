@@ -79,6 +79,7 @@ use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
 use haddowg\JsonApi\Schema\Relationship\RelationshipPagination;
 use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApi\Serializer\PolymorphicSerializer;
+use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApi\Server\RequestBaseUri;
 use haddowg\JsonApi\Server\Server;
@@ -196,6 +197,20 @@ final class CrudOperationHandler implements OperationHandlerInterface
     private ?ScopedPolymorphicMembers $polymorphicMembers = null;
 
     /**
+     * The Relationship Queries linkage the last window installed, which the include walk
+     * descends into.
+     */
+    private ?RelationshipLinkageInterface $windowed = null;
+
+    /**
+     * The profiles the first pages the include walk cut activated, such as the cursor
+     * pagination profile of a cursor-paginated include, surfaced on the response.
+     *
+     * @var array<string, \haddowg\JsonApi\Schema\Profile\ProfileInterface>
+     */
+    private array $includeProfiles = [];
+
+    /**
      * The identified `MorphToMany` writes awaiting {@see writeLinkRows()}, each with the members
      * its relation held before the write and their positions, by type and wire id.
      *
@@ -301,6 +316,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // windowing arm re-sets them below).
         $this->relationshipCount->set(null);
         $this->relationshipPagination->set(null);
+        $this->relationshipPagination->setIncluded(null);
+        $this->windowed = null;
+        $this->includeProfiles = [];
         $server = $operation->context()->server;
         $serverName = $this->serverNameOf($operation->context());
         $this->relationshipLinkage->bind($server instanceof Server ? $server : null, $serverName);
@@ -337,9 +355,35 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         $request = $operation->context()->httpRequest();
 
-        return $response instanceof DataResponse && $server instanceof Server && $request instanceof JsonApiRequestInterface
-            ? $this->loadRendered($server, $response, $request)
-            : $response;
+        if ($response instanceof DataResponse && $server instanceof Server && $request instanceof JsonApiRequestInterface) {
+            $response = $this->loadRendered($server, $response, $request);
+        }
+
+        return $this->withIncludeProfiles($response);
+    }
+
+    /**
+     * Adds the profiles the include walk's first pages activated to a response that renders
+     * them, keeping the ones it already activates.
+     *
+     * @template TResponse of object
+     *
+     * @param TResponse $response
+     *
+     * @return TResponse
+     */
+    private function withIncludeProfiles(object $response): object
+    {
+        if ($this->includeProfiles === [] || (!$response instanceof DataResponse && !$response instanceof RelatedResponse)) {
+            return $response;
+        }
+
+        $profiles = [];
+        foreach ([...$response->activatedProfiles(), ...\array_values($this->includeProfiles)] as $profile) {
+            $profiles[$profile->uri()] ??= $profile;
+        }
+
+        return $response->withActivatedProfiles(...\array_values($profiles));
     }
 
     /**
@@ -375,8 +419,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         $type = \array_key_first($groups);
         $members = $groups[$type];
-        $this->preloadIncludes($server, $members, $type, $request);
-        $activatedProfiles = $this->applyRelationshipWindows($server, $type, $members, $request);
+        $activatedProfiles = $this->loadRelations($server, $members, $type, $request);
         $this->applyRelationshipCounts($server, $type, $members, $request);
 
         return $activatedProfiles === [] ? $response : $response->withActivatedProfiles(...$activatedProfiles);
@@ -497,15 +540,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 }
             }
 
-            // Batch eager-load the effective ?include tree (explicit or the resource's
-            // default-include fallback) so includes do not N+1; a single resource is
-            // preloaded as a one-element list. Window each rendered to-many relation under the
-            // Relationship Queries profile (page 1 of its relatedQuery-ordered/filtered set,
-            // supplied out-of-band) BEFORE the count hook (windows → counts), then install the
-            // ?withCount batched counts for this resource so its relationship objects render
-            // meta.total.
-            $this->preloadIncludes($server, [$model], $type, $request);
-            $activatedProfiles = $this->applyRelationshipWindows($server, $type, [$model], $request);
+            // Window each rendered to-many relation under the Relationship Queries profile, then
+            // batch eager-load the effective ?include tree (explicit or the resource's
+            // default-include fallback) below it, every rendered to-many cut to its first page;
+            // a single resource is loaded as a one-element list. Then install the ?withCount
+            // batched counts so its relationship objects render meta.total.
+            $activatedProfiles = $this->loadRelations($server, [$model], $type, $request);
             $this->applyRelationshipCounts($server, $type, [$model], $request);
 
             $response = DataResponse::fromResource($model, $serializer);
@@ -599,15 +639,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         $items = $this->materialize($result);
 
-        // Batch eager-load the effective ?include tree across the whole page (so includes
-        // do not N+1), window each rendered to-many relation under the Relationship Queries
-        // profile in ONE batched push-down per relation (windows → counts), and install the
-        // ?withCount batched counts in ONE grouped count per relation, before rendering —
-        // covering the singular first match too.
-        $this->preloadIncludes($server, $items, $type, $request);
-        // The returned profiles are the ones a cursor-paginated included relation
+        // Window each rendered to-many relation under the Relationship Queries profile and
+        // batch eager-load the effective ?include tree across the whole page, ONE batched
+        // push-down per relation, then install the ?withCount batched counts in ONE grouped
+        // count per relation, before rendering, covering the singular first match too.
+        // The returned profiles are the ones a cursor-paginated windowed relation
         // activated, surfaced onto each collection response below.
-        $activatedProfiles = $this->applyRelationshipWindows($server, $type, $items, $request);
+        $activatedProfiles = $this->loadRelations($server, $items, $type, $request);
         $this->applyRelationshipCounts($server, $type, $items, $request);
 
         if ($singular) {
@@ -835,8 +873,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // windowed. Its includes, linkage and counts are read per member type, so a member's
             // own relation into a scoped type shows only the rows that type admits.
             if (!$polymorphic) {
-                $this->preloadIncludes($server, $items, $relatedType, $request);
-                $this->applyRelationshipWindows($server, $relatedType, $items, $request);
+                $this->loadRelations($server, $items, $relatedType, $request);
                 $this->applyRelationshipCounts($server, $relatedType, $items, $request);
             } else {
                 $this->windowBatcher->refuse($request);
@@ -959,12 +996,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // through the parent), so guard the resolution. A MorphTo target loads as its own type.
         $targetType = \is_object($related) && $polymorphic ? $serializer->getType($related) : $relatedType;
         if (\is_object($related) && $this->providers->supportsType($targetType)) {
-            $this->preloadIncludes($server, [$related], $targetType, $request);
             // Its relationships honour the Relationship Queries profile like any rendered resource,
             // so their linkage, included members and counts come from the same filtered set.
-            if ($windowed) {
-                $activatedProfiles = $this->applyRelationshipWindows($server, $targetType, [$related], $request);
-            }
+            $activatedProfiles = $this->loadRelations($server, [$related], $targetType, $request, window: $windowed);
             $this->applyRelationshipCounts($server, $targetType, [$related], $request);
         } elseif ($windowed) {
             // An absent target still checks the `relatedQuery` paths.
@@ -1343,10 +1377,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
             return null;
         }
 
+        // A page the client asked to count links to pages that count too.
         $queryString = (new RelatedQuery(
             $request->getSorting() === [] ? null : \implode(',', $request->getSorting()),
             $queryParameters->filter,
-        ))->toPlainQueryString();
+        ))->toPlainQueryString(counted: $wantsCount && !$paginator->wantsCount());
 
         $page = match (true) {
             $result instanceof CursorCollectionResult && $paginator instanceof CursorPaginator => $paginator->fromBoundaries(
@@ -1369,18 +1404,52 @@ final class CrudOperationHandler implements OperationHandlerInterface
     }
 
     /**
+     * Windows the rendered to-manys of `$items` under the Relationship Queries profile, then
+     * batch loads the include tree below them ({@see preloadIncludes()}), and returns the
+     * profiles the windowed pages activate. `$window` off leaves the profile's window out, for a
+     * read that applies it only when it addresses the type.
+     *
+     * @param list<object> $items
+     *
+     * @return list<\haddowg\JsonApi\Schema\Profile\ProfileInterface>
+     */
+    private function loadRelations(Server $server, array $items, string $type, ?JsonApiRequestInterface $request, bool $window = true): array
+    {
+        // Cleared before the window, whose to-one matches the walk then reuses.
+        $this->relationshipLinkage->resetScope();
+        $this->relationshipPagination->setIncluded(null);
+        $activatedProfiles = $window ? $this->applyRelationshipWindows($server, $type, $items, $request) : [];
+        $this->preloadIncludes($server, $items, $type, $request, $window ? $this->windowed : null);
+
+        return $activatedProfiles;
+    }
+
+    /**
      * Batch eager-loads the effective `?include` tree rooted at `$entities` so an included
-     * relationship does not N+1, and installs the out-of-band linkage of every rendered to-many
-     * whose related type has its own scoping provider (cleared with no request or no entities).
+     * relationship does not N+1, and installs the out-of-band linkage the walk loaded and the
+     * first pages it cut. `$windowed` is the
+     * Relationship Queries linkage the walk descends into at the primary level.
      *
      * @param list<object> $entities
      */
-    private function preloadIncludes(Server $server, array $entities, string $type, ?JsonApiRequestInterface $request): void
+    private function preloadIncludes(Server $server, array $entities, string $type, ?JsonApiRequestInterface $request, ?RelationshipLinkageInterface $windowed = null): void
     {
-        $this->relationshipLinkage->resetScope();
         if ($request !== null && $entities !== []) {
             $this->markPreloaded($entities);
-            $this->relationshipLinkage->scope($this->includeBatcher->preload($server, $entities, $type, $request));
+            $this->relationshipLinkage->scope($this->includeBatcher->preload($server, $entities, $type, $request, $windowed));
+            $this->installIncludedPagination($this->includeBatcher->pagination());
+        }
+    }
+
+    /**
+     * Installs the first pages the include walk cut and records the profiles they activate,
+     * such as a cursor-paginated include's, for the response.
+     */
+    private function installIncludedPagination(?WindowedRelationshipPagination $pagination): void
+    {
+        $this->relationshipPagination->setIncluded($pagination);
+        foreach ($pagination?->activatedProfiles() ?? [] as $profile) {
+            $this->includeProfiles[$profile->uri()] = $profile;
         }
     }
 
@@ -1415,7 +1484,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
     private function preloadGroups(Server $server, array $groups, JsonApiRequestInterface $request): void
     {
         $this->relationshipLinkage->resetScope();
+        $this->relationshipPagination->setIncluded(null);
 
+        $pages = [];
         foreach ($groups as $type => $members) {
             if (!$this->providers->supportsType($type)) {
                 continue;
@@ -1426,7 +1497,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
             if ($scoped !== null) {
                 $this->relationshipLinkage->addScope($scoped);
             }
+            $pages[] = $this->includeBatcher->pagination();
         }
+
+        $this->installIncludedPagination(WindowedRelationshipPagination::merge(...$pages));
     }
 
     /**
@@ -1450,7 +1524,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
     private function applyRelationshipCounts(Server $server, string $type, array $items, ?JsonApiRequestInterface $request): void
     {
         $this->relationshipCount->set(
-            $request === null ? null : $this->countBatcher->batch($server, $type, $items, $request),
+            $request === null ? null : $this->countBatcher->batch($server, $type, $items, $request, $this->relationshipPagination),
         );
     }
 
@@ -1464,7 +1538,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
     {
         $counts = [];
         foreach ($groups as $type => $members) {
-            $counts[] = $this->countBatcher->batch($server, $type, $members, $request);
+            $counts[] = $this->countBatcher->batch($server, $type, $members, $request, $this->relationshipPagination);
         }
 
         $this->relationshipCount->set(BatchedRelationshipCount::merge(...$counts));
@@ -1503,15 +1577,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         $this->relationshipPagination->set($result?->pagination);
         $this->relationshipLinkage->set($result?->linkage);
-
-        // A windowed page holds its own copies of the related members, so their nested
-        // includes and linkage are walked again for any related type with its own scoping provider.
-        if ($request !== null && $result?->linkage !== null) {
-            $scoped = $this->includeBatcher->preloadWindowed($server, $type, $items, $result->linkage, $request);
-            if ($scoped !== null) {
-                $this->relationshipLinkage->addScope($scoped);
-            }
-        }
+        $this->windowed = $result?->linkage;
 
         return $result?->pagination?->activatedProfiles() ?? [];
     }
@@ -1908,9 +1974,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         // A write response is the same resource document, so it honours `?include`, the
         // Relationship Queries profile (windowed linkage/pagination), and `?withCount` exactly
-        // as a read does — preload → window → count over the created entity, before rendering.
-        $this->preloadIncludes($server, [$entity], $type, $request);
-        $this->applyRelationshipWindows($server, $type, [$entity], $request);
+        // as a read does: window → preload → count over the created entity, before rendering.
+        $this->loadRelations($server, [$entity], $type, $request);
         $this->applyRelationshipCounts($server, $type, [$entity], $request);
 
         // The Location uses the resource's URI segment (its uriType), so it matches the
@@ -2061,10 +2126,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         // A write response honours `?include`, the Relationship Queries profile (windowed
-        // linkage/pagination), and `?withCount` exactly as a read does — preload → window →
+        // linkage/pagination), and `?withCount` exactly as a read does: window → preload →
         // count over the updated entity, before rendering.
-        $this->preloadIncludes($server, [$entity], $type, $request);
-        $this->applyRelationshipWindows($server, $type, [$entity], $request);
+        $this->loadRelations($server, [$entity], $type, $request);
         $this->applyRelationshipCounts($server, $type, [$entity], $request);
 
         $response = DataResponse::fromResource($entity, $serializer);

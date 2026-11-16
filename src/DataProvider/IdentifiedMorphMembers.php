@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\DataProvider;
 
 use haddowg\JsonApi\Collection\CollectionResult;
+use haddowg\JsonApi\Collection\CursorCollectionResult;
 use haddowg\JsonApi\Collection\LinkRows\InMemoryLinkRows;
 use haddowg\JsonApi\Collection\LinkRows\LinkRowKeysInterface;
 use haddowg\JsonApi\Collection\LinkRows\LinkRowQuery;
 use haddowg\JsonApi\Collection\LinkRows\LinkRowQueryInterface;
+use haddowg\JsonApi\Pagination\CursorWindow;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\Id;
@@ -118,6 +120,113 @@ final class IdentifiedMorphMembers
         }
 
         return \array_map(\array_values(...), $loaded);
+    }
+
+    /**
+     * Each of `$parents`' first page of members under `$criteria`'s window, in the related
+     * endpoint's order, supplied as its linkage until {@see forget()}. An offset window is cut
+     * from the members admitted for the whole level at once; a cursor window pages each parent
+     * through {@see pageMembers()}, as the related endpoint does. With `$rows` the page's rows
+     * load, one read per type across every page, and a member whose row doesn't come back is
+     * left out. `$parentType` names the parents' type, whose provider may read link rows.
+     *
+     * @param list<object> $parents
+     *
+     * @return list<CollectionResult<IdentifiedMember>>
+     */
+    public function firstPages(Server $server, array $parents, MorphToMany $relation, CollectionCriteria $criteria, JsonApiRequestInterface $request, bool $rows, ?string $parentType = null): array
+    {
+        $provider = $parentType !== null && $this->providers->supportsType($parentType) ? $this->providers->forType($parentType) : null;
+
+        if ($criteria->window instanceof CursorWindow) {
+            $pages = \array_map(
+                fn(object $parent): CollectionResult => $this->pageMembers($server, $parent, $relation, $criteria, $request, $provider instanceof LinkRowQueryInterface ? $provider : null),
+                $parents,
+            );
+        } else {
+            $query = LinkRowQuery::resolve($relation, request: $request, window: $criteria->window, countable: $criteria->wantsCount);
+            $pages = \array_map(
+                static fn(array $members): CollectionResult => (new InMemoryLinkRows())->apply($members, $query),
+                $this->members($server, $parents, $relation, $request, false, false, $provider instanceof LinkRowKeysInterface ? $provider : null),
+            );
+        }
+
+        if ($rows) {
+            $pages = $this->withTargets($server, $pages);
+        }
+
+        $name = $relation->name();
+        foreach ($pages as $index => $page) {
+            $entry = $this->loaded[$parents[$index]] ?? [];
+            $entry[$name] = new RelationshipLinkage(self::identified($page));
+            $this->loaded[$parents[$index]] = $entry;
+        }
+
+        return $pages;
+    }
+
+    /**
+     * `$pages` with each member's row loaded, one read per type across every page. A member
+     * whose row doesn't come back is left out; a type no provider serves keeps its pairs.
+     *
+     * @param list<CollectionResult<IdentifiedMember>> $pages
+     *
+     * @return list<CollectionResult<IdentifiedMember>>
+     */
+    private function withTargets(Server $server, array $pages): array
+    {
+        $ids = [];
+        foreach ($pages as $page) {
+            foreach (self::identified($page) as $member) {
+                if ($server->hasSerializerFor($member->type) && $this->providers->supportsType($member->type)) {
+                    $ids[$member->type][$this->wireId($server, $member->type, $member->id)] = true;
+                }
+            }
+        }
+
+        $loaded = [];
+        foreach ($ids as $type => $set) {
+            $loaded[$type] = $this->fetch($server, $type, \array_map('strval', \array_keys($set)));
+        }
+
+        return \array_map(function (CollectionResult $page) use ($server, $loaded): CollectionResult {
+            $kept = [];
+            foreach (self::identified($page) as $member) {
+                if (!isset($loaded[$member->type])) {
+                    $kept[] = $member;
+
+                    continue;
+                }
+
+                $row = $loaded[$member->type][$this->wireId($server, $member->type, $member->id)] ?? null;
+                if ($row !== null) {
+                    $kept[] = $member->withTarget($row);
+                }
+            }
+
+            return $page instanceof CursorCollectionResult
+                ? new CursorCollectionResult($kept, $page->cursorBefore, $page->cursorAfter, $page->hasPrevious, $page->hasMore, $page->total)
+                : new CollectionResult($kept, $page->total, $page->windowed, $page->hasMore);
+        }, $pages);
+    }
+
+    /**
+     * The {@see IdentifiedMember} values of `$page`, in order.
+     *
+     * @param CollectionResult<IdentifiedMember> $page
+     *
+     * @return list<IdentifiedMember>
+     */
+    private static function identified(CollectionResult $page): array
+    {
+        $members = [];
+        foreach ($page->items as $member) {
+            if ($member instanceof IdentifiedMember) {
+                $members[] = $member;
+            }
+        }
+
+        return $members;
     }
 
     /**

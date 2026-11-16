@@ -194,6 +194,25 @@ final class RelationCriteriaFactory
     }
 
     /**
+     * Whether `$relation`'s related endpoint folds in a filter default the relation doesn't
+     * drop, so a read of its members is narrowed by more than its association.
+     */
+    public function hasFilterDefaults(?AbstractResource $relatedResource, RelationInterface $relation): bool
+    {
+        if (!$relation->isToMany()) {
+            return false;
+        }
+
+        foreach (self::linkageFilters($relatedResource, $relation) as $filter) {
+            if ($filter instanceof HasDefaultValue && $filter->hasDefault()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The filters a linkage read folds the defaults of: the related type's and the
      * relation's own, without the pivot ones.
      *
