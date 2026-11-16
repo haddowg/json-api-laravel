@@ -100,7 +100,7 @@ final class ResponseHeadersMiddleware
 
         if ($target->relationship === null) {
             $kind = match ($method) {
-                'GET' => $target->id !== null ? OperationKind::FetchOne : OperationKind::FetchCollection,
+                'GET' => $target->addressesResource() ? OperationKind::FetchOne : OperationKind::FetchCollection,
                 'POST' => OperationKind::Create,
                 'PATCH' => OperationKind::Update,
                 'DELETE' => OperationKind::Delete,

@@ -45,11 +45,12 @@ final readonly class JsonApiRoute
     /**
      * @param string           $server                 the server name, `default` for the implicit server
      * @param string|null      $type                   the JSON:API type; null on the atomic route
-     * @param string|null      $id                     the `{id}` route parameter; null on collection routes
+     * @param string|null      $id                     the `{id}` route parameter; null on collection routes and a singleton's routes
      * @param string|null      $relationship           the `{relationship}` route parameter
      * @param bool             $isRelationshipEndpoint true on `/relationships/{relationship}`
      * @param string|null      $action                 a custom action's path segment
      * @param ActionScope|null $actionScope            a custom action's scope
+     * @param bool             $singleton              true on a singleton type's routes, which have no `{id}` segment
      */
     public function __construct(
         public string $server,
@@ -60,6 +61,7 @@ final readonly class JsonApiRoute
         public ?string $action = null,
         public ?ActionScope $actionScope = null,
         public bool $isAtomic = false,
+        public bool $singleton = false,
     ) {}
 
     /**
@@ -102,6 +104,7 @@ final readonly class JsonApiRoute
             action: $action,
             actionScope: $action !== null ? self::actionScopeOf($defaults[JsonApiController::ACTION_SCOPE_ATTRIBUTE] ?? null) : null,
             isAtomic: ($defaults[JsonApiController::ATOMIC_ATTRIBUTE] ?? null) === true,
+            singleton: $target !== null && $target->singleton,
         );
     }
 
@@ -114,7 +117,7 @@ final readonly class JsonApiRoute
             return null;
         }
 
-        return new Target($this->type, $this->id, $this->relationship, $this->isRelationshipEndpoint);
+        return new Target($this->type, $this->id, $this->relationship, $this->isRelationshipEndpoint, $this->singleton);
     }
 
     /**

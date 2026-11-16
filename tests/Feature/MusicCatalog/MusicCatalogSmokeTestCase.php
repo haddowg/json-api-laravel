@@ -12,6 +12,7 @@ use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\Attributes\DefineEnvironment;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
+use Workbench\App\Models\User as AuthUser;
 use Workbench\App\MusicCatalog\Domain\Track as TrackDomain;
 use Workbench\App\MusicCatalog\Models\Track as TrackModel;
 use Workbench\App\MusicCatalog\Support\Fixtures;
@@ -171,6 +172,19 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         // favorite 1 → a track; favorite 2 → an album (the morphTo resolves per-member type).
         $this->fetch('/api/favorites/1/favoritable')->assertOk()->assertJsonPath('data.type', 'tracks');
         $this->fetch('/api/favorites/2/favoritable')->assertOk()->assertJsonPath('data.type', 'albums');
+    }
+
+    public function test_favorites_filter_by_their_stored_target_and_leave_undated_ones_out(): void
+    {
+        // favorite 1 → track 1, favorite 2 → album 2; the stored pair is compared, never loaded.
+        $ids = fn(string $query): array => \array_column((array) $this->fetch('/api/favorites?' . $query)->assertOk()->json('data'), 'id');
+
+        self::assertSame(['2'], $ids('filter[favoritable][type]=albums'));
+        self::assertSame(['1'], $ids('filter[favoritable][type]=tracks&filter[favoritable][id]=1'));
+        self::assertSame([], $ids('filter[favoritable][type]=tracks&filter[favoritable][id][]=2'));
+        self::assertSame([], $ids('filter[dated]=false'));
+        self::assertSame(['1', '2'], $ids('filter[dated]=true,false'));
+        $this->fetch('/api/favorites?filter[favoritable][type]=playlists')->assertStatus(400);
     }
 
     public function test_libraries_polymorphic_to_many_returns_a_mixed_collection(): void
@@ -459,6 +473,56 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         self::assertNotNull($response->headers->get('Content-Location'));
         self::assertNotNull($response->headers->get('Retry-After'));
         $response->assertJsonPath('data.type', 'export-jobs');
+    }
+
+    // --- the accounts singleton --------------------------------------------------
+
+    public function test_me_is_the_signed_in_users_account(): void
+    {
+        $this->actingAs(new AuthUser(['id' => 1]));
+
+        $response = $this->fetch('/api/me')->assertOk();
+
+        $response->assertJsonPath('data.type', 'accounts');
+        $response->assertJsonPath('data.id', '1');
+        $response->assertJsonPath('data.attributes', ['email' => 'ada@music.example', 'displayName' => 'Ada']);
+        $response->assertJsonPath('data.links.self.href', 'http://localhost/api/me');
+        $response->assertJsonPath('data.relationships.playlists.links.self.href', 'http://localhost/api/me/relationships/playlists');
+        $this->assertResponseMatchesGeneratedSchema($response, 'accounts', SchemaDocumentKind::Single);
+    }
+
+    public function test_a_caller_with_no_account_gets_a_404(): void
+    {
+        $this->fetch('/api/me')->assertNotFound();
+
+        $this->actingAs(new AuthUser(['id' => 9]));
+        $this->fetch('/api/me')->assertNotFound();
+    }
+
+    public function test_an_update_renames_the_callers_account(): void
+    {
+        $this->actingAs(new AuthUser(['id' => 1]));
+
+        $this->write('PATCH', '/api/me', ['data' => ['type' => 'accounts', 'id' => '1', 'attributes' => ['displayName' => 'Countess']]])->assertOk();
+        $this->fetch('/api/me')->assertJsonPath('data.attributes.displayName', 'Countess');
+
+        $this->write('PATCH', '/api/me', ['data' => ['type' => 'accounts', 'id' => '2', 'attributes' => ['displayName' => 'Someone']]])->assertStatus(409);
+    }
+
+    public function test_the_accounts_playlists_are_its_related_resources(): void
+    {
+        $this->actingAs(new AuthUser(['id' => 1]));
+
+        self::assertSame([Fixtures::PLAYLIST_ONE], $this->sortedIds($this->fetch('/api/me/playlists')->assertOk()->json('data')));
+    }
+
+    public function test_me_serves_no_collection_create_or_delete(): void
+    {
+        $this->actingAs(new AuthUser(['id' => 1]));
+
+        $this->write('DELETE', '/api/me', [])->assertStatus(405);
+        $this->fetch('/api/me/1')->assertNotFound();
+        $this->fetch('/api/accounts')->assertNotFound();
     }
 
     // --- the download action ----------------------------------------------------

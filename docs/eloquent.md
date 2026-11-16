@@ -148,6 +148,9 @@ declare, and the provider translates:
 | `WhereHas::make('tracks')` | `whereHas('tracks')` (relationship existence) |
 | `WhereThrough::make('artist.name')` | a dotted-path correlated `EXISTS` |
 | `WhereThroughIn::make('label', 'artist.label')` | one correlated `EXISTS` over the path with a `whereIn` at the leaf |
+| `WhereSet::make('archived', 'archived_at')` | `whereNotNull` for `true`, `whereNull` for `false`, nothing for both |
+| `WhereMorph::make('subject')` on a `MorphTo` | `whereIn` on the model's `morphTo` type column, the alias the morph map gives the requested type's model, and on its id column when ids are sent |
+| `WhereMorph::make('linked', 'links')` on a `MorphToMany` | one `EXISTS` over the `through()` rows `identifiedByRows()` names, owned by the outer row |
 | `WhereAll` / `WhereAny` | a nested `where(fn ($q) => …)` combining the children with `AND` / `orWhere` |
 | `Where…->fixed($value)` | the same `where` predicate with its value pinned server-side (no arm needed) |
 
@@ -281,6 +284,30 @@ A path ending on a `MorphTo` or `MorphToMany` has no single id to compare. Route
 and `jsonapi:optimize` resolve every declared filter, relation-scoped ones included, and fail
 with the path that ends on one, as they do for a `WhereThrough` on a relationship that declares
 `deserializeUsing()` or a non-equality operator.
+
+### Whether a column is set, and polymorphic identifiers
+
+[`WhereSet`](https://github.com/haddowg/json-api/blob/main/docs/filters.md#whether-a-column-is-set-whereset)
+answers `filter[archived]=true` with `whereNotNull` and `false` with `whereNull`, so read or
+archived state kept as a nullable timestamp filters by its key. Its value is always a list of
+booleans, so `filter[archived]=true,false` asks for both, which is how a client overrides a
+`default(false)`. A member that isn't a boolean is a `400` `FILTER_VALUE_INVALID`.
+
+[`WhereMorph`](https://github.com/haddowg/json-api/blob/main/docs/filters.md#filtering-by-a-polymorphic-relation-wheremorph)
+compares what a polymorphic relation stores, sent as `filter[subject][type]=rfps` with an
+optional `filter[subject][id]=812,813`. On a `MorphTo` it reads the model's own `morphTo`
+relation of the same storage name: the type column must hold the morph class of the model
+serving the requested type, which is its morph map alias when the map names one, and the id
+column one of the decoded ids. The relation's identifier needs no declaration, so a `MorphTo`
+identified by an `identifiedBy()` closure filters too. A model without a `morphTo` of that name
+falls back to the columns core's `identifiedByColumns()` names, through its `typeMap`. On a
+`MorphToMany` the filter needs `identifiedByRows()`, and is one `EXISTS` over the `through()`
+rows owned by the outer row, through the owner's `belongsTo` or `morphTo` on the row model.
+
+The in-memory provider compares the fields `identifiedByColumns()` or `identifiedByRows()`
+name, through core's reference handler, so a type it serves needs one of them. Route
+registration and `jsonapi:optimize` refuse a `WhereMorph` whose provider can't compare the
+relation, naming `identifiedByColumns()`.
 
 ### Date-times and the app timezone
 

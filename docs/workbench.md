@@ -2,14 +2,14 @@
 
 Every snippet in these docs is lifted from a real, CI-run application: the **music-catalog
 workbench**. It lives under `workbench/` (a Testbench convention — the docs still call it "the
-example"), assembles the same twelve-type domain as the
+example"), assembles the same eighteen-type domain as the
 [Symfony example](https://github.com/haddowg/json-api-symfony), and is exercised by tests so
 the docs cannot drift. Browse it at
 [`workbench/app/MusicCatalog`](https://github.com/haddowg/json-api-laravel/blob/main/workbench/app/MusicCatalog).
 
 ## The domain
 
-Twelve types, each chosen to witness a distinct capability:
+Eighteen types, each chosen to witness a distinct capability:
 
 | Type | Witnesses |
 | --- | --- |
@@ -19,11 +19,16 @@ Twelve types, each chosen to witness a distinct capability:
 | `playlists` | UUID id; lifecycle hooks; API-distinct policy; per-relation security; one-model-two-types; pivot (`orderedTracks`) |
 | `users` | admin-only server; `Email`/`Ip`/`ArrayHash`; write-only `password`; validation composition; `Rule::unique`; include whitelist |
 | `public-profiles` | one model, two types (a curated read-only `User` view) |
+| `accounts` | a [singleton](resources.md#singleton-types) at `/me`: the signed-in user's own `User` row, `GET`/`PATCH /me` and `/me/playlists`, narrowed to that row by the `Account` model's global scope |
 | `favorites` | polymorphic to-one (`MorphTo`); `cannotBeIncluded()` |
 | `libraries` | **polymorphic to-many** (`MorphToMany`) running on the reference provider — the over-parity headline |
 | `genres` | client-supplied natural-key id; declarative cache headers |
 | `devices` | ULID id; self-link opt-out; RFC 8594 deprecation |
 | `products` | encoded (opaque) id via a codec; self-referential relation |
+| `releases` | composite attributes: a discriminated `OneOf`, a typed `Obj` and `Shape`-asserted `ArrayHash` maps |
+| `catalog-exports` | per-operation response declarations: an always-async `202` create and a two-code delete, served by a custom provider and persister |
+| `export-jobs` | the read side of the async write: a `200` status document while the job runs, a `303 See Other` once it completes |
+| `reissues` | a [related-only](resources.md#related-only-types) type: the album `reissue` action's request document, with no paths of its own |
 | `charts`, `countries` | standalone serializers (no model) + custom providers; `symfony/intl` reference data |
 
 `albums` is served on both the `default` and `admin` servers, and a related endpoint returns
@@ -136,6 +141,6 @@ vendor/bin/testbench serve            # serve the DEFAULT workbench suite at /ap
 docker compose up                     # serve the FULL music-catalog domain — see docker.md
 ```
 
-To serve the full twelve-type domain over HTTP, use the [Docker demo](docker.md) — it swaps in
+To serve the full eighteen-type domain over HTTP, use the [Docker demo](docker.md) — it swaps in
 the music-catalog Testbench config so `testbench serve` boots the whole domain instead of the
 default suite.

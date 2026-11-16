@@ -92,7 +92,7 @@ final readonly class ActionInvoker
 
         $target = $operation->target();
         $type = $target->type;
-        $scope = $target->hasId() ? ActionScope::Resource : ActionScope::Collection;
+        $scope = $target->addressesResource() ? ActionScope::Resource : ActionScope::Collection;
 
         $serverName = $this->serverName($operation);
         $descriptor = $this->registry->descriptorFor($serverName, $type, $scope, $operation->action());

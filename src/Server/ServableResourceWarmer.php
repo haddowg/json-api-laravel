@@ -381,7 +381,7 @@ final class ServableResourceWarmer
         }
 
         try {
-            FilterPathGuard::check($server, $resource);
+            FilterPathGuard::check($server, $resource, servedBy: fn(string $served): string|false|null => $this->providers->supportsType($served) ? ($this->eloquentModelClassFor($served) ?? false) : null);
         } catch (\LogicException $e) {
             $problems[] = $e->getMessage();
         }

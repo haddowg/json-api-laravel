@@ -20,6 +20,7 @@ use Workbench\App\MusicCatalog\Action\ImportAlbums;
 use Workbench\App\MusicCatalog\Action\ReissueAlbum;
 use Workbench\App\MusicCatalog\Action\SummarizeAlbums;
 use Workbench\App\MusicCatalog\Action\UploadAlbumArtwork;
+use Workbench\App\MusicCatalog\JsonApi\AccountResource;
 use Workbench\App\MusicCatalog\JsonApi\AlbumResource;
 use Workbench\App\MusicCatalog\JsonApi\ArtistResource;
 use Workbench\App\MusicCatalog\JsonApi\CatalogExportResource;
@@ -36,6 +37,7 @@ use Workbench\App\MusicCatalog\JsonApi\ReleaseResource;
 use Workbench\App\MusicCatalog\JsonApi\TrackResource;
 use Workbench\App\MusicCatalog\JsonApi\UserResource;
 use Workbench\App\MusicCatalog\Listeners\AuditLogSubscriber;
+use Workbench\App\MusicCatalog\Models\Account;
 use Workbench\App\MusicCatalog\Models\Album;
 use Workbench\App\MusicCatalog\Models\Artist;
 use Workbench\App\MusicCatalog\Models\Device;
@@ -92,6 +94,7 @@ final class MusicCatalogEloquentServiceProvider extends ServiceProvider
         // position among the resources is immaterial; their order *among each other*
         // (reissue → summary → artwork) is what the document reflects.
         JsonApi::register([
+            AccountResource::class,
             AlbumResource::class,
             ArtistResource::class,
             CatalogExportResource::class,
@@ -132,6 +135,7 @@ final class MusicCatalogEloquentServiceProvider extends ServiceProvider
             'products' => Product::class,
             'users' => User::class,
             'public-profiles' => User::class,
+            'accounts' => Account::class,
             'favorites' => Favorite::class,
             'libraries' => Library::class,
             'playlists' => Playlist::class,

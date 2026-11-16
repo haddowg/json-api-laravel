@@ -37,6 +37,7 @@ final readonly class SerializerDescriptor
      * @param array<string, mixed>                                          $extensions          the OpenAPI vendor extensions (`x-…`) stamped on every operation of the type
      * @param array<string, array<string, mixed>>                           $operationExtensions per-operation vendor extensions keyed by {@see Operation} case value or core operation name, merged over `$extensions`
      * @param list<string>                                                  $deprecatedOperations the operations deprecated on their own, by core operation name
+     * @param bool                                                          $singleton  whether the serializer declares the type a singleton ({@see \haddowg\JsonApi\Resource\SingletonResourceInterface})
      */
     public function __construct(
         public string $class,
@@ -48,6 +49,7 @@ final readonly class SerializerDescriptor
         public array $extensions = [],
         public array $operationExtensions = [],
         public array $deprecatedOperations = [],
+        public bool $singleton = false,
     ) {}
 
     /**
@@ -67,7 +69,7 @@ final readonly class SerializerDescriptor
     }
 
     /**
-     * @return array{class: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>, type: string, uriType: string, servers: list<string>, operations: list<string>, tags: list<string>, extensions: array<string, mixed>, operationExtensions: array<string, array<string, mixed>>, deprecatedOperations: list<string>}
+     * @return array{class: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>, type: string, uriType: string, servers: list<string>, operations: list<string>, tags: list<string>, extensions: array<string, mixed>, operationExtensions: array<string, array<string, mixed>>, deprecatedOperations: list<string>, singleton: bool}
      */
     public function toArray(): array
     {
@@ -81,11 +83,12 @@ final readonly class SerializerDescriptor
             'extensions' => $this->extensions,
             'operationExtensions' => $this->operationExtensions,
             'deprecatedOperations' => $this->deprecatedOperations,
+            'singleton' => $this->singleton,
         ];
     }
 
     /**
-     * @param array{class: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>, type: string, uriType: string, servers: list<string>, operations: list<string>, tags?: list<string>, extensions?: array<string, mixed>, operationExtensions?: array<string, array<string, mixed>>, deprecatedOperations?: list<string>} $data
+     * @param array{class: class-string<\haddowg\JsonApi\Serializer\SerializerInterface>, type: string, uriType: string, servers: list<string>, operations: list<string>, tags?: list<string>, extensions?: array<string, mixed>, operationExtensions?: array<string, array<string, mixed>>, deprecatedOperations?: list<string>, singleton?: bool} $data
      */
     public static function fromArray(array $data): self
     {
@@ -99,6 +102,7 @@ final readonly class SerializerDescriptor
             $data['extensions'] ?? [],
             $data['operationExtensions'] ?? [],
             $data['deprecatedOperations'] ?? [],
+            $data['singleton'] ?? false,
         );
     }
 }

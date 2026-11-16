@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Unit\Serializer;
 
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
+use haddowg\JsonApi\Resource\SingletonContext;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Serializer\PivotMetaSerializer;
 use haddowg\JsonApiLaravel\Serializer\PivotSubstitutingResolver;
+use haddowg\JsonApiLaravel\Tests\Fixtures\Singleton\ProfileResource;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -30,6 +32,17 @@ final class PivotSubstitutingResolverTest extends TestCase
     public function anInnerResolverWithoutATimezoneMeansNone(): void
     {
         self::assertNull($this->decorating($this->createStub(SerializerResolverInterface::class))->outputTimezone());
+    }
+
+    #[Test]
+    public function itPassesTheInnerResolversSingletonsThrough(): void
+    {
+        $resolver = $this->decorating(Server::make()->register(ProfileResource::class));
+
+        self::assertTrue($resolver->isSingleton('profiles'));
+        self::assertFalse($resolver->isSingleton('tracks'));
+        self::assertSame('1', $resolver->resolveSingletonId('profiles', new SingletonContext('profiles')));
+        self::assertFalse($this->decorating($this->createStub(SerializerResolverInterface::class))->isSingleton('profiles'));
     }
 
     private function decorating(SerializerResolverInterface $inner): PivotSubstitutingResolver

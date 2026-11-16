@@ -120,6 +120,20 @@ final class EloquentPivotKeysTest extends Orchestra
     }
 
     #[Test]
+    public function aPivotPrefixedWhereSetComparesThePivotRowsColumn(): void
+    {
+        $first = '/api/placeholder-definitions/' . self::FIRST_NAME . '/templates';
+        $last = '/api/placeholder-definitions/' . self::LAST_NAME . '/templates';
+        $ids = fn(string $path): array => \array_column($this->rows($this->read($path), 'data'), 'id');
+
+        self::assertEqualsCanonicalizing(['10', '20'], $ids($first . '?filter[overridden]=true'));
+        self::assertSame([], $ids($first . '?filter[overridden]=false'));
+        self::assertSame([], $ids($last . '?filter[overridden]=true'));
+        self::assertSame(['10'], $ids($last . '?filter[overridden]=false'));
+        self::assertSame(['10'], $ids($last . '?filter[overridden]=true,false'));
+    }
+
+    #[Test]
     public function theRelationshipEndpointRendersTemplateLinkage(): void
     {
         $rows = $this->rows($this->read('/api/placeholder-definitions/' . self::FIRST_NAME . '/relationships/templates?sort=-defaultOverride'), 'data');

@@ -609,6 +609,19 @@ The closure returns the JSON:API type and the target's key, or `null` for an emp
 A column that stores some other name for the type maps it to the JSON:API type in the closure.
 The model needs no relation method for it.
 
+When the pair is two attributes of the model, name them instead and the linkage renders from
+them the same way, with `typeMap` mapping stored aliases to JSON:API types:
+
+```php
+MorphTo::make('target', ['advertisers', 'agencies'])
+    ->identifiedByColumns(type: 'target_type', id: 'target_id', typeMap: ['advertiser' => 'advertisers', 'agency' => 'agencies']),
+```
+
+The in-memory provider then compares those attributes for a
+[`WhereMorph`](eloquent.md#whether-a-column-is-set-and-polymorphic-identifiers) filter, which on
+Eloquent reads the model's `morphTo` relation when it has one. The example's
+`favorites.favoritable` declares both.
+
 Whether linkage needs a query depends on whether the target's type is guarded on the server.
 A type is guarded when something other than a row's existence decides whether a read shows it:
 a global scope on its model, a data provider of its own that may scope or hide rows, or a `view`

@@ -469,6 +469,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $request = $request instanceof JsonApiRequestInterface ? $request : null;
 
         $id = $operation->target()->id;
+        // A singleton fetch is never a collection: without the caller's id there is nothing to read.
+        if ($id === null && $operation->target()->singleton) {
+            return ErrorResponse::fromException(new ResourceNotFound());
+        }
         if ($id !== null) {
             $model = $provider->fetchOne($type, $id);
             if ($model === null) {

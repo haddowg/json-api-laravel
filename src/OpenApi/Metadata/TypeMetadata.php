@@ -20,6 +20,7 @@ use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationScopes;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresRelatedOnly;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresResourceClass;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresResourceLinks;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresSingleton;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresSingularName;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresSortExample;
 use haddowg\JsonApi\OpenApi\Metadata\OperationExample;
@@ -69,7 +70,8 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  * from.
  *
  * Through {@see DeclaresRelatedOnly} it says whether `#[AsJsonApiResource(relatedOnly:)]`
- * declares the type serves no endpoint of its own.
+ * declares the type serves no endpoint of its own, and through {@see DeclaresSingleton} whether
+ * its resource or serializer declares it a singleton, served at `/{uriType}` with no `{id}`.
  *
  * Through {@see DeclaresDefaultSort} and {@see DeclaresSortExample} it carries the resource's
  * `defaultSort()` and `sortExample()`, which the projector shows as the `sort` example.
@@ -78,7 +80,7 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
  * serializer applies as a document's root, that no operation refuses `include`, that a
  * taken client id is a `409`, and that a hand-written hydrator never reads linkage.
  */
-final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresNamedOperationExtensions, DeclaresSingularName, DeclaresOperationExamples, DeclaresAlwaysCounted, DeclaresResourceLinks, DeclaresActionLinks, DeclaresOperationScopes, DeclaresResourceClass, DeclaresDeprecation, DeclaresRelatedOnly, DeclaresDefaultSort, DeclaresSortExample, DeclaresIncludeSafeguards, DeclaresInclusionUnsupported, DeclaresClientIdCollisions, DeclaresHydratorCardinality
+final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresNamedOperationExtensions, DeclaresSingularName, DeclaresOperationExamples, DeclaresAlwaysCounted, DeclaresResourceLinks, DeclaresActionLinks, DeclaresOperationScopes, DeclaresResourceClass, DeclaresDeprecation, DeclaresRelatedOnly, DeclaresDefaultSort, DeclaresSortExample, DeclaresIncludeSafeguards, DeclaresInclusionUnsupported, DeclaresClientIdCollisions, DeclaresHydratorCardinality, DeclaresSingleton
 {
     /**
      * @param list<FieldInterface>            $fields
@@ -111,6 +113,7 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
      * @param list<string>|null               $allowedIncludePaths  the root include allow-list the type's serializer declares, or null for none
      * @param list<string>                    $excludedIncludePaths the root include paths the type's serializer refuses
      * @param ?int                            $maxIncludeDepth      the type's own maximum include depth, or null for the server's
+     * @param bool                            $singleton            whether the type is a singleton, served at `/{uriType}` with no `{id}` segment
      */
     public function __construct(
         private string $type,
@@ -152,7 +155,13 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
         private ?array $allowedIncludePaths = null,
         private array $excludedIncludePaths = [],
         private ?int $maxIncludeDepth = null,
+        private bool $singleton = false,
     ) {}
+
+    public function isSingleton(): bool
+    {
+        return $this->singleton;
+    }
 
     public function defaultSort(): array
     {

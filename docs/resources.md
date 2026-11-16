@@ -97,6 +97,71 @@ is a constructor `\LogicException`, and mounting a custom action on a related-on
 including the soft-delete actions `softDeletes` synthesizes, fails discovery. A
 related-only type needs no provider or persister.
 
+### Singleton types
+
+Some types have exactly one resource per caller: an inbox, a settings record, a profile.
+Declare such a type a singleton and say how to find the caller's resource:
+
+```php
+use haddowg\JsonApi\Resource\SingletonContext;
+use haddowg\JsonApiLaravel\Operation\SingletonIdResolver;
+
+#[AsJsonApiResource]
+final class InboxResource extends AbstractResource
+{
+    public static string $type = 'inboxes';
+    public static string $uriType = 'inbox';
+    public static bool $singleton = true;
+
+    public function resolveSingletonId(SingletonContext $context): ?string
+    {
+        $user = $context->attribute(SingletonIdResolver::USER_ATTRIBUTE);
+
+        return $user === null ? null : (string) Inbox::query()->where('owner_id', $user->id)->value('id');
+    }
+}
+```
+
+The type is served at `/api/inbox` with no `{id}` segment: `GET` fetches the caller's inbox
+and `PATCH` updates it. Its relationship and related routes are
+`/api/inbox/relationships/{rel}` and `/api/inbox/{rel}`, and its custom actions
+`/api/inbox/-actions/{name}`. There is no collection, create, delete or `/api/inbox/{id}`,
+so a `POST` or `DELETE` on `/api/inbox` is a `405` and the rest are a `404`. A singleton
+serves fetch and update by default, and fetch alone when it is `readOnly`.
+
+The package resolves the caller's id once per request and then runs the ordinary fetch,
+update, relationship and action paths with it, so the model's global scopes, the type's
+policy, lifecycle hooks, the write transaction and its after-commit callbacks all apply as
+they do for any other type. `resolveSingletonId()` gets a `SingletonContext` carrying the
+PSR-7 request, the authenticated user, or `null` for a guest, as
+`SingletonIdResolver::USER_ATTRIBUTE`, and the Illuminate request as
+`SingletonIdResolver::REQUEST_ATTRIBUTE`. A `null` id is a `404`, and so is an id the data
+layer doesn't find. `$request->jsonApi()` reports `singleton: true` on the type's routes, and
+its target carries no id, since the URL names none.
+
+A `PATCH` body still carries the resource's `id`, as the spec requires of every update, and
+the package doesn't fill it in. A client reads the singleton first, or otherwise knows the
+caller's id, and sends it in the body. An id other than the caller's is a `409`.
+
+A singleton keeps its real id. Its resources carry it, and other types link to it and include
+it as usual: `GET /api/inbox-items?include=inbox` returns the items with their inbox, and
+`GET /api/inbox-items/1/inbox` renders it. Only the links into its own endpoints drop the id,
+so its `self` link is `/api/inbox` wherever it renders.
+
+Because every one of its links is `/api/inbox`, **a singleton's data layer must expose only
+the caller's row.** That is the author's job, usually a global scope on the model or a
+[scoping provider](custom-data-providers.md). Without one, a request that reaches another
+caller's inbox, through an include or a related endpoint, renders it with a `self` link that
+points at the reader's own.
+
+Discovery refuses a singleton that declares a collection fetch, a create or a delete, one
+that mounts a collection-scope action, one that is also `relatedOnly`, and a resource that
+doesn't override `resolveSingletonId()`. When the same rows also need a collection, declare a
+second type over the same model; a model can back several types. A standalone serializer
+declares a singleton by implementing `SingletonResourceInterface`, and so can a serializer a
+resource names in `serializer:`. A standalone singleton serializer with no `operations` list
+serves fetch, and update when it has a hydrator.
+
 ### Declaring response shapes
 
 Each operation advertises a default success response — `POST` → `201`, `PATCH` → `200`,

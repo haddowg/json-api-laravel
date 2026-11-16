@@ -24,6 +24,10 @@ nullable field pairs that type and `null` with an `anyOf` of the reference and `
 way the field reads the same type whether its enum is inline or hoisted. [Custom actions](actions.md) and the
 [atomic](atomic-operations.md) endpoint project too.
 
+A [singleton](resources.md#singleton-types) type's paths carry no `{id}` parameter, its
+operation ids stay `fetchOne.<type>` and `update.<type>`, and its resource component names its
+path in `x-singleton`, so a generator can find it with no collection or create endpoint.
+
 The error codes a server can raise are catalogued as `const` branches of named shapes per
 status, so a generated client gets a typed exception per code rather than one opaque error
 type. Core's codes are always there; your own join them when discovery finds them, and a code

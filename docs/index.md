@@ -131,7 +131,7 @@ Eloquent `Album` model, with no controller and no handler. The step-by-step buil
 ## The example app
 
 Every snippet in these docs is lifted from the **music-catalog workbench** — a Testbench
-application (`workbench/`) that assembles the same twelve-type domain as the Symfony
+application (`workbench/`) that assembles the same eighteen-type domain as the Symfony
 example, exercised by CI-run tests so the docs cannot drift. Run it live with
 `docker compose up`. See [workbench](workbench.md) and [docker](docker.md).
 

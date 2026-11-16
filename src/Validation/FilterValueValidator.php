@@ -12,6 +12,7 @@ use haddowg\JsonApi\Resource\Filter\FilterFamilyInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Filter\Range;
+use haddowg\JsonApi\Resource\Filter\WhereMorph;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
@@ -72,6 +73,12 @@ final class FilterValueValidator
         foreach ($this->matched($requested, $filters, $request) as [$key, $filter]) {
             $filter = $paths?->resolve($filter) ?? $filter;
             $value = $requested[$key];
+
+            if ($filter instanceof WhereMorph && $filter->resolvedTarget() !== null) {
+                $this->validateMorph($filter, $value);
+
+                continue;
+            }
             $list = $filter instanceof AcceptsList ? $filter->listValue() : null;
 
             $rules = $this->rules($filter);
@@ -110,6 +117,41 @@ final class FilterValueValidator
                 $filter->storageValue($value);
             }
         }
+    }
+
+    /**
+     * A {@see WhereMorph}'s value: its shape and type through the filter itself, then each
+     * id against the id format of the type the request names, which only the request can
+     * tell, then each id through that type's encoder.
+     *
+     * @throws FilterValueInvalid
+     */
+    private function validateMorph(WhereMorph $filter, mixed $value): void
+    {
+        ['type' => $type, 'ids' => $ids] = $filter->requested($value);
+
+        $rules = [];
+        foreach ($filter->idConstraints($type) as $constraint) {
+            foreach ($this->translator->translate($constraint) as $rule) {
+                $rules[] = $rule;
+            }
+        }
+
+        $messages = [];
+        if ($rules !== []) {
+            foreach ($ids ?? [] as $id) {
+                $validator = $this->validatorFactory->make(['value' => $id], ['value' => $rules]);
+                foreach ($validator->errors()->all() as $message) {
+                    $messages[] = $message;
+                }
+            }
+        }
+
+        if ($messages !== []) {
+            throw new FilterValueInvalid($filter->key() . '][id', $messages);
+        }
+
+        $filter->selection($value);
     }
 
     /**

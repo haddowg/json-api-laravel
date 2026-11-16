@@ -47,7 +47,7 @@ Core concepts (fields, relations, constraints, response value objects) live in t
 
 ## Demo
 
-`docker compose up` serves the full twelve-type music-catalog example over HTTP — browse
+`docker compose up` serves the full eighteen-type music-catalog example over HTTP — browse
 `http://localhost:8080/api/albums` and the interactive OpenAPI docs at
 `http://localhost:8080/docs`. See the
 [Docker guide](https://haddowg.github.io/json-api-laravel/docker/).

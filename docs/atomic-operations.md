@@ -51,6 +51,12 @@ URL, and a collection URL on an `update` or `remove`, so `remove` at `/api/album
 can't delete a filtered set. These answer `ATOMIC_HREF_INVALID`. An `href` that matches no
 JSON:API route answers `ATOMIC_HREF_UNRESOLVABLE`.
 
+A [singleton](resources.md#singleton-types) can be targeted either way. A `ref` names it by
+`{type, id}` as any other resource. An `href` of `/api/inbox`, or a relationship URL under it,
+resolves the caller's id as a direct request does, before anything is written: a caller with
+no inbox refuses the batch with a `404`, and an `add` at `/api/inbox` is an
+`ATOMIC_HREF_INVALID`, since a singleton has no collection to add to.
+
 ## Local ids (`lid`)
 
 A `lid` (local id) lets one operation reference a resource created earlier **in the same
