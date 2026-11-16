@@ -39,8 +39,8 @@ code `ACCESS_DENIED` (an unauthenticated request that needs identity is a `401` 
 An update has to pass its gate twice. The `update` ability is checked on the resource as
 stored, before validation and before anything is applied, so a caller it refuses gets a `403`
 and no validation errors. It is checked again on the resource as changed, after the body's
-attributes and relationships are applied and the before-update hooks have run, just before the
-save. A refusal there is a `403` and nothing is saved. With a policy like "only the owner may
+attributes and relationships are applied and before the `beforeSave` and `beforeUpdate` hooks
+run. A refusal there is a `403` and nothing is saved. With a policy like "only the owner may
 update", an owner can edit their post but can't hand it to someone else, and nobody can take
 someone else's.
 
@@ -390,7 +390,23 @@ A custom action declares its own ability on the attribute (not on the type):
 ```
 
 The ability is checked against the resolved entity (resource scope) or the resource-class
-token (collection scope) before the handler runs. See [actions](actions.md).
+token (collection scope) before `BeforeActionEvent` and the handler run. See [actions](actions.md).
+
+## Policies run before hooks and events
+
+Every policy check comes before the lifecycle hooks and events it guards. A caller a policy
+refuses gets the `403` and nothing else: no resource hook method runs and no listener of
+yours sees a Before* event, so a hook never reads, writes, calls out or throws on behalf of a
+caller who wasn't allowed to make the request. The package checks the policy itself and then
+dispatches the event, so this holds for every listener; Laravel's events have no priority that
+could put one ahead of the check. Every operation in an
+[Atomic Operations](atomic-operations.md) batch follows the same order.
+
+One check has to come after a hook. On a relationship endpoint the changed parent is checked
+again once the change is applied, which is after `BeforeRelationshipMutateEvent`. By then the
+caller has passed the check on the parent as stored. A refusal there rolls back the change and
+anything the hook saved, but whatever else the hook did has already happened. `ServingEvent`
+fires before the operation loads anything, so it runs ahead of every policy.
 
 ## OpenAPI security
 

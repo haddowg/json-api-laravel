@@ -521,6 +521,16 @@ final class CrudOperationHandler implements OperationHandlerInterface
             return $activatedProfiles === [] ? $response : $response->withActivatedProfiles(...$activatedProfiles);
         }
 
+        // The `viewAny` policy gate authorizes the collection BEFORE the query runs, on
+        // a blank instance minted for the type's class (so a policy's `viewAny($user)` is
+        // called). It runs ahead of BeforeFetchCollectionEvent, so a refused caller reaches
+        // no listener. A read-only type has no persister to mint one — but a DECLARED `policy:`
+        // is still enforced against the resource-class token (never fail-open); only the
+        // no-policy Gate path stays inert on a null subject (the model's policy cannot be
+        // resolved without an instance).
+        $listSubject = $this->persisters->supportsType($type) ? $this->persisters->forType($type)->instantiate($type) : null;
+        $this->authorizer->authorize($type, Operation::FetchCollection, $listSubject, $this->serverNameOf($operation->context()));
+
         // An all-or-nothing collection gate runs BEFORE the query: a listener may deny
         // the whole `GET /{type}` read (a throw → 403/…) so a blocked caller never
         // triggers a collection query. Skipped for a programmatic dispatch with no
@@ -544,15 +554,6 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // clean `400` FILTER_VALUE_INVALID rather than a silent non-match or a driver
         // error. The raw requested map is validated (never the author-set defaults).
         $this->filterValidator->validate($operation->queryParameters()->filter, $filters, $request, $paths);
-
-        // The `viewAny` policy gate authorizes the collection BEFORE the query runs, on
-        // a blank instance minted for the type's class (so a policy's `viewAny($user)` is
-        // called). A read-only type has no persister to mint one — but a DECLARED `policy:`
-        // is still enforced against the resource-class token (never fail-open); only the
-        // no-policy Gate path stays inert on a null subject (the model's policy cannot be
-        // resolved without an instance).
-        $listSubject = $this->persisters->supportsType($type) ? $this->persisters->forType($type)->instantiate($type) : null;
-        $this->authorizer->authorize($type, Operation::FetchCollection, $listSubject, $this->serverNameOf($operation->context()));
 
         // A singular filter the client applied collapses the collection to a
         // zero-to-one response — a single resource (the first match) or null, never
@@ -2027,17 +2028,18 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $this->validator->validateEntity($resource, $entity, false);
             }
 
-            // Before-save then before-update lifecycle gates (the entity is mutable,
+            // The same gates again on the resource as changed, so a caller can't turn it into
+            // one they couldn't update, such as handing it to another user. They run before the
+            // hooks below, so a refused caller reaches none of them. A denial rolls back
+            // everything applied above.
+            $this->authorizer->authorize($type, Operation::Update, $entity, $serverName);
+            $this->gateEmbeddedMutations($type, $entity, $relationships, $serverName);
+
+            // Before-save then before-update lifecycle hooks (the entity is mutable,
             // `$original` is the pre-change snapshot): a throw aborts before the persister
             // commits — inside the write's transaction, so the whole write rolls back.
             $this->dispatch(new BeforeSaveEvent($type, $request, $entity, false, $this->serverName($request)));
             $this->dispatch(new BeforeUpdateEvent($type, $request, $entity, $original, $this->serverName($request)));
-
-            // The same gates again on the resource as changed, before it is saved, so a caller
-            // can't turn it into one they couldn't update, such as handing it to another user.
-            // A denial rolls back everything applied above.
-            $this->authorizer->authorize($type, Operation::Update, $entity, $serverName);
-            $this->gateEmbeddedMutations($type, $entity, $relationships, $serverName);
 
             $updated = $persister->update($type, $entity);
             if (!$updated instanceof AcceptedForProcessing) {
