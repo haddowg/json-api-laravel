@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.19.0](https://github.com/haddowg/json-api-laravel/compare/v2.18.0...v2.19.0) (2026-11-16)
+
+
+### Features
+
+* run the WhereMorph and WhereSet filters ([2b2fa75](https://github.com/haddowg/json-api-laravel/commit/2b2fa757ade1bc99fa0c4cd3249b15552efbd3bf))
+* serve singleton resources at their type's path ([2b2fa75](https://github.com/haddowg/json-api-laravel/commit/2b2fa757ade1bc99fa0c4cd3249b15552efbd3bf))
+
+
+### Bug Fixes
+
+* accept a new model a before hook already saved ([#286](https://github.com/haddowg/json-api-laravel/issues/286)) ([8e2dc24](https://github.com/haddowg/json-api-laravel/commit/8e2dc24cc90778ae4c226a76403a18cfbad0112c))
+* check policies before every lifecycle event ([#285](https://github.com/haddowg/json-api-laravel/issues/285)) ([58b110f](https://github.com/haddowg/json-api-laravel/commit/58b110fb1fcaa3fc751f119fc01a27512e51b50d))
+* keep a pivot relationship's links on its type's own path ([2b2fa75](https://github.com/haddowg/json-api-laravel/commit/2b2fa757ade1bc99fa0c4cd3249b15552efbd3bf))
+* refuse an atomic update whose resource names another id ([2b2fa75](https://github.com/haddowg/json-api-laravel/commit/2b2fa757ade1bc99fa0c4cd3249b15552efbd3bf))
+* resolve an atomic update's own lid to its id ([#282](https://github.com/haddowg/json-api-laravel/issues/282)) ([4c1183b](https://github.com/haddowg/json-api-laravel/commit/4c1183b160faeb5bee0c418d2d1188e5d3ed8199))
+
 ## [2.18.0](https://github.com/haddowg/json-api-laravel/compare/v2.17.0...v2.18.0) (2026-11-15)
 
 
