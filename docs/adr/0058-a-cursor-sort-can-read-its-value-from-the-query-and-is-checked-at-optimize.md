@@ -1,0 +1,3 @@
+# A cursor sort can read its value from the query, and is checked at optimize
+
+A cursor token carried the sort's `keysetValue()`, so a sort over a value PHP can't compute from the model, such as a subquery's count, could order a page but not mint its cursor. `EloquentKeysetExpression::valueFromQuery()` selects the expression beside the model's columns and the provider writes the boundary row's selected value into the token, dropping it from the model afterwards. A collection that may page by cursor also has its declared sorts checked by `jsonapi:optimize`, so a sort that can't key the page fails the deploy instead of answering every request with a 500; a sort family resolves per request, so it is checked then.

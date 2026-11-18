@@ -446,7 +446,16 @@ as the largest value, and compares the expression with the token's boundary valu
 four null-aware cases a column gets. The arm may add joins to `$query`. When it does and the
 query selects nothing yet, the provider selects the model's own columns, so a joined `id` can't
 overwrite the model's. Use a left join, so rows without a value stay in the page and sort as
-null. A cursor page ordered by a custom sort without both opt-ins is a `500` `UnsupportedSort`.
+null. The provider wraps the expression in parentheses, so a `CASE`, a `COALESCE` or a
+subquery such as `select max(score) from members where members.team_id = teams.id` works as
+written.
+
+A collection that may page by cursor has its declared sorts checked by `jsonapi:optimize`. A
+custom sort that does not implement `KeysetSortInterface`, or whose arm does not implement
+`EloquentKeysetSortArmInterface`, fails the deploy with a message naming the type, the sort and
+the fix. That covers the type's own collection and every to-many whose related collection pages
+by cursor. A [sort family](#sort-families) resolves its sorts per request, so a family that
+resolves to such a sort is still a `500` `UnsupportedSort` when a request uses it.
 
 `EloquentKeysetExpression::make($sql, $bindings)` takes raw SQL (a string or an `Expression`)
 and the values for its own `?` placeholders. The boundary value arrives in its token form, a
@@ -463,6 +472,23 @@ bound depends on the expression:
 A string that doesn't parse as a date binds verbatim. Nothing converts a custom expression's
 date-time to another timezone unless the arm asks for `asNaiveDateTime()`. The expression and
 `keysetValue()` must agree on every row, nulls included, or pages skip or repeat rows.
+
+`valueFromQuery()` takes `keysetValue()` out of that agreement on Eloquent. The provider
+selects the expression beside the model's columns, writes the boundary row's selected value
+into the token, and drops the selected value from the models before they render. Use it for a
+value PHP can't compute from the model without loading more, such as a count from a subquery.
+With `asDateTime()` or `asNaiveDateTime()` a selected string is read in PHP's default timezone,
+the zone the connection wrote it in. `keysetValue()` still orders the sort on the in-memory
+provider.
+
+```php
+public function keysetExpression(KeysetSortInterface $sort, Builder $query): EloquentKeysetExpression
+{
+    return EloquentKeysetExpression::make(
+        'select max(members.score) from members where members.team_id = teams.id',
+    )->valueFromQuery();
+}
+```
 
 Here a campaign's placeholder values live in a `campaign_values` table with a text `value`
 column. A [sort family](#sort-families) resolves `value.<name>` to a `PlaceholderValueSort`,

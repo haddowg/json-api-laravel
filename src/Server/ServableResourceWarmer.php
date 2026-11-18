@@ -8,6 +8,9 @@ use haddowg\JsonApi\Collection\LinkRows\LinkRowQuery;
 use haddowg\JsonApi\OpenApi\Metadata\ActionDeclarations;
 use haddowg\JsonApi\OpenApi\ProjectedTypes;
 use haddowg\JsonApi\OpenApi\RelatedTypeNotRegistered;
+use haddowg\JsonApi\Pagination\CursorPaginator;
+use haddowg\JsonApi\Pagination\MultiPaginator;
+use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\DocumentMetaMisdeclared;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
@@ -16,7 +19,11 @@ use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Field\StoresIdentifiersInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Sort\KeysetSortInterface;
+use haddowg\JsonApi\Resource\Sort\RelationSorts;
 use haddowg\JsonApi\Resource\Sort\SortByField;
+use haddowg\JsonApi\Resource\Sort\SortFamilyInterface;
+use haddowg\JsonApi\Resource\Sort\SortInterface;
 use haddowg\JsonApi\Serializer\RelationFilterDefaultsValidator;
 use haddowg\JsonApi\Serializer\RelationOrderValidator;
 use haddowg\JsonApiLaravel\Action\ActionRegistry;
@@ -24,6 +31,7 @@ use haddowg\JsonApiLaravel\Action\ActionScope;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
+use haddowg\JsonApiLaravel\DataProvider\KeysCursorSortsInterface;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
@@ -102,6 +110,11 @@ use Psr\Log\LoggerInterface;
  *  - **A filter's traversal path must resolve.** A `WhereThrough` or `WhereThroughIn`
  *    path ending on a polymorphic relation has no single id to compare
  *    ({@see FilterPathGuard}), a relation's scoped filters included.
+ *  - **A cursor page's sorts must key it.** A collection that may page by cursor, the
+ *    type's own or a to-many's related collection, orders the page by keyset, which takes
+ *    a {@see SortByField} or a {@see KeysetSortInterface}, and on a provider that
+ *    implements {@see KeysCursorSortsInterface} one it can order by. A sort family
+ *    resolves its sorts per request, so it is checked then.
  *
  * Standalone-serializer types are validated too — a
  * fetch-opened standalone type without a provider is exactly the deploy-time
@@ -155,6 +168,7 @@ final class ServableResourceWarmer
                 $this->guardForeignKeys($serverName, $type, $problems);
                 $this->guardFilterPaths($serverName, $type, $problems);
                 $this->guardDocumentMeta($serverName, $type, $problems);
+                $this->guardCursorSorts($serverName, $type, $problems);
                 $this->noteInMemoryLinkRows($serverName, $type);
             }
 
@@ -445,6 +459,96 @@ final class ServableResourceWarmer
         } catch (\LogicException $e) {
             $problems[] = $e->getMessage();
         }
+    }
+
+    /**
+     * Reports a sort that a cursor page of `$type`'s collection, or of one of its to-many's
+     * related collections, can't be ordered by.
+     *
+     * @param list<string> $problems
+     */
+    private function guardCursorSorts(string $serverName, string $type, array &$problems): void
+    {
+        $server = $this->servers->get($serverName);
+        $resource = $this->types->resourceFor($server, $type);
+        if ($resource === null) {
+            return;
+        }
+
+        $default = $server->defaultPaginator();
+        if (self::pagesByCursor($resource->pagination($default))) {
+            $this->guardKeyable($type, $resource->allSorts(), \sprintf('The collection of type "%s" on server "%s"', $type, $serverName), $problems);
+        }
+
+        foreach ($this->types->relationsFor($server, $type) as $relation) {
+            if (!$relation->isToMany()) {
+                continue;
+            }
+
+            $relatedTypes = $relation->relatedTypes();
+            $related = \count($relatedTypes) === 1 ? $this->types->resourceFor($server, $relatedTypes[0]) : null;
+            if (!self::pagesByCursor($relation->pagination($related?->pagination($default) ?? $default))) {
+                continue;
+            }
+
+            $this->guardKeyable(
+                $relatedTypes[0] ?? $type,
+                RelationSorts::vocabulary($relation, $server),
+                \sprintf('The related collection of relation "%s" on type "%s" on server "%s"', $relation->name(), $type, $serverName),
+                $problems,
+            );
+        }
+    }
+
+    /**
+     * @param list<SortInterface> $sorts
+     * @param list<string>        $problems
+     */
+    private function guardKeyable(string $type, array $sorts, string $collection, array &$problems): void
+    {
+        $provider = $this->providers->supportsType($type) ? $this->providers->forType($type) : null;
+        foreach ($sorts as $sort) {
+            if ($sort instanceof SortFamilyInterface || $sort instanceof SortByField) {
+                continue;
+            }
+
+            if (!$sort instanceof KeysetSortInterface) {
+                $problems[] = \sprintf(
+                    '%s pages by cursor, but its sort "%s" (%s) does not implement %s, so a cursor page cannot be ordered by it. Implement it on the sort, or page the collection by number or offset.',
+                    $collection,
+                    $sort->key(),
+                    $sort::class,
+                    KeysetSortInterface::class,
+                );
+
+                continue;
+            }
+
+            if ($provider instanceof KeysCursorSortsInterface && !$provider->keysCursorSort($type, $sort)) {
+                $problems[] = \sprintf(
+                    '%s pages by cursor, but %s cannot order a cursor page by its sort "%s" (%s). On the Eloquent provider the sort\'s arm must implement EloquentKeysetSortArmInterface.',
+                    $collection,
+                    $provider::class,
+                    $sort->key(),
+                    $sort::class,
+                );
+            }
+        }
+    }
+
+    private static function pagesByCursor(?PaginatorInterface $paginator): bool
+    {
+        if ($paginator instanceof MultiPaginator) {
+            foreach ($paginator->children() as $child) {
+                if (self::pagesByCursor($child)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return $paginator instanceof CursorPaginator;
     }
 
     /**

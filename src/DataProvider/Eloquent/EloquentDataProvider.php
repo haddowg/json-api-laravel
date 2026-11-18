@@ -31,6 +31,7 @@ use haddowg\JsonApi\Resource\Filter\InMemory\ArrayFilterHandler;
 use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortHandler;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
+use haddowg\JsonApi\Resource\Sort\SortInterface;
 use haddowg\JsonApi\Schema\Relationship\IdentifiedMember;
 use haddowg\JsonApiLaravel\DataProvider\AbstractDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\AdmitsIdsInterface;
@@ -39,6 +40,7 @@ use haddowg\JsonApiLaravel\DataProvider\CriteriaApplier;
 use haddowg\JsonApiLaravel\DataProvider\FetchesManyInterface;
 use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
 use haddowg\JsonApiLaravel\DataProvider\ForeignKeyParents;
+use haddowg\JsonApiLaravel\DataProvider\KeysCursorSortsInterface;
 use haddowg\JsonApiLaravel\DataProvider\QueriesFilteredCollectionInterface;
 use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
 use haddowg\JsonApiLaravel\DataProvider\ReadsByForeignKeyInterface;
@@ -111,7 +113,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
  *
  * @extends AbstractDataProvider<object>
  */
-final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, LinkRowQueryInterface, LinkRowKeysInterface, ReadsByForeignKeyInterface
+final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, LinkRowQueryInterface, LinkRowKeysInterface, ReadsByForeignKeyInterface, KeysCursorSortsInterface
 {
     private readonly CriteriaApplier $applier;
 
@@ -813,7 +815,8 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         [$filterHandler, $sortHandler] = $this->handlersFor($eager, $models[0], $relation);
         $pivot = $eager instanceof EloquentBelongsToMany && $this->pivotRelation($models[0], $relation) !== null ? $eager : null;
         $this->applier->apply($this->filtersOnly($criteria), $eager->getQuery(), $filterHandler, $sortHandler);
-        (new EloquentKeyset($related, $sortHandler, $pivot?->getTable()))->orderBy($eager->getQuery(), $columns);
+        $keyset = new EloquentKeyset($related, $sortHandler, $pivot?->getTable());
+        $keyset->orderBy($eager->getQuery(), $columns);
 
         // A cursor page is count-free by definition (a CursorPaginator never counts), so the
         // window always probes limit + 1 per partition for the hasMore signal.
@@ -844,11 +847,11 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             $hasSurplus = \count($items) > $limit;
             $page = $hasSurplus ? \array_slice($items, 0, $limit) : $items;
 
-            $results[$this->wireId($model, $encoder)] = $this->minter->mint(
-                $window,
+            $results[$this->wireId($model, $encoder)] = $this->mintSelected(
+                $keyset,
                 $columns,
                 \array_values($page),
-                $hasSurplus,
+                fn(array $columns, array $page, callable $readValue): CursorCollectionResult => $this->minter->mint($window, $columns, $page, $hasSurplus, $readValue),
                 $readValue,
             );
         }
@@ -1914,21 +1917,63 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             // Over-fetch limit+1 in the (possibly flipped) order; the surplus is
             // dropped by runCursor BEFORE the cursors closure mints.
             probe: static fn(CursorWindow $w): array => \array_values((clone $builder)->limit($w->limit + 1)->get()->all()),
-            cursors: function (array $rows, bool $hasMore, ?int $total) use ($window, $columns, $backward, $pivot): CursorCollectionResult {
+            cursors: function (array $rows, bool $hasMore, ?int $total) use ($window, $columns, $backward, $pivot, $keyset): CursorCollectionResult {
                 // Re-orient a backward page to natural forward order for rendering.
                 $page = $backward ? \array_reverse($rows) : $rows;
 
-                return $this->minter->mint(
-                    $window,
+                return $this->mintSelected(
+                    $keyset,
                     $columns,
                     \array_values($page),
-                    $hasMore,
+                    fn(array $columns, array $page, callable $readValue): CursorCollectionResult => $this->minter->mint($window, $columns, $page, $hasMore, $readValue, $total),
                     static fn(object $row, string $column): string|int|float|bool|null => CursorTokenMinter::coerce(self::keysetValue($row, $column, $pivot)),
-                    $total,
                 );
             },
             count: $counter === null ? null : static fn(): int => $counter->reorder()->count(),
         );
+    }
+
+    public function keysCursorSort(string $type, SortInterface $sort): bool
+    {
+        return $this->sortHandler->keysCursorSort($sort);
+    }
+
+    /**
+     * Mints a cursor page through `$mint`, reading each custom level whose value
+     * `$keyset` selected off the row rather than through the sort's `keysetValue()`, then
+     * drops the selected values from the models.
+     *
+     * @param list<KeysetColumn>                                                                                  $columns
+     * @param list<object>                                                                                        $page
+     * @param callable(list<KeysetColumn>, list<object>, callable(object, string): (scalar|null)): CursorCollectionResult<object> $mint
+     * @param callable(object, string): (scalar|null)                                                             $readValue
+     *
+     * @return CursorCollectionResult<object>
+     */
+    private function mintSelected(EloquentKeyset $keyset, array $columns, array $page, callable $mint, callable $readValue): CursorCollectionResult
+    {
+        $selected = $keyset->selectedValues();
+        if ($selected === []) {
+            return $mint($columns, $page, $readValue);
+        }
+
+        $result = $mint(
+            \array_map(static fn(KeysetColumn $c): KeysetColumn => isset($selected[$c->column]) ? new KeysetColumn($c->column, $c->descending) : $c, $columns),
+            $page,
+            static fn(object $row, string $column): string|int|float|bool|null => isset($selected[$column]) && $row instanceof Model
+                ? CursorTokenMinter::coerce($keyset->readSelected($row, $column))
+                : $readValue($row, $column),
+        );
+
+        foreach ($page as $row) {
+            if ($row instanceof Model) {
+                foreach ($selected as $alias) {
+                    $row->offsetUnset($alias);
+                }
+            }
+        }
+
+        return $result;
     }
 
     /**

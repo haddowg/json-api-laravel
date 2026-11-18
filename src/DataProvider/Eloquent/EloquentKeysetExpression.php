@@ -21,6 +21,10 @@ use Illuminate\Database\Grammar;
  * default timezone, for an expression over a datetime column Eloquent stores without
  * its offset. Anything else goes through {@see castUsing()}.
  *
+ * The cursor token carries the sort's `keysetValue()` for the boundary row. After
+ * {@see valueFromQuery()} it carries the value the query selected for that row instead,
+ * so a value PHP can't compute from the model, such as a subquery's count, still pages.
+ *
  * The expression is raw SQL. Build it from identifiers the server declares and pass
  * every value through `$bindings`, never the client's sort key.
  */
@@ -41,6 +45,7 @@ final readonly class EloquentKeysetExpression
         public array $bindings,
         private string $mode,
         private ?\Closure $cast,
+        private bool $fromQuery = false,
     ) {}
 
     /**
@@ -57,7 +62,7 @@ final readonly class EloquentKeysetExpression
      */
     public function asDateTime(): self
     {
-        return new self($this->sql, $this->bindings, self::DATE_TIME, null);
+        return new self($this->sql, $this->bindings, self::DATE_TIME, null, $this->fromQuery);
     }
 
     /**
@@ -66,7 +71,7 @@ final readonly class EloquentKeysetExpression
      */
     public function asNaiveDateTime(): self
     {
-        return new self($this->sql, $this->bindings, self::NAIVE_DATE_TIME, null);
+        return new self($this->sql, $this->bindings, self::NAIVE_DATE_TIME, null, $this->fromQuery);
     }
 
     /**
@@ -76,7 +81,38 @@ final readonly class EloquentKeysetExpression
      */
     public function castUsing(callable $cast): self
     {
-        return new self($this->sql, $this->bindings, self::AS_IS, \Closure::fromCallable($cast));
+        return new self($this->sql, $this->bindings, self::AS_IS, \Closure::fromCallable($cast), $this->fromQuery);
+    }
+
+    /**
+     * Selects the expression, and writes the boundary row's selected value into the cursor
+     * token instead of the sort's `keysetValue()`.
+     */
+    public function valueFromQuery(): self
+    {
+        return new self($this->sql, $this->bindings, $this->mode, $this->cast, true);
+    }
+
+    public function readsValueFromQuery(): bool
+    {
+        return $this->fromQuery;
+    }
+
+    /**
+     * A selected value as the cursor token carries it: a date-time mode parses the stored
+     * string in PHP's default timezone, the zone the connection wrote it in.
+     */
+    public function selectedValue(mixed $value): mixed
+    {
+        if (!\is_string($value) || ($this->mode !== self::DATE_TIME && $this->mode !== self::NAIVE_DATE_TIME)) {
+            return $value;
+        }
+
+        try {
+            return new \DateTimeImmutable($value);
+        } catch (\Exception) {
+            return $value;
+        }
     }
 
     /**

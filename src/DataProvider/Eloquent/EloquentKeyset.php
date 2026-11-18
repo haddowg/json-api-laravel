@@ -52,6 +52,14 @@ final class EloquentKeyset
     private array $expressions = [];
 
     /**
+     * The alias each custom level reading its cursor value from the query is selected
+     * under, by sort key.
+     *
+     * @var array<string, string>
+     */
+    private array $selected = [];
+
+    /**
      * @param Model                $model the query's model (its table qualifies columns; its `$casts` flag date columns)
      * @param ?EloquentSortHandler $sorts      the handler whose arms supply a custom sort's expression
      * @param ?string              $pivotTable the join table a `pivot.` column names, on a pivot relation's query
@@ -73,7 +81,16 @@ final class EloquentKeyset
         foreach ($columns as $column) {
             $direction = $column->descending ? 'DESC' : 'ASC';
             if ($column->sort !== null) {
-                [$sql, $bindings] = $this->expression($builder, $column);
+                [$sql, $bindings, $expression] = $this->expression($builder, $column);
+                if ($expression->readsValueFromQuery() && !isset($this->selected[$column->column])) {
+                    $alias = 'jsonapi_keyset_' . \count($this->selected);
+                    if ($builder->getQuery()->columns === null) {
+                        $builder->select($builder->getModel()->qualifyColumn('*'));
+                    }
+                    $builder->selectSub($sql, $alias);
+                    $builder->getQuery()->addBinding($bindings, 'select');
+                    $this->selected[$column->column] = $alias;
+                }
                 $builder->orderByRaw(\sprintf('CASE WHEN %s IS NULL THEN 1 ELSE 0 END %s', $sql, $direction), $bindings);
                 $builder->orderByRaw(\sprintf('%s %s', $sql, $direction), $bindings);
 
@@ -86,6 +103,27 @@ final class EloquentKeyset
             $builder->orderByRaw(\sprintf('CASE WHEN %s IS NULL THEN 1 ELSE 0 END %s', $path, $direction));
             $builder->orderBy($path, $column->descending ? 'desc' : 'asc');
         }
+    }
+
+    /**
+     * The alias each custom level reading its cursor value from the query is selected
+     * under, by sort key, once {@see orderBy()} has run.
+     *
+     * @return array<string, string>
+     */
+    public function selectedValues(): array
+    {
+        return $this->selected;
+    }
+
+    /**
+     * The cursor value `$row` selected for the custom level `$column`.
+     */
+    public function readSelected(Model $row, string $column): mixed
+    {
+        $alias = $this->selected[$column] ?? throw new \LogicException(\sprintf('The keyset level "%s" does not select its value.', $column));
+
+        return $this->expressions[$column][2]->selectedValue($row->getAttributes()[$alias] ?? null);
     }
 
     /**
