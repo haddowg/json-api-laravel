@@ -457,6 +457,12 @@ the fix. That covers the type's own collection and every to-many whose related c
 by cursor. A [sort family](#sort-families) resolves its sorts per request, so a family that
 resolves to such a sort is still a `500` `UnsupportedSort` when a request uses it.
 
+A to-many's first page that renders with its parent, through `?include` or `withData()`,
+orders by a custom sort too. A cursor-paged relation cuts it with the sort's expression,
+minting each parent's cursor as the relation's endpoint does, and a numbered page orders
+it through the arm's `apply()`. The relationship's next link pages on through the
+relation's endpoint.
+
 `EloquentKeysetExpression::make($sql, $bindings)` takes raw SQL (a string or an `Expression`)
 and the values for its own `?` placeholders. The boundary value arrives in its token form, a
 number or string as written and a date-time as an RFC 3339 string with microseconds. How it is

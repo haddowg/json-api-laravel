@@ -25,4 +25,14 @@ final class ScoreLeague extends Model
     {
         return $this->belongsToMany(ScoreTeam::class, 'score_league_team', 'score_league_id', 'score_team_id');
     }
+
+    /**
+     * The same teams with each one's slot on the pivot.
+     *
+     * @return BelongsToMany<ScoreTeam, $this>
+     */
+    public function slottedTeams(): BelongsToMany
+    {
+        return $this->belongsToMany(ScoreTeam::class, 'score_league_team', 'score_league_id', 'score_team_id')->withPivot('slot');
+    }
 }

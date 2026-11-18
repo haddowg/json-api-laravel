@@ -8,21 +8,23 @@ use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\KeysetSorts\TeamEloquentArm;
+use Workbench\App\Models\ScoreDivision;
 use Workbench\App\Models\ScoreLeague;
 use Workbench\App\Models\ScoreTeam;
 
 /**
  * The Eloquent half of the cursor-sort conformance wiring: teams over the reference
- * provider with the team sort arm, and a league holding them through a pivot table.
+ * provider with the team sort arm, a division holding them through their foreign key and
+ * a league holding them through a pivot table.
  */
 final class KeysetSortConformanceEloquentServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::discover([\dirname(__DIR__) . '/KeysetSorts', \dirname(__DIR__) . '/KeysetSortLeagues']);
+        JsonApi::discover([\dirname(__DIR__) . '/KeysetSorts']);
 
         JsonApi::provider(
-            new EloquentDataProvider(['scoreTeams' => ScoreTeam::class, 'scoreLeagues' => ScoreLeague::class], sortArms: [new TeamEloquentArm()]),
+            new EloquentDataProvider(['scoreTeams' => ScoreTeam::class, 'scoreLeagues' => ScoreLeague::class, 'scoreDivisions' => ScoreDivision::class], sortArms: [new TeamEloquentArm()]),
             priority: -128,
         );
     }

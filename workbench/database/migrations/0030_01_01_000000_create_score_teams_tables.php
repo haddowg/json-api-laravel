@@ -7,8 +7,8 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * The teams behind the cursor-sort cases, their members' scores, and a league that holds
- * the teams through a pivot table.
+ * The teams behind the cursor-sort cases, their members' scores, a division they belong
+ * to, and a league that holds the teams through a pivot table.
  */
 return new class extends Migration {
     public function up(): void
@@ -18,6 +18,11 @@ return new class extends Migration {
             $table->string('name');
             $table->integer('base')->nullable();
             $table->integer('bonus')->nullable();
+            $table->unsignedInteger('score_division_id')->nullable();
+        });
+
+        Schema::create('score_divisions', function (Blueprint $table): void {
+            $table->increments('id');
         });
 
         Schema::create('score_members', function (Blueprint $table): void {
@@ -33,6 +38,7 @@ return new class extends Migration {
         Schema::create('score_league_team', function (Blueprint $table): void {
             $table->unsignedInteger('score_league_id');
             $table->unsignedInteger('score_team_id');
+            $table->integer('slot')->default(0);
         });
     }
 
@@ -41,6 +47,7 @@ return new class extends Migration {
         Schema::dropIfExists('score_league_team');
         Schema::dropIfExists('score_leagues');
         Schema::dropIfExists('score_members');
+        Schema::dropIfExists('score_divisions');
         Schema::dropIfExists('score_teams');
     }
 };

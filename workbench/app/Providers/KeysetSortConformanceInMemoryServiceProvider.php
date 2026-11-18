@@ -7,7 +7,9 @@ namespace Workbench\App\Providers;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
+use Workbench\App\Domain\ScoreGroup;
 use Workbench\App\Domain\ScoreTeam;
+use Workbench\App\KeysetSorts\TeamArrayArm;
 use Workbench\App\Support\ConformanceFixtures;
 
 /**
@@ -26,6 +28,10 @@ final class KeysetSortConformanceInMemoryServiceProvider extends ServiceProvider
 
         JsonApi::discover([\dirname(__DIR__) . '/KeysetSorts']);
 
-        JsonApi::provider(new InMemoryDataProvider('scoreTeams', $teams));
+        $members = \array_values($teams);
+        JsonApi::provider(new InMemoryDataProvider('scoreTeams', $teams, sortArms: [new TeamArrayArm()]));
+        foreach (['scoreLeagues', 'scoreDivisions'] as $type) {
+            JsonApi::provider(new InMemoryDataProvider($type, ['1' => new ScoreGroup('1', $members, $members)], sortArms: [new TeamArrayArm()]));
+        }
     }
 }
