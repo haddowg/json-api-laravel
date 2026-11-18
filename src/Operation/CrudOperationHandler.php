@@ -44,7 +44,6 @@ use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Request\RelatedQuery;
 use haddowg\JsonApi\Resource\AbstractResource;
-use haddowg\JsonApi\Resource\DateTimeParser;
 use haddowg\JsonApi\Resource\Field\AcceptsDefaultOutputTimezoneInterface;
 use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Resource\Field\BelongsTo;
@@ -2755,8 +2754,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * Eloquent model moved into the zone the column is stored in. Eloquent formats a
      * date-time as `Y-m-d H:i:s` the moment it is assigned, dropping the offset, so a
      * value sent in `Z` has to arrive in that zone already or the column stores the wrong
-     * local time. The instant is unchanged, and a value that does not parse is left for
-     * core's cast to reject.
+     * local time. The instant is unchanged. Only a field documented as an RFC 3339
+     * date-time is moved, the shape the moved value is written back in, and a value not
+     * in that shape is left for core's cast to reject.
      */
     private function datesInStorageZone(?AbstractResource $resource, object $entity, JsonApiRequestInterface $body): JsonApiRequestInterface
     {
@@ -2774,11 +2774,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $dates = new NaiveDateTimeStorage();
         $changed = false;
         foreach ($resource->allFields() as $field) {
-            if (!$field instanceof DateTime || $field instanceof Date || $field instanceof Time) {
+            if (!$field instanceof DateTime || $field instanceof Date || $field instanceof Time || $field->schemaFormat() !== 'date-time') {
                 continue;
             }
 
-            $value = DateTimeParser::tryParse($attributes[$field->name()] ?? null);
+            $value = $field->tryParseWire($attributes[$field->name()] ?? null);
             if ($value === null || !$dates->isNaive($entity, $field->column() ?? $field->name())) {
                 continue;
             }

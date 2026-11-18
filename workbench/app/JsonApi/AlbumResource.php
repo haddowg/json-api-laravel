@@ -76,7 +76,7 @@ final class AlbumResource extends AbstractResource
             Contains::make('title'),
             StartsWith::make('titleStarts', 'title'),
             EndsWith::make('titleEnds', 'title'),
-            // Structured date-time range over the `released_at` column (ISO-8601 bounds).
+            // Structured date-time range over the `released_at` column (RFC 3339 date-time bounds).
             DateRange::make('releasedRange', 'released_at'),
             // Structured numeric range over the NULLABLE `average_rating` column (matching
             // the bundle's `filter[rating]` for OpenAPI byte-compat). Now

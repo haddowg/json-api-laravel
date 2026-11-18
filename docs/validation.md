@@ -30,6 +30,12 @@ Str::make('password')->writeOnly()->minLength(8)->requiredOnCreate();
 Messages come from Laravel's translator (the `validation` language files), so they localise
 for free and you override them the usual Laravel way.
 
+Every `DateTime`, `Date` and `Time` field also gets a rule that accepts a string only in the
+shape the field documents, the same check core's cast makes. A `date-time` field takes an
+RFC 3339 date-time with an offset, so `last year` or `2026-11-05 09:42` is a `422` at the
+attribute, on a field with a `fillUsing()` hook too. A date bound is not checked against a
+value that rule refuses.
+
 ## The constraint → rule map
 
 Core's constraint VOs translate to the natural Laravel rule:
