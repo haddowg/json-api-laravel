@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.21.1](https://github.com/haddowg/json-api-laravel/compare/v2.21.0...v2.21.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* let jsonapi:optimize pass a to-many no request reads ([#295](https://github.com/haddowg/json-api-laravel/issues/295)) ([bf52183](https://github.com/haddowg/json-api-laravel/commit/bf52183b6ecb9f6d669c189a9e4fdc1cd567d418))
+
 ## [2.21.0](https://github.com/haddowg/json-api-laravel/compare/v2.20.0...v2.21.0) (2026-11-18)
 
 
