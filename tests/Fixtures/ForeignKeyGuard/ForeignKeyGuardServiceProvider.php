@@ -12,6 +12,7 @@ use Illuminate\Support\ServiceProvider;
 use Workbench\App\ForeignKey\FkItemResource;
 use Workbench\App\ForeignKey\FkProfileResource;
 use Workbench\App\ForeignKey\FkSecretResource;
+use Workbench\App\ForeignKey\FkUserPersister;
 use Workbench\App\ForeignKey\FkUserProvider;
 use Workbench\App\Providers\ForeignKeyEloquentServiceProvider;
 
@@ -27,9 +28,24 @@ final class ForeignKeyGuardServiceProvider extends ServiceProvider
      */
     public static string $subject = KeyedItemsUserResource::class;
 
+    /**
+     * Further classes the subject needs, such as an action and its input type.
+     *
+     * @var list<class-string>
+     */
+    public static array $extras = [];
+
+    /**
+     * Whether `fk-users` gets a persister, for a subject that takes writes.
+     */
+    public static bool $persistsUsers = false;
+
     public function register(): void
     {
-        JsonApi::register([self::$subject, FkItemResource::class, FkProfileResource::class, FkSecretResource::class, FkLabelResource::class])->ignoreRoutes();
+        JsonApi::register([self::$subject, FkItemResource::class, FkProfileResource::class, FkSecretResource::class, FkLabelResource::class, ...self::$extras])->ignoreRoutes();
+        if (self::$persistsUsers) {
+            JsonApi::persister(new FkUserPersister());
+        }
 
         JsonApi::provider(new EloquentDataProvider(ForeignKeyEloquentServiceProvider::MODEL_BY_TYPE), priority: -128);
         JsonApi::persister(new EloquentDataPersister(ForeignKeyEloquentServiceProvider::MODEL_BY_TYPE), priority: -128);

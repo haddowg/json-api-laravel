@@ -11,6 +11,7 @@ use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentRelationshipLoadState;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
+use Workbench\App\ForeignKey\FkImportResource;
 use Workbench\App\ForeignKey\FkInboxResource;
 use Workbench\App\ForeignKey\FkItemResource;
 use Workbench\App\ForeignKey\FkMemberResource;
@@ -21,6 +22,7 @@ use Workbench\App\ForeignKey\FkTeamResource;
 use Workbench\App\ForeignKey\FkUserPersister;
 use Workbench\App\ForeignKey\FkUserProvider;
 use Workbench\App\ForeignKey\FkUserResource;
+use Workbench\App\ForeignKey\ImportSecretsAction;
 use Workbench\App\ForeignKey\Models\FkItem;
 use Workbench\App\ForeignKey\Models\FkMember;
 use Workbench\App\ForeignKey\Models\FkNote;
@@ -58,6 +60,8 @@ final class ForeignKeyEloquentServiceProvider extends ServiceProvider
             FkSecretResource::class,
             FkTeamResource::class,
             FkMemberResource::class,
+            FkImportResource::class,
+            ImportSecretsAction::class,
         ]);
 
         JsonApi::provider(new EloquentDataProvider(self::MODEL_BY_TYPE), priority: -128);

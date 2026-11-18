@@ -30,7 +30,8 @@ warmers plus a deploy-time safety check:
    closure needs no model method at all), morph maps are registered, and every relation can
    reach its rows: a [foreign key](relationships.md#relations-read-through-a-foreign-key) holds
    the parent's id and its related type reads and writes through it, and a to-many from a type
-   no model serves into a model with global scopes declares one. Every sort a cursor-paged
+   no model serves into a model with global scopes declares one unless no request reads it.
+   Every sort a cursor-paged
    collection declares must also key its pages
    ([custom sorts on a cursor page](eloquent.md#custom-sorts-on-a-cursor-page)). **A problem fails the
    command** (a non-zero exit), so a mis-declared resource fails the *deploy*, not a runtime

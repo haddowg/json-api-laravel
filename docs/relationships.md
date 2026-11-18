@@ -493,9 +493,19 @@ holds. A to-many's pages, counts and both endpoints are cut in memory from the m
 unless the parent type's provider batches or counts the relation itself, and a `HasOne` reads
 its target off the model. When the related model has global scopes that read can't apply them
 to the parent's members, so `jsonapi:optimize` refuses a to-many into it unless it declares a
-foreign key or `extractUsing()`, and the message names both. A `belongsToMany` with stored pivot
-fields reads its pivot rows through the parent's model, so `jsonapi:optimize` refuses it on such
-a type.
+foreign key or `extractUsing()`. The exception is a to-many that no request reads, which needs
+neither:
+
+- A `writeOnly()` relation on a type whose operations leave out `Update` is set only by a create,
+  and nothing renders it. With `Update`, replacing its members reads the current ones, so it is
+  still refused.
+- Every relation of a `relatedOnly` type that no relation targets and no action answers with is
+  never read. Such a type is only ever an action's `inputType`, hydrated from the request
+  document.
+
+The refusal names the foreign key, `extractUsing()` and `writeOnly()`. A `belongsToMany` with
+stored pivot fields reads its pivot rows through the parent's model, so `jsonapi:optimize`
+refuses it on such a type.
 
 ### Writing through a foreign key
 

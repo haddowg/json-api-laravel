@@ -74,6 +74,19 @@ abstract class ForeignKeyConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    public function anActionTakesARelatedOnlyInputWhoseToManyNoRequestReads(): void
+    {
+        $response = $this->jsonApi()
+            ->withData(['type' => 'fk-imports', 'relationships' => ['secrets' => ['data' => [['type' => 'fk-secrets', 'id' => '1']]]]])
+            ->post('/api/fk-users/ada/-actions/import')
+            ->assertOk();
+
+        $data = $this->decode($response)['data'] ?? null;
+        self::assertIsArray($data);
+        self::assertSame('ada', $data['id'] ?? null);
+    }
+
+    #[Test]
     public function aPlainReadOfAProviderBackedParentRenders(): void
     {
         $document = $this->fetch('/fk-users/ada');

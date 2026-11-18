@@ -140,6 +140,13 @@ final class ServableResourceWarmer
     ) {}
 
     /**
+     * The types per server that no request renders, filled on first use.
+     *
+     * @var array<string, list<string>>
+     */
+    private array $unrendered = [];
+
+    /**
      * Validates every registered type across every server, returning the list of
      * servability problems (empty when the whole surface is servable). The
      * `jsonapi:optimize` command fails the deploy when this is non-empty.
@@ -165,7 +172,7 @@ final class ServableResourceWarmer
                 $this->guardActionLinks($serverName, $type, $problems);
                 $this->guardRelationOrder($serverName, $type, $problems);
                 $this->guardRelationFilterDefaults($serverName, $type, $problems);
-                $this->guardForeignKeys($serverName, $type, $problems);
+                $this->guardForeignKeys($serverName, $type, $descriptor->exposes(Operation::Update), $problems);
                 $this->guardFilterPaths($serverName, $type, $problems);
                 $this->guardDocumentMeta($serverName, $type, $problems);
                 $this->guardCursorSorts($serverName, $type, $problems);
@@ -372,9 +379,13 @@ final class ServableResourceWarmer
      * to-many of a parent no model serves into a type whose global scopes it would bypass.
      * Route registration makes the same check, but a cached route table skips it.
      *
+     * Such a to-many is passed when no request reads it. A write-only relation renders
+     * nowhere, and with no Update on its type only a create sets it, which reads no current
+     * members. A type no request renders has no reads of any relation.
+     *
      * @param list<string> $problems
      */
-    private function guardForeignKeys(string $serverName, string $type, array &$problems): void
+    private function guardForeignKeys(string $serverName, string $type, bool $updatable, array &$problems): void
     {
         $server = $this->servers->get($serverName);
         $resource = $this->types->resourceFor($server, $type);
@@ -383,10 +394,64 @@ final class ServableResourceWarmer
         }
 
         try {
-            (new ForeignKeyGuard(fn(): DataProviderRegistry => $this->providers, fn(): DataPersisterRegistry => $this->persisters))->check($server, $type, $resource);
+            $unrendered = \in_array($type, $this->unrendered[$serverName] ??= $this->unrenderedTypes($serverName), true);
+            (new ForeignKeyGuard(fn(): DataProviderRegistry => $this->providers, fn(): DataPersisterRegistry => $this->persisters))->check(
+                $server,
+                $type,
+                $resource,
+                unread: static fn(RelationInterface $relation): bool => $unrendered || (!$updatable && $relation->isWriteOnly()),
+            );
         } catch (\LogicException $e) {
             $problems[] = $e->getMessage();
         }
+    }
+
+    /**
+     * The `relatedOnly` types of `$serverName` that no relation targets and no action
+     * answers with. Such a type serves no endpoint, is never related or included, and
+     * appears in no response, so it is only ever hydrated, as an action's input.
+     *
+     * @return list<string>
+     */
+    private function unrenderedTypes(string $serverName): array
+    {
+        if ($this->actions === null) {
+            return [];
+        }
+
+        $server = $this->servers->get($serverName);
+        $reached = [];
+        foreach ([...$this->discovery->resourcesFor($serverName), ...$this->discovery->serializersFor($serverName)] as $descriptor) {
+            if ($descriptor->type === '') {
+                continue;
+            }
+
+            foreach ($this->types->resourceFor($server, $descriptor->type)?->allFields() ?? [] as $relation) {
+                if ($relation instanceof RelationInterface) {
+                    foreach ($relation->relatedTypes() as $relatedType) {
+                        $reached[$relatedType] = true;
+                    }
+                }
+            }
+        }
+
+        foreach ($this->actions->forServer($serverName) as $action) {
+            $reached[$action->outputType] = true;
+            foreach ($action->responds as $response) {
+                if ($response['ref'] !== null) {
+                    $reached[$response['ref']] = true;
+                }
+            }
+        }
+
+        $unrendered = [];
+        foreach ($this->discovery->resourcesFor($serverName) as $descriptor) {
+            if ($descriptor->type !== '' && $descriptor->relatedOnly && !isset($reached[$descriptor->type])) {
+                $unrendered[] = $descriptor->type;
+            }
+        }
+
+        return $unrendered;
     }
 
     /**
