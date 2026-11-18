@@ -15,7 +15,8 @@ use Illuminate\Support\ServiceProvider;
  * Wires `campaigns`, whose `target` MorphTo is identified by two plain columns, over the store
  * named by `identified.store`: `eloquent`, where the {@see Advertiser} model carries the
  * {@see HidesHiddenAdvertisers} global scope, or `memory`, where {@see VisibleAdvertisersOnly}
- * owns `advertisers`.
+ * owns `advertisers`. With `identified.policed`, advertisers are served by
+ * {@see PolicedAdvertiserResource}, which has its own API policy.
  *
  * Seed: people 1 Ada and 2 Bob; advertisers 1 Acme owned by Ada, 2 Globex owned by Bob and 3
  * Shadow owned by Ada, which is hidden; agencies 1 Initech owned by
@@ -46,7 +47,7 @@ final class IdentifiedMorphServiceProvider extends ServiceProvider
 
     public function register(): void
     {
-        JsonApi::register([CampaignResource::class, AdvertiserResource::class, AgencyResource::class, PersonResource::class]);
+        JsonApi::register([CampaignResource::class, config('identified.policed') === true ? PolicedAdvertiserResource::class : AdvertiserResource::class, AgencyResource::class, PersonResource::class]);
 
         if (config('identified.store') === 'memory') {
             $people = ['1' => new PersonRecord('1', 'Ada'), '2' => new PersonRecord('2', 'Bob')];

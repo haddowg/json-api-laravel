@@ -326,7 +326,9 @@ The same declarations mark the [OpenAPI document](openapi.md#deprecation).
 ## Object-aware `getType()` and the self-link opt-out
 
 A resource that serves as a **polymorphic member** (of a `MorphTo`/`MorphToMany`) overrides
-`getType()` so core resolves the wire type from the object:
+`getType()` so core resolves the wire type from the object. `jsonapi:optimize` fails when a
+candidate doesn't. A relation declared with `identifiedBy()`, `identifiedByColumns()` or
+`identifiedByRows()` is exempt, since its stored pair names each target's type:
 
 ```php
 public function getType(mixed $object): string

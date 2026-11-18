@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature\IdentifiedMorph;
 
 use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use haddowg\JsonApiLaravel\Tests\Fixtures\IdentifiedMorph\HidesUmbrellaPolicy;
 use haddowg\JsonApiLaravel\Tests\Fixtures\IdentifiedMorph\IdentifiedMorphServiceProvider;
 use Illuminate\Support\Facades\Gate;
@@ -61,6 +62,8 @@ abstract class IdentifiedMorphTestCase extends Orchestra
         /** @var \Illuminate\Contracts\Config\Repository $config */
         $config = $app['config'];
         $config->set('identified.store', $this->store());
+        // Resources register before a test's own environment applies, so the test is named here.
+        $config->set('identified.policed', $this->name() === 'aTargetIsGatedByItsOwnTypesPolicyNotAnotherCandidates');
 
         return [JsonApiServiceProvider::class, IdentifiedMorphServiceProvider::class];
     }
@@ -108,6 +111,43 @@ abstract class IdentifiedMorphTestCase extends Orchestra
         if ($queries !== null) {
             self::assertSame(1, $this->reads($queries, 'im_agencies'));
         }
+    }
+
+    #[Test]
+    public function theBuildCheckAcceptsCandidatesThatDoNotOverrideGetType(): void
+    {
+        $warmer = $this->app?->make(ServableResourceWarmer::class);
+        self::assertInstanceOf(ServableResourceWarmer::class, $warmer);
+
+        // Neither candidate overrides getType(): the stored pair names each target's type.
+        self::assertSame([], \array_values(\array_filter($warmer->warm(), static fn(string $problem): bool => \str_contains($problem, 'getType'))));
+    }
+
+    #[Test]
+    public function aTargetIsGatedByItsOwnTypesPolicyNotAnotherCandidates(): void
+    {
+        // The advertisers' policy refuses Globex, advertiser 2, and Initech, agency 1. Agency 1
+        // is gated as an agency, which has no policy, so only advertiser 2 is hidden.
+        $linkage = $this->linkage($this->read('/api/campaigns'));
+        self::assertSame(['type' => 'agencies', 'id' => '1'], $linkage[1]);
+        self::assertNull($linkage[2]);
+        self::assertSame(['type' => 'advertisers', 'id' => '1'], $linkage[0]);
+
+        $this->read('/api/campaigns/2/target')->assertJsonPath('data.attributes.name', 'Initech');
+        $this->read('/api/campaigns/3/target')->assertJsonPath('data', null);
+        $this->read('/api/campaigns/2/relationships/target')->assertJsonPath('data', ['type' => 'agencies', 'id' => '1']);
+        $this->read('/api/campaigns/3/relationships/target')->assertJsonPath('data', null);
+        self::assertSame(['advertisers:1', 'agencies:1', 'agencies:2'], $this->included($this->read('/api/campaigns?include=target')));
+    }
+
+    #[Test]
+    public function aViewPolicyHidesTheTargetOnEveryEndpoint(): void
+    {
+        Gate::policy($this->agencyClass(), HidesUmbrellaPolicy::class);
+
+        $this->read('/api/campaigns/6/target')->assertJsonPath('data', null);
+        $this->read('/api/campaigns/6/relationships/target')->assertJsonPath('data', null);
+        self::assertSame(['advertisers:1', 'advertisers:2', 'agencies:1'], $this->included($this->read('/api/campaigns?include=target')));
     }
 
     #[Test]
