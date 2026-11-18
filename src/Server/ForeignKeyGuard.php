@@ -33,7 +33,8 @@ use Illuminate\Database\Eloquent\Model;
  *    Eloquent related type a to-one foreign key must be a `BelongsTo` of its model;
  *  - a to-many of a parent no Eloquent model serves, into an Eloquent type whose model has
  *    global scopes, declares a foreign key or `extractUsing()`: the model's own value is read
- *    otherwise, and no scope narrows it. A `BelongsToMany` with stored pivot fields reads its
+ *    otherwise, and no scope narrows it. `jsonapi:optimize` passes one that no request reads,
+ *    which it decides per relation. A `BelongsToMany` with stored pivot fields reads its
  *    pivot rows through the parent's model, so it can't be declared on such a parent at all.
  */
 final class ForeignKeyGuard
@@ -50,11 +51,14 @@ final class ForeignKeyGuard
     /**
      * Checks every relation of `$resource`. With `$unkeyed` off, as route registration runs it,
      * only relations declared with a foreign key are checked, so a resource declaring none
-     * builds no provider.
+     * builds no provider. `$unread` says whether no request reads a relation's members, which
+     * then needs no foreign key or `extractUsing()`.
+     *
+     * @param (\Closure(RelationInterface): bool)|null $unread
      *
      * @throws \LogicException when a relation of `$resource` can't reach its rows
      */
-    public function check(SerializerResolverInterface $resolver, string $type, AbstractResource $resource, bool $unkeyed = true): void
+    public function check(SerializerResolverInterface $resolver, string $type, AbstractResource $resource, bool $unkeyed = true, ?\Closure $unread = null): void
     {
         (new RelationForeignKeyValidator($resolver))->validate($type, $resource);
 
@@ -81,7 +85,7 @@ final class ForeignKeyGuard
                 continue;
             }
 
-            $this->checkUnkeyed($providers, $type, $relation, $relatedType);
+            $this->checkUnkeyed($providers, $type, $relation, $relatedType, $unread);
         }
     }
 
@@ -121,7 +125,10 @@ final class ForeignKeyGuard
         }
     }
 
-    private function checkUnkeyed(DataProviderRegistry $providers, string $type, RelationInterface $relation, string $relatedType): void
+    /**
+     * @param (\Closure(RelationInterface): bool)|null $unread
+     */
+    private function checkUnkeyed(DataProviderRegistry $providers, string $type, RelationInterface $relation, string $relatedType, ?\Closure $unread): void
     {
         if (!$relation instanceof HasMany || self::servedByModel($providers, $type)) {
             return;
@@ -145,12 +152,12 @@ final class ForeignKeyGuard
 
         $model = new $class();
         \assert($model instanceof Model);
-        if (self::extractsValue($relation) || $model->getGlobalScopes() === []) {
+        if (self::extractsValue($relation) || $model->getGlobalScopes() === [] || ($unread !== null && $unread($relation))) {
             return;
         }
 
         throw new \LogicException(\sprintf(
-            'Relation "%s" on resource type "%s" reads type "%s", whose model %s has global scopes, but no Eloquent model serves "%s", so no relation query applies those scopes to the parent\'s members. %s',
+            'Relation "%s" on resource type "%s" reads type "%s", whose model %s has global scopes, but no Eloquent model serves "%s", so no relation query applies those scopes to the parent\'s members. %s If only a request document ever sets it, mark it writeOnly() and leave Update out of the operations of "%s". A type that only an action takes as input needs none of these once it is declared relatedOnly and no relation or action response reaches it.',
             $relation->name(),
             $type,
             $relatedType,
@@ -164,6 +171,7 @@ final class ForeignKeyGuard
                     $relation->name(),
                     $relatedType,
                 ),
+            $type,
         ));
     }
 

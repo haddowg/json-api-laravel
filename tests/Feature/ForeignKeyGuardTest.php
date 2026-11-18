@@ -9,6 +9,7 @@ use haddowg\JsonApiLaravel\Routing\RouteRegistrar;
 use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ForeignKeyGuard\ComputedSecretsUserResource;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ForeignKeyGuard\ForeignKeyGuardServiceProvider;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ForeignKeyGuard\ImportsUserResource;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ForeignKeyGuard\KeyedItemsUserResource;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ForeignKeyGuard\MisnamedKeyUserResource;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ForeignKeyGuard\PivotItemsUserResource;
@@ -16,10 +17,14 @@ use haddowg\JsonApiLaravel\Tests\Fixtures\ForeignKeyGuard\UnkeyedItemsUserResour
 use haddowg\JsonApiLaravel\Tests\Fixtures\ForeignKeyGuard\UnkeyedProfileUserResource;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ForeignKeyGuard\UnkeyedSecretsUserResource;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ForeignKeyGuard\UnreadableKeyUserResource;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ForeignKeyGuard\UpdatableWriteOnlySecretsUserResource;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ForeignKeyGuard\WriteOnlySecretsUserResource;
 use haddowg\JsonApiLaravel\Tests\Support\InteractsWithOpenApiDocument;
 use Illuminate\Routing\Router;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\Test;
+use Workbench\App\ForeignKey\FkImportResource;
+use Workbench\App\ForeignKey\ImportSecretsAction;
 
 /**
  * A relation declared with a foreign key must name a member of its related type holding the
@@ -39,6 +44,8 @@ final class ForeignKeyGuardTest extends Orchestra
     protected function tearDown(): void
     {
         ForeignKeyGuardServiceProvider::$subject = KeyedItemsUserResource::class;
+        ForeignKeyGuardServiceProvider::$extras = [];
+        ForeignKeyGuardServiceProvider::$persistsUsers = false;
         parent::tearDown();
     }
 
@@ -81,8 +88,43 @@ final class ForeignKeyGuardTest extends Orchestra
 
         $problems = \implode("\n", $this->resolve(ServableResourceWarmer::class)->warm());
         self::assertStringContainsString('Relation "secrets" on resource type "fk-users" reads type "fk-secrets", whose model', $problems);
-        self::assertStringContainsString('as the foreign key argument, HasMany::make(\'secrets\', \'fk-secrets\', \'<foreign key>\'), or compute it with extractUsing().', $problems);
+        self::assertStringContainsString('as the foreign key argument, HasMany::make(\'secrets\', \'fk-secrets\', \'<foreign key>\'), or compute it with extractUsing(). If only a request document ever sets it, mark it writeOnly() and leave Update out of the operations of "fk-users". A type that only an action takes as input needs none of these once it is declared relatedOnly', $problems);
         $this->jsonApiArtisan('jsonapi:optimize')->assertExitCode(1);
+    }
+
+    #[Test]
+    public function aWriteOnlyToManyOfATypeThatTakesAnUpdateFailsOptimize(): void
+    {
+        ForeignKeyGuardServiceProvider::$persistsUsers = true;
+        $this->boot(UpdatableWriteOnlySecretsUserResource::class);
+
+        self::assertStringContainsString(
+            'Relation "secrets" on resource type "fk-users" reads type "fk-secrets", whose model',
+            \implode("\n", $this->resolve(ServableResourceWarmer::class)->warm()),
+        );
+    }
+
+    #[Test]
+    public function aToManyOfARelatedOnlyTypeARelationReachesFailsOptimize(): void
+    {
+        ForeignKeyGuardServiceProvider::$extras = [FkImportResource::class, ImportSecretsAction::class];
+        $this->boot(ImportsUserResource::class);
+
+        self::assertStringContainsString(
+            'Relation "secrets" on resource type "fk-imports" reads type "fk-secrets", whose model',
+            \implode("\n", $this->resolve(ServableResourceWarmer::class)->warm()),
+        );
+    }
+
+    #[Test]
+    public function aToManyNoRequestReadsPassesOptimize(): void
+    {
+        $this->boot(WriteOnlySecretsUserResource::class);
+        self::assertSame([], $this->resolve(ServableResourceWarmer::class)->warm());
+
+        ForeignKeyGuardServiceProvider::$extras = [FkImportResource::class, ImportSecretsAction::class];
+        $this->boot(KeyedItemsUserResource::class);
+        self::assertSame([], $this->resolve(ServableResourceWarmer::class)->warm());
     }
 
     #[Test]

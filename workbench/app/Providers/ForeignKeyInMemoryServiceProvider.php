@@ -17,6 +17,7 @@ use Workbench\App\ForeignKey\Domain\FkNote;
 use Workbench\App\ForeignKey\Domain\FkProfile;
 use Workbench\App\ForeignKey\Domain\FkSecret;
 use Workbench\App\ForeignKey\Domain\FkTeam;
+use Workbench\App\ForeignKey\FkImportResource;
 use Workbench\App\ForeignKey\FkInboxResource;
 use Workbench\App\ForeignKey\FkItemResource;
 use Workbench\App\ForeignKey\FkMemberResource;
@@ -28,6 +29,7 @@ use Workbench\App\ForeignKey\FkUserPersister;
 use Workbench\App\ForeignKey\FkUserProvider;
 use Workbench\App\ForeignKey\FkUserResource;
 use Workbench\App\ForeignKey\ForeignKeySeed;
+use Workbench\App\ForeignKey\ImportSecretsAction;
 
 /**
  * The foreign-key suite with its related rows in memory, over {@see ForeignKeySeed}: a member's
@@ -46,6 +48,8 @@ final class ForeignKeyInMemoryServiceProvider extends ServiceProvider
             FkSecretResource::class,
             FkTeamResource::class,
             FkMemberResource::class,
+            FkImportResource::class,
+            ImportSecretsAction::class,
         ]);
 
         /** @var InMemorySnapshotCoordinator $coordinator */
