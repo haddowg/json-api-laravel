@@ -90,6 +90,43 @@ left as it is, and the batched value renders from the request's own linkage. A f
 `relatedQuery` that excludes a to-one target works the same way, so a record your provider
 shares between requests is never changed by a read.
 
+### Reading a relation through a foreign key
+
+A relation declared with a foreign key
+([relationships → relations read through a foreign key](relationships.md#relations-read-through-a-foreign-key))
+is read by its related type's provider through
+[`ReadsByForeignKeyInterface`](../src/DataProvider/ReadsByForeignKeyInterface.php), on every
+path and whatever provider serves the parents. Implement it on a provider whose type is the
+target of such a relation; route registration refuses one that doesn't.
+
+```php
+public function fetchByForeignKey(string $relatedType, RelationInterface $relation, ForeignKey $foreignKey, ForeignKeyParents $parents, CollectionCriteria $criteria, JsonApiRequestInterface $request): RelatedBatch
+{
+    // $foreignKey->column is the member's storage name; $parents->keys maps each
+    // parent's wire id to the key the column holds.
+    $rows = $this->notes->whereIn($foreignKey->column, \array_values($parents->keys)); // one query
+    // ...partition the rows by $parents->wireIdOf($row->{$foreignKey->column}), then cut
+    // each partition to $criteria's window as fetchRelatedCollection() would.
+}
+```
+
+`countByForeignKey()` counts each parent's rows over the criteria's filters, `0` for a parent
+with none. A to-one's page holds its target as the first row. When the foreign key is a to-one
+relation (`$foreignKey->isRelation()`), the column holds a reference to the parent, so compare
+the id it references. The parents may come from any provider, so read their keys from
+`ForeignKeyParents` rather than from your own storage.
+
+A persister whose type is written through a foreign key implements
+[`WritesForeignKeysInterface`](../src/DataPersister/WritesForeignKeysInterface.php):
+`writeForeignKey()` points the joining rows at the parent and clears the key on the leaving
+ones, and `requiresForeignKey()` says whether storage refuses a row with no key, which turns a
+write that would clear one into a `403`.
+
+A relation with no foreign key whose parent your provider serves, into a type the Eloquent or
+in-memory provider serves, reads the members the parent model holds. Its pages and counts are
+cut in memory from that value, unless your `fetchRelatedCollectionBatch()` or `countRelated()`
+answers for it.
+
 ## The in-memory provider
 
 `InMemoryDataProvider` is a full SPI implementation over an in-memory object store. It ships as

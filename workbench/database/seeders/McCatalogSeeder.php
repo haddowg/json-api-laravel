@@ -11,6 +11,7 @@ use Workbench\App\MusicCatalog\Models\Device;
 use Workbench\App\MusicCatalog\Models\Favorite;
 use Workbench\App\MusicCatalog\Models\Genre;
 use Workbench\App\MusicCatalog\Models\Library;
+use Workbench\App\MusicCatalog\Models\Play;
 use Workbench\App\MusicCatalog\Models\Playlist;
 use Workbench\App\MusicCatalog\Models\Product;
 use Workbench\App\MusicCatalog\Models\Release;
@@ -67,6 +68,9 @@ final class McCatalogSeeder extends Seeder
         }
         foreach (Fixtures::playlists() as $row) {
             Playlist::query()->create($row);
+        }
+        foreach (Fixtures::plays() as $row) {
+            Play::query()->create($row);
         }
 
         foreach (Fixtures::favorites() as $row) {

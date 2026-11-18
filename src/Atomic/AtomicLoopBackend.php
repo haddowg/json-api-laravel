@@ -28,6 +28,7 @@ use haddowg\JsonApi\Operation\UpdateRelationshipOperation;
 use haddowg\JsonApi\Operation\UpdateResourceOperation;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\AbstractRelationValue;
+use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Response\AbstractResponse;
 use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Response\MetaResponse;
@@ -419,6 +420,20 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
             }
 
             $transactional[\spl_object_hash($persister)] = $persister;
+
+            // A relation written through a foreign key writes its related type's rows, so a
+            // transactional persister of that type joins the batch too.
+            foreach ($this->types->relationsFor($this->server, $type) as $relation) {
+                $relatedType = $relation->relatedTypes()[0] ?? null;
+                if ($relatedType === null || ForeignKey::nameOf($relation) === null || !$this->persisters->supportsType($relatedType)) {
+                    continue;
+                }
+
+                $related = $this->persisters->forType($relatedType);
+                if ($related instanceof TransactionalDataPersisterInterface) {
+                    $transactional[\spl_object_hash($related)] = $related;
+                }
+            }
         }
 
         return $transactional;

@@ -134,6 +134,8 @@ final class RelatedIncludeBatcher
      */
     private ?RelationshipLinkageInterface $windowed = null;
 
+    private readonly ForeignKeyReads $foreignKeys;
+
     public function __construct(
         private readonly DataProviderRegistry $providers,
         private readonly TypeMetadataResolver $types,
@@ -143,7 +145,10 @@ final class RelatedIncludeBatcher
         private readonly RelationCriteriaFactory $relationCriteria = new RelationCriteriaFactory(),
         private readonly ?ScopedToOneTargets $toOne = null,
         private readonly ?RelationshipWindowBatcher $windows = null,
-    ) {}
+        ?ForeignKeyReads $foreignKeys = null,
+    ) {
+        $this->foreignKeys = $foreignKeys ?? new ForeignKeyReads($providers);
+    }
 
     /**
      * The pagination of every first page the last {@see preload()} cut, or `null` when it cut
@@ -314,6 +319,12 @@ final class RelatedIncludeBatcher
 
                     continue;
                 }
+
+                // The model never holds a relation read through a foreign key, so one whose
+                // linkage doesn't render has nothing to load.
+                if ($this->foreignKeys->reads($relation)) {
+                    continue;
+                }
             }
 
             // An identified MorphToMany admits each scoped type's pairs for its linkage, and loads
@@ -350,7 +361,7 @@ final class RelatedIncludeBatcher
             }
 
             if ($this->toOne !== null && !$relation->isToMany() && Polymorphism::isMonomorphic($relation)
-                && $this->providers->relatesToScopedType($type, $relation)) {
+                && ($this->foreignKeys->reads($relation) || $this->providers->relatesToScopedType($type, $relation))) {
                 $this->loadScopedToOne($server, $this->toOne, $entities, $type, $relation, $request, $childPath, $maxDepth, $allowedPaths, $included, $batch, $linkages, $reach);
 
                 continue;
@@ -638,7 +649,12 @@ final class RelatedIncludeBatcher
             ? $entities
             : \array_values(\array_filter($entities, fn(object $entity): bool => $this->rendersData($server, $entity, $relation)));
         $loaded = $rendering === [] ? null : $toOne->load($rendering, $type, $relation, $request);
-        $rest = $loaded === null ? $entities : $loaded['unanswered'];
+        // A target read through a foreign key renders only from that read.
+        $rest = match (true) {
+            $this->foreignKeys->reads($relation) => [],
+            $loaded === null => $entities,
+            default => $loaded['unanswered'],
+        };
 
         if ($included && $loaded !== null && $loaded['targets'] !== []) {
             $this->preloadLevel($server, $loaded['targets'], $relation->relatedTypes()[0], $request, $childPath, $maxDepth, $allowedPaths, true, $batch, $linkages, $reach);
@@ -727,6 +743,7 @@ final class RelatedIncludeBatcher
                 $seed = $seed
                     || (($relation->isToMany() || ($this->toOne !== null && Polymorphism::isMonomorphic($relation)))
                         && $this->providers->relatesToScopedType($type, $relation))
+                    || $this->foreignKeys->reads($relation)
                     || IdentifiedMorphTargets::identifies($relation)
                     || IdentifiedMorphMembers::identifies($relation);
                 foreach ($relation->relatedTypes() as $relatedType) {

@@ -15,6 +15,7 @@ use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Request\RelatedQuery;
 use haddowg\JsonApi\Resource\Field\AbstractFieldValue;
 use haddowg\JsonApi\Resource\Field\FieldState;
+use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
@@ -98,6 +99,8 @@ final class RelationshipWindowBatcher
 
     private readonly ScopedPolymorphicMembers $polymorphicMembers;
 
+    private readonly ForeignKeyReads $foreignKeys;
+
     public function __construct(
         private readonly DataProviderRegistry $providers,
         private readonly TypeMetadataResolver $types,
@@ -110,8 +113,10 @@ final class RelationshipWindowBatcher
         private readonly FilterValueValidator $filterValues,
         private readonly ?ScopedToOneTargets $toOne = null,
         ?ScopedPolymorphicMembers $polymorphicMembers = null,
+        ?ForeignKeyReads $foreignKeys = null,
     ) {
         $this->polymorphicMembers = $polymorphicMembers ?? new ScopedPolymorphicMembers($providers);
+        $this->foreignKeys = $foreignKeys ?? new ForeignKeyReads($providers);
     }
 
     /**
@@ -310,10 +315,12 @@ final class RelationshipWindowBatcher
         $relatedResource = $polymorphic ? null : $this->types->resourceFor($server, $relatedType);
         $pageRequest = RelationshipPagination::firstPageRequest($request, $relatedQuery);
         $paginator = $server->linkagePaginator($relation)?->resolve($pageRequest);
+        $foreignKey = !$polymorphic && $this->foreignKeys->reads($relation);
 
         // No paginator and no relatedQuery: the relationship is neither sliced nor re-ordered or
-        // narrowed from the primary request, so it renders its whole set.
-        if ($paginator === null && $relatedQuery->isEmpty()) {
+        // narrowed from the primary request, so it renders its whole set. One read through a
+        // foreign key reads that set here too, since the parent model never holds it.
+        if ($paginator === null && $relatedQuery->isEmpty() && !$foreignKey) {
             return null;
         }
 
@@ -349,7 +356,7 @@ final class RelationshipWindowBatcher
         $this->filterValues->validate($relatedQuery->filter, $criteria->filters, $criteria->request, $criteria->paths);
 
         // Relations over one association that read it the same way share one read.
-        $shareKey = $relatedQuery->isEmpty() && !$polymorphic && !self::computes($relation)
+        $shareKey = $relatedQuery->isEmpty() && !$polymorphic && ($foreignKey || !self::computes($relation))
             && !$this->relationCriteria->hasFilterDefaults($relatedResource, $relation)
             ? $this->shareKey($type, $relatedType, $parents, $relation, $criteria, $pivot)
             : null;
@@ -422,7 +429,8 @@ final class RelationshipWindowBatcher
         return \serialize([
             $type,
             $relatedType,
-            $relation->column() ?? $relation->name(),
+            // Relations through one foreign key read the same rows, whatever their names.
+            ForeignKey::nameOf($relation) !== null ? "\0fk\0" . ForeignKey::nameOf($relation) : ($relation->column() ?? $relation->name()),
             $pivot,
             $criteria->window,
             $criteria->wantsCount,
@@ -442,6 +450,14 @@ final class RelationshipWindowBatcher
      */
     private function batchedResults(Server $server, string $type, array $parents, RelationInterface $relation, string $relatedType, CollectionCriteria $criteria, JsonApiRequestInterface $pageRequest): array
     {
+        // A foreign key decides the read, whatever serves the parents.
+        if ($this->foreignKeys->reads($relation)) {
+            $serializer = $server->serializerFor($type);
+            $batch = $this->foreignKeys->batch($server, $type, $parents, $relation, $criteria, $pageRequest);
+
+            return \array_map(static fn(object $parent): CollectionResult => $batch->for($serializer->getId($parent)), $parents);
+        }
+
         if (!$this->providers->supportsType($type)) {
             $provider = $this->providers->forType($relatedType);
 

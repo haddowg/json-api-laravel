@@ -48,8 +48,11 @@ final class ScopedToOneTargets
      */
     private \WeakMap $batched;
 
-    public function __construct(private readonly DataProviderRegistry $providers)
+    private readonly ForeignKeyReads $foreignKeys;
+
+    public function __construct(private readonly DataProviderRegistry $providers, ?ForeignKeyReads $foreignKeys = null)
     {
+        $this->foreignKeys = $foreignKeys ?? new ForeignKeyReads($providers);
         $this->memo = new \WeakMap();
         $this->batched = new \WeakMap();
     }
@@ -95,8 +98,10 @@ final class ScopedToOneTargets
             return null;
         }
 
-        $provider = $this->providers->scopedRelatedProvider($parentType, $relatedTypes[0]);
-        if ($provider === null) {
+        // A foreign key decides the target, read by the related type's provider for the page.
+        $server = $this->server;
+        $provider = $this->foreignKeys->reads($relation) ? null : $this->providers->scopedRelatedProvider($parentType, $relatedTypes[0]);
+        if ($provider === null && !$this->foreignKeys->reads($relation)) {
             return null;
         }
 
@@ -110,11 +115,15 @@ final class ScopedToOneTargets
 
         if ($asking !== []) {
             $serializer = $this->server->serializerFor($parentType);
-            $batch = $provider->fetchRelatedCollectionBatch($parentType, \array_values($asking), $relation, $this->criteria($request), $request);
+            $batch = $provider === null
+                ? $this->foreignKeys->batch($server, $parentType, \array_values($asking), $relation, $this->criteria($request), $request)
+                : $provider->fetchRelatedCollectionBatch($parentType, \array_values($asking), $relation, $this->criteria($request), $request);
             foreach ($asking as $parent) {
                 $wireId = $serializer->getId($parent);
-                $this->batched[$parent] = [...($this->batched[$parent] ?? []), $name => $batch->has($wireId)];
-                if ($batch->has($wireId)) {
+                // A foreign-key read answers every parent: one it leaves out has no target.
+                $answers = $provider === null || $batch->has($wireId);
+                $this->batched[$parent] = [...($this->batched[$parent] ?? []), $name => $answers];
+                if ($answers) {
                     $target = self::first($batch->for($wireId));
                     $this->memo[$parent] = [
                         ...($this->memo[$parent] ?? []),
@@ -150,7 +159,15 @@ final class ScopedToOneTargets
      */
     public function linkageFor(mixed $model, RelationInterface $relation, JsonApiRequestInterface $request): ?ToOneRelationshipLinkage
     {
-        if ($relation->isToMany() || !\is_object($model) || !$this->relatesToScopingProvider($relation)) {
+        if ($relation->isToMany() || !\is_object($model)) {
+            return null;
+        }
+
+        if ($this->foreignKeys->reads($relation)) {
+            return $this->foreignKeyLinkage($model, $relation, $request);
+        }
+
+        if (!$this->relatesToScopingProvider($relation)) {
             return null;
         }
 
@@ -173,6 +190,30 @@ final class ScopedToOneTargets
         $linkage = $this->linkageFor($model, $relation, $request);
 
         return $linkage !== null ? $linkage->target : $relation->readValue($model, $request);
+    }
+
+    /**
+     * The target a to-one read through a foreign key renders on `$model`, read for it alone
+     * when no page batch has answered for it yet, and `none()` when no server or parent type
+     * can key it.
+     */
+    private function foreignKeyLinkage(object $model, RelationInterface $relation, JsonApiRequestInterface $request): ToOneRelationshipLinkage
+    {
+        $name = $relation->name();
+        $linkage = ($this->memo[$model] ?? [])[$name] ?? null;
+        if ($linkage !== null) {
+            return $linkage;
+        }
+
+        $parentType = $this->server === null ? null : $this->foreignKeys->parentTypeOf($this->server, $relation);
+        if ($parentType !== null) {
+            $this->load([$model], $parentType, $relation, $request);
+        }
+
+        $linkage = ($this->memo[$model] ?? [])[$name] ?? ToOneRelationshipLinkage::none();
+        $this->memo[$model] = [...($this->memo[$model] ?? []), $name => $linkage];
+
+        return $linkage;
     }
 
     private function resolve(object $model, RelationInterface $relation, JsonApiRequestInterface $request): ?ToOneRelationshipLinkage

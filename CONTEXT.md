@@ -37,6 +37,10 @@ _Avoid_: default provider, Eloquent driver
 The `type → Eloquent model` map the reference pair serves, resolved from explicit wiring, a
 declared `model:`, or the convention guess under `model_namespace`.
 
+**Foreign-key read**:
+How a relation declared with a foreign key (core's term) is read: always by the related type's provider, through `ReadsByForeignKeyInterface`, as the rows whose foreign key holds one of a page of parents' keys, whatever provider serves the parents. The parent model never holds the relation, and a write of it sets or clears the foreign key on the related rows through the related type's persister (`WritesForeignKeysInterface`).
+_Avoid_: inverse read, reverse lookup
+
 **Scoping provider**:
 An application data provider registered for a type to narrow which of its rows exist for the
 caller, such as by tenancy or visibility.

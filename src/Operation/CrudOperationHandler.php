@@ -103,6 +103,7 @@ use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\NaiveDateTimeStorage;
 use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
+use haddowg\JsonApiLaravel\DataProvider\ForeignKeyReads;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphMembers;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphTargets;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
@@ -195,6 +196,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
 {
     private ?ScopedRelationshipWrites $scopedWrites = null;
 
+    private ?ForeignKeyWrites $foreignKeyWrites = null;
+
     private ?ScopedPolymorphicMembers $polymorphicMembers = null;
 
     /**
@@ -284,10 +287,28 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // Runs the callbacks a write registers once it commits. Null on a stripped-down
         // wiring leaves a write with no after-commit scope.
         private readonly ?AfterCommit $afterCommit = null,
+        // Reads a relation declared with a foreign key through its related type.
+        private ?ForeignKeyReads $foreignKeyReads = null,
         // The top-level meta each operation's document declares, whose extractUsing()
         // members are filled once the handler and its After hooks built the response.
         private readonly ?DocumentMetaResolver $documentMeta = null,
     ) {}
+
+    /**
+     * The reads of relations declared with a foreign key.
+     */
+    private function foreignKeys(): ForeignKeyReads
+    {
+        return $this->foreignKeyReads ??= new ForeignKeyReads($this->providers);
+    }
+
+    /**
+     * The writes of relations declared with a foreign key.
+     */
+    private function foreignKeyWrites(): ForeignKeyWrites
+    {
+        return $this->foreignKeyWrites ??= new ForeignKeyWrites($this->providers, $this->persisters, $this->foreignKeys());
+    }
 
     public function handle(JsonApiOperationInterface $operation): DataResponse|RelatedResponse|IdentifierResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|AtomicResultsResponse|ErrorResponse|RawResponse
     {
@@ -868,9 +889,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $identifiedTypes = [];
                 $result = $this->relationshipLinkage->members()->page($server, $parent, $relation, $criteria, $request, $identifiedTypes, $this->linkRows($type), $identifiedPivots);
             } else {
-                $result = \count($relatedTypes) > 1 && $this->providers->relatesToScopedType($type, $relation)
-                    ? $this->polymorphicMembers()->window($criteria, $this->narrowedMembers($server, $type, $parent, $relation, $request))
-                    : $relatedProvider->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
+                $result = match (true) {
+                    $this->foreignKeys()->reads($relation) => $this->foreignKeys()->page($server, $type, $parent, $relation, $criteria, $request),
+                    \count($relatedTypes) > 1 && $this->providers->relatesToScopedType($type, $relation) => $this->polymorphicMembers()->window($criteria, $this->narrowedMembers($server, $type, $parent, $relation, $request)),
+                    default => $relatedProvider->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request),
+                };
             }
 
             $serializer = match (true) {
@@ -1242,7 +1265,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
         );
         $this->filterValidator->validate($queryParameters->filter, $criteria->filters, $request, $criteria->paths);
 
-        $result = $this->providers->forType($relatedType)->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
+        $result = $this->foreignKeys()->reads($relation)
+            ? $this->foreignKeys()->page($server, $type, $parent, $relation, $criteria, $request)
+            : $this->providers->forType($relatedType)->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
         $items = $this->materialize($result);
 
         return [
@@ -1308,12 +1333,16 @@ final class CrudOperationHandler implements OperationHandlerInterface
             return;
         }
 
-        $provider = $this->providers->scopedRelatedProvider($type, $relatedTypes[0]);
-        \assert($provider !== null);
+        if ($this->foreignKeys()->reads($relation)) {
+            $items = $this->foreignKeys()->members($server, $type, $parent, $relation, $request);
+        } else {
+            $provider = $this->providers->scopedRelatedProvider($type, $relatedTypes[0]);
+            \assert($provider !== null);
 
-        $items = $this->materialize(
-            $provider->fetchRelatedCollection($relatedTypes[0], $parent, $relation, new CollectionCriteria(new QueryParameters([], [], [], [], []), request: $request), $request),
-        );
+            $items = $this->materialize(
+                $provider->fetchRelatedCollection($relatedTypes[0], $parent, $relation, new CollectionCriteria(new QueryParameters([], [], [], [], []), request: $request), $request),
+            );
+        }
 
         $this->relationshipLinkage->scope(new WindowedRelationshipLinkage(
             [\spl_object_id($parent) => [$relation->name() => new RelationshipLinkage($items)]],
@@ -1986,7 +2015,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->writeLinkRows($server, $created, $request);
 
             return $created;
-        });
+        }, \array_column($relationships, 'relation'));
 
         // Render the async accept as a `202 Accepted` pointing at the job resource, not
         // the `201` a synchronous create renders (as the bundle does). The
@@ -2140,7 +2169,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             }
 
             return $updated;
-        });
+        }, \array_column($relationships, 'relation'));
 
         // The persister accepted the update for asynchronous processing — render a
         // `202 Accepted` pointing at the job resource, as the async create does; the
@@ -2316,7 +2345,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // cannotChangeMembership) — a 403 family, distinct from the policy gate below.
         $this->guardMutability($relation, $relationshipName, $linkage, $mode, $body, $parent);
         if ($mode === Mode::Replace) {
-            $this->guardMembership($relation, $linkage, $body, $parent, $server, $request);
+            $this->guardMembership($relation, $linkage, $body, $parent, $server, $request, $type);
         }
 
         // A pivot relation folds its stored pivot rows in for the merge-before-validate pass:
@@ -2352,7 +2381,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // A write-only relation echoes nothing (core answers 204), so there is no linkage to
         // read back and no pivot map to fetch.
         $writeOnly = $relation->isWriteOnlyFor($request);
-        $scopeEcho = !$writeOnly && $relation->isToMany() && $this->providers->relatesToScopedType($type, $relation);
+        $scopeEcho = !$writeOnly && $relation->isToMany() && ($this->foreignKeys()->reads($relation) || $this->providers->relatesToScopedType($type, $relation));
 
         // From the before-relationship-mutate lifecycle gate (a throw aborts before the
         // persister applies the change) through the storage-correct apply, everything runs in
@@ -2368,6 +2397,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
             $this->queueLinkRowWrite($server, $parent, $relation, $applied, $mode, $request);
             $changed = match (true) {
+                $this->foreignKeyWrites()->writes($relation) => $this->writeForeignKey($server, $type, $parent, $relation, $applied, $mode, $request, $serverName),
                 $this->declaresLinkRows($relation) => $this->writeDeclaredLinkRows($server, $persister, $type, $parent, $relation, $applied, $mode, $request, flush: true),
                 RelationFillHook::declaredBy($relation) => $persister->update($type, RelationFillHook::apply($relation, $parent, $applied, $mode)),
                 default => $persister->mutateRelationship($type, $parent, $relation, $applied, $mode),
@@ -2384,9 +2414,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->gateMutate($type, $changed, $relation, $serverName);
 
             return $changed;
-        });
+        }, [$relation]);
         if ($parent instanceof AcceptedForProcessing) {
             return $this->accepted($parent, $server);
+        }
+        if ($this->foreignKeys()->reads($relation)) {
+            // The echo reads the members the write left, not an answer read before it.
+            $this->relationshipLinkage->resetScope();
         }
         if ($scopeEcho) {
             $this->scopeRelationshipEndpoint($server, $type, $parent, $relation, $request);
@@ -2475,8 +2509,17 @@ final class CrudOperationHandler implements OperationHandlerInterface
         object $parent,
         Server $server,
         JsonApiRequestInterface $request,
+        ?string $type = null,
     ): void {
         if (!$linkage instanceof ToManyRelationship || !$relation instanceof GuardsMembershipInterface || $relation->allowsMembershipChangeFor($body, $parent)) {
+            return;
+        }
+
+        // The members of a relation read through a foreign key are the ones its reads serve,
+        // so a member its related type's scope hides is never among them.
+        if ($type !== null && $this->foreignKeys()->reads($relation)) {
+            $relation->assertMembershipUnchanged($body, $parent, $this->foreignKeyWrites()->memberPairs($server, $type, $parent, $relation, $request), $linkage);
+
             return;
         }
 
@@ -2569,11 +2612,24 @@ final class CrudOperationHandler implements OperationHandlerInterface
     {
         $persister = $this->persisters->forType($type);
         // A fill hook decides where the linkage lands, so there is no stored owner to read.
-        if ($mode === Mode::Remove || !$persister instanceof ReportsCurrentOwners || RelationFillHook::declaredBy($relation) || $this->declaresLinkRows($relation)) {
+        // A foreign key's moves are gated as its write plans them.
+        if ($mode === Mode::Remove || !$persister instanceof ReportsCurrentOwners || RelationFillHook::declaredBy($relation) || $this->declaresLinkRows($relation)
+            || $this->foreignKeys()->reads($relation)) {
             return;
         }
 
-        foreach ($persister->currentOwners($type, $parent, $relation, $linkage) as $held) {
+        $this->authorizeMoves($persister->currentOwners($type, $parent, $relation, $linkage), $serverName);
+    }
+
+    /**
+     * Authorizes moving each member in `$moves` away from the parent holding it: the client
+     * must be able to update that parent, or the member itself when it can't or none holds it.
+     *
+     * @param list<array{memberType: string, member: object, ownerType: ?string, owner: ?object}> $moves
+     */
+    private function authorizeMoves(array $moves, string $serverName): void
+    {
+        foreach ($moves as $held) {
             if ($held['owner'] !== null && $held['ownerType'] !== null) {
                 try {
                     $this->authorizer->authorize($held['ownerType'], Operation::Update, $held['owner'], $serverName);
@@ -2650,10 +2706,16 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $relation = $relationship['relation'];
             if ($creating === false) {
                 $this->guardMutability($relation, $relation->name(), $relationship['linkage'], Mode::Replace, $body, $entity);
-                $this->guardMembership($relation, $relationship['linkage'], $body, $entity, $server, $request);
+                $this->guardMembership($relation, $relationship['linkage'], $body, $entity, $server, $request, $type);
             }
 
             $linkage = $this->scopeWrittenLinkage($entity, $relation, $relationship['linkage'], Mode::Replace, $server, $request, $creating);
+            if ($this->foreignKeyWrites()->writes($relation)) {
+                $entity = $this->writeForeignKey($server, $type, $entity, $relation, $linkage, Mode::Replace, $request, $this->serverNameFor($request, $server));
+
+                continue;
+            }
+
             $this->guardReparenting($type, $entity, $relation, $linkage, Mode::Replace, $this->serverNameFor($request, $server));
             if ($this->declaresLinkRows($relation)) {
                 $entity = $this->writeDeclaredLinkRows($server, $persister, $type, $entity, $relation, $linkage, Mode::Replace, $request, $flush);
@@ -2693,11 +2755,26 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->scopedWrites ??= new ScopedRelationshipWrites($this->providers, $this->relationshipLinkage->members());
         $this->scopedWrites->assertVisible($relation, $linkage, $server);
 
-        if ($creating || $mode !== Mode::Replace || !$linkage instanceof ToManyRelationship) {
+        // A foreign key's members are the rows its reads serve, so it leaves hidden rows alone.
+        if ($creating || $mode !== Mode::Replace || !$linkage instanceof ToManyRelationship || $this->foreignKeys()->reads($relation)) {
             return $linkage;
         }
 
         return $this->scopedWrites->withHiddenMembers($parent, $relation, $linkage, $server, $request);
+    }
+
+    /**
+     * Writes `$linkage` through `$relation`'s foreign key on its related rows, after gating
+     * each row it takes from another parent ({@see authorizeMoves()}), and returns the parent
+     * unchanged: it holds nothing of the relation.
+     */
+    private function writeForeignKey(Server $server, string $type, object $parent, RelationInterface $relation, ToOneRelationship|ToManyRelationship $linkage, Mode $mode, JsonApiRequestInterface $request, string $serverName): object
+    {
+        $plan = $this->foreignKeyWrites()->plan($server, $type, $parent, $relation, $linkage, $mode, $request);
+        $this->authorizeMoves($this->foreignKeyWrites()->moves($server, $type, $relation, $plan), $serverName);
+        $this->foreignKeyWrites()->apply($relation, $parent, $plan);
+
+        return $parent;
     }
 
     /**
@@ -3213,12 +3290,20 @@ final class CrudOperationHandler implements OperationHandlerInterface
      *
      * @template T
      *
-     * @param \Closure(): T $write
+     * @param \Closure(): T               $write
+     * @param iterable<RelationInterface> $relations the relations the write may apply
      *
      * @return T
      */
-    private function transact(DataPersisterInterface $persister, \Closure $write): mixed
+    private function transact(DataPersisterInterface $persister, \Closure $write, iterable $relations = []): mixed
     {
+        // A relation written through a foreign key writes its related type's rows, so their
+        // persister's transaction joins the parent's.
+        foreach ($this->foreignKeyWrites()->relatedPersisters($persister, $relations) as $related) {
+            $inner = $write;
+            $write = fn(): mixed => WriteTransaction::run($related, $this->txContext, $inner);
+        }
+
         return WriteTransaction::run($persister, $this->txContext, $write, $this->afterCommit);
     }
 
