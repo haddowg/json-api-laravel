@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature\IdentifiedMorphMany;
 use haddowg\JsonApi\Schema\Profile\CountableProfile;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
+use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use haddowg\JsonApiLaravel\Tests\Fixtures\IdentifiedMorphMany\IdentifiedMorphManyServiceProvider;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -89,6 +90,16 @@ abstract class IdentifiedMorphToManyTestCase extends Orchestra
         $config->set('jsonapi.servers.default.prefix', '');
 
         return [JsonApiServiceProvider::class, IdentifiedMorphManyServiceProvider::class];
+    }
+
+    #[Test]
+    public function theBuildCheckAcceptsCandidatesThatDoNotOverrideGetType(): void
+    {
+        $warmer = $this->app?->make(ServableResourceWarmer::class);
+        self::assertInstanceOf(ServableResourceWarmer::class, $warmer);
+
+        // No candidate overrides getType(): the stored pairs name each member's type.
+        self::assertSame([], \array_values(\array_filter($warmer->warm(), static fn(string $problem): bool => \str_contains($problem, 'getType'))));
     }
 
     #[Test]

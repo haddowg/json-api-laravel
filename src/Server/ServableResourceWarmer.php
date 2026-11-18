@@ -13,6 +13,7 @@ use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Field\StoresIdentifiersInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Serializer\RelationFilterDefaultsValidator;
@@ -436,7 +437,9 @@ final class ServableResourceWarmer
      * `$type` discriminates members by class — i.e. an `AbstractResource` candidate
      * overrides {@see AbstractResource::getType()}. A candidate that does not override it
      * returns `static::$type` unconditionally and so silently claims (and mis-serializes)
-     * members of its siblings' types.
+     * members of its siblings' types. A relation that stores its targets' identifiers (an
+     * identified `MorphTo` or `MorphToMany`) is exempt: its stored pair names each target's
+     * type.
      *
      * @param list<string> $problems
      */
@@ -448,6 +451,10 @@ final class ServableResourceWarmer
             $relatedTypes = $relation->relatedTypes();
             if (\count($relatedTypes) < 2) {
                 continue; // a monomorphic relation never compares getType()
+            }
+
+            if ($relation instanceof StoresIdentifiersInterface && $relation->storesIdentifiers()) {
+                continue;
             }
 
             foreach ($relatedTypes as $candidateType) {

@@ -655,8 +655,10 @@ A read permission the relation itself declares is checked against the parent, so
 load: when it refuses, the linkage is `null` whatever the pair says.
 
 A pair naming a type the relation doesn't declare is a `500`, from core's `\LogicException`.
-The target renders with the serializer of the pair's type, so its resource needs no
-object-aware `getType()`.
+The target renders with the serializer of the pair's type, and the `view` check, the related
+endpoint and the include walk all treat it as that type. Its resource needs no object-aware
+`getType()`, and `jsonapi:optimize` doesn't ask for one, so one model can back several of the
+types.
 Writes are unchanged, so `fillUsing()` owns them, and the OpenAPI document is the same as for
 any `MorphTo`. Core's [relations guide](https://github.com/haddowg/json-api/blob/main/docs/relations.md#identifying-the-target-without-loading-it)
 covers the declaration.
@@ -702,7 +704,7 @@ gone drops out and pages and totals stay exact. An unscoped type costs no query,
 of one still shows in the linkage, and a related page that reaches it comes back one member short.
 
 Each member renders under its pair's type, so one model or record class can back several of the
-types. A stored type the relation doesn't declare is a `500`. Writes go through `fillUsing()`, and
+types without an object-aware `getType()`, and `jsonapi:optimize` doesn't ask for one. A stored type the relation doesn't declare is a `500`. Writes go through `fillUsing()`, and
 a replace keeps the members a scope hides. A provider that can admit ids without loading rows
 implements `AdmitsIdsInterface`; the Eloquent and in-memory references do.
 
