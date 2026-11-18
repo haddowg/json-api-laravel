@@ -113,10 +113,27 @@ abstract class StorageTimezoneConformanceTestCase extends Orchestra
     #[Group('spec:fetching-filtering')]
     public function aDateColumnComparesTheDayTheClientWrote(): void
     {
-        // Moving midnight UTC into New York would make it 30 September and pull in
-        // shift 2, so a date column keeps the bound's own calendar day.
-        self::assertSame(['1', '3'], $this->sortedIds('/api/shifts?filter[dayRange][min]=2026-10-01T00:00:00Z'));
-        self::assertSame(['1', '2'], $this->sortedIds('/api/shifts?filter[dayRange][max]=' . \rawurlencode('2026-10-01T00:00:00-04:00')));
+        // A bound over a Date column is a full date, and every provider compares the
+        // calendar day it names, so no zone can move it to 30 September and pull in
+        // shift 2.
+        self::assertSame(['1', '3'], $this->sortedIds('/api/shifts?filter[dayRange][min]=2026-10-01'));
+        self::assertSame(['1', '2'], $this->sortedIds('/api/shifts?filter[dayRange][max]=2026-10-01'));
+        self::assertSame(['1'], $this->sortedIds('/api/shifts?filter[dayRange][min]=2026-10-01&filter[dayRange][max]=2026-10-01'));
+    }
+
+    #[Test]
+    #[Group('spec:fetching-filtering')]
+    #[Group('spec:errors')]
+    public function aDateColumnBoundTakesOnlyAFullDate(): void
+    {
+        // The range is documented as format date, as the Date field it compares is.
+        foreach (['2026-10-01T00:00:00Z', '2026-10-01 00:00', 'yesterday'] as $bound) {
+            $response = $this->jsonApi()->get('/api/shifts?filter[dayRange][min]=' . \rawurlencode($bound));
+
+            $response->assertStatus(400);
+            self::assertSame('FILTER_VALUE_INVALID', $response->json('errors.0.code'), $bound);
+            self::assertSame('filter[dayRange]', $response->json('errors.0.source.parameter'));
+        }
     }
 
     #[Test]
