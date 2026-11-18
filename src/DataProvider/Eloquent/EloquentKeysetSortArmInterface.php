@@ -17,10 +17,13 @@ use Illuminate\Database\Eloquent\Model;
  * "strictly after the boundary" `WHERE`, comparing the expression with the value the
  * cursor token carries under the sort's key. That value is what the sort's
  * {@see KeysetSortInterface::keysetValue()} returned for the boundary row, so the
- * expression and `keysetValue()` must agree on every row, nulls included.
+ * expression and `keysetValue()` must agree on every row, nulls included, unless the
+ * expression reads its value from the query with
+ * {@see EloquentKeysetExpression::valueFromQuery()}.
  *
- * The sort itself must implement {@see KeysetSortInterface}; a sort that doesn't, or whose
- * first supporting arm doesn't implement this interface, stays a `500`
+ * The sort itself must implement {@see KeysetSortInterface}. A cursor-paged collection
+ * declaring a sort that doesn't, or whose first supporting arm doesn't implement this
+ * interface, fails `jsonapi:optimize`; one a sort family resolves per request is a `500`
  * {@see \haddowg\JsonApi\Resource\Sort\UnsupportedSort} under a cursor.
  *
  * @template TModel of Model

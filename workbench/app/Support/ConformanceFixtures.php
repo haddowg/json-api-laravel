@@ -354,4 +354,23 @@ final class ConformanceFixtures
             ['id' => 'ambient', 'name' => 'Ambient'],
         ];
     }
+
+    /**
+     * Six teams for the cursor-sort cases, shared by both providers. Teams 2 and 5 have no
+     * members, so their top score is null. Teams 3 and 4 have no base, so their tier is
+     * null. Team 3 has neither base nor bonus, so its points are null.
+     *
+     * @return list<array{id: int, name: string, base: ?int, bonus: ?int, scores: list<int>}>
+     */
+    public static function scoreTeams(): array
+    {
+        return [
+            ['id' => 1, 'name' => 'alpha', 'base' => 5, 'bonus' => null, 'scores' => [3, 9]],
+            ['id' => 2, 'name' => 'bravo', 'base' => 12, 'bonus' => 4, 'scores' => []],
+            ['id' => 3, 'name' => 'charlie', 'base' => null, 'bonus' => null, 'scores' => [7]],
+            ['id' => 4, 'name' => 'delta', 'base' => null, 'bonus' => 8, 'scores' => [9]],
+            ['id' => 5, 'name' => 'echo', 'base' => 10, 'bonus' => null, 'scores' => []],
+            ['id' => 6, 'name' => 'foxtrot', 'base' => 3, 'bonus' => 1, 'scores' => [2]],
+        ];
+    }
 }
