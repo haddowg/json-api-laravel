@@ -46,11 +46,13 @@ use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\Validation\Constraint\UniqueEntity;
 use haddowg\JsonApiLaravel\Validation\Rules\JsonType;
 use haddowg\JsonApiLaravel\Validation\Rules\NotNull;
+use haddowg\JsonApiLaravel\Validation\Rules\OnlyParsableDates;
 use haddowg\JsonApiLaravel\Validation\Rules\ParsableDate;
 use haddowg\JsonApiLaravel\Validation\Rules\PresentNotNull;
 use haddowg\JsonApiLaravel\Validation\Rules\RequiredOrNull;
 use haddowg\JsonApiLaravel\Validation\Rules\StoredRowsUnique;
 use Illuminate\Contracts\Validation\Factory as ValidationFactory;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -983,14 +985,14 @@ final class ResourceValidator
             $rules[] = 'array';
         }
         // A DateTime field (and its Date/Time specialisations) carries no implicit format
-        // rule, so a present, unparseable string would pass validation and 500 in core's
-        // hydration (`new \DateTimeImmutable('banana')` throws). The ParsableDate guard is
-        // the write-body twin of the filter validator's date-range check: a calendar-garbage
-        // value is a clean 422 at /data/attributes/<name> before hydration. (An explicit
-        // null on a nullable DateTime is short-circuited by the `nullable` presence marker,
-        // so the guard never rejects a legitimate clear.)
+        // rule, so a string in another shape than the field documents would pass validation
+        // and only fail in core's hydration. The ParsableDate guard is the write-body twin
+        // of the filter validator's date-range check: such a value is a clean 422 at
+        // /data/attributes/<name> before hydration. (An explicit null on a nullable
+        // DateTime is short-circuited by the `nullable` presence marker, so the guard never
+        // rejects a legitimate clear.)
         if ($field instanceof DateTime) {
-            $rules[] = new ParsableDate();
+            $rules[] = new ParsableDate($field);
         }
 
         foreach ($field->constraints() as $constraint) {
@@ -1013,7 +1015,7 @@ final class ResourceValidator
                 continue; // raw JSON Schema; validated document-level by shapeErrors()
             }
             foreach ($this->translator->translate($constraint, $request) as $rule) {
-                $rules[] = $rule;
+                $rules[] = $field instanceof DateTime && $rule instanceof ValidationRule ? new OnlyParsableDates($field, $rule) : $rule;
             }
         }
 

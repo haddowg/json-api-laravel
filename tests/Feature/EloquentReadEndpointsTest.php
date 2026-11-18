@@ -149,7 +149,7 @@ final class EloquentReadEndpointsTest extends EloquentTestCase
         // FILTERED collection, not the full count. (A null-bearing range now lives
         // alongside it, filter[rating], since core aligned the witness with SQL
         // null-exclusion.)
-        $response = $this->get('/api/albums?filter[releasedRange][min]=1997-01-01', ['Accept' => self::MEDIA_TYPE]);
+        $response = $this->get('/api/albums?filter[releasedRange][min]=1997-01-01T00:00:00Z', ['Accept' => self::MEDIA_TYPE]);
 
         $response->assertOk();
         $response->assertJsonCount(1, 'data');
@@ -160,7 +160,7 @@ final class EloquentReadEndpointsTest extends EloquentTestCase
 
     public function test_date_range_filter_narrows_by_released_at(): void
     {
-        $response = $this->get('/api/albums?filter[releasedRange][min]=1995-01-01', ['Accept' => self::MEDIA_TYPE]);
+        $response = $this->get('/api/albums?filter[releasedRange][min]=1995-01-01T00:00:00Z', ['Accept' => self::MEDIA_TYPE]);
 
         $response->assertOk();
         $response->assertJsonCount(1, 'data');

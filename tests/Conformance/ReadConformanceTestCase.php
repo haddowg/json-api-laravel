@@ -183,8 +183,8 @@ abstract class ReadConformanceTestCase extends Orchestra
     #[Group('spec:fetching-filtering')]
     public function aDateRangeFilterComparesTemporally(): void
     {
-        self::assertSame(['3', '6', '7'], $this->sortedIds('/api/albums?filter[releasedRange][min]=2000-01-01', 'albums'));
-        self::assertSame(['1', '3', '4'], $this->sortedIds('/api/albums?filter[releasedRange][min]=1995-01-01&filter[releasedRange][max]=2000-12-31', 'albums'));
+        self::assertSame(['3', '6', '7'], $this->sortedIds('/api/albums?filter[releasedRange][min]=2000-01-01T00:00:00Z', 'albums'));
+        self::assertSame(['1', '3', '4'], $this->sortedIds('/api/albums?filter[releasedRange][min]=1995-01-01T00:00:00Z&filter[releasedRange][max]=2000-12-31T23:59:59Z', 'albums'));
     }
 
     #[Test]
