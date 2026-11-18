@@ -1,0 +1,70 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Workbench\App\Providers;
+
+use haddowg\JsonApi\Serializer\RelationshipLoadStateInterface;
+use haddowg\JsonApiLaravel\DataPersister\Eloquent\EloquentDataPersister;
+use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentRelationshipLoadState;
+use haddowg\JsonApiLaravel\Facades\JsonApi;
+use Illuminate\Support\ServiceProvider;
+use Workbench\App\ForeignKey\FkInboxResource;
+use Workbench\App\ForeignKey\FkItemResource;
+use Workbench\App\ForeignKey\FkMemberResource;
+use Workbench\App\ForeignKey\FkNoteResource;
+use Workbench\App\ForeignKey\FkProfileResource;
+use Workbench\App\ForeignKey\FkSecretResource;
+use Workbench\App\ForeignKey\FkTeamResource;
+use Workbench\App\ForeignKey\FkUserPersister;
+use Workbench\App\ForeignKey\FkUserProvider;
+use Workbench\App\ForeignKey\FkUserResource;
+use Workbench\App\ForeignKey\Models\FkItem;
+use Workbench\App\ForeignKey\Models\FkMember;
+use Workbench\App\ForeignKey\Models\FkNote;
+use Workbench\App\ForeignKey\Models\FkProfile;
+use Workbench\App\ForeignKey\Models\FkSecret;
+use Workbench\App\ForeignKey\Models\FkTeam;
+
+/**
+ * The foreign-key suite with its related rows on Eloquent: users and the inbox from a custom
+ * provider, everything else on the reference provider and persister, with the Eloquent load
+ * state, so a lazy relation renders links only.
+ */
+final class ForeignKeyEloquentServiceProvider extends ServiceProvider
+{
+    /**
+     * @var array<string, class-string<\Illuminate\Database\Eloquent\Model>>
+     */
+    public const array MODEL_BY_TYPE = [
+        'fk-items' => FkItem::class,
+        'fk-notes' => FkNote::class,
+        'fk-profiles' => FkProfile::class,
+        'fk-secrets' => FkSecret::class,
+        'fk-teams' => FkTeam::class,
+        'fk-members' => FkMember::class,
+    ];
+
+    public function register(): void
+    {
+        JsonApi::register([
+            FkUserResource::class,
+            FkInboxResource::class,
+            FkItemResource::class,
+            FkNoteResource::class,
+            FkProfileResource::class,
+            FkSecretResource::class,
+            FkTeamResource::class,
+            FkMemberResource::class,
+        ]);
+
+        JsonApi::provider(new EloquentDataProvider(self::MODEL_BY_TYPE), priority: -128);
+        JsonApi::persister(new EloquentDataPersister(self::MODEL_BY_TYPE), priority: -128);
+        JsonApi::provider(new FkUserProvider(fn(): DataProviderRegistry => $this->app->make(DataProviderRegistry::class)));
+        JsonApi::persister(new FkUserPersister());
+
+        $this->app->singleton(RelationshipLoadStateInterface::class, EloquentRelationshipLoadState::class);
+    }
+}

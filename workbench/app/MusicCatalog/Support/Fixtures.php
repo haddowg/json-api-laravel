@@ -71,6 +71,22 @@ final class Fixtures
     }
 
     /**
+     * The plays: KEXP played tracks 1 to 3 as plays 1 to 3, NTS track 3 as play 4, and FIP
+     * nothing. A play's `station` holds the id of a station the stations provider serves.
+     *
+     * @return list<array{id: int, station: string, played_at: \DateTimeImmutable, track_id: ?int}>
+     */
+    public static function plays(): array
+    {
+        return [
+            ['id' => 1, 'station' => 'kexp', 'played_at' => new \DateTimeImmutable('2026-01-01T08:00:00+00:00'), 'track_id' => 1],
+            ['id' => 2, 'station' => 'kexp', 'played_at' => new \DateTimeImmutable('2026-01-01T08:05:00+00:00'), 'track_id' => 2],
+            ['id' => 3, 'station' => 'kexp', 'played_at' => new \DateTimeImmutable('2026-01-01T08:12:00+00:00'), 'track_id' => 3],
+            ['id' => 4, 'station' => 'nts', 'played_at' => new \DateTimeImmutable('2026-01-01T09:00:00+00:00'), 'track_id' => 3],
+        ];
+    }
+
+    /**
      * @return list<array{id: string, name: string}>
      */
     public static function genres(): array

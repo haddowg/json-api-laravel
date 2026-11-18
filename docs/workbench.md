@@ -30,6 +30,8 @@ Eighteen types, each chosen to witness a distinct capability:
 | `export-jobs` | the read side of the async write: a `200` status document while the job runs, a `303 See Other` once it completes |
 | `reissues` | a [related-only](resources.md#related-only-types) type: the album `reissue` action's request document, with no paths of its own |
 | `charts`, `countries` | standalone serializers (no model) + custom providers; `symfony/intl` reference data |
+| `stations` | read-only, served by a custom provider from a fixed list with no database; its `plays` read through their `station` **foreign key** (`HasMany::make('plays', 'plays', 'station')`) |
+| `plays` | read-only; `station` holds the id of the station that played it |
 
 `albums` is served on both the `default` and `admin` servers, and a related endpoint returns
 its target as primary data — so every type an album's (or a user's) related endpoints reach

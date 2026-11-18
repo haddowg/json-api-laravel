@@ -27,7 +27,10 @@ warmers plus a deploy-time safety check:
    actually serveable — sortable/filterable columns resolve against the table/casts, relation
    methods exist (the method checked is the one the runtime reads, so a `storedAs()` alias is
    honoured, and a relation whose value comes from an `extractUsing()`/`serializeUsing()`
-   closure needs no model method at all), morph maps are registered. **A problem fails the
+   closure needs no model method at all), morph maps are registered, and every relation can
+   reach its rows: a [foreign key](relationships.md#relations-read-through-a-foreign-key) holds
+   the parent's id and its related type reads and writes through it, and a to-many from a type
+   no model serves into a model with global scopes declares one. **A problem fails the
    command** (a non-zero exit), so a mis-declared resource fails the *deploy*, not a runtime
    `500`.
 2. **Discovery snapshot (opt-in).** When `jsonapi.discovery.cache` names a path, it writes the

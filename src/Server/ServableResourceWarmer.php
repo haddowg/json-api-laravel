@@ -94,6 +94,9 @@ use Psr\Log\LoggerInterface;
  *    {@see RelationOrderValidator}, run per resource.
  *  - **A relation's `withoutFilterDefaults()` must name defaulted filters.** Core's
  *    {@see RelationFilterDefaultsValidator}, run per resource.
+ *  - **A relation must reach its rows.** A foreign key holds the parent's id and its related
+ *    type's provider and persister use it, and a to-many of a parent no model serves into a
+ *    type with global scopes declares a foreign key or `extractUsing()` ({@see ForeignKeyGuard}).
  *  - **A filter's traversal path must resolve.** A `WhereThrough` or `WhereThroughIn`
  *    path ending on a polymorphic relation has no single id to compare
  *    ({@see FilterPathGuard}), a relation's scoped filters included.
@@ -147,6 +150,7 @@ final class ServableResourceWarmer
                 $this->guardActionLinks($serverName, $type, $problems);
                 $this->guardRelationOrder($serverName, $type, $problems);
                 $this->guardRelationFilterDefaults($serverName, $type, $problems);
+                $this->guardForeignKeys($serverName, $type, $problems);
                 $this->guardFilterPaths($serverName, $type, $problems);
                 $this->noteInMemoryLinkRows($serverName, $type);
             }
@@ -339,6 +343,29 @@ final class ServableResourceWarmer
 
         try {
             (new RelationOrderGuard(fn(): DataProviderRegistry => $this->providers))->check($server, $type, $resource);
+        } catch (\LogicException $e) {
+            $problems[] = $e->getMessage();
+        }
+    }
+
+    /**
+     * Reports a relation that can't reach its rows ({@see ForeignKeyGuard}): a foreign key that
+     * holds no parent id or that its related type's provider or persister can't use, or a
+     * to-many of a parent no model serves into a type whose global scopes it would bypass.
+     * Route registration makes the same check, but a cached route table skips it.
+     *
+     * @param list<string> $problems
+     */
+    private function guardForeignKeys(string $serverName, string $type, array &$problems): void
+    {
+        $server = $this->servers->get($serverName);
+        $resource = $this->types->resourceFor($server, $type);
+        if ($resource === null) {
+            return;
+        }
+
+        try {
+            (new ForeignKeyGuard(fn(): DataProviderRegistry => $this->providers, fn(): DataPersisterRegistry => $this->persisters))->check($server, $type, $resource);
         } catch (\LogicException $e) {
             $problems[] = $e->getMessage();
         }

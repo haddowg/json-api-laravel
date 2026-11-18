@@ -14,6 +14,7 @@ use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\Resource\Field\BelongsToMany as PivotRelation;
 use haddowg\JsonApi\Resource\Field\Date;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
+use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
@@ -27,7 +28,9 @@ use haddowg\JsonApiLaravel\DataPersister\PositionColumn;
 use haddowg\JsonApiLaravel\DataPersister\ReportsCurrentOwners;
 use haddowg\JsonApiLaravel\DataPersister\SoftDeleteCapable;
 use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
+use haddowg\JsonApiLaravel\DataPersister\WritesForeignKeysInterface;
 use haddowg\JsonApiLaravel\DataPersister\WritesLinkRowsInterface;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\NaiveDateTimeStorage;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use Illuminate\Container\Container;
@@ -78,7 +81,7 @@ use Illuminate\Support\Facades\DB;
  * An application may extend it to override {@see instantiate()} or {@see delete()} for the
  * types it registers the subclass for, keeping every other write and capability.
  */
-class EloquentDataPersister extends AbstractDataPersister implements WritesLinkRowsInterface, TransactionalDataPersisterInterface, SoftDeleteCapable, ReportsCurrentOwners
+class EloquentDataPersister extends AbstractDataPersister implements WritesLinkRowsInterface, TransactionalDataPersisterInterface, SoftDeleteCapable, ReportsCurrentOwners, WritesForeignKeysInterface
 {
     /**
      * @var array<string, class-string<Model>>
@@ -287,6 +290,85 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         }
 
         return true;
+    }
+
+    /**
+     * A foreign key is required when its column is NOT NULL: a field's own column, or the
+     * foreign key column of a to-one's `BelongsTo`. A schema it can't read requires it.
+     */
+    public function requiresForeignKey(string $relatedType, ForeignKey $foreignKey): bool
+    {
+        try {
+            $related = $this->modelFor($relatedType);
+            $column = $this->foreignKeyAttribute($related, $foreignKey);
+            foreach ($related->getConnection()->getSchemaBuilder()->getColumns($related->getTable()) as $schemaColumn) {
+                if (($schemaColumn['name'] ?? null) === $column) {
+                    return ($schemaColumn['nullable'] ?? true) !== true;
+                }
+            }
+        } catch (\Throwable) {
+            return true;
+        }
+
+        return true;
+    }
+
+    /**
+     * Sets the foreign key on each joining row and clears it on each leaving one, saving each:
+     * a to-one's `BelongsTo` associates the parent, or takes its key when the parent is no
+     * model, and a field takes the parent's key.
+     */
+    public function writeForeignKey(string $relatedType, ForeignKey $foreignKey, object $parent, mixed $parentKey, array $attach, array $detach): void
+    {
+        $related = $this->modelFor($relatedType);
+        $column = $this->foreignKeyAttribute($related, $foreignKey);
+
+        foreach ($detach as $row) {
+            if ($row instanceof Model) {
+                $this->orphan($row, $column, null, new FullReplacementProhibited($foreignKey->name));
+            }
+        }
+
+        foreach ($attach as $row) {
+            if (!$row instanceof Model) {
+                continue;
+            }
+
+            $belongsTo = $foreignKey->isRelation() ? EloquentDataProvider::belongsToOf($row, $foreignKey->column) : null;
+            if ($belongsTo !== null && $parent instanceof Model) {
+                $belongsTo->associate($parent);
+            } else {
+                $row->setAttribute($column, $parentKey);
+            }
+            $row->save();
+        }
+    }
+
+    /**
+     * The attribute a row of `$related` holds the foreign key under: a field's own column, or
+     * the foreign key of a to-one's `BelongsTo`.
+     *
+     * @throws \LogicException when a to-one foreign key names no `BelongsTo` of the model
+     */
+    private function foreignKeyAttribute(Model $related, ForeignKey $foreignKey): string
+    {
+        if (!$foreignKey->isRelation()) {
+            return $foreignKey->column;
+        }
+
+        return EloquentDataProvider::belongsToOf($related, $foreignKey->column)?->getForeignKeyName()
+            ?? throw new \LogicException(\sprintf('The foreign key "%s" is a to-one relation, but %s has no BelongsTo method "%s" to write it through.', $foreignKey->name, $related::class, $foreignKey->column));
+    }
+
+    /**
+     * A fresh instance of the model mapped for `$type`.
+     */
+    private function modelFor(string $type): Model
+    {
+        $class = $this->modelByType[$type]
+            ?? throw new \LogicException(\sprintf('No Eloquent model is mapped for JSON:API type "%s".', $type));
+
+        return new $class();
     }
 
     /**

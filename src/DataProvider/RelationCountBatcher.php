@@ -48,7 +48,12 @@ final class RelationCountBatcher
         private readonly RelationCriteriaFactory $relationCriteria,
         private readonly ?ScopedPolymorphicMembers $polymorphicMembers = null,
         private readonly ?IdentifiedMorphMembers $identifiedMembers = null,
-    ) {}
+        ?ForeignKeyReads $foreignKeys = null,
+    ) {
+        $this->foreignKeys = $foreignKeys ?? new ForeignKeyReads($providers);
+    }
+
+    private readonly ForeignKeyReads $foreignKeys;
 
     /**
      * Builds the per-page count seam for the `?withCount`-named countable relations of
@@ -109,9 +114,15 @@ final class RelationCountBatcher
                 continue;
             }
 
-            $relationCounts = $this->providers->relatesToScopedType($type, $relation)
-                ? $this->countScoped($server, $type, $parents, $relation, $criteria, $request, $serializer)
-                : $provider->countRelated($type, $parents, $relation, $criteria, $request);
+            $relationCounts = match (true) {
+                // Counted by the related type's provider over the rows holding each parent's key.
+                $this->foreignKeys->reads($relation) => $this->foreignKeys->counts($server, $type, $parents, $relation, $criteria, $request),
+                $this->providers->relatesToScopedType($type, $relation) => $this->countScoped($server, $type, $parents, $relation, $criteria, $request, $serializer),
+                default => $provider->countRelated($type, $parents, $relation, $criteria, $request),
+            };
+            if ($relationCounts === [] && $this->providers->readsOffModel($type, $relation)) {
+                $relationCounts = $this->countOffModel($type, $parents, $relation, $criteria, $request, $serializer);
+            }
             foreach ($relationCounts as $wireId => $count) {
                 foreach ($byWireId[(string) $wireId] ?? [] as $parent) {
                     $counts[\spl_object_id($parent)][$relation->name()] = $count;
@@ -190,6 +201,28 @@ final class RelationCountBatcher
             $wireId = $serializer->getId($parent);
             $result = $batch->for($wireId);
             $counts[$wireId] = \is_array($result->items) ? \count($result->items) : \iterator_count($result->items);
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Counts a to-many its parent's provider doesn't count over what each parent model holds,
+     * filtered as its related endpoint cuts it ({@see DataProviderRegistry::readsOffModel()}).
+     *
+     * @param list<object> $parents
+     *
+     * @return array<string, int>
+     */
+    private function countOffModel(string $type, array $parents, RelationInterface $relation, CollectionCriteria $criteria, JsonApiRequestInterface $request, SerializerInterface $serializer): array
+    {
+        $relatedType = $relation->relatedTypes()[0] ?? $type;
+        $provider = $this->providers->forType($relatedType);
+
+        $counts = [];
+        foreach ($parents as $parent) {
+            $items = $provider->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request)->items;
+            $counts[$serializer->getId($parent)] = \is_array($items) ? \count($items) : \iterator_count($items);
         }
 
         return $counts;

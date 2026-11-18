@@ -43,6 +43,7 @@ use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
+use haddowg\JsonApiLaravel\DataProvider\ForeignKeyReads;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphMembers;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphTargets;
 use haddowg\JsonApiLaravel\DataProvider\InMemorySnapshotCoordinator;
@@ -289,6 +290,19 @@ final class JsonApiServiceProvider extends ServiceProvider
 
                     return $providers;
                 });
+                $foreignKeys = new \haddowg\JsonApiLaravel\Server\ForeignKeyGuard(
+                    static function () use ($app): DataProviderRegistry {
+                        $providers = $app->make(DataProviderRegistry::class);
+                        \assert($providers instanceof DataProviderRegistry);
+
+                        return $providers;
+                    },
+                    static function () use ($app): ?DataPersisterRegistry {
+                        $persisters = $app->bound(DataPersisterRegistry::class) ? $app->make(DataPersisterRegistry::class) : null;
+
+                        return $persisters instanceof DataPersisterRegistry ? $persisters : null;
+                    },
+                );
                 foreach ($types as $type) {
                     try {
                         $resource = $registry->resourceFor($type);
@@ -296,6 +310,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                         continue;
                     }
                     $guard->check($registry, $type, $resource);
+                    $foreignKeys->check($registry, $type, $resource, unkeyed: false);
                     (new \haddowg\JsonApi\Serializer\RelationFilterDefaultsValidator($registry))->validate($type, $resource);
                     \haddowg\JsonApiLaravel\Server\FilterPathGuard::check($registry, $resource);
                 }
@@ -816,6 +831,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->app->singleton(GuardedTypes::class);
         $this->app->singleton(IdentifiedMorphTargets::class);
         $this->app->singleton(IdentifiedMorphMembers::class);
+        $this->app->singleton(ForeignKeyReads::class);
         $this->app->singleton(ScopedToOneTargets::class);
         $this->app->singleton(RequestScopedRelationshipLinkage::class);
 
@@ -828,6 +844,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(IdentifiedMorphMembers::class),
                 toOne: $app->make(ScopedToOneTargets::class),
                 windows: $app->make(RelationshipWindowBatcher::class),
+                foreignKeys: $app->make(ForeignKeyReads::class),
             );
         });
 
@@ -838,6 +855,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(RelationCriteriaFactory::class),
                 $app->make(ScopedPolymorphicMembers::class),
                 $app->make(IdentifiedMorphMembers::class),
+                $app->make(ForeignKeyReads::class),
             );
         });
 
@@ -853,6 +871,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(FilterValueValidator::class),
                 $app->make(ScopedToOneTargets::class),
                 $app->make(ScopedPolymorphicMembers::class),
+                $app->make(ForeignKeyReads::class),
             );
         });
     }
