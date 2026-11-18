@@ -33,8 +33,10 @@ for free and you override them the usual Laravel way.
 Every `DateTime`, `Date` and `Time` field also gets a rule that accepts a string only in the
 shape the field documents, the same check core's cast makes. A `date-time` field takes an
 RFC 3339 date-time with an offset, so `last year` or `2026-11-05 09:42` is a `422` at the
-attribute, on a field with a `fillUsing()` hook too. A date bound is not checked against a
-value that rule refuses.
+attribute, on a field with a `fillUsing()` hook too. It is answered as any malformed
+attribute value is, a `422` `VALIDATION_FAILED`. A field whose format no keyword names takes
+exactly what that format writes, so a `Time` with its `H:i:s` default takes `09:42:00` and
+refuses `09:42`. A date bound is not checked against a value that rule refuses.
 
 ## The constraint → rule map
 

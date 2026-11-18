@@ -325,11 +325,16 @@ their deserializer yields a date, and a `WhereThrough` leaf. Writes get the same
 `DateTime` attribute bound for such a column, sent as `2026-10-03T16:00:00Z`, is stored as
 `2026-10-03 12:00:00` under New York rather than `16:00:00`, and so is a `DateTime` pivot field.
 The timezone is read with `date_default_timezone_get()` each time, so an application that
-switches it per request, say per tenant, gets the right zone.
+switches it per request, say per tenant, gets the right zone. Only a `DateTime` documented as an
+RFC 3339 `date-time` is converted on write, since the moved value is written back in that shape.
+A field with a custom `format()` is hydrated as sent, so if that format carries an offset, such
+as `D, d M Y H:i:s O`, its column stores the wall clock of the offset the client wrote.
 
 A column with a `date` or `immutable_date` cast is compared with `whereDate()` against the
 bound's own calendar day, never converted, because moving a midnight bound into another zone
-can change its day: `2026-10-01T00:00:00Z` is still 30 September in New York. A column with a
+can change its day. A `DateRange` over a column a `Date` field backs takes a full date for each
+bound, `filter[day][min]=2026-10-01`, documented as `format: date`, and the in-memory provider
+compares the same calendar day. A column with a
 custom cast class, or with no cast, is left alone, since its type is unknown. Cursor keys are not
 converted either, because a cursor already carries the stored wall-clock time.
 
