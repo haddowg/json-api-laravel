@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.21.0](https://github.com/haddowg/json-api-laravel/compare/v2.20.0...v2.21.0) (2026-11-18)
+
+
+### Features
+
+* fill and check typed top-level document meta ([ca3ba7c](https://github.com/haddowg/json-api-laravel/commit/ca3ba7c99a8e600ea8f1568f64933de65e36149b))
+* read and write relations through a foreign key on the related type ([ca3ba7c](https://github.com/haddowg/json-api-laravel/commit/ca3ba7c99a8e600ea8f1568f64933de65e36149b))
+
+
+### Bug Fixes
+
+* hold client dates to the RFC 3339 shape core accepts ([ca3ba7c](https://github.com/haddowg/json-api-laravel/commit/ca3ba7c99a8e600ea8f1568f64933de65e36149b))
+* let jsonapi:optimize accept an identified polymorphic relation ([#289](https://github.com/haddowg/json-api-laravel/issues/289)) ([f2cf502](https://github.com/haddowg/json-api-laravel/commit/f2cf50275a213dd2217632783a80ee85aa923a25))
+* read a cursor sort's value from the query, check it at optimize ([#294](https://github.com/haddowg/json-api-laravel/issues/294)) ([ce9e19a](https://github.com/haddowg/json-api-laravel/commit/ce9e19a1f37a07dbd7f896665b6f7451d0cb69f7))
+
 ## [2.20.0](https://github.com/haddowg/json-api-laravel/compare/v2.19.0...v2.20.0) (2026-11-16)
 
 
