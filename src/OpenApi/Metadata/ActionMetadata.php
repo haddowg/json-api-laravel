@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 use haddowg\JsonApi\OpenApi\Metadata\ActionInputMode;
 use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResponse;
+use haddowg\JsonApi\OpenApi\Metadata\ActionResponses;
 use haddowg\JsonApi\OpenApi\Metadata\ActionScope;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresAcceptedBodies;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionDeprecation;
@@ -17,6 +18,7 @@ use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionLink;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionSafety;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionScopes;
 use haddowg\JsonApi\OpenApi\Metadata\OperationExample;
+use haddowg\JsonApi\Resource\DeclaresActionDocumentMetaInterface;
 use haddowg\JsonApiLaravel\Action\ActionDescriptor;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
 
@@ -44,6 +46,8 @@ final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAccep
     public function __construct(
         private ActionDescriptor $descriptor,
         private array $tags,
+        // The handler, when it declares its response documents' meta per status.
+        private ?DeclaresActionDocumentMetaInterface $documentMeta = null,
     ) {}
 
     public function path(): string
@@ -83,13 +87,16 @@ final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAccep
     {
         // A raw result carries a schema, headers and an example the discovery snapshot does
         // not keep, so an action declaring one reads its declaration off the handler.
+        $responses = $this->descriptor->declaredResponses();
         if (\in_array('raw', \array_column($this->descriptor->responds, 'kind'), true)) {
             foreach ((new \ReflectionClass($this->descriptor->handlerClass))->getAttributes(AsJsonApiAction::class) as $attribute) {
-                return $attribute->newInstance()->responds;
+                $responses = $attribute->newInstance()->responds;
+
+                break;
             }
         }
 
-        return $this->descriptor->declaredResponses();
+        return $this->documentMeta === null ? $responses : ActionResponses::withDocumentMeta($responses, $this->documentMeta);
     }
 
     public function isSecured(): bool

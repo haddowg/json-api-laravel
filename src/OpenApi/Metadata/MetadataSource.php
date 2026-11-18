@@ -15,6 +15,7 @@ use haddowg\JsonApi\Pagination\CursorPaginator;
 use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Serializer\DeclaresDocumentMetaInterface;
 use haddowg\JsonApi\Serializer\IncludeControlsInterface;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
@@ -417,7 +418,17 @@ final class MetadataSource
             excludedIncludePaths: self::includeControls($server, $type)?->getExcludedIncludePaths() ?? [],
             maxIncludeDepth: self::includeControls($server, $type)?->maxIncludeDepth(),
             singleton: $descriptor->singleton,
+            documentMeta: self::documentMetaDeclarer($server->hasSerializerFor($type) ? $server->serializerFor($type) : null),
         );
+    }
+
+    /**
+     * The resource, or a composed type's serializer, when it declares its top-level
+     * document meta.
+     */
+    private static function documentMetaDeclarer(?object $declarer): ?DeclaresDocumentMetaInterface
+    {
+        return $declarer instanceof DeclaresDocumentMetaInterface ? $declarer : null;
     }
 
     /**
@@ -508,6 +519,7 @@ final class MetadataSource
             excludedIncludePaths: self::includeControls($server, $type)?->getExcludedIncludePaths() ?? [],
             maxIncludeDepth: self::includeControls($server, $type)?->maxIncludeDepth(),
             singleton: $descriptor->singleton,
+            documentMeta: self::documentMetaDeclarer($resource ?? ($server->hasSerializerFor($type) ? $server->serializerFor($type) : null)),
         );
     }
 

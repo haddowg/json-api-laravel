@@ -9,6 +9,7 @@ use haddowg\JsonApi\OpenApi\Metadata\ActionDeclarations;
 use haddowg\JsonApi\OpenApi\ProjectedTypes;
 use haddowg\JsonApi\OpenApi\RelatedTypeNotRegistered;
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\DocumentMetaMisdeclared;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
@@ -26,6 +27,7 @@ use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
+use haddowg\JsonApiLaravel\Operation\DocumentMetaResolver;
 use haddowg\JsonApiLaravel\Operation\Operation;
 use Illuminate\Database\Eloquent\Model;
 use Psr\Log\LoggerInterface;
@@ -148,6 +150,7 @@ final class ServableResourceWarmer
                 $this->guardRelationOrder($serverName, $type, $problems);
                 $this->guardRelationFilterDefaults($serverName, $type, $problems);
                 $this->guardFilterPaths($serverName, $type, $problems);
+                $this->guardDocumentMeta($serverName, $type, $problems);
                 $this->noteInMemoryLinkRows($serverName, $type);
             }
 
@@ -166,6 +169,7 @@ final class ServableResourceWarmer
                 $this->guardPolymorphicDiscrimination($serverName, $type, $problems);
                 $this->guardEloquentRelationMethods($serverName, $type, $problems);
                 $this->guardSortableFilterableColumns($serverName, $type, $problems);
+                $this->guardDocumentMeta($serverName, $type, $problems);
             }
 
             $this->guardRelatedEndpointTargets($serverName, $problems);
@@ -340,6 +344,34 @@ final class ServableResourceWarmer
         try {
             (new RelationOrderGuard(fn(): DataProviderRegistry => $this->providers))->check($server, $type, $resource);
         } catch (\LogicException $e) {
+            $problems[] = $e->getMessage();
+        }
+    }
+
+    /**
+     * Reports a misdeclared top-level document meta on the type, or on an action handler
+     * mounted on it, in core's {@see DocumentMetaMisdeclared} wording. Route registration
+     * makes the same check, but a cached route table skips it.
+     *
+     * @param list<string> $problems
+     */
+    private function guardDocumentMeta(string $serverName, string $type, array &$problems): void
+    {
+        $server = $this->servers->get($serverName);
+
+        try {
+            $declarer = $this->types->resourceFor($server, $type)
+                ?? ($server->hasSerializerFor($type) ? $server->serializerFor($type) : null);
+            if ($declarer !== null) {
+                DocumentMetaResolver::assertDeclared($declarer, $type, DocumentMetaResolver::deleteResponses($this->discovery, $serverName, $type));
+            }
+            $actions = $this->actions;
+            foreach ($actions?->forServer($serverName) ?? [] as $action) {
+                if ($actions !== null && $action->type === $type) {
+                    $actions->declaredResponsesFor($action);
+                }
+            }
+        } catch (DocumentMetaMisdeclared $e) {
             $problems[] = $e->getMessage();
         }
     }

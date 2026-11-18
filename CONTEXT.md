@@ -97,6 +97,13 @@ The type an action's URL hangs off, and its default request and response type.
 The mount type's rows a collection action's validated `filter[...]` parameters select, read
 through `ActionContext::filtered()` with no sort or page window.
 
+**Typed document meta**:
+The top-level `meta` members a type's `documentMeta()` declares for one operation's document,
+or an action handler's `documentMeta()` for one response status, which the CRUD handler fills
+from their `extractUsing()` hooks and, under `app.debug`, the controller and the atomic batch
+check.
+_Avoid_: response meta
+
 **Servability**:
 Whether every discovered type can actually be served against its data layer: its columns,
 relation methods, morph maps, provider and persister all resolve. `jsonapi:optimize` checks it.

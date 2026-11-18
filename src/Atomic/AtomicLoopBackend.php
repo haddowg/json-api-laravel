@@ -30,6 +30,7 @@ use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\AbstractRelationValue;
 use haddowg\JsonApi\Response\AbstractResponse;
 use haddowg\JsonApi\Response\ErrorResponse;
+use haddowg\JsonApi\Response\MetaResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
 use haddowg\JsonApi\Scope\ScopeEnforcer;
 use haddowg\JsonApi\Serializer\UriTypeAwareInterface;
@@ -40,8 +41,10 @@ use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\Http\JsonApiController;
 use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
+use haddowg\JsonApiLaravel\Operation\DocumentMetaResolver;
 use haddowg\JsonApiLaravel\Operation\SingletonIdResolver;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
+use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\ObjectAttributes;
 use Illuminate\Http\Request;
@@ -136,6 +139,9 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         ?LoggerInterface $logger = null,
         private readonly TypeMetadataResolver $types = new TypeMetadataResolver(),
         private readonly ?AfterCommit $afterCommit = null,
+        // Set in debug mode only: checks each result's meta against its declaration.
+        private readonly ?DocumentMetaResolver $documentMeta = null,
+        private readonly string $serverName = ServerRegistry::DEFAULT_SERVER,
     ) {
         $this->logger = $logger ?? new NullLogger();
 
@@ -224,7 +230,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         if ($response instanceof NoContentResponse) {
             return AtomicResult::empty();
         }
-        $fragment = $this->fragmentOf($response);
+        $fragment = $this->fragmentOf($response, $operation);
 
         // (e) after an add that created a resource, register (type, lid) → assigned id.
         if ($op->opCode === AtomicOperationCode::Add) {
@@ -807,7 +813,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
      *
      * @return array<string, mixed>
      */
-    private function fragmentOf(object $response): array
+    private function fragmentOf(object $response, JsonApiOperationInterface $operation): array
     {
         \assert($response instanceof AbstractResponse);
 
@@ -815,6 +821,15 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         $body = (string) $psr->getBody();
         if ($body === '') {
             return [];
+        }
+
+        // A delete's declared meta is its meta-only document's, not a resource a hook rendered.
+        if ($this->documentMeta !== null && !($operation instanceof DeleteResourceOperation && !$response instanceof MetaResponse)) {
+            $declared = $this->documentMeta->forOperation($this->server, $this->serverName, $operation, $psr->getStatusCode());
+            $document = $declared->isEmpty() ? null : \json_decode($body, true, 512, \JSON_THROW_ON_ERROR);
+            if (\is_array($document)) {
+                $declared->assertSatisfiedBy(\is_array($document['meta'] ?? null) ? $document['meta'] : []);
+            }
         }
 
         // Objects stay objects so an empty map re-encodes as `{}`, not `[]`.

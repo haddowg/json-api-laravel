@@ -87,7 +87,9 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
             ->assertOk()
             ->assertJsonPath('data.type', 'albums')
             ->assertJsonPath('data.id', '1')
-            ->assertJsonPath('data.attributes.releasedAt', '2001-10-01T00:00:00+00:00');
+            ->assertJsonPath('data.attributes.releasedAt', '2001-10-01T00:00:00+00:00')
+            // The document's typed meta carries the release date the album had before.
+            ->assertJsonPath('meta.previousReleasedAt', '1997-05-21T00:00:00+00:00');
 
         // Persisted through the albums persister — a follow-up read sees it.
         $this->readJsonApi('/api/albums/1')->assertJsonPath('data.attributes.releasedAt', '2001-10-01T00:00:00+00:00');
@@ -123,6 +125,21 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
     }
 
     // --- the `summary` album action (collection scope, meta-only) --------------------------
+
+    public function test_an_albums_collection_counts_its_explicit_albums_here_and_on_the_artists_related_endpoint(): void
+    {
+        foreach (['/api/albums', '/api/artists/1/albums'] as $uri) {
+            $document = $this->readJsonApi($uri)->assertOk()->json();
+            self::assertIsArray($document);
+            $data = $document['data'] ?? null;
+            self::assertIsArray($data);
+            $explicit = \count(\array_filter($data, static fn(mixed $album): bool => \is_array($album) && \is_array($album['attributes'] ?? null) && ($album['attributes']['explicit'] ?? null) === true));
+            $meta = $document['meta'] ?? null;
+            self::assertIsArray($meta);
+
+            self::assertSame($explicit, $meta['explicitCount'] ?? null, $uri);
+        }
+    }
 
     public function test_the_summary_action_returns_the_release_lifecycle_meta(): void
     {

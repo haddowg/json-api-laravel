@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Workbench\App\MusicCatalog\JsonApi;
 
+use haddowg\JsonApi\OpenApi\Metadata\OperationType;
 use haddowg\JsonApi\Pagination\PagePaginator;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
@@ -16,6 +17,7 @@ use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\Decimal;
 use haddowg\JsonApi\Resource\Field\HasMany;
 use haddowg\JsonApi\Resource\Field\Id;
+use haddowg\JsonApi\Resource\Field\Integer;
 use haddowg\JsonApi\Resource\Field\Map;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\Contains;
@@ -163,6 +165,26 @@ final class AlbumResource extends AbstractResource
         return [
             new SortDirective(SortByField::make('releasedAt', 'released_at'), descending: true),
         ];
+    }
+
+    /**
+     * A collection of albums, here or on another type's related endpoint, says how many of
+     * its albums are explicit.
+     */
+    public function documentMeta(OperationType $operation): iterable
+    {
+        return match ($operation) {
+            OperationType::FetchCollection => [
+                Integer::make('explicitCount')->required()->min(0)
+                    ->describedAs('How many of the albums on this page are marked explicit.')
+                    ->example(1)
+                    ->extractUsing(static fn(array $albums): int => \count(\array_filter(
+                        $albums,
+                        static fn(mixed $album): bool => \is_object($album) && Accessor::get($album, 'explicit') === true,
+                    ))),
+            ],
+            default => [],
+        };
     }
 
     /**

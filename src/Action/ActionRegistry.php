@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Action;
 
 use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
+use haddowg\JsonApi\OpenApi\Metadata\ActionResponse;
+use haddowg\JsonApi\OpenApi\Metadata\ActionResponses;
+use haddowg\JsonApi\Resource\DeclaresActionDocumentMetaInterface;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\ActionMetadata;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\ActionMetadataProviderInterface;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\TagNameResolver;
@@ -77,6 +80,34 @@ final class ActionRegistry implements ActionMetadataProviderInterface
     }
 
     /**
+     * The handler of a resolved descriptor when it declares its response documents' meta,
+     * else `null`. Only a handler whose class implements the interface is built.
+     */
+    public function documentMetaFor(ActionDescriptor $descriptor): ?DeclaresActionDocumentMetaInterface
+    {
+        if (!\is_a($descriptor->handlerClass, DeclaresActionDocumentMetaInterface::class, true)) {
+            return null;
+        }
+        $handler = $this->handlerFor($descriptor);
+
+        return $handler instanceof DeclaresActionDocumentMetaInterface ? $handler : null;
+    }
+
+    /**
+     * The action's declared responses, carrying the meta its handler declares per status.
+     *
+     * @return non-empty-list<ActionResponse>
+     *
+     * @throws \haddowg\JsonApi\Resource\DocumentMetaMisdeclared when a response and its handler both declare its members
+     */
+    public function declaredResponsesFor(ActionDescriptor $descriptor): array
+    {
+        $handler = $this->documentMetaFor($descriptor);
+
+        return $handler === null ? $descriptor->declaredResponses() : ActionResponses::withDocumentMeta($descriptor->declaredResponses(), $handler);
+    }
+
+    /**
      * Every action declared on `$server`, in discovery order — the enumeration the route
      * registrar and the {@see \haddowg\JsonApiLaravel\Action\ActionLinkContributor} walk.
      *
@@ -106,7 +137,7 @@ final class ActionRegistry implements ActionMetadataProviderInterface
                 continue;
             }
 
-            $metadata[] = new ActionMetadata($descriptor, $this->resolveActionTags($descriptor));
+            $metadata[] = new ActionMetadata($descriptor, $this->resolveActionTags($descriptor), $this->documentMetaFor($descriptor));
         }
 
         return $metadata;
