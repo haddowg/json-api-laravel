@@ -43,6 +43,7 @@ use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
+use haddowg\JsonApiLaravel\DataProvider\ForeignKeyReads;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphMembers;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphTargets;
 use haddowg\JsonApiLaravel\DataProvider\InMemorySnapshotCoordinator;
@@ -84,6 +85,7 @@ use haddowg\JsonApiLaravel\OpenApi\Metadata\PrefixServers;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\TagNameResolver;
 use haddowg\JsonApiLaravel\OpenApi\OpenApiDocumentUrls;
 use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
+use haddowg\JsonApiLaravel\Operation\DocumentMetaResolver;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
 use haddowg\JsonApiLaravel\Routing\JsonApiRoute;
 use haddowg\JsonApiLaravel\Routing\OpenApiRouteRegistrar;
@@ -289,6 +291,19 @@ final class JsonApiServiceProvider extends ServiceProvider
 
                     return $providers;
                 });
+                $foreignKeys = new \haddowg\JsonApiLaravel\Server\ForeignKeyGuard(
+                    static function () use ($app): DataProviderRegistry {
+                        $providers = $app->make(DataProviderRegistry::class);
+                        \assert($providers instanceof DataProviderRegistry);
+
+                        return $providers;
+                    },
+                    static function () use ($app): ?DataPersisterRegistry {
+                        $persisters = $app->bound(DataPersisterRegistry::class) ? $app->make(DataPersisterRegistry::class) : null;
+
+                        return $persisters instanceof DataPersisterRegistry ? $persisters : null;
+                    },
+                );
                 foreach ($types as $type) {
                     try {
                         $resource = $registry->resourceFor($type);
@@ -296,8 +311,25 @@ final class JsonApiServiceProvider extends ServiceProvider
                         continue;
                     }
                     $guard->check($registry, $type, $resource);
+                    $foreignKeys->check($registry, $type, $resource, unkeyed: false);
                     (new \haddowg\JsonApi\Serializer\RelationFilterDefaultsValidator($registry))->validate($type, $resource);
                     \haddowg\JsonApiLaravel\Server\FilterPathGuard::check($registry, $resource);
+                    DocumentMetaResolver::assertDeclared($resource, $type, DocumentMetaResolver::deleteResponses($discovery, $server, $type));
+                }
+
+                // A composed type declares its documents' meta on its serializer, and an
+                // action's handler per status, so a misdeclaration fails the boot too.
+                foreach ($discovery->serializersFor($server) as $descriptor) {
+                    if (\is_a($descriptor->class, \haddowg\JsonApi\Serializer\DeclaresDocumentMetaInterface::class, true)) {
+                        $serializer = $app->make($descriptor->class);
+                        \assert(\is_object($serializer));
+                        DocumentMetaResolver::assertDeclared($serializer, $descriptor->type, []);
+                    }
+                }
+                $actions = $app->make(ActionRegistry::class);
+                \assert($actions instanceof ActionRegistry);
+                foreach ($actions->forServer($server) as $action) {
+                    $actions->declaredResponsesFor($action);
                 }
             };
 
@@ -804,6 +836,8 @@ final class JsonApiServiceProvider extends ServiceProvider
     {
         $this->app->singleton(TypeMetadataResolver::class);
         $this->app->singleton(RelationCriteriaFactory::class);
+        // Caches each type's declared document meta per server, type and operation.
+        $this->app->singleton(DocumentMetaResolver::class);
 
         // The count/pagination/linkage seam holders are stable singletons (injected into the
         // memoized Server once); the handler clears all three at the start of every dispatch
@@ -816,6 +850,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->app->singleton(GuardedTypes::class);
         $this->app->singleton(IdentifiedMorphTargets::class);
         $this->app->singleton(IdentifiedMorphMembers::class);
+        $this->app->singleton(ForeignKeyReads::class);
         $this->app->singleton(ScopedToOneTargets::class);
         $this->app->singleton(RequestScopedRelationshipLinkage::class);
 
@@ -828,6 +863,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(IdentifiedMorphMembers::class),
                 toOne: $app->make(ScopedToOneTargets::class),
                 windows: $app->make(RelationshipWindowBatcher::class),
+                foreignKeys: $app->make(ForeignKeyReads::class),
             );
         });
 
@@ -838,6 +874,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(RelationCriteriaFactory::class),
                 $app->make(ScopedPolymorphicMembers::class),
                 $app->make(IdentifiedMorphMembers::class),
+                $app->make(ForeignKeyReads::class),
             );
         });
 
@@ -853,6 +890,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                 $app->make(FilterValueValidator::class),
                 $app->make(ScopedToOneTargets::class),
                 $app->make(ScopedPolymorphicMembers::class),
+                $app->make(ForeignKeyReads::class),
             );
         });
     }

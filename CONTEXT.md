@@ -37,6 +37,10 @@ _Avoid_: default provider, Eloquent driver
 The `type → Eloquent model` map the reference pair serves, resolved from explicit wiring, a
 declared `model:`, or the convention guess under `model_namespace`.
 
+**Foreign-key read**:
+How a relation declared with a foreign key (core's term) is read: always by the related type's provider, through `ReadsByForeignKeyInterface`, as the rows whose foreign key holds one of a page of parents' keys, whatever provider serves the parents. The parent model never holds the relation, and a write of it sets or clears the foreign key on the related rows through the related type's persister (`WritesForeignKeysInterface`).
+_Avoid_: inverse read, reverse lookup
+
 **Scoping provider**:
 An application data provider registered for a type to narrow which of its rows exist for the
 caller, such as by tenancy or visibility.
@@ -96,6 +100,13 @@ The type an action's URL hangs off, and its default request and response type.
 **Filtered collection**:
 The mount type's rows a collection action's validated `filter[...]` parameters select, read
 through `ActionContext::filtered()` with no sort or page window.
+
+**Typed document meta**:
+The top-level `meta` members a type's `documentMeta()` declares for one operation's document,
+or an action handler's `documentMeta()` for one response status, which the CRUD handler fills
+from their `extractUsing()` hooks and, under `app.debug`, the controller and the atomic batch
+check.
+_Avoid_: response meta
 
 **Servability**:
 Whether every discovered type can actually be served against its data layer: its columns,

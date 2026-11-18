@@ -24,6 +24,7 @@ use Workbench\App\MusicCatalog\Domain\Device;
 use Workbench\App\MusicCatalog\Domain\Favorite;
 use Workbench\App\MusicCatalog\Domain\Genre;
 use Workbench\App\MusicCatalog\Domain\Library;
+use Workbench\App\MusicCatalog\Domain\Play;
 use Workbench\App\MusicCatalog\Domain\Playlist;
 use Workbench\App\MusicCatalog\Domain\PlaylistEntry;
 use Workbench\App\MusicCatalog\Domain\Product;
@@ -40,10 +41,12 @@ use Workbench\App\MusicCatalog\JsonApi\FavoriteResource;
 use Workbench\App\MusicCatalog\JsonApi\GenreResource;
 use Workbench\App\MusicCatalog\JsonApi\LibraryResource;
 use Workbench\App\MusicCatalog\JsonApi\PlaylistResource;
+use Workbench\App\MusicCatalog\JsonApi\PlayResource;
 use Workbench\App\MusicCatalog\JsonApi\ProductResource;
 use Workbench\App\MusicCatalog\JsonApi\PublicProfileResource;
 use Workbench\App\MusicCatalog\JsonApi\ReissueResource;
 use Workbench\App\MusicCatalog\JsonApi\ReleaseResource;
+use Workbench\App\MusicCatalog\JsonApi\StationResource;
 use Workbench\App\MusicCatalog\JsonApi\TrackResource;
 use Workbench\App\MusicCatalog\JsonApi\UserResource;
 use Workbench\App\MusicCatalog\Listeners\AuditLogSubscriber;
@@ -54,6 +57,7 @@ use Workbench\App\MusicCatalog\Provider\ChartProvider;
 use Workbench\App\MusicCatalog\Provider\CountryProvider;
 use Workbench\App\MusicCatalog\Provider\ExportJobProvider;
 use Workbench\App\MusicCatalog\Provider\OwnAccountProvider;
+use Workbench\App\MusicCatalog\Provider\StationProvider;
 use Workbench\App\MusicCatalog\Query\ArrayFullTextSearchArm;
 use Workbench\App\MusicCatalog\Security\PlaylistApiPolicy;
 use Workbench\App\MusicCatalog\Serializer\ChartSerializer;
@@ -104,11 +108,13 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
             FavoriteResource::class,
             GenreResource::class,
             LibraryResource::class,
+            PlayResource::class,
             PlaylistResource::class,
             ProductResource::class,
             PublicProfileResource::class,
             ReissueResource::class,
             ReleaseResource::class,
+            StationResource::class,
             TrackResource::class,
             UserResource::class,
             // In the bundle example's discovery order, which the document's paths follow.
@@ -180,11 +186,21 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
         $favorites = new InMemoryDataProvider('favorites', $graph['favorites'], identify: self::identify(), assignId: self::assignId());
         JsonApi::provider($favorites);
 
+        $plays = [];
+        foreach (Fixtures::plays() as $row) {
+            $plays[(string) $row['id']] = new Play((string) $row['id'], $row['station'], $row['played_at'], $row['track_id'] === null ? null : ($graph['tracks'][(string) $row['track_id']] ?? null));
+        }
+        JsonApi::provider(new InMemoryDataProvider('plays', $plays, identify: self::identify()));
+
         // The two standalone-serializer types are served by the SAME custom providers the
         // Eloquent wiring uses — charts/countries are storage-orthogonal reference data, so
         // both provider arms read them identically.
         JsonApi::provider(new ChartProvider());
         JsonApi::provider(new CountryProvider());
+
+        // The stations come from a fixed list with no database; their plays are stored rows
+        // read through each play's `station` as the relation's foreign key.
+        JsonApi::provider(new StationProvider());
 
         // The async-write witness types — the SAME custom providers/persister the Eloquent arm
         // uses (storage-orthogonal), so both arms serve catalog-exports/export-jobs identically.

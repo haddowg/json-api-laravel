@@ -87,7 +87,9 @@ Wherever a to-many's `data` renders, included or declared `withData()`, it is th
 serves under the relation's paginator, and its `links` carry `first`, `next` and, for a counted
 page, `last`. `included` holds the same members. A paginated to-many the model happens to hold
 loaded still renders only its first page, since the load-state seam never reports it loaded.
-Declare `withoutPagination()` on a relation whose whole set should render.
+Declare `withoutPagination()` on a relation whose whole set should render. A relation
+[read through a foreign key](#relations-read-through-a-foreign-key) shows its first page
+whatever serves its parent.
 
 ## `?include`
 
@@ -449,6 +451,73 @@ produces the values, so return them in their wire form. They are read-only, so a
 sends them, and a member named `pivot` is refused. See
 [core `relations.md`](https://github.com/haddowg/json-api/blob/main/docs/relations.md) for the
 full reference.
+
+## Relations read through a foreign key
+
+A `HasMany` or `HasOne` declared with a foreign key, its third argument, is read through the
+related type's field or to-one relation that holds the parent's id, never off the parent model.
+The workbench music catalog's `stations` are served by
+[`StationProvider`](../workbench/app/MusicCatalog/Provider/StationProvider.php) from a fixed
+list, with no database behind them, and their plays are stored rows:
+
+```php
+// workbench/app/MusicCatalog/JsonApi/StationResource.php
+HasMany::make('plays', 'plays', 'station'),
+```
+
+`GET /stations/kexp/plays`, `GET /stations/kexp/relationships/plays`,
+`GET /stations?include=plays`, `withData()` linkage, `?withCount=plays`, offset and cursor
+pages, a `relatedQuery` and the related type's filter defaults are all the plays whose `station`
+is the station's id, as the `plays` type's provider scopes them. Each read covers the whole page
+of parents: the Eloquent provider runs it as one `WHERE station IN (...)` query with the related
+model's global scopes applied, cut per parent with `ROW_NUMBER()` like any rendered first page,
+and one grouped query for a count. A cursor page bounded by `page[after]` or `page[before]` is
+read one parent at a time. The in-memory provider matches its stored rows the same way.
+
+Use it wherever the parent can't hold the relation: a singleton or computed type served by a
+[custom provider](custom-data-providers.md), or a model with no relation method for the rows
+that point at it. Once declared, the foreign key decides every read of the relation even when
+the parent's model has a relation method for it, and the load-state seam never reports it
+loaded, so a lazy one renders links only until it is included.
+
+The foreign key names a stored field of the related type holding the parent's id, the parent's
+wire id decoded through its id encoder, or a to-one relation to the parent's type, which on
+Eloquent is a `BelongsTo` of the related model. Route registration and `jsonapi:optimize` check
+it, and check that the related type's provider reads through foreign keys
+(`ReadsByForeignKeyInterface`) and, when the parent can be written, that its persister writes
+them (`WritesForeignKeysInterface`). The Eloquent and in-memory providers and persisters
+implement both.
+
+A relation with no foreign key on a type no Eloquent model serves reads what the parent model
+holds. A to-many's pages, counts and both endpoints are cut in memory from the model's value,
+unless the parent type's provider batches or counts the relation itself, and a `HasOne` reads
+its target off the model. When the related model has global scopes that read can't apply them
+to the parent's members, so `jsonapi:optimize` refuses a to-many into it unless it declares a
+foreign key or `extractUsing()`, and the message names both. A `belongsToMany` with stored pivot
+fields reads its pivot rows through the parent's model, so `jsonapi:optimize` refuses it on such
+a type.
+
+### Writing through a foreign key
+
+A relationship write of a relation declared with a foreign key never reaches the parent type's
+persister. The related type's persister sets the foreign key on the rows the linkage names and
+clears it on the rows that leave:
+
+- a replace points the linked rows at the parent and clears the members it leaves out;
+- an add points the linked rows at the parent, taking each from any parent it had;
+- a remove clears the linked rows that are members, and leaves any other row alone.
+
+A field takes the parent's id as storage holds it, and a to-one relation takes the parent
+itself. The members are the ones the relation's reads serve, so a replace leaves alone a row
+the related model's global scope hides. A write that would clear a foreign key whose column is
+`NOT NULL` is refused with the `403` of the mutation that drops the member, linkage naming a row
+the related type's provider doesn't serve is a `404`, and a row taken from another parent needs
+the `update` ability on that parent or on the row, as any [moved member](#relationship-mutations-and-prohibitions)
+does. `readOnly()`, `cannotReplace()` and the other gates and `cannotChangeMembership()` work as
+on any relation, `cannotChangeMembership()` comparing against the rows the reads serve. The
+write runs in the parent write's transaction with the related persister's own transaction
+joined to it, inside an Atomic Operations batch as well. A foreign-key relation in a create
+body is written once the parent exists, since its id is what the rows hold.
 
 ## Relationship mutations and prohibitions
 

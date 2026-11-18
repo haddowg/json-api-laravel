@@ -22,6 +22,7 @@ use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\BelongsToMany as PivotRelation;
 use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
+use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\LinkRowFields;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
@@ -37,8 +38,10 @@ use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\CriteriaApplier;
 use haddowg\JsonApiLaravel\DataProvider\FetchesManyInterface;
 use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
+use haddowg\JsonApiLaravel\DataProvider\ForeignKeyParents;
 use haddowg\JsonApiLaravel\DataProvider\QueriesFilteredCollectionInterface;
 use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
+use haddowg\JsonApiLaravel\DataProvider\ReadsByForeignKeyInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelatedBatch;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
@@ -108,7 +111,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
  *
  * @extends AbstractDataProvider<object>
  */
-final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, LinkRowQueryInterface, LinkRowKeysInterface
+final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, LinkRowQueryInterface, LinkRowKeysInterface, ReadsByForeignKeyInterface
 {
     private readonly CriteriaApplier $applier;
 
@@ -1108,6 +1111,245 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      *
      * @return array<string, array<string, mixed>>
      */
+    /**
+     * Reads the related rows whose foreign key holds one of the parents' keys, under the
+     * related model's global scopes. A windowed read is bounded per parent in one
+     * `ROW_NUMBER() OVER (PARTITION BY <foreign key> ...)` query, as a mapped to-many's first
+     * pages are, unless a cursor page carries a boundary, when each parent's page is its own
+     * keyset query. An unwindowed read is one query partitioned by the foreign key.
+     */
+    public function fetchByForeignKey(
+        string $relatedType,
+        RelationInterface $relation,
+        ForeignKey $foreignKey,
+        ForeignKeyParents $parents,
+        CollectionCriteria $criteria,
+        JsonApiRequestInterface $request,
+    ): RelatedBatch {
+        if ($parents->isEmpty()) {
+            return new RelatedBatch([]);
+        }
+
+        [$column, $attribute] = $this->foreignKeyColumn($relatedType, $foreignKey);
+        $window = $criteria->window;
+
+        if ($window instanceof CursorWindow) {
+            return $window->after === null && $window->before === null
+                ? $this->foreignKeyCursorWindow($relatedType, $column, $attribute, $parents, $criteria, $window)
+                : $this->foreignKeyPages($relatedType, $column, $parents, $criteria, $window);
+        }
+
+        $builder = $this->foreignKeyQuery($relatedType, $column, $parents);
+        $builder = $this->applier->apply($criteria, $builder, $this->filterHandler, $this->sortHandler);
+
+        if ($window instanceof OffsetWindow) {
+            $related = $builder->getModel();
+            $builder->orderBy($related->qualifyColumn($related->getKeyName()), 'asc');
+            if ($window->offset > 0) {
+                $builder->offset($window->offset);
+            }
+
+            $countable = $criteria->wantsCount;
+            $builder->getQuery()->groupLimit($countable ? $window->limit : $window->limit + 1, $column);
+            $totals = $countable ? $this->countByForeignKey($relatedType, $relation, $foreignKey, $parents, $criteria, $request) : [];
+
+            $results = [];
+            foreach ($this->partitionByForeignKey($builder->get()->all(), $attribute, $parents) as $wireId => $items) {
+                $hasMore = !$countable && \count($items) > $window->limit;
+                $results[$wireId] = new CollectionResult(
+                    \array_slice($items, 0, $window->limit),
+                    total: $countable ? ($totals[$wireId] ?? 0) : null,
+                    windowed: true,
+                    hasMore: $hasMore,
+                );
+            }
+
+            return new RelatedBatch($results);
+        }
+
+        $results = [];
+        foreach ($this->partitionByForeignKey($builder->get()->all(), $attribute, $parents) as $wireId => $items) {
+            $results[$wireId] = $this->windowExecutor->run(
+                null,
+                countable: $criteria->wantsCount,
+                all: static fn(): array => $items,
+                count: static fn(): int => \count($items),
+                page: static fn(int $offset, int $limit): array => \array_slice($items, $offset, $limit),
+                probe: static fn(int $offset, int $limit): array => \array_slice($items, $offset, $limit),
+            );
+        }
+
+        return new RelatedBatch($results);
+    }
+
+    /**
+     * Counts each parent's related rows whose foreign key holds its key, over `$criteria`'s
+     * filters and the related model's global scopes, in one grouped query. A parent with no
+     * rows counts `0`.
+     */
+    public function countByForeignKey(
+        string $relatedType,
+        RelationInterface $relation,
+        ForeignKey $foreignKey,
+        ForeignKeyParents $parents,
+        CollectionCriteria $criteria,
+        JsonApiRequestInterface $request,
+    ): array {
+        $counts = \array_fill_keys($parents->wireIds(), 0);
+        if ($parents->isEmpty()) {
+            return $counts;
+        }
+
+        [$column] = $this->foreignKeyColumn($relatedType, $foreignKey);
+        $builder = $this->applier->apply($this->filtersOnly($criteria), $this->foreignKeyQuery($relatedType, $column, $parents), $this->filterHandler, $this->sortHandler);
+
+        $rows = $builder->toBase()
+            ->select([$column . ' as jsonapi_parent'])
+            ->selectRaw('count(*) as jsonapi_count')
+            ->groupBy($column)
+            ->get();
+
+        foreach ($rows as $row) {
+            $row = (array) $row;
+            $wireId = $parents->wireIdOf($row['jsonapi_parent'] ?? null);
+            if ($wireId !== null) {
+                $counts[$wireId] = \is_numeric($row['jsonapi_count'] ?? null) ? (int) $row['jsonapi_count'] : 0;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
+     * The first cursor page of each parent's rows in one `ROW_NUMBER` query, ordered by the
+     * resolved keyset columns and probed one row past the page, each partition minted as its
+     * related endpoint mints its first page.
+     */
+    private function foreignKeyCursorWindow(string $relatedType, string $column, string $attribute, ForeignKeyParents $parents, CollectionCriteria $criteria, CursorWindow $window): RelatedBatch
+    {
+        $builder = $this->foreignKeyQuery($relatedType, $column, $parents);
+        $related = $builder->getModel();
+        $columns = $this->keysetResolver->resolve(
+            $criteria->queryParameters->sort,
+            $criteria->sorts,
+            $criteria->defaultSort,
+            $related->getKeyName(),
+            request: $criteria->request,
+        );
+
+        $this->applier->apply($this->filtersOnly($criteria), $builder, $this->filterHandler, $this->sortHandler);
+        (new EloquentKeyset($related, $this->sortHandler))->orderBy($builder, $columns);
+        $builder->getQuery()->groupLimit($window->limit + 1, $column);
+
+        $readValue = static fn(object $row, string $keysetColumn): string|int|float|bool|null => CursorTokenMinter::coerce(self::keysetValue($row, $keysetColumn, null));
+
+        $results = [];
+        foreach ($this->partitionByForeignKey($builder->get()->all(), $attribute, $parents) as $wireId => $items) {
+            $hasSurplus = \count($items) > $window->limit;
+            $results[$wireId] = $this->minter->mint($window, $columns, \array_slice($items, 0, $window->limit), $hasSurplus, $readValue);
+        }
+
+        return new RelatedBatch($results);
+    }
+
+    /**
+     * Each parent's cursor page read on its own, as one keyset query scoped by the foreign
+     * key: the fallback for a page bounded by `page[after]` or `page[before]`.
+     */
+    private function foreignKeyPages(string $relatedType, string $column, ForeignKeyParents $parents, CollectionCriteria $criteria, CursorWindow $window): RelatedBatch
+    {
+        $results = [];
+        foreach ($parents->wireIds() as $wireId) {
+            $results[$wireId] = $this->runCursor($this->foreignKeyQuery($relatedType, $column, $parents->only($wireId)), $criteria, $window);
+        }
+
+        return new RelatedBatch($results);
+    }
+
+    /**
+     * A query of the related model, with its global scopes, narrowed to the rows whose foreign
+     * key `$column` holds one of the parents' keys.
+     *
+     * @return Builder<Model>
+     */
+    private function foreignKeyQuery(string $relatedType, string $column, ForeignKeyParents $parents): Builder
+    {
+        $builder = $this->newQuery($relatedType);
+        $builder->select($builder->getModel()->qualifyColumn('*'));
+        $keys = \array_values(\array_filter($parents->keys, static fn(mixed $key): bool => \is_scalar($key) || $key instanceof \Stringable));
+
+        return $keys === [] ? $builder->whereRaw('1 = 0') : $builder->whereIn($column, $keys);
+    }
+
+    /**
+     * The qualified column the foreign key is stored in on the related model, and the attribute
+     * a row holds it under: a field's own column, or the foreign key of a to-one's `BelongsTo`.
+     *
+     * @return array{0: string, 1: string}
+     *
+     * @throws \LogicException when a to-one foreign key names no `BelongsTo` of the related model
+     */
+    private function foreignKeyColumn(string $relatedType, ForeignKey $foreignKey): array
+    {
+        $model = $this->newQuery($relatedType)->getModel();
+        if (!$foreignKey->isRelation()) {
+            return [$model->qualifyColumn($foreignKey->column), $foreignKey->column];
+        }
+
+        $belongsTo = self::belongsToOf($model, $foreignKey->column);
+        if ($belongsTo === null) {
+            throw new \LogicException(\sprintf(
+                'The foreign key "%s" of type "%s" is a to-one relation, but %s has no BelongsTo method "%s" to read it through.',
+                $foreignKey->name,
+                $relatedType,
+                $model::class,
+                $foreignKey->column,
+            ));
+        }
+
+        return [$belongsTo->getQualifiedForeignKeyName(), $belongsTo->getForeignKeyName()];
+    }
+
+    /**
+     * The `BelongsTo` `$model` declares as `$method`, or `null` when it declares none.
+     *
+     * @return BelongsTo<Model, Model>|null
+     */
+    public static function belongsToOf(Model $model, string $method): ?BelongsTo
+    {
+        if (!\method_exists($model, $method)) {
+            return null;
+        }
+
+        $relation = $model->{$method}();
+
+        return $relation instanceof BelongsTo ? $relation : null;
+    }
+
+    /**
+     * `$rows` grouped by the parent their foreign key attribute holds, in query order. A row
+     * of no parent is dropped.
+     *
+     * @param array<array-key, mixed> $rows
+     *
+     * @return array<string, list<object>>
+     */
+    private function partitionByForeignKey(array $rows, string $attribute, ForeignKeyParents $parents): array
+    {
+        $partitions = [];
+        foreach ($rows as $row) {
+            if (!$row instanceof Model) {
+                continue;
+            }
+            $wireId = $parents->wireIdOf($row->getAttribute($attribute));
+            if ($wireId !== null) {
+                $partitions[$wireId][] = $row;
+            }
+        }
+
+        return $partitions;
+    }
+
     /**
      * Queries an identified `MorphToMany` declared with `identifiedByRows()` in SQL, from its
      * link-row fields alone: the rows of its `through()` model whose owner field is the parent,

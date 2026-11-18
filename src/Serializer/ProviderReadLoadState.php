@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Serializer;
 
 use haddowg\JsonApi\Exception\NoResourceRegistered;
+use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Serializer\RelationshipLoadStateInterface;
 use haddowg\JsonApi\Server\Server;
@@ -41,7 +42,7 @@ final class ProviderReadLoadState implements RelationshipLoadStateInterface
 
     public function isRelationshipLoaded(mixed $model, RelationInterface $relation): bool
     {
-        if (!$this->inner->isRelationshipLoaded($model, $relation)) {
+        if (self::readsByForeignKey($relation) || !$this->inner->isRelationshipLoaded($model, $relation)) {
             return false;
         }
 
@@ -49,11 +50,21 @@ final class ProviderReadLoadState implements RelationshipLoadStateInterface
     }
 
     /**
-     * Whether the model already holds the relation's value, as storage reports it.
+     * Whether the model already holds the relation's value, as storage reports it. It never
+     * holds a relation read through a foreign key.
      */
     public function isLoadedOnModel(mixed $model, RelationInterface $relation): bool
     {
-        return $this->inner->isRelationshipLoaded($model, $relation);
+        return !self::readsByForeignKey($relation) && $this->inner->isRelationshipLoaded($model, $relation);
+    }
+
+    /**
+     * Whether `$relation` is read through a foreign key, so the model never holds it and a lazy
+     * one renders links only until it is included.
+     */
+    private static function readsByForeignKey(RelationInterface $relation): bool
+    {
+        return ForeignKey::nameOf($relation) !== null && \count($relation->relatedTypes()) === 1;
     }
 
     private function readsThroughProvider(RelationInterface $relation): bool

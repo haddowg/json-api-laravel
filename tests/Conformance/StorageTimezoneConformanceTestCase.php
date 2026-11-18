@@ -88,9 +88,17 @@ abstract class StorageTimezoneConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:fetching-filtering')]
-    public function aBoundWithoutAnOffsetIsReadAsLocalTime(): void
+    #[Group('spec:errors')]
+    public function aBoundWithoutAnOffsetIsRefused(): void
     {
-        self::assertSame(['1', '3'], $this->sortedIds('/api/shifts?filter[startsRange][min]=2026-10-01T11:00:00'));
+        // A bound is documented as an RFC 3339 date-time, which always names its offset.
+        foreach (['2026-10-01T11:00:00', '2026-10-01 11:00', '2026-10-01'] as $bound) {
+            $response = $this->jsonApi()->get('/api/shifts?filter[startsRange][min]=' . \rawurlencode($bound));
+
+            $response->assertStatus(400);
+            self::assertSame('FILTER_VALUE_INVALID', $response->json('errors.0.code'), $bound);
+            self::assertSame('filter[startsRange]', $response->json('errors.0.source.parameter'));
+        }
     }
 
     #[Test]
@@ -105,11 +113,27 @@ abstract class StorageTimezoneConformanceTestCase extends Orchestra
     #[Group('spec:fetching-filtering')]
     public function aDateColumnComparesTheDayTheClientWrote(): void
     {
-        // Moving midnight UTC into New York would make it 30 September and pull in
-        // shift 2, so a date column keeps the bound's own calendar day.
+        // A bound over a Date column is a full date, and every provider compares the
+        // calendar day it names, so no zone can move it to 30 September and pull in
+        // shift 2.
         self::assertSame(['1', '3'], $this->sortedIds('/api/shifts?filter[dayRange][min]=2026-10-01'));
-        self::assertSame(['1', '3'], $this->sortedIds('/api/shifts?filter[dayRange][min]=2026-10-01T00:00:00Z'));
         self::assertSame(['1', '2'], $this->sortedIds('/api/shifts?filter[dayRange][max]=2026-10-01'));
+        self::assertSame(['1'], $this->sortedIds('/api/shifts?filter[dayRange][min]=2026-10-01&filter[dayRange][max]=2026-10-01'));
+    }
+
+    #[Test]
+    #[Group('spec:fetching-filtering')]
+    #[Group('spec:errors')]
+    public function aDateColumnBoundTakesOnlyAFullDate(): void
+    {
+        // The range is documented as format date, as the Date field it compares is.
+        foreach (['2026-10-01T00:00:00Z', '2026-10-01 00:00', 'yesterday'] as $bound) {
+            $response = $this->jsonApi()->get('/api/shifts?filter[dayRange][min]=' . \rawurlencode($bound));
+
+            $response->assertStatus(400);
+            self::assertSame('FILTER_VALUE_INVALID', $response->json('errors.0.code'), $bound);
+            self::assertSame('filter[dayRange]', $response->json('errors.0.source.parameter'));
+        }
     }
 
     #[Test]
@@ -176,6 +200,90 @@ abstract class StorageTimezoneConformanceTestCase extends Orchestra
 
         $response->assertStatus(422);
         self::assertSame('/data/attributes/startsAt', $response->json('errors.0.source.pointer'));
+    }
+
+    #[Test]
+    #[Group('crud:create')]
+    #[Group('spec:errors')]
+    public function aDateThatIsNotRfc3339IsA422AtTheAttribute(): void
+    {
+        foreach (self::refusedDates() as [$field, $value]) {
+            $response = $this->write('POST', '/api/shifts', ['data' => [
+                'type' => 'shifts',
+                'attributes' => [$field => $value],
+            ]]);
+
+            self::assertRefusedAt($response, $field, $value);
+        }
+    }
+
+    #[Test]
+    #[Group('crud:update')]
+    #[Group('spec:errors')]
+    public function anUpdateWithADateThatIsNotRfc3339IsA422AtTheAttribute(): void
+    {
+        foreach (self::refusedDates() as [$field, $value]) {
+            $response = $this->write('PATCH', '/api/shifts/2', ['data' => [
+                'type' => 'shifts',
+                'id' => '2',
+                'attributes' => [$field => $value],
+            ]]);
+
+            self::assertRefusedAt($response, $field, $value);
+        }
+
+        $fetched = $this->jsonApi()->get('/api/shifts/2');
+        $fetched->assertOk();
+        self::assertSame('2026-10-01T14:00:00+00:00', $fetched->json('data.attributes.startsAt'));
+    }
+
+    #[Test]
+    #[Group('crud:create')]
+    public function anRfc3339DateReachesTheFillUsingHook(): void
+    {
+        $created = $this->write('POST', '/api/shifts', ['data' => [
+            'type' => 'shifts',
+            'attributes' => ['rescheduledTo' => '2026-10-03T16:00:00Z'],
+        ]]);
+        $created->assertStatus(201);
+
+        $id = $created->json('data.id');
+        self::assertIsString($id);
+        $fetched = $this->jsonApi()->get('/api/shifts/' . $id);
+        $fetched->assertOk();
+        self::assertSame('2026-10-03T16:00:00+00:00', $fetched->json('data.attributes.startsAt'));
+    }
+
+    /**
+     * A relative date and a date-time with no offset, through a plain field and through
+     * one whose fillUsing() hook receives the raw string.
+     *
+     * @return list<array{string, string}>
+     */
+    private static function refusedDates(): array
+    {
+        $dates = [];
+        foreach (['startsAt', 'rescheduledTo'] as $field) {
+            foreach (['last year', '2026-10-03T16:00:00', '2026-10-03 16:00'] as $value) {
+                $dates[] = [$field, $value];
+            }
+        }
+
+        return $dates;
+    }
+
+    /**
+     * Laravel answers a date its validator refuses as it answers any unparseable date,
+     * a 422 VALIDATION_FAILED at the attribute, before core's cast is reached.
+     *
+     * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
+     */
+    private static function assertRefusedAt(TestResponse $response, string $field, string $value): void
+    {
+        $message = $field . ' = ' . $value . ': ' . $response->getContent();
+        self::assertSame(422, $response->getStatusCode(), $message);
+        self::assertSame(['VALIDATION_FAILED'], \array_column((array) $response->json('errors'), 'code'), $message);
+        self::assertSame('/data/attributes/' . $field, $response->json('errors.0.source.pointer'), $message);
     }
 
     /**

@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Workbench\App\MusicCatalog\Action;
 
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\DeclaresActionDocumentMetaInterface;
 use haddowg\JsonApi\Resource\Field\Accessor;
+use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Response\DataResponse;
 use haddowg\JsonApiLaravel\Action\ActionContext;
 use haddowg\JsonApiLaravel\Action\ActionHandlerInterface;
@@ -22,7 +24,9 @@ use Workbench\App\MusicCatalog\Model\Reissue;
  * type, hydrated into the blank {@see Reissue} {@see newInput()} supplies. It reads the
  * target album (`{id}` resolved to the entity), applies the reissue's `releasedAt`, persists
  * through the `albums` persister, and returns the updated album. `ability: 'reissueAlbum'`
- * gates it through the package Authorizer / Gate (a denied requester is a `403`).
+ * gates it through the package Authorizer / Gate (a denied requester is a `403`). Its
+ * document's top-level meta declares the release date the album had before, which the
+ * handler sets.
  */
 #[AsJsonApiAction(
     type: 'albums',
@@ -33,9 +37,21 @@ use Workbench\App\MusicCatalog\Model\Reissue;
     tags: ['Catalog'],
     asLink: true,
 )]
-final readonly class ReissueAlbum implements ActionHandlerInterface, ActionInputFactoryInterface
+final readonly class ReissueAlbum implements ActionHandlerInterface, ActionInputFactoryInterface, DeclaresActionDocumentMetaInterface
 {
     public function __construct(private DataPersisterRegistry $persisters) {}
+
+    public function documentMeta(int $status): iterable
+    {
+        return match ($status) {
+            200 => [
+                DateTime::make('previousReleasedAt')->required()->nullable()
+                    ->describedAs('The release date the album had before this reissue.')
+                    ->example('1997-05-21T00:00:00+00:00'),
+            ],
+            default => [],
+        };
+    }
 
     public function newInput(JsonApiRequestInterface $body): object
     {
@@ -49,10 +65,11 @@ final readonly class ReissueAlbum implements ActionHandlerInterface, ActionInput
 
         $input = $context->input();
         \assert($input instanceof Reissue);
+        $previous = Accessor::get($album, 'released_at');
         Accessor::set($album, 'released_at', $input->releasedAt);
 
         $persisted = $this->persisters->forType('albums')->update('albums', $album);
 
-        return $context->data($persisted);
+        return $context->data($persisted)->withMeta(['previousReleasedAt' => $previous instanceof \DateTimeInterface ? $previous->format(\DATE_ATOM) : null]);
     }
 }

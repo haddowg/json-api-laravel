@@ -142,6 +142,11 @@ HasMany::make('tags', 'tags')->withoutPagination(),
 The Eloquent provider reads a relation's first pages for the whole page of parents in one
 bounded query (see [eloquent](eloquent.md#windowed-relationship-queries--sql-push-down-only)).
 
+Every rendered to-many gets its first page whatever serves its parent. A relation the parent
+model can't hold, such as one on a singleton a custom provider serves, declares a
+[foreign key](relationships.md#relations-read-through-a-foreign-key), and the related type's
+provider cuts every parent's first page from one query.
+
 ## Relationship pagination
 
 A related to-many paginates independently — declare it on the relation. Per-parent windowing

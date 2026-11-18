@@ -47,7 +47,7 @@ guard.
 | `beforeUpdate` | `(object $entity, object $original, HookContext $context)` | `void` |
 | `afterUpdate` | `(object $entity, HookContext $context)` | `?DataResponse` |
 | `beforeDelete` | `(object $entity, HookContext $context)` | `void` |
-| `afterDelete` | `(object $entity, HookContext $context)` | `DataResponse\|NoContentResponse\|null` |
+| `afterDelete` | `(object $entity, HookContext $context)` | `DataResponse\|MetaResponse\|NoContentResponse\|null` |
 | `beforeRelationshipMutate` | `(object $parent, HookContext $context)` | `void` |
 | `afterRelationshipMutate` | `(object $parent, HookContext $context)` | `?IdentifierResponse` |
 | `afterFetchOne` | `(object $entity, HookContext $context)` | `?DataResponse` |
@@ -79,6 +79,8 @@ you need.
   `afterDelete`. Returning `null` keeps the default response. A replacement `DataResponse`
   that renders other resources has their relations loaded through their providers as a
   read would, so its linkage and `included` are scoped the same.
+  `afterDelete` may also answer a meta-only `MetaResponse`, which is filled with the
+  [delete's typed meta](openapi.md#typed-document-meta).
 
 ## `HookContext`
 

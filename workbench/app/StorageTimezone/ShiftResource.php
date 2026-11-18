@@ -22,6 +22,14 @@ class ShiftResource extends AbstractResource
             Id::make()->sortable(),
             DateTime::make('startsAt')->storedAs('starts_at')->nullable()->sortable(),
             Date::make('day')->nullable(),
+            // A hook that receives the raw string, to show it is held to the same shape.
+            DateTime::make('rescheduledTo')->writeOnly()->fillUsing(static function (mixed $shift, mixed $value): mixed {
+                if (\is_string($value) && ($shift instanceof Models\Shift || $shift instanceof Domain\Shift)) {
+                    $shift->starts_at = (new \DateTimeImmutable($value))->setTimezone(new \DateTimeZone(\date_default_timezone_get()));
+                }
+
+                return $shift;
+            }),
         ];
     }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\DataProvider;
 
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 
@@ -145,6 +146,36 @@ final class DataProviderRegistry
     }
 
     /**
+     * Whether `$relation` is a monomorphic to-many with no foreign key whose members are the
+     * ones its `$parentType` parent model holds: its related type is served by a reference
+     * provider (Eloquent, in-memory), whose related read is the parent's own relation, while
+     * the parent is served by another provider. Unless that provider batches or counts it,
+     * its pages and counts are cut in memory from the model's value, as its related endpoint
+     * cuts them.
+     */
+    public function readsOffModel(string $parentType, RelationInterface $relation): bool
+    {
+        $relatedTypes = $relation->relatedTypes();
+        if (!$relation->isToMany() || \count($relatedTypes) !== 1 || ForeignKey::nameOf($relation) !== null
+            || !$this->supportsType($relatedTypes[0])) {
+            return false;
+        }
+
+        $related = $this->forType($relatedTypes[0]);
+        if (!$related instanceof EloquentDataProvider && !$related instanceof InMemoryDataProvider) {
+            return false;
+        }
+
+        if (!$this->supportsType($parentType)) {
+            return true;
+        }
+
+        $parent = $this->forType($parentType);
+
+        return !$parent instanceof EloquentDataProvider && !$parent instanceof InMemoryDataProvider;
+    }
+
+    /**
      * Fetches `$relation`'s related members for every parent in `$parents`, keyed by each
      * parent's wire id, in one {@see DataProviderInterface::fetchRelatedCollectionBatch()}: the
      * parent type's batch when that matches the related endpoint, otherwise the related type's
@@ -170,12 +201,16 @@ final class DataProviderRegistry
         $reader = $this->scopedRelatedProvider($parentType, $relatedType) ?? $this->forType($parentType);
         $batch = $reader->fetchRelatedCollectionBatch($parentType, $parents, $relation, $criteria, $request);
 
+        // A parent the batch leaves out is read as its related endpoint reads it: by the related
+        // type's provider when its members are the ones its model holds.
+        $single = $this->readsOffModel($parentType, $relation) ? $this->forType($relatedType) : $reader;
+
         $results = [];
         foreach ($parents as $parent) {
             $wireId = $wireIdOf($parent);
             $results[$wireId] = $batch->has($wireId)
                 ? $batch->for($wireId)
-                : $reader->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
+                : $single->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
         }
 
         return new RelatedBatch($results);

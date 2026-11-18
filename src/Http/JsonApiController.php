@@ -12,22 +12,27 @@ use haddowg\JsonApi\Exception\MediaTypeUnsupported;
 use haddowg\JsonApi\Negotiation\RequestValidator;
 use haddowg\JsonApi\Operation\AtomicOperationsOperation;
 use haddowg\JsonApi\Operation\CustomActionOperation;
+use haddowg\JsonApi\Operation\DeleteResourceOperation;
 use haddowg\JsonApi\Operation\OperationContext;
 use haddowg\JsonApi\Operation\OperationFactory;
 use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Operation\Target;
 use haddowg\JsonApi\Request\JsonApiRequest;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\DocumentMeta;
+use haddowg\JsonApi\Response\MetaResponse;
 use haddowg\JsonApi\Response\RawResponse;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Action\ActionContext;
 use haddowg\JsonApiLaravel\Action\ActionInput;
 use haddowg\JsonApiLaravel\Action\ActionRegistry;
 use haddowg\JsonApiLaravel\Action\ActionScope;
+use haddowg\JsonApiLaravel\Operation\DocumentMetaResolver;
 use haddowg\JsonApiLaravel\Operation\SingletonIdResolver;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use Illuminate\Http\Request;
+use Psr\Http\Message\ResponseInterface;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
 use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
 use Symfony\Component\HttpFoundation\Response;
@@ -84,6 +89,9 @@ final class JsonApiController
         // Operations result's `describedby` can name its `POST` operation.
         private readonly string $atomicPath = '/operations',
         private readonly SingletonIdResolver $singletons = new SingletonIdResolver(),
+        // In debug mode a declaring operation's top-level meta is checked against its
+        // declaration; production checks nothing.
+        private readonly ?DocumentMetaResolver $documentMeta = null,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -145,7 +153,40 @@ final class JsonApiController
         // A raw body read from a stream goes out as it is read rather than buffered first.
         $streamed = $response instanceof RawResponse && !\is_string($response->body());
 
-        return $this->httpFoundationFactory->createResponse($response->toPsrResponse($server, $jsonApiRequest), $streamed);
+        $psrResponse = $response->toPsrResponse($server, $jsonApiRequest);
+
+        // A delete's declared meta is its meta-only document's, not a resource an After hook rendered.
+        if (!$streamed && $this->documentMeta?->checks() === true && !$response instanceof RawResponse
+            && !($operation instanceof DeleteResourceOperation && !$response instanceof MetaResponse)) {
+            $this->checkDocumentMeta($this->documentMeta->forOperation($server, $serverName, $operation, $psrResponse->getStatusCode()), $psrResponse);
+        }
+
+        return $this->httpFoundationFactory->createResponse($psrResponse, $streamed);
+    }
+
+    /**
+     * Refuses a success document whose top-level meta does not match its declaration.
+     *
+     * @throws \haddowg\JsonApi\Resource\DocumentMetaMismatch
+     */
+    private function checkDocumentMeta(DocumentMeta $declared, ResponseInterface $response): void
+    {
+        if ($declared->isEmpty() || $response->getStatusCode() >= 300) {
+            return;
+        }
+
+        $body = $response->getBody();
+        $content = (string) $body;
+        if ($content === '') {
+            return;
+        }
+        $document = \json_decode($content, true, flags: \JSON_THROW_ON_ERROR);
+        if ($body->isSeekable()) {
+            $body->rewind();
+        }
+        $meta = \is_array($document) ? ($document['meta'] ?? []) : [];
+
+        $declared->assertSatisfiedBy(\is_array($meta) ? $meta : []);
     }
 
     /**
@@ -273,7 +314,7 @@ final class JsonApiController
             $actionName,
             \strtoupper($jsonApiRequest->getMethod()),
             $body,
-            responds: $descriptor?->declaredResponses() ?? [],
+            responds: $descriptor !== null && $this->actions !== null ? $this->actions->declaredResponsesFor($descriptor) : [],
         );
     }
 

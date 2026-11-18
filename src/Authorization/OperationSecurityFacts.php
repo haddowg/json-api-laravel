@@ -12,6 +12,7 @@ use haddowg\JsonApi\OpenApi\Metadata\OperationKind;
 use haddowg\JsonApi\OpenApi\Metadata\RelationMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\TypeMetadataInterface;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
+use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\HasMany;
 use haddowg\JsonApi\Resource\Field\HasOne;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
@@ -187,6 +188,8 @@ final class OperationSecurityFacts
         $persister = $this->persisters->forType($type);
         $definition = $relation instanceof RelationMetadata ? $relation->relation() : null;
         $moves = match (true) {
+            // A write through a foreign key can point any related row at the parent.
+            $definition !== null && ForeignKey::nameOf($definition) !== null => true,
             !$persister instanceof ReportsCurrentOwners => false,
             $persister instanceof EloquentDataPersister && $definition !== null => $persister->canMoveMembers($type, $definition),
             $persister instanceof InMemoryDataPersister && $definition !== null => $definition instanceof HasOne || ($definition instanceof HasMany && !$definition instanceof BelongsToMany),

@@ -13,8 +13,10 @@ use haddowg\JsonApi\OpenApi\Metadata\TypeMetadataInterface;
 use haddowg\JsonApi\OpenApi\Tag;
 use haddowg\JsonApi\Pagination\CursorPaginator;
 use haddowg\JsonApi\Pagination\PaginatorInterface;
+use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Serializer\DeclaresDocumentMetaInterface;
 use haddowg\JsonApi\Serializer\IncludeControlsInterface;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
@@ -24,6 +26,7 @@ use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataPersister\Eloquent\EloquentDataPersister;
 use haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister;
+use haddowg\JsonApiLaravel\DataPersister\WritesForeignKeysInterface;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
@@ -417,7 +420,17 @@ final class MetadataSource
             excludedIncludePaths: self::includeControls($server, $type)?->getExcludedIncludePaths() ?? [],
             maxIncludeDepth: self::includeControls($server, $type)?->maxIncludeDepth(),
             singleton: $descriptor->singleton,
+            documentMeta: self::documentMetaDeclarer($server->hasSerializerFor($type) ? $server->serializerFor($type) : null),
         );
+    }
+
+    /**
+     * The resource, or a composed type's serializer, when it declares its top-level
+     * document meta.
+     */
+    private static function documentMetaDeclarer(?object $declarer): ?DeclaresDocumentMetaInterface
+    {
+        return $declarer instanceof DeclaresDocumentMetaInterface ? $declarer : null;
     }
 
     /**
@@ -508,6 +521,7 @@ final class MetadataSource
             excludedIncludePaths: self::includeControls($server, $type)?->getExcludedIncludePaths() ?? [],
             maxIncludeDepth: self::includeControls($server, $type)?->maxIncludeDepth(),
             singleton: $descriptor->singleton,
+            documentMeta: self::documentMetaDeclarer($resource ?? ($server->hasSerializerFor($type) ? $server->serializerFor($type) : null)),
         );
     }
 
@@ -640,9 +654,27 @@ final class MetadataSource
             $this->includePaths->relatedPathsFor($server, $relation),
             $alwaysCounts,
             $ownerServesEndpoints,
-            static fn(): bool => self::canRefuseDetachment($persister, $type, $relation),
+            fn(): bool => $this->refusesForeignKeyDetachment($server, $relation) ?? self::canRefuseDetachment($persister, $type, $relation),
             fn(): bool => $this->canMissLinkage($persister, $relation),
         );
+    }
+
+    /**
+     * Whether a write through `$relation`'s foreign key can be refused for clearing a key its
+     * storage requires, as the related type's persister reports it, or `null` when the relation
+     * declares no foreign key.
+     */
+    private function refusesForeignKeyDetachment(Server $server, RelationInterface $relation): ?bool
+    {
+        if (ForeignKey::nameOf($relation) === null) {
+            return null;
+        }
+
+        $foreignKey = ForeignKey::of($relation, $server);
+        $relatedType = $relation->relatedTypes()[0] ?? '';
+        $writer = $this->persisters?->supportsType($relatedType) === true ? $this->persisters->forType($relatedType) : null;
+
+        return $foreignKey === null || !$writer instanceof WritesForeignKeysInterface || $writer->requiresForeignKey($relatedType, $foreignKey);
     }
 
     /**
