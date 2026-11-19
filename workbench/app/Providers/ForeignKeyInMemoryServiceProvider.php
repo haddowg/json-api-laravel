@@ -17,12 +17,16 @@ use Workbench\App\ForeignKey\Domain\FkNote;
 use Workbench\App\ForeignKey\Domain\FkProfile;
 use Workbench\App\ForeignKey\Domain\FkSecret;
 use Workbench\App\ForeignKey\Domain\FkTeam;
+use Workbench\App\ForeignKey\FkGrantPersister;
+use Workbench\App\ForeignKey\FkGrantProvider;
+use Workbench\App\ForeignKey\FkGrantResource;
 use Workbench\App\ForeignKey\FkImportResource;
 use Workbench\App\ForeignKey\FkInboxResource;
 use Workbench\App\ForeignKey\FkItemResource;
 use Workbench\App\ForeignKey\FkMemberResource;
 use Workbench\App\ForeignKey\FkNoteResource;
 use Workbench\App\ForeignKey\FkProfileResource;
+use Workbench\App\ForeignKey\FkRevisableGrantResource;
 use Workbench\App\ForeignKey\FkSecretResource;
 use Workbench\App\ForeignKey\FkTeamResource;
 use Workbench\App\ForeignKey\FkUserPersister;
@@ -30,6 +34,7 @@ use Workbench\App\ForeignKey\FkUserProvider;
 use Workbench\App\ForeignKey\FkUserResource;
 use Workbench\App\ForeignKey\ForeignKeySeed;
 use Workbench\App\ForeignKey\ImportSecretsAction;
+use Workbench\App\ForeignKey\StampGrantAction;
 
 /**
  * The foreign-key suite with its related rows in memory, over {@see ForeignKeySeed}: a member's
@@ -50,6 +55,9 @@ final class ForeignKeyInMemoryServiceProvider extends ServiceProvider
             FkMemberResource::class,
             FkImportResource::class,
             ImportSecretsAction::class,
+            FkGrantResource::class,
+            FkRevisableGrantResource::class,
+            StampGrantAction::class,
         ]);
 
         /** @var InMemorySnapshotCoordinator $coordinator */
@@ -83,6 +91,10 @@ final class ForeignKeyInMemoryServiceProvider extends ServiceProvider
 
         JsonApi::provider(new FkUserProvider(fn(): DataProviderRegistry => $this->app->make(DataProviderRegistry::class)));
         JsonApi::persister(new FkUserPersister());
+
+        $grants = new FkGrantProvider();
+        JsonApi::provider($grants);
+        JsonApi::persister(new FkGrantPersister($grants));
     }
 
     private static function identify(): \Closure
