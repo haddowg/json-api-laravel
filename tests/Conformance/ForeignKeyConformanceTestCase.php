@@ -19,7 +19,9 @@ use PHPUnit\Framework\Attributes\Test;
  * parent's id, on every read path, whatever serves the parent: `fk-users` and the `/inbox`
  * singleton come from a custom provider holding none of their rows, and `fk-teams` is a type
  * whose model declares no relation to its members. Its relationship writes set or clear the
- * key on the related rows. Asserted identically on the in-memory
+ * key on the related rows. `fk-grants` and `fk-revisable-grants`, also provider-served, take
+ * write-only secrets under no foreign key, and reading what a grant holds of them throws, so
+ * each write path that sets them shows whether it reads the current members. Asserted identically on the in-memory
  * ({@see InMemoryForeignKeyConformanceTest}) and Eloquent
  * ({@see EloquentForeignKeyConformanceTest}) wirings over
  * {@see \Workbench\App\ForeignKey\ForeignKeySeed}.
@@ -84,6 +86,84 @@ abstract class ForeignKeyConformanceTestCase extends Orchestra
         $data = $this->decode($response)['data'] ?? null;
         self::assertIsArray($data);
         self::assertSame('ada', $data['id'] ?? null);
+    }
+
+    #[Test]
+    public function aCreateSetsAWriteOnlyToManyWithoutReadingItsMembers(): void
+    {
+        $response = $this->jsonApi()
+            ->withData(['type' => 'fk-grants', 'relationships' => ['secrets' => ['data' => [['type' => 'fk-secrets', 'id' => '1']]]]])
+            ->post('/api/fk-grants')
+            ->assertCreated();
+
+        $grant = $this->decode($response)['data'] ?? null;
+        self::assertSame(['1'], $this->attribute($grant, 'received'));
+        self::assertIsArray($grant);
+        self::assertArrayNotHasKey('secrets', \is_array($grant['relationships'] ?? null) ? $grant['relationships'] : []);
+
+        $read = $this->fetch('/fk-grants/g2')['data'] ?? null;
+        self::assertSame(['1'], $this->attribute($read, 'received'));
+    }
+
+    #[Test]
+    public function noQueryOnACreateReachesAWriteOnlyToMany(): void
+    {
+        $document = ['type' => 'fk-grants', 'relationships' => ['secrets' => ['data' => [['type' => 'fk-secrets', 'id' => '1']]]]];
+        foreach (['include=secrets', 'withCount=secrets', 'relatedQuery[secrets][sort]=label'] as $query) {
+            $this->jsonApi()->withProfile(self::COUNTABLE_PROFILE, self::RELATIONSHIP_QUERIES_PROFILE)->withData($document)->post('/api/fk-grants?' . $query)->assertStatus(400);
+        }
+
+        $sparse = $this->jsonApi()->withData($document)->post('/api/fk-grants?fields[fk-grants]=secrets')->assertCreated();
+        $grant = $this->decode($sparse)['data'] ?? null;
+        self::assertIsArray($grant);
+        self::assertArrayNotHasKey('relationships', $grant);
+
+        $this->jsonApi()->get('/api/fk-grants/g1/relationships/secrets')->assertNotFound();
+        $this->jsonApi()->get('/api/fk-grants/g1/secrets')->assertNotFound();
+    }
+
+    #[Test]
+    #[Group('ext:atomic')]
+    public function anAtomicAddSetsAWriteOnlyToManyWithoutReadingItsMembers(): void
+    {
+        $response = $this->atomic([
+            ['op' => 'add', 'data' => ['type' => 'fk-grants', 'relationships' => ['secrets' => ['data' => [['type' => 'fk-secrets', 'id' => '1']]]]]],
+        ]);
+        $response->assertOk();
+
+        self::assertSame(['1'], $this->attribute($this->fetch('/fk-grants/g2')['data'] ?? null, 'received'));
+    }
+
+    #[Test]
+    public function anActionHydratesAWriteOnlyToManyOfItsInputWithoutReadingItsMembers(): void
+    {
+        $response = $this->jsonApi()
+            ->withData(['type' => 'fk-grants', 'relationships' => ['secrets' => ['data' => [['type' => 'fk-secrets', 'id' => '1']]]]])
+            ->post('/api/fk-grants/g1/-actions/stamp')
+            ->assertOk();
+
+        self::assertSame(['1'], $this->attribute($this->decode($response)['data'] ?? null, 'received'));
+    }
+
+    #[Test]
+    public function aPatchReplacesAWriteOnlyToManyWithoutReadingItsMembers(): void
+    {
+        $response = $this->jsonApi()
+            ->withData(['type' => 'fk-revisable-grants', 'id' => 'g1', 'relationships' => ['secrets' => ['data' => [['type' => 'fk-secrets', 'id' => '1']]]]])
+            ->patch('/api/fk-revisable-grants/g1')
+            ->assertOk();
+
+        self::assertSame(['1'], $this->attribute($this->decode($response)['data'] ?? null, 'received'));
+    }
+
+    #[Test]
+    public function aPatchOfAToManyThatCantChangeMembershipComparesTheMembersTheParentHolds(): void
+    {
+        // The grant holds secrets 1 and 2, so naming only 1 changes its members.
+        $this->jsonApi()
+            ->withData(['type' => 'fk-revisable-grants', 'id' => 'g1', 'relationships' => ['lockedSecrets' => ['data' => [['type' => 'fk-secrets', 'id' => '1']]]]])
+            ->patch('/api/fk-revisable-grants/g1')
+            ->assertForbidden();
     }
 
     #[Test]

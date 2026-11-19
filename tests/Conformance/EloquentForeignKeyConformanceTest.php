@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
+use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Test;
@@ -53,6 +54,35 @@ final class EloquentForeignKeyConformanceTest extends ForeignKeyConformanceTestC
     protected function seedConformanceData(): void
     {
         ForeignKeySeed::seedEloquent();
+    }
+
+    #[Test]
+    public function aWriteOnlyToManyNoRequestReadsPassesOptimizeAndOneAnUpdateReadsDoesNot(): void
+    {
+        $problems = \implode("\n", $this->app?->make(ServableResourceWarmer::class)->warm() ?? []);
+
+        self::assertStringNotContainsString('resource type "fk-grants"', $problems);
+        self::assertStringContainsString('Relation "secrets" on resource type "fk-revisable-grants" reads type "fk-secrets"', $problems);
+    }
+
+    #[Test]
+    public function aCreateNamingASecretTheScopeHidesIsNotFound(): void
+    {
+        $this->jsonApi()
+            ->withData(['type' => 'fk-grants', 'relationships' => ['secrets' => ['data' => [['type' => 'fk-secrets', 'id' => '2']]]]])
+            ->post('/api/fk-grants')
+            ->assertNotFound();
+    }
+
+    #[Test]
+    public function aLockedToManyComparesAMemberTheScopeHides(): void
+    {
+        // The grant holds secret 2, which the scope hides, so no linkage a client can send keeps
+        // its members unchanged: this is the read jsonapi:optimize refuses a type with Update for.
+        $this->jsonApi()
+            ->withData(['type' => 'fk-revisable-grants', 'id' => 'g1', 'relationships' => ['lockedSecrets' => ['data' => [['type' => 'fk-secrets', 'id' => '1'], ['type' => 'fk-secrets', 'id' => '2']]]]])
+            ->patch('/api/fk-revisable-grants/g1')
+            ->assertNotFound();
     }
 
     #[Test]
