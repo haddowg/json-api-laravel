@@ -18,7 +18,9 @@ use haddowg\JsonApiLaravel\Event\BeforeDeleteEvent;
 use haddowg\JsonApiLaravel\Event\BeforeRelationshipMutateEvent;
 use haddowg\JsonApiLaravel\Event\BeforeUpdateEvent;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -67,6 +69,9 @@ final class TypedRequestMetaServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // An update of a note is refused for a request asking to be denied.
+        Gate::define('updateTrNote', static fn(?Authenticatable $user, object $note): bool => !request()->hasHeader('X-Deny-Update'));
+
         foreach ([BeforeCreateEvent::class, AfterCreateEvent::class, BeforeUpdateEvent::class, BeforeDeleteEvent::class, BeforeRelationshipMutateEvent::class] as $event) {
             Event::listen($event, [TrMetaRecorder::class, 'handle']);
         }

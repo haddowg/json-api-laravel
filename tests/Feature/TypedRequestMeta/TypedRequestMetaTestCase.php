@@ -275,6 +275,39 @@ abstract class TypedRequestMetaTestCase extends Orchestra
     }
 
     #[Test]
+    public function anAtomicOperationsDataMetaFillsThroughTheAtomicDeclaration(): void
+    {
+        $ok = $this->atomic(['atomic:operations' => [
+            ['op' => 'add', 'data' => ['type' => 'tr-notes', 'attributes' => ['title' => 'Batch'], 'meta' => ['batchSource' => 'feed']], 'meta' => ['idempotencyKey' => 'k', 'batchTag' => 'b']],
+        ]]);
+        $ok->assertOk();
+        $id = $ok->json('atomic:results.0.data.id');
+        self::assertIsString($id);
+        self::assertSame('feed', $this->sourceOf($id), 'the atomic declaration\'s fill hook stored it');
+
+        // The standalone member is not part of the atomic shape.
+        self::assertSame(['/atomic:operations/0/data/meta/source' => 'The member "source" is not declared.'], $this->violations($this->atomic(['atomic:operations' => [
+            ['op' => 'add', 'data' => ['type' => 'tr-notes', 'attributes' => ['title' => 'Batch'], 'meta' => ['source' => 'feed']], 'meta' => ['idempotencyKey' => 'k', 'batchTag' => 'b']],
+        ]])));
+        // And the atomic member is not part of the standalone one.
+        self::assertSame(['/data/meta/batchSource' => 'The member "batchSource" is not declared.'], $this->violations($this->send('POST', '/api/tr-notes', [
+            'data' => ['type' => 'tr-notes', 'attributes' => ['title' => 'Draft'], 'meta' => ['batchSource' => 'feed']],
+            'meta' => ['idempotencyKey' => 'k'],
+        ])));
+    }
+
+    #[Test]
+    public function aForbiddenUpdateIsRefusedBeforeItsMetaIsValidated(): void
+    {
+        $invalid = ['data' => ['type' => 'tr-notes', 'id' => '1', 'attributes' => ['title' => 'Again'], 'meta' => ['bogus' => 1]], 'meta' => ['reason' => 5]];
+
+        $denied = $this->send('PATCH', '/api/tr-notes/1', $invalid, ['X-Deny-Update' => '1']);
+        $denied->assertStatus(403);
+
+        self::assertSame(['/meta/reason', '/data/meta/bogus'], \array_keys($this->violations($this->send('PATCH', '/api/tr-notes/1', $invalid))));
+    }
+
+    #[Test]
     public function aWritesAcceptedJobDocumentCarriesItsDeclaredMeta(): void
     {
         $export = $this->send('POST', '/api/tr-exports', ['data' => ['type' => 'tr-exports', 'attributes' => ['name' => 'All']]]);

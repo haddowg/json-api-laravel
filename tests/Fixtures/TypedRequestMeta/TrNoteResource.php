@@ -18,14 +18,19 @@ use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\MetaContext;
 use haddowg\JsonApi\Resource\RelationshipMetaContext;
 use haddowg\JsonApi\Resource\RequestMetaContext;
+use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Hook\HookContext;
 use haddowg\JsonApiLaravel\Hook\ResourceLifecycleHooksInterface;
 use haddowg\JsonApiLaravel\Hook\ResourceLifecycleHooksTrait;
+use haddowg\JsonApiLaravel\Operation\Operation;
 
 /**
  * Notes declare the meta each write takes, their resource objects' meta both ways, and
- * the meta-only document adding items answers with.
+ * the meta-only document adding items answers with. Inside an atomic batch a write's
+ * `data.meta` names its source `batchSource` rather than `source`. An update is gated by
+ * the `updateTrNote` ability.
  */
+#[AsJsonApiResource(abilities: [Operation::Update->value => 'updateTrNote'])]
 final class TrNoteResource extends AbstractResource implements ResourceLifecycleHooksInterface
 {
     use ResourceLifecycleHooksTrait;
@@ -63,7 +68,7 @@ final class TrNoteResource extends AbstractResource implements ResourceLifecycle
         return [
             // A note titled "Broken" renders a revision of the wrong type.
             Integer::make('revision')->readOnly()->extractUsing(static fn(object $note): mixed => Accessor::get($note, 'title') === 'Broken' ? 'many' : Accessor::get($note, 'revision')),
-            Str::make('source')->writeOnly()->fillUsing(static function (object $note, mixed $value): object {
+            Str::make($context->isAtomic() ? 'batchSource' : 'source')->writeOnly()->fillUsing(static function (object $note, mixed $value): object {
                 Accessor::set($note, 'source', \is_string($value) ? $value : null);
 
                 return $note;
