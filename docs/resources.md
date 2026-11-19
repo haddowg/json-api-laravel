@@ -281,6 +281,62 @@ Applies to relations too.
 Witnessed on both providers by
 `tests/Conformance/SparseByDefaultConformanceTestCase` (see [core's fields](https://github.com/haddowg/json-api/blob/main/docs/fields.md)).
 
+## Selecting keys of an object attribute
+
+A data table showing one column per key of the same object attribute reads a few keys for
+every row. An open `Obj`, or a `Map`, declaring `selectableKeys()` lets the request name those
+keys alone, as `<attribute>.<key>` members of `fields[type]`. The workbench `AlbumResource`
+does it for `credits`, keyed by role:
+
+```php
+Obj::make('credits')->nullable()
+    ->additionalProperties(Str::make('*'))
+    ->selectableKeys(pattern: '[a-z][a-z_]*'),
+```
+
+```
+GET /albums/1?fields[albums]=title,credits.producer,credits.artwork
+```
+
+The album renders `title` and a `credits` object holding only `producer` and `artwork`.
+`selectableKeys()` also takes a predicate, `fn (string $key, JsonApiRequestInterface $request): bool`,
+alone or with the pattern. An `extractUsing()` or `computedUsing()` hook on the field receives
+the selected keys as a fourth `?KeySelection $only` argument, `null` when the attribute is taken
+whole, so a reader can load only those keys. The value is trimmed to them whatever the hook
+returns. The hook's first parameter can be typed on your model, as any read hook's can:
+
+```php
+Map::make('layout')->fields(Str::make('region'), Str::make('theme'))
+    ->selectableKeys(pattern: '[a-z]+')
+    ->extractUsing(static function (Panel $panel, JsonApiRequestInterface $request, string $name, ?KeySelection $only): ?array {
+        // read only $only->keys when $only isn't null
+    }),
+```
+
+Eloquent still loads the model and its `json` column whole; only a hook can read less.
+
+The rules core defines apply everywhere the type renders: primary data, `included`, related
+endpoints, a write answering with the resource, and [atomic](atomic-operations.md) results.
+Listing the attribute itself as well renders all of it. A field declared `notSparseField()`
+renders whole whatever the fieldset lists, unless the fieldset selects keys of it. A key the
+declaration rejects, a dotted member on any other field or a relationship, and an empty key are
+the `400` `FIELDSET_MEMBER_UNRECOGNIZED` an [unknown member](configuration.md#strict_query_parameters)
+is. Request bodies are unchanged.
+
+`fields[type]` lists field names in JSON:API 1.1, so a response that narrows an attribute
+applies core's [Field Selection profile](https://haddowg.github.io/json-api/profiles/field-selection/).
+A client never sends it. The package registers the profile by default, so a narrowed response's
+`Content-Type` carries `profile="https://haddowg.github.io/json-api/profiles/field-selection/"`
+and its `jsonapi.profile` lists the URI, while a request narrowing nothing gets the response it
+always did. The generated OpenAPI document lists the profile with the others and gives each
+`fields[type]` parameter an `anyOf` of the member enum and one `^<attribute>\.` pattern per
+selectable attribute.
+
+Witnessed on both providers by `tests/Conformance/FieldSelectionConformanceTestCase` and on the
+music catalog by `tests/Feature/MusicCatalog/FieldSelectionTestCase`; core's
+[field types](https://github.com/haddowg/json-api/blob/main/docs/field-types.md#selectable-keys)
+cover the declaration.
+
 ## Response headers
 
 Declarative HTTP headers on the attribute, layered over `jsonapi.defaults`:

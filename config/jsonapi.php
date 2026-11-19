@@ -127,7 +127,7 @@ return [
     | Relationship Queries `relatedQuery` parameter, the cursor page marker) is
     | generated only when it is registered.
     |
-    | The default is the three built-ins, in this order (the order the generated
+    | The default is the four built-ins, in this order (the order the generated
     | OpenAPI `jsonapi.profile` enum lists them, which must be kept stable for
     | cross-adapter byte-parity). Trim an entry to stop recognizing and advertising
     | that profile — its OpenAPI parameters disappear with it — or append your own
@@ -138,6 +138,7 @@ return [
         \haddowg\JsonApi\Pagination\CursorPaginationProfile::class,
         \haddowg\JsonApi\Schema\Profile\CountableProfile::class,
         \haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile::class,
+        \haddowg\JsonApi\Schema\Profile\FieldSelectionProfile::class,
     ],
 
     /*

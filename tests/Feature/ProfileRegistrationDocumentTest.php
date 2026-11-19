@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature;
 
 use haddowg\JsonApi\Pagination\CursorPaginationProfile;
 use haddowg\JsonApi\Schema\Profile\CountableProfile;
+use haddowg\JsonApi\Schema\Profile\FieldSelectionProfile;
 use haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile;
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
 use haddowg\JsonApiLaravel\Tests\Support\InteractsWithOpenApiDocument;
@@ -18,7 +19,7 @@ use PHPUnit\Framework\Attributes\Test;
  * The OpenAPI projection is registration-aware: the
  * `jsonapi.profile` enum, the Countable `?withCount` parameter, and the Relationship
  * Queries `relatedQuery` parameter are advertised only for a profile the server
- * registered. The default `jsonapi.profiles` is the three built-ins in canonical order;
+ * registered. The default `jsonapi.profiles` is the four built-ins in canonical order;
  * trimming the config drops a profile's registration and its advertisement. The
  * cursor page marker's default advertisement is witnessed end-to-end by
  * {@see CursorConformanceTestCase}; this suite pins the document-shape effects.
@@ -42,10 +43,10 @@ final class ProfileRegistrationDocumentTest extends TestCase
     #[Test]
     public function it_advertises_the_registered_profiles_in_canonical_order(): void
     {
-        // The default registration pins the jsonapi.profile enum to the three built-in
+        // The default registration pins the jsonapi.profile enum to the four built-in
         // URIs, in the canonical order that must match the Symfony bundle for byte-parity.
         $this->assertSame(
-            [CursorPaginationProfile::URI, CountableProfile::URI, RelationshipQueriesProfile::URI],
+            [CursorPaginationProfile::URI, CountableProfile::URI, RelationshipQueriesProfile::URI, FieldSelectionProfile::URI],
             $this->arrayAt($this->document(), 'components', 'schemas', 'JsonApi', 'properties', 'profile', 'items', 'enum'),
         );
     }

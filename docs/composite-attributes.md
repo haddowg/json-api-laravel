@@ -125,6 +125,10 @@ closed object still refuses an undeclared member with a `400` `ATTRIBUTE_MEMBER_
 The undeclared members are stored beside the declared children in the object's `json`
 column.
 
+An open object can also let a request select its keys one at a time with `selectableKeys()`,
+as `fields[type]=<attribute>.<key>`, which a table showing a few keys per row uses. See
+[selecting keys of an object attribute](resources.md#selecting-keys-of-an-object-attribute).
+
 ## Storage: one `json` column
 
 A composite attribute is **one value** — the natural Eloquent mapping is a single
