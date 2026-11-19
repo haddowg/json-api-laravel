@@ -635,6 +635,11 @@ OpenAPI projection so the generated document matches what the handler returns.
 | `filtered()` | the rows the request's filters select, for an action declaring `filters` ([above](#a-collection-action-that-takes-the-types-filters)) |
 | `afterCommit($callback)` | runs `$callback` once the action's transaction commits, or drops it on a rollback ([above](#running-code-after-the-commit)) |
 
+`request()` is the request as the client sent it, so its body keeps each value as written,
+a whole number sent as `5.0` included. The typed, normalised values come from the hydrated
+`input()`, the values a field's `fillUsing()` or `deserializeUsing()` hook receives, and
+`requestMeta()`.
+
 And the response builders:
 
 | Builder | Response |
