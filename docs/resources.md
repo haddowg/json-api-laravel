@@ -284,7 +284,7 @@ Witnessed on both providers by
 ## Selecting keys of an object attribute
 
 A data table showing one column per key of the same object attribute reads a few keys for
-every row. An open `Obj`, or a `Map`, declaring `selectableKeys()` lets the request name those
+every row. An `Obj` or a `Map` declaring `selectableKeys()` lets the request name those
 keys alone, as `<attribute>.<key>` members of `fields[type]`. The workbench `AlbumResource`
 does it for `credits`, keyed by role:
 
@@ -315,12 +315,33 @@ Map::make('layout')->fields(Str::make('region'), Str::make('theme'))
 
 Eloquent still loads the model and its `json` column whole; only a hook can read less.
 
+A key whose own object declares `selectableKeys()` can be narrowed in turn, one key per
+level. With an `address` declared as
+
+```php
+Obj::make('address')->nullable()
+    ->fields(
+        Str::make('street'),
+        Str::make('postcode'),
+        Obj::make('geo')->fields(Decimal::make('lat'), Decimal::make('lng'))->selectableKeys(pattern: 'lat|lng'),
+    )
+    ->selectableKeys(pattern: '[a-z]+'),
+```
+
+`fields[people]=address.geo.lat` renders `address` holding only `geo`, and `geo` holding
+only `lat`; the street, the postcode and `lng` stay out. Listing a key whole beside a path
+into it, `address.geo,address.geo.lat`, renders all of `geo`. A key holding a list, or an
+object that declares no selectable keys, is selected whole, and a longer path below it is an
+unknown member. The hook's `KeySelection` carries the nested selection: `$only->nested('geo')`
+is the selection inside `geo`, and `$only->paths()` lists every selected path, such as
+`postcode` and `geo.lat`.
+
 The rules core defines apply everywhere the type renders: primary data, `included`, related
 endpoints, a write answering with the resource, and [atomic](atomic-operations.md) results.
 Listing the attribute itself as well renders all of it. A field declared `notSparseField()`
 renders whole whatever the fieldset lists, unless the fieldset selects keys of it. A key the
-declaration rejects, a dotted member on any other field or a relationship, and an empty key are
-the `400` `FIELDSET_MEMBER_UNRECOGNIZED` an [unknown member](configuration.md#strict_query_parameters)
+declaration rejects, a dotted member on any other field or a relationship, a path past a key
+that isn't selectable, and an empty key are the `400` `FIELDSET_MEMBER_UNRECOGNIZED` an [unknown member](configuration.md#strict_query_parameters)
 is. Request bodies are unchanged.
 
 `fields[type]` lists field names in JSON:API 1.1, so a response that narrows an attribute
@@ -329,8 +350,8 @@ A client never sends it. The package registers the profile by default, so a narr
 `Content-Type` carries `profile="https://haddowg.github.io/json-api/profiles/field-selection/"`
 and its `jsonapi.profile` lists the URI, while a request narrowing nothing gets the response it
 always did. The generated OpenAPI document lists the profile with the others and gives each
-`fields[type]` parameter an `anyOf` of the member enum and one `^<attribute>\.` pattern per
-selectable attribute.
+`fields[type]` parameter an `anyOf` of the member enum and one pattern per selectable
+attribute or nested path, such as `^address\.geo\.(?:lat|lng)$`.
 
 Witnessed on both providers by `tests/Conformance/FieldSelectionConformanceTestCase` and on the
 music catalog by `tests/Feature/MusicCatalog/FieldSelectionTestCase`; core's

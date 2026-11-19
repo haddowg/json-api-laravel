@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
 use haddowg\JsonApi\Schema\Profile\FieldSelectionProfile;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
 use haddowg\JsonApiLaravel\Testing\SchemaConformanceTrait;
 use haddowg\JsonApiLaravel\Testing\SchemaDocumentKind;
 use Illuminate\Testing\TestResponse;
@@ -226,6 +227,108 @@ abstract class FieldSelectionConformanceTestCase extends Orchestra
         $response->assertOk();
         self::assertSame(['stats' => ['reviews' => 12]], $this->attributesOf($response));
         self::assertSame(self::NARROWED, $response->headers->get('Content-Type'));
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    public function aNestedKeyMemberRendersOnlyItsPath(): void
+    {
+        $response = $this->fetch('/api/panels/1?fields[panels]=address.geo.lat');
+
+        $response->assertOk();
+        self::assertSame(['address' => ['geo' => ['lat' => 51.5]]], $this->attributesOf($response));
+        self::assertSame(self::NARROWED, $response->headers->get('Content-Type'));
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    public function aNestedPathSelectsNothingElseOfItsAncestors(): void
+    {
+        $response = $this->fetch('/api/panels/1?fields[panels]=name,address.postcode,address.geo.lng');
+
+        self::assertSame(['name' => 'Seed', 'address' => ['postcode' => 'AB1 2CD', 'geo' => ['lng' => -0.1]]], $this->attributesOf($response));
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    public function aKeyListedWholeBesideAPathIntoItRendersWholeAtEveryDepth(): void
+    {
+        self::assertSame(
+            ['address' => ['geo' => Panel::SEED_ADDRESS['geo']]],
+            $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=address.geo.lat,address.geo')),
+        );
+
+        $whole = $this->fetch('/api/panels/1?fields[panels]=address,address.geo.lat');
+        self::assertSame(['address' => Panel::SEED_ADDRESS], $this->attributesOf($whole));
+        self::assertSame(self::MEDIA_TYPE, $whole->headers->get('Content-Type'));
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    #[Group('spec:includes')]
+    public function aNestedSelectionAppliesToIncludedResources(): void
+    {
+        $response = $this->fetch('/api/panels/1?include=curator&fields[panels]=curator&fields[curators]=office.geo.lat');
+
+        $response->assertOk();
+        self::assertSame(['office' => ['geo' => ['lat' => 48.8]]], $response->json('included.0.attributes'));
+        self::assertSame(self::NARROWED, $response->headers->get('Content-Type'));
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    public function aNestedSelectionAppliesToARelatedEndpoint(): void
+    {
+        $response = $this->fetch('/api/panels/1/curator?fields[curators]=office.city,office.geo.lng');
+
+        $response->assertOk();
+        self::assertSame(['office' => ['city' => 'Paris', 'geo' => ['lng' => 2.3]]], $this->attributesOf($response));
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    #[Group('openapi')]
+    public function aNestedNarrowedResponseMatchesTheGeneratedSchema(): void
+    {
+        $response = $this->fetch('/api/panels/1?fields[panels]=name,address.postcode,address.geo.lat');
+
+        self::assertSame(['name' => 'Seed', 'address' => ['postcode' => 'AB1 2CD', 'geo' => ['lat' => 51.5]]], $this->attributesOf($response));
+        $this->assertResponseMatchesGeneratedSchema($response, 'panels', SchemaDocumentKind::Single);
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    #[Group('openapi')]
+    public function theFieldsParameterDocumentsEachNestedPath(): void
+    {
+        $factory = $this->app?->make(DocumentFactory::class);
+        self::assertInstanceOf(DocumentFactory::class, $factory);
+        $paths = \json_encode($factory->forServer()->toArray()['paths'] ?? [], \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES);
+
+        // Encoded as JSON, so each pattern's backslash is doubled.
+        self::assertStringContainsString('"pattern":"^address\\\\.(?:[a-z]+)$"', $paths);
+        self::assertStringContainsString('"pattern":"^address\\\\.geo\\\\.(?:[a-z]+)$"', $paths);
+        self::assertStringNotContainsString('^address\\\\.history\\\\.', $paths);
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    #[Group('spec:errors')]
+    public function aNestedKeyTheObjectRejectsIsThe400(): void
+    {
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=address.geo.Alt', 'address.geo.Alt');
+        $this->assertUnrecognized('/api/panels/1/curator?fields[curators]=office.geo.alt', 'office.geo.alt');
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    #[Group('spec:errors')]
+    public function aPathBelowAKeyThatIsNotSelectableIsThe400(): void
+    {
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=address.postcode.x', 'address.postcode.x');
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=address.history.street', 'address.history.street');
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=values.cap.x', 'values.cap.x');
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=address..lat', 'address..lat');
     }
 
     #[Test]

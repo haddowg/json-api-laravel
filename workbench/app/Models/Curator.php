@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property int                       $id
  * @property string                    $name
  * @property array<string, mixed>|null $stats
+ * @property array<string, mixed>|null $office
  */
 final class Curator extends Model
 {
@@ -30,5 +31,6 @@ final class Curator extends Model
      */
     protected $casts = [
         'stats' => 'array',
+        'office' => 'array',
     ];
 }

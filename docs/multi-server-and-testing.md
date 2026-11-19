@@ -228,7 +228,8 @@ still fails.
 A [selected key](resources.md#selecting-keys-of-an-object-attribute), such as
 `fields[albums]=credits.producer`, keeps `credits` required and narrows its schema the way the
 response is narrowed: the object requires none of its keys and admits only the selected ones.
-Listing `credits` whole as well keeps its schema whole.
+Listing `credits` whole as well keeps its schema whole. A nested path such as
+`address.geo.lat` narrows `address` to `geo` and `geo` to `lat` the same way.
 
 The helpers read the fieldsets from the request behind the `TestResponse`, so a sparse request
 needs no extra argument:

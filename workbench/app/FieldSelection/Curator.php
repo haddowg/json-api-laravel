@@ -10,13 +10,16 @@ namespace Workbench\App\FieldSelection;
 final class Curator
 {
     public const array SEED_STATS = ['rating' => 5, 'reviews' => 12, 'secret' => 1];
+    public const array SEED_OFFICE = ['city' => 'Paris', 'geo' => ['lat' => 48.8, 'lng' => 2.3]];
 
     /**
      * @param array<string, mixed>|null $stats
+     * @param array<string, mixed>|null $office
      */
     public function __construct(
         public string $id = '',
         public string $name = '',
         public ?array $stats = null,
+        public ?array $office = null,
     ) {}
 }
