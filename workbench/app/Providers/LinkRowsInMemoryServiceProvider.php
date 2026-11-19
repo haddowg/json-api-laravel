@@ -56,7 +56,10 @@ final class LinkRowsInMemoryServiceProvider extends ServiceProvider
         $coordinator = $this->app->make(InMemorySnapshotCoordinator::class);
         $identify = static fn(object $row): string => \property_exists($row, 'id') && \is_string($row->id) ? $row->id : '';
 
-        $boardProvider = new InMemoryDataProvider('boards', $boards, identify: $identify, coordinator: $coordinator);
+        $boardProvider = new InMemoryDataProvider('boards', $boards, identify: $identify, coordinator: $coordinator, assignId: static function (object $board, string $id): void {
+            \assert($board instanceof Board);
+            $board->id = $id;
+        });
         JsonApi::provider($boardProvider);
         JsonApi::provider(new InMemoryDataProvider('notes', $notes, identify: $identify));
         JsonApi::provider(new InMemoryDataProvider('photos', $photos, identify: $identify));

@@ -115,6 +115,71 @@ abstract class PivotWriteTestCase extends Orchestra
         self::assertSame('/data/0/meta/pivot/weight', $response->json('errors.0.source.pointer'));
     }
 
+    public function test_whole_float_pivot_values_are_taken_on_an_add_and_a_replace(): void
+    {
+        $this->sendKeepingFloats('POST', '/api/playlists/2/relationships/orderedTracks', ['data' => [
+            ['type' => 'tracks', 'id' => '4', 'meta' => ['pivot' => ['position' => 7.0, 'weight' => 8.0]]],
+        ]])->assertOk();
+        $this->sendKeepingFloats('PATCH', '/api/playlists/3/relationships/orderedTracks', ['data' => [
+            ['type' => 'tracks', 'id' => '2', 'meta' => ['pivot' => ['position' => 5.0, 'weight' => 6.0]]],
+        ]])->assertOk();
+
+        self::assertSame(['1', '4'], $this->linkageIds($this->readRel('/api/playlists/2/relationships/orderedTracks')));
+        self::assertSame(['2'], $this->linkageIds($this->readRel('/api/playlists/3/relationships/orderedTracks')));
+    }
+
+    public function test_a_create_takes_whole_float_pivot_values(): void
+    {
+        $response = $this->sendKeepingFloats('POST', '/api/playlists', $this->playlistWith(['position' => 5.0, 'weight' => 6.0]));
+
+        $response->assertCreated();
+        $id = $response->json('data.id');
+        self::assertIsString($id);
+        self::assertSame(['2'], $this->linkageIds($this->readRel('/api/playlists/' . $id . '/relationships/orderedTracks')));
+    }
+
+    public function test_a_fractional_or_non_number_pivot_value_is_422_at_its_pointer(): void
+    {
+        $this->sendKeepingFloats('POST', '/api/playlists/2/relationships/orderedTracks', ['data' => [
+            ['type' => 'tracks', 'id' => '4', 'meta' => ['pivot' => ['position' => 7, 'weight' => 'heavy']]],
+        ]])->assertStatus(422)->assertJsonPath('errors.0.source.pointer', '/data/0/meta/pivot/weight');
+
+        $this->sendKeepingFloats('POST', '/api/playlists', $this->playlistWith(['position' => 5.5]))
+            ->assertStatus(422)
+            ->assertJsonPath('errors.0.source.pointer', '/data/relationships/orderedTracks/data/0/meta/pivot/position');
+    }
+
+    /**
+     * A new playlist holding track 2 with the given pivot values.
+     *
+     * @param array<string, mixed> $pivot
+     *
+     * @return array<string, mixed>
+     */
+    protected function playlistWith(array $pivot): array
+    {
+        return ['data' => [
+            'type' => 'playlists',
+            'attributes' => ['title' => 'Numbers'],
+            'relationships' => ['orderedTracks' => ['data' => [['type' => 'tracks', 'id' => '2', 'meta' => ['pivot' => $pivot]]]]],
+        ]];
+    }
+
+    /**
+     * Sends the document keeping a whole float's `.0`, as a client writing `5.0` sends it.
+     *
+     * @param array<string, mixed> $document
+     *
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    protected function sendKeepingFloats(string $method, string $uri, array $document): TestResponse
+    {
+        return $this->call($method, $uri, [], [], [], [
+            'HTTP_ACCEPT' => self::MEDIA_TYPE,
+            'CONTENT_TYPE' => self::MEDIA_TYPE,
+        ], \json_encode($document, \JSON_THROW_ON_ERROR | \JSON_PRESERVE_ZERO_FRACTION));
+    }
+
     /**
      * PATCH/POST/DELETE a to-many relationship endpoint with a list of linkage identifiers
      * (each optionally carrying pivot `meta`).

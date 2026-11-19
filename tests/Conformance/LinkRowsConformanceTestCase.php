@@ -253,6 +253,59 @@ abstract class LinkRowsConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    #[Group('spec:crud')]
+    public function aWholeFloatPivotValueIsWrittenAsAnInteger(): void
+    {
+        $response = $this->writeKeepingFloats('PATCH', '/api/boards/2/relationships/items', ['data' => [
+            ['type' => 'notes', 'id' => '1', 'meta' => ['pivot' => ['position' => 10.0]]],
+            ['type' => 'photos', 'id' => '2', 'meta' => ['pivot' => ['position' => 5.0, 'label' => 'view']]],
+        ]]);
+        self::assertSame(200, $response->getStatusCode(), (string) $response->getContent());
+        $response = $this->writeKeepingFloats('POST', '/api/boards/2/relationships/items', ['data' => [
+            ['type' => 'notes', 'id' => '2', 'meta' => ['pivot' => ['position' => 7.0]]],
+        ]]);
+        self::assertSame(200, $response->getStatusCode(), (string) $response->getContent());
+
+        $data = $this->data('/api/boards/2/relationships/items');
+        self::assertSame(['photos:2', 'notes:2', 'notes:1'], $this->members($data));
+        self::assertSame([5, 7, 10], $this->positions($data));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function aCreateWritesWholeFloatPivotValuesAsIntegers(): void
+    {
+        $response = $this->writeKeepingFloats('POST', '/api/boards', ['data' => ['type' => 'boards', 'attributes' => ['name' => 'Numbers'], 'relationships' => ['items' => ['data' => [
+            ['type' => 'notes', 'id' => '1', 'meta' => ['pivot' => ['position' => 10.0]]],
+            ['type' => 'photos', 'id' => '1', 'meta' => ['pivot' => ['position' => 9.0, 'label' => 'trip']]],
+        ]]]]]);
+        self::assertSame(201, $response->getStatusCode(), (string) $response->getContent());
+        $id = $response->json('data.id');
+        self::assertIsString($id);
+
+        $data = $this->data('/api/boards/' . $id . '/relationships/items');
+        self::assertSame(['photos:1', 'notes:1'], $this->members($data));
+        self::assertSame([9, 10], $this->positions($data));
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    public function aFractionalOrMistypedPivotValueIsRefusedAtItsPointer(): void
+    {
+        $response = $this->writeKeepingFloats('POST', '/api/boards/1/relationships/items', ['data' => [
+            ['type' => 'notes', 'id' => '3', 'meta' => ['pivot' => ['position' => 2.5]]],
+        ]]);
+        self::assertSame(422, $response->getStatusCode(), (string) $response->getContent());
+        self::assertSame('/data/0/meta/pivot/position', $response->json('errors.0.source.pointer'));
+
+        $response = $this->writeKeepingFloats('POST', '/api/boards', ['data' => ['type' => 'boards', 'attributes' => ['name' => 'Numbers'], 'relationships' => ['items' => ['data' => [
+            ['type' => 'notes', 'id' => '1', 'meta' => ['pivot' => ['position' => 'first']]],
+        ]]]]]);
+        self::assertSame(422, $response->getStatusCode(), (string) $response->getContent());
+        self::assertSame('/data/relationships/items/data/0/meta/pivot/position', $response->json('errors.0.source.pointer'));
+    }
+
+    #[Test]
     #[Group('openapi')]
     public function theDocumentOffersThePivotSortsAndFiltersOnBothEndpoints(): void
     {
@@ -321,6 +374,33 @@ abstract class LinkRowsConformanceTestCase extends Orchestra
     private function members(array $data): array
     {
         return \array_map(static fn(array $member): string => $member['type'] . ':' . $member['id'], $data);
+    }
+
+    /**
+     * Each member's pivot position.
+     *
+     * @param list<array{type: string, id: string, meta?: array{pivot?: mixed}}> $data
+     *
+     * @return list<mixed>
+     */
+    private function positions(array $data): array
+    {
+        return \array_map(static fn(array $member): mixed => \is_array($pivot = $member['meta']['pivot'] ?? null) ? $pivot['position'] ?? null : null, $data);
+    }
+
+    /**
+     * Sends the document keeping a whole float's `.0`, as a client writing `5.0` sends it.
+     *
+     * @param array<string, mixed> $document
+     *
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    private function writeKeepingFloats(string $method, string $uri, array $document): TestResponse
+    {
+        return $this->call($method, $uri, [], [], [], [
+            'HTTP_ACCEPT' => self::MEDIA_TYPE,
+            'CONTENT_TYPE' => self::MEDIA_TYPE,
+        ], \json_encode($document, \JSON_THROW_ON_ERROR | \JSON_PRESERVE_ZERO_FRACTION));
     }
 
     /**

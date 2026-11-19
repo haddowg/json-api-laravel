@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Feature;
 
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use Workbench\App\Providers\EloquentWorkbenchServiceProvider;
 use Workbench\Database\Seeders\ConformanceSeeder;
@@ -126,6 +127,38 @@ final class EloquentPivotTest extends PivotWriteTestCase
         self::assertNotNull($pivot);
         self::assertSame(1, $pivot['position'] ?? null);
         self::assertSame(99, $pivot['weight'] ?? null);
+    }
+
+    public function test_whole_float_pivot_values_are_stored_and_rendered_as_integers(): void
+    {
+        $response = $this->sendKeepingFloats('PATCH', '/api/playlists/2/relationships/orderedTracks', ['data' => [
+            ['type' => 'tracks', 'id' => '2', 'meta' => ['pivot' => ['position' => 5.0, 'weight' => 6.0]]],
+        ]]);
+
+        $response->assertOk();
+        /** @var list<array<string, mixed>> $data */
+        $data = $response->json('data');
+        self::assertSame(['position' => 5, 'weight' => 6], \array_intersect_key($this->pivotOf($data, '2') ?? [], ['position' => true, 'weight' => true]));
+        self::assertSame(
+            ['position' => 'integer', 'weight' => 'integer'],
+            (array) DB::selectOne('select typeof(position) as position, typeof(weight) as weight from playlist_track where playlist_id = 2 and track_id = 2'),
+        );
+    }
+
+    public function test_a_create_stores_and_renders_whole_float_pivot_values_as_integers(): void
+    {
+        $response = $this->sendKeepingFloats('POST', '/api/playlists', $this->playlistWith(['position' => 5.0, 'weight' => 6.0]));
+        $response->assertCreated();
+        $id = $response->json('data.id');
+        self::assertIsString($id);
+
+        /** @var list<array<string, mixed>> $data */
+        $data = $this->get('/api/playlists/' . $id . '/relationships/orderedTracks', ['Accept' => self::MEDIA_TYPE])->json('data');
+        self::assertSame(['position' => 5, 'weight' => 6], \array_intersect_key($this->pivotOf($data, '2') ?? [], ['position' => true, 'weight' => true]));
+        self::assertSame(
+            ['position' => 'integer', 'weight' => 'integer'],
+            (array) DB::selectOne('select typeof(position) as position, typeof(weight) as weight from playlist_track where playlist_id = ? and track_id = 2', [(int) $id]),
+        );
     }
 
     /**
