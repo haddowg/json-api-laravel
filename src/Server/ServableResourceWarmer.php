@@ -472,9 +472,11 @@ final class ServableResourceWarmer
                 DocumentMetaResolver::assertDeclared($declarer, $type, DocumentMetaResolver::deleteResponses($this->discovery, $serverName, $type));
             }
             $actions = $this->actions;
-            foreach ($actions?->forServer($serverName) ?? [] as $action) {
-                if ($actions !== null && $action->type === $type) {
-                    $actions->declaredResponsesFor($action);
+            if ($actions !== null) {
+                foreach ($actions->forServer($serverName) as $action) {
+                    if ($action->type === $type) {
+                        $actions->declaredResponsesFor($action);
+                    }
                 }
             }
         } catch (DocumentMetaMisdeclared $e) {
