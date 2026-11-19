@@ -49,7 +49,7 @@ final class EloquentFieldSelectionConformanceTest extends FieldSelectionConforma
 
     protected function seedConformanceData(): void
     {
-        Curator::query()->create(['id' => 1, 'name' => 'Ada', 'stats' => CuratorSeed::SEED_STATS, 'office' => CuratorSeed::SEED_OFFICE]);
+        Curator::query()->create(['id' => 1, 'name' => 'Ada', 'stats' => CuratorSeed::SEED_STATS, 'office' => CuratorSeed::SEED_OFFICE, 'exhibits' => CuratorSeed::SEED_EXHIBITS]);
         Panel::query()->create([
             'id' => 1,
             'name' => 'Seed',
@@ -57,6 +57,9 @@ final class EloquentFieldSelectionConformanceTest extends FieldSelectionConforma
             'groups' => PanelSeed::SEED_GROUPS,
             'settings' => PanelSeed::SEED_SETTINGS,
             'address' => PanelSeed::SEED_ADDRESS,
+            'rows' => PanelSeed::SEED_ROWS,
+            'archive' => [],
+            'tags' => PanelSeed::SEED_TAGS,
             'curator_id' => 1,
         ]);
     }

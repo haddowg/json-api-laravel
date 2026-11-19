@@ -44,6 +44,7 @@ return new class extends Migration {
             $table->date('available_until')->nullable();
             $table->json('release_info')->nullable();
             $table->json('credits')->nullable();
+            $table->json('editions')->nullable();
         });
 
         Schema::create('mc_tracks', function (Blueprint $table): void {

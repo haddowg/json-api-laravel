@@ -269,6 +269,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
                 available_until: $row['available_until'],
                 release_info: $row['release_info'],
                 credits: $row['credits'],
+                editions: $row['editions'],
                 artist: $artist,
             );
             $albums[(string) $row['id']] = $album;

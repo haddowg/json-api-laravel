@@ -110,7 +110,8 @@ Eloquent `Album` model, with no controller and no handler. The step-by-step buil
   `?include` via an SPI batcher, `?withCount`, pivots, and the Relationship Queries profile.
   See [relationships](relationships.md).
 - **Field selection** — `fields[albums]=title,credits.producer` selects single keys of an
-  object attribute declaring `selectableKeys()`, for a table with one column per key; the
+  object attribute declaring `selectableKeys()`, for a table with one column per key, and
+  `editions.*.format` selects a key of every item of a list; the
   response advertises the Field Selection profile, which clients never send. See
   [resources](resources.md#selecting-keys-of-an-object-attribute).
 - **Custom actions & atomic operations** — non-CRUD `-actions/{name}` endpoints that can

@@ -15,7 +15,8 @@ use PHPUnit\Framework\Attributes\Group;
  * declares selectable keys, so a table showing one column per role asks for just those
  * keys with `fields[albums]=title,credits.producer`, sends no profile, and gets a
  * response that advertises the Field Selection profile. OK Computer (album 1) seeds a
- * producer, an engineer and an artwork credit.
+ * producer, an engineer and an artwork credit, and two editions whose format and year a
+ * discography table selects through `editions.*.format`.
  *
  * @internal
  */
@@ -48,6 +49,26 @@ abstract class FieldSelectionTestCase extends Orchestra
             $response->json('data.attributes'),
         );
         self::assertSame('application/vnd.api+json; profile="' . FieldSelectionProfile::URI . '"', $response->headers->get('Content-Type'));
+    }
+
+    public function test_a_discography_table_selects_the_same_keys_of_every_edition(): void
+    {
+        $response = $this->fetch('/api/albums/1?fields[albums]=title,editions.*.format,editions.*.year');
+
+        $response->assertOk();
+        self::assertSame(
+            ['title' => 'OK Computer', 'editions' => [['format' => 'CD', 'year' => 1997], ['format' => 'Vinyl', 'year' => 2017]]],
+            $response->json('data.attributes'),
+        );
+        self::assertSame('application/vnd.api+json; profile="' . FieldSelectionProfile::URI . '"', $response->headers->get('Content-Type'));
+    }
+
+    public function test_an_index_into_the_editions_is_a_400(): void
+    {
+        $response = $this->fetch('/api/albums/1?fields[albums]=editions.0.format');
+
+        $response->assertStatus(400);
+        self::assertSame('FIELDSET_MEMBER_UNRECOGNIZED', $response->json('errors.0.code'));
     }
 
     public function test_without_a_key_member_the_response_is_unchanged(): void

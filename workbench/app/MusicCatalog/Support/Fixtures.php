@@ -33,13 +33,13 @@ final class Fixtures
     }
 
     /**
-     * @return list<array{id: int, artist_id: ?int, title: string, average_rating: ?float, artwork: ?string, released_at: \DateTimeImmutable, explicit: bool, status: string, available_from: ?\DateTimeImmutable, available_until: ?\DateTimeImmutable, release_info: ?array<string, mixed>, credits: ?array<string, string>}>
+     * @return list<array{id: int, artist_id: ?int, title: string, average_rating: ?float, artwork: ?string, released_at: \DateTimeImmutable, explicit: bool, status: string, available_from: ?\DateTimeImmutable, available_until: ?\DateTimeImmutable, release_info: ?array<string, mixed>, credits: ?array<string, string>, editions: ?list<array<string, mixed>>}>
      */
     public static function albums(): array
     {
         return [
-            ['id' => 1, 'artist_id' => 1, 'title' => 'OK Computer', 'average_rating' => 9.8, 'artwork' => null, 'released_at' => new \DateTimeImmutable('1997-05-21T00:00:00+00:00'), 'explicit' => false, 'status' => 'released', 'available_from' => new \DateTimeImmutable('1997-05-21'), 'available_until' => null, 'release_info' => ['label' => 'Parlophone', 'catalogueNumber' => 'NODATA 01'], 'credits' => ['producer' => 'Nigel Godrich', 'engineer' => 'Nigel Godrich', 'artwork' => 'Stanley Donwood']],
-            ['id' => 2, 'artist_id' => 2, 'title' => 'Dummy', 'average_rating' => 9.1, 'artwork' => null, 'released_at' => new \DateTimeImmutable('1994-08-22T00:00:00+00:00'), 'explicit' => false, 'status' => 'released', 'available_from' => new \DateTimeImmutable('1994-08-22'), 'available_until' => null, 'release_info' => null, 'credits' => null],
+            ['id' => 1, 'artist_id' => 1, 'title' => 'OK Computer', 'average_rating' => 9.8, 'artwork' => null, 'released_at' => new \DateTimeImmutable('1997-05-21T00:00:00+00:00'), 'explicit' => false, 'status' => 'released', 'available_from' => new \DateTimeImmutable('1997-05-21'), 'available_until' => null, 'release_info' => ['label' => 'Parlophone', 'catalogueNumber' => 'NODATA 01'], 'credits' => ['producer' => 'Nigel Godrich', 'engineer' => 'Nigel Godrich', 'artwork' => 'Stanley Donwood'], 'editions' => [['format' => 'CD', 'year' => 1997, 'label' => 'Parlophone'], ['format' => 'Vinyl', 'year' => 2017, 'label' => 'XL Recordings']]],
+            ['id' => 2, 'artist_id' => 2, 'title' => 'Dummy', 'average_rating' => 9.1, 'artwork' => null, 'released_at' => new \DateTimeImmutable('1994-08-22T00:00:00+00:00'), 'explicit' => false, 'status' => 'released', 'available_from' => new \DateTimeImmutable('1994-08-22'), 'available_until' => null, 'release_info' => null, 'credits' => null, 'editions' => null],
         ];
     }
 

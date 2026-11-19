@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string                    $name
  * @property array<string, mixed>|null $stats
  * @property array<string, mixed>|null $office
+ * @property list<mixed>|null          $exhibits
  */
 final class Curator extends Model
 {
@@ -32,5 +33,6 @@ final class Curator extends Model
     protected $casts = [
         'stats' => 'array',
         'office' => 'array',
+        'exhibits' => 'array',
     ];
 }

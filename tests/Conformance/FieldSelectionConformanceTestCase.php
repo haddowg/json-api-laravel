@@ -344,6 +344,154 @@ abstract class FieldSelectionConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:sparse-fieldsets')]
+    public function aWildcardSelectsTheKeyFromEveryItem(): void
+    {
+        $response = $this->fetch('/api/panels/1?fields[panels]=rows.*.label');
+
+        $response->assertOk();
+        self::assertSame(['rows' => [['label' => 'A'], ['label' => 'B']]], $this->attributesOf($response));
+        self::assertSame(self::NARROWED, $response->headers->get('Content-Type'));
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    public function anItemLackingTheSelectedMemberRendersAsAnEmptyObject(): void
+    {
+        $response = $this->fetch('/api/panels/1?fields[panels]=rows.*.note');
+
+        self::assertStringContainsString('"attributes":{"rows":[{"note":"first"},{}]}', (string) $response->getContent());
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    public function aWildcardKeepsAnEmptyListEmpty(): void
+    {
+        $response = $this->fetch('/api/panels/1?fields[panels]=archive.*.label');
+
+        $response->assertOk();
+        self::assertStringContainsString('"attributes":{"archive":[]}', (string) $response->getContent());
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    public function aWildcardWithNothingAfterItSelectsTheWholeList(): void
+    {
+        $whole = $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=rows'));
+
+        self::assertSame($whole, $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=rows.*')));
+        self::assertCount(2, \is_array($whole['rows'] ?? null) ? $whole['rows'] : []);
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    public function aListListedWholeBesideAWildcardPathRendersWhole(): void
+    {
+        $whole = $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=rows'));
+
+        $listed = $this->fetch('/api/panels/1?fields[panels]=rows,rows.*.label');
+        self::assertSame($whole, $this->attributesOf($listed));
+        self::assertSame(self::MEDIA_TYPE, $listed->headers->get('Content-Type'));
+
+        self::assertSame($whole, $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=rows.*,rows.*.label')));
+        self::assertSame(
+            ['rows' => [['size' => ['w' => 1, 'h' => 2]], ['size' => ['w' => 3, 'h' => 4]]]],
+            $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=rows.*.size,rows.*.size.w')),
+        );
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    public function aWildcardPathContinuesIntoNestedObjectsAndLists(): void
+    {
+        self::assertSame(
+            ['rows' => [['label' => 'A', 'size' => ['w' => 1]], ['label' => 'B', 'size' => ['w' => 3]]]],
+            $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=rows.*.label,rows.*.size.w')),
+        );
+        self::assertSame(
+            ['rows' => [['cells' => [['v' => 'x'], ['v' => 'y']]], ['cells' => []]]],
+            $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=rows.*.cells.*.v')),
+        );
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    #[Group('spec:includes')]
+    public function aWildcardSelectionAppliesToIncludedResources(): void
+    {
+        $response = $this->fetch('/api/panels/1?include=curator&fields[panels]=curator&fields[curators]=exhibits.*.title');
+
+        $response->assertOk();
+        self::assertSame(['exhibits' => [['title' => 'Light'], ['title' => 'Sound']]], $response->json('included.0.attributes'));
+        self::assertSame(self::NARROWED, $response->headers->get('Content-Type'));
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    public function aWildcardSelectionAppliesToARelatedEndpoint(): void
+    {
+        $response = $this->fetch('/api/panels/1/curator?fields[curators]=exhibits.*.year');
+
+        $response->assertOk();
+        self::assertSame(['exhibits' => [['year' => 2001], ['year' => 2004]]], $this->attributesOf($response));
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    #[Group('openapi')]
+    public function aWildcardNarrowedResponseMatchesTheGeneratedSchema(): void
+    {
+        $response = $this->fetch('/api/panels/1?fields[panels]=name,rows.*.label,rows.*.size.w,rows.*.cells.*.v,archive.*.label');
+
+        $response->assertOk();
+        $this->assertResponseMatchesGeneratedSchema($response, 'panels', SchemaDocumentKind::Single);
+
+        $collection = $this->fetch('/api/panels?fields[panels]=rows.*.note');
+        $this->assertResponseMatchesGeneratedSchema($collection, 'panels', SchemaDocumentKind::Collection);
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    #[Group('openapi')]
+    public function theFieldsParameterDocumentsEachWildcardPath(): void
+    {
+        $factory = $this->app?->make(DocumentFactory::class);
+        self::assertInstanceOf(DocumentFactory::class, $factory);
+        $paths = \json_encode($factory->forServer()->toArray()['paths'] ?? [], \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES);
+
+        // Encoded as JSON, so each pattern's backslash is doubled.
+        self::assertStringContainsString('"pattern":"^rows\\\\.\\\\*\\\\.(?:[a-z]+)$"', $paths);
+        self::assertStringContainsString('"pattern":"^rows\\\\.\\\\*\\\\.size\\\\.(?:[a-z])$"', $paths);
+        self::assertStringContainsString('"pattern":"^rows\\\\.\\\\*\\\\.cells\\\\.\\\\*\\\\.(?:v)$"', $paths);
+        self::assertStringContainsString('"pattern":"^exhibits\\\\.\\\\*\\\\.(?:[a-z]+)$"', $paths);
+        self::assertStringNotContainsString('^tags\\\\.', $paths);
+        self::assertStringNotContainsString('^address\\\\.history\\\\.', $paths);
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    #[Group('spec:errors')]
+    public function aWildcardOnAnythingButAListOfSelectableObjectsIsThe400(): void
+    {
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=name.*', 'name.*');
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=values.*', 'values.*');
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=address.geo.*', 'address.geo.*');
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=tags.*', 'tags.*');
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=address.history.*', 'address.history.*');
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=address.history.*.street', 'address.history.*.street');
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    #[Group('spec:errors')]
+    public function anIndexSegmentIsThe400(): void
+    {
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=rows.0', 'rows.0');
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=rows.0.label', 'rows.0.label');
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=rows.*.cells.1.v', 'rows.*.cells.1.v');
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
     #[Group('spec:atomic')]
     public function aSelectionAppliesToAtomicResults(): void
     {

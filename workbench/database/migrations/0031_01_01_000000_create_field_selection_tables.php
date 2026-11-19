@@ -18,6 +18,7 @@ return new class extends Migration {
             $table->string('name');
             $table->json('stats')->nullable();
             $table->json('office')->nullable();
+            $table->json('exhibits')->nullable();
         });
 
         Schema::create('fs_panels', function (Blueprint $table): void {
@@ -27,6 +28,9 @@ return new class extends Migration {
             $table->json('groups')->nullable();
             $table->json('settings')->nullable();
             $table->json('address')->nullable();
+            $table->json('rows')->nullable();
+            $table->json('archive')->nullable();
+            $table->json('tags')->nullable();
             $table->unsignedInteger('curator_id')->nullable();
         });
     }

@@ -24,7 +24,9 @@ use Workbench\App\Models\Panel as PanelModel;
  * `summary` is computed by a hook that records the keys it was asked for, `layout` is a
  * `Map` read by a hook typed on the Eloquent model or the plain one, `settings` is a
  * closed object whose keys can't be selected, and `address` is a closed object whose
- * `geo` is selectable in turn while its `history` list is not.
+ * `geo` is selectable in turn while its `history` list is not. `rows` and `archive` are
+ * lists whose items' keys are selected through `*`, each row holding an object and a list
+ * selectable in turn and open to other members, and `tags` is a list of strings.
  */
 #[AsJsonApiResource]
 final class PanelResource extends AbstractResource
@@ -37,6 +39,19 @@ final class PanelResource extends AbstractResource
      * @var list<list<string>|null>
      */
     public static array $summaryRequests = [];
+
+    private static function row(): Obj
+    {
+        return Obj::make('row')
+            ->fields(
+                Str::make('label'),
+                Obj::make('size')->fields(Integer::make('w'), Integer::make('h'))->selectableKeys(pattern: '[a-z]'),
+                ArrayList::make('cells')->of(Obj::make('cell')->fields(Str::make('v'))->selectableKeys(pattern: 'v')),
+            )
+            ->additionalProperties(Str::make('*')->nullable())
+            ->selectableKeys(pattern: '[a-z]+')
+            ->build();
+    }
 
     public function fields(): array
     {
@@ -78,6 +93,9 @@ final class PanelResource extends AbstractResource
                     ArrayList::make('history')->of(Obj::make('entry')->fields(Str::make('street'))),
                 )
                 ->selectableKeys(pattern: '[a-z]+'),
+            ArrayList::make('rows')->nullable()->of(self::row()),
+            ArrayList::make('archive')->nullable()->of(self::row()),
+            ArrayList::make('tags')->nullable(),
             BelongsTo::make('curator', 'curators')->nullable(),
         ];
     }

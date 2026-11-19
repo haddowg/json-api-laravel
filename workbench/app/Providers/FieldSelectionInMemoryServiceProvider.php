@@ -25,11 +25,11 @@ final class FieldSelectionInMemoryServiceProvider extends ServiceProvider
     {
         JsonApi::register([PanelResource::class, CuratorResource::class, PinboardResource::class]);
 
-        $curator = new Curator('1', 'Ada', Curator::SEED_STATS, Curator::SEED_OFFICE);
+        $curator = new Curator('1', 'Ada', Curator::SEED_STATS, Curator::SEED_OFFICE, Curator::SEED_EXHIBITS);
         $curators = new InMemoryDataProvider('curators', ['1' => $curator], self::identify(...), self::assignId(...));
         $panels = new InMemoryDataProvider(
             'panels',
-            ['1' => new Panel('1', 'Seed', Panel::SEED_VALUES, Panel::SEED_GROUPS, Panel::SEED_SETTINGS, $curator, Panel::SEED_ADDRESS)],
+            ['1' => new Panel('1', 'Seed', Panel::SEED_VALUES, Panel::SEED_GROUPS, Panel::SEED_SETTINGS, $curator, Panel::SEED_ADDRESS, Panel::SEED_ROWS, [], Panel::SEED_TAGS)],
             self::identify(...),
             self::assignId(...),
         );
