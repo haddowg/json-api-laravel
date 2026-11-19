@@ -67,7 +67,9 @@ holds. Leaving it out fails discovery, naming the action. The usual choice is a 
 exists only to be that input, declared [`relatedOnly`](resources.md#related-only-types) so it
 gets no endpoints of its own, and the body is then validated against that type's fields
 alone. `inputType` may also be the mount type itself, which validates the body as a full
-create of it, required fields and all.
+create of it, required fields and all. A `PATCH` action validates and hydrates the body in
+the update context instead, so a field read-only on create can be written and `onUpdate()`
+rules apply.
 
 The input and the resolved entity stay independent: the handler reads both and applies one
 onto the other. The input object comes from one of two places:

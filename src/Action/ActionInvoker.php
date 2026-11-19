@@ -326,10 +326,10 @@ final readonly class ActionInvoker
 
     /**
      * Runs the always-on validation bridge over the action's request document against the
-     * `inputType`'s constraints (the create context — a fresh input instance is being
-     * built), when the `inputType` has a resource declaring constraints. A bare
-     * serializer/hydrator pair declares none, so there is nothing to validate — exactly the
-     * CrudOperationHandler idiom.
+     * `inputType`'s constraints, when the `inputType` has a resource declaring constraints.
+     * A bare serializer/hydrator pair declares none, so there is nothing to validate —
+     * exactly the CrudOperationHandler idiom. A `PATCH` validates in the update context and
+     * anything else in the create context, as the hydrator picks.
      */
     private function validate(Server $server, string $inputType, JsonApiRequestInterface $body, object $instance): void
     {
@@ -338,8 +338,9 @@ final readonly class ActionInvoker
             return;
         }
 
-        ReadOnlyAttributes::reject($server, $resource, $body, true);
-        $this->validator->validate($resource, $body, true, subject: $instance);
+        $creating = $body->getMethod() !== 'PATCH';
+        ReadOnlyAttributes::reject($server, $resource, $body, $creating);
+        $this->validator->validate($resource, $body, $creating, subject: $instance);
     }
 
     /**
