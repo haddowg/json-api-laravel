@@ -1,0 +1,10 @@
+# Analyses the hook-closure fixtures with PHPStan's defaults and larastan, as an
+# application would.
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 9
+    paths:
+        - tests/StaticAnalysis
+    tmpDir: .phpstan.cache/hooks

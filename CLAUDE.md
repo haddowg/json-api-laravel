@@ -15,7 +15,7 @@ and [`docs/adr/`](docs/adr/) records the decisions that would surprise a reader 
 
 ```bash
 composer test                              # PHPUnit — Eloquent + in-memory conformance
-vendor/bin/phpstan --memory-limit=1G       # PHPStan L9 + Larastan
+composer phpstan                           # PHPStan L9 + Larastan, then the hook fixtures at PHPStan's defaults
 composer cs-check                          # PHP-CS-Fixer, PER-CS 2.0
 composer byte-compat                       # OpenAPI diff vs the bundle's published documents (npm ci)
 ```
