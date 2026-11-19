@@ -213,8 +213,9 @@ off, and a Relationship Queries window, offset or cursor. Linkage loads through 
 one ordered query per relation for a page of parents. A pivot key orders by the join table's
 column, and a Relationship Queries window on the Eloquent provider also takes a pivot field as
 its `sort`, though not as a filter. Route registration and `jsonapi:optimize` refuse a key the
-relation doesn't accept, and a pivot key whose related type's provider doesn't query the join,
-as on the in-memory provider, which holds no pivot data. The OpenAPI
+relation doesn't accept, and a pivot key, or a sort whose `->through()` path starts with
+`pivot`, whose related type's provider doesn't query the join, as on the in-memory provider,
+which holds no pivot data. The OpenAPI
 document gives the relation's own order as the `sort` parameter's `default` on both
 endpoints; the related type's fallback isn't projected there.
 
@@ -361,7 +362,7 @@ on the related endpoint, the relationship endpoint, a Relationship Queries
 reports. The endpoints page at the relation's paginator, and both read each member's pivot row in
 the same query as the page, so `meta.pivot` costs no extra query. The Eloquent provider resolves the `pivot.` prefix against the join table.
 A provider that stores no pivot columns, such as the in-memory one, answers a pivot sort or
-filter key with a `400`.
+filter key with a `400`, and so a filter or sort whose `->through()` path reaches a pivot row.
 
 Declare a value constraint on each pivot filter (`->integer()` above). Core types an
 unconstrained filter's OpenAPI value from the single column it targets, and `pivot.` means
@@ -400,6 +401,26 @@ it as sent. A related type that stores one of its own relations as `pivot` would
 prefix ambiguous, so route registration and `jsonapi:optimize` refuse a pivot relation that
 declares such a filter over it. These filters apply
 where the pivot column filters do.
+
+`WhereThrough` and `WhereThroughIn` are deprecated. Their `pivot.`-prefixed paths move to
+[`->through()`](https://github.com/haddowg/json-api/blob/main/docs/filters.md#reaching-a-pivot-row)
+with a leading `pivot` segment, and the existence filters move with them:
+
+```php
+->withFilters(
+    WhereDoesntHave::make('unused', 'targets')->through('pivot'),
+    Where::make('targetName', 'name')->through('pivot.targets'),
+    WhereIdIn::make('target')->through('pivot.targets')->acceptsList(),
+    Where::make('override', 'defaultOverride')->through('pivot'),  // a pivot field
+)
+```
+
+The migrated filters apply on the same endpoints and match the same rows, with one difference.
+Each relation the path walks now reaches a type, the one serving the model the pivot model's
+relation targets, so that type's read gate applies: a caller who may not read it gets a `403`
+where the prefixed filter answered. The related model's global scopes applied before and still
+do, and ids still decode through that type's encoder. See
+[paths through a pivot row](eloquent.md#paths-through-a-pivot-row).
 
 ### Computed pivot fields
 

@@ -26,12 +26,14 @@ use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\LinkRowFields;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
+use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\InMemory\ArrayFilterHandler;
 use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortHandler;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
+use haddowg\JsonApi\Resource\Through\PivotRowRelations;
 use haddowg\JsonApi\Schema\Relationship\IdentifiedMember;
 use haddowg\JsonApiLaravel\DataProvider\AbstractDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\AdmitsIdsInterface;
@@ -115,7 +117,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
  *
  * @extends AbstractDataProvider<object>
  */
-final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, LinkRowQueryInterface, LinkRowKeysInterface, ReadsByForeignKeyInterface, KeysCursorSortsInterface
+final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, LinkRowQueryInterface, LinkRowKeysInterface, ReadsByForeignKeyInterface, KeysCursorSortsInterface, PivotRowRelations
 {
     private readonly CriteriaApplier $applier;
 
@@ -152,6 +154,8 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      */
     private ?IdEncoderResolver $idEncoders;
 
+    private readonly EloquentPivotRowRelations $pivotRows;
+
     private bool $idEncodersResolved;
 
     /**
@@ -173,6 +177,17 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         $this->arraySortHandler = new ScopedArraySortHandler(new ArraySortHandler());
         $this->keysetResolver = new KeysetResolver();
         $this->minter = new CursorTokenMinter(new CursorCodec());
+        $this->pivotRows = new EloquentPivotRowRelations($modelByType);
+    }
+
+    /**
+     * The relation the pivot rows of `$relation` hold under `$member`: a relation method of
+     * the pivot model it joins through, reaching the type this provider serves with the model
+     * that relation targets.
+     */
+    public function pivotRowRelation(PivotRelationInterface $relation, string $parentType, string $member): ?RelationInterface
+    {
+        return $this->pivotRows->pivotRowRelation($relation, $parentType, $member);
     }
 
     public function supports(string $type): bool

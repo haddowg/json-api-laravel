@@ -12,6 +12,7 @@ use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Filter\RelationHop;
 use haddowg\JsonApi\Resource\Filter\ThroughPathResolver;
 use haddowg\JsonApi\Resource\Filter\TraversesPath;
 use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
@@ -21,6 +22,7 @@ use haddowg\JsonApi\Resource\Filter\WhereMorph;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
+use haddowg\JsonApi\Resource\Through\PivotRowRelations;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\AmbiguousModelEncoder;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\BelongsToLeaf;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\ModelEncoders;
@@ -49,12 +51,13 @@ final class FilterPathGuard
     /**
      * @param array<string, class-string<Model>>|null                      $modelByType the Eloquent model map, read from the container when not given
      * @param (\Closure(string): (class-string<Model>|false|null))|null $servedBy    the model of the Eloquent provider serving a type, `false` when another provider serves it, or `null` when that isn't known yet
+     * @param PivotRowRelations|null                                     $pivotRows   the relations pivot rows hold, which a path going on past a `pivot` segment walks
      *
      * @throws \LogicException when a declared filter's path can't be resolved, or its encoder can't be settled
      */
-    public static function check(SerializerResolverInterface $resolver, AbstractResource $resource, ?array $modelByType = null, ?\Closure $servedBy = null): void
+    public static function check(SerializerResolverInterface $resolver, AbstractResource $resource, ?array $modelByType = null, ?\Closure $servedBy = null, ?PivotRowRelations $pivotRows = null): void
     {
-        $paths = ThroughPathResolver::forResolver($resolver);
+        $paths = ThroughPathResolver::forResolver($resolver, $pivotRows);
         $fields = $resource->allFields();
         $type = $resource::$type;
         // Read only once a filter needs it, so a resource without one never resolves the map.
@@ -82,7 +85,7 @@ final class FilterPathGuard
                 self::guardEncoders(
                     $encoders,
                     $map,
-                    self::resolved($paths, $relation->allFilters(), $relatedFields, $type),
+                    self::resolved($paths, $relation->allFilters(), $relatedFields, $type, new RelationHop($relation, $type, $relation->column() ?? $relation->name())),
                     $type,
                     $relatedTypes[0],
                     FilterPaths::namedTypes($relatedFields, $relatedTypes[0], $type),
@@ -103,10 +106,10 @@ final class FilterPathGuard
      *
      * @throws \LogicException when a filter's path can't be resolved
      */
-    private static function resolved(ThroughPathResolver $paths, array $filters, iterable $fields, string $type): array
+    private static function resolved(ThroughPathResolver $paths, array $filters, iterable $fields, string $type, ?RelationHop $under = null): array
     {
         try {
-            return $paths->resolveAll($filters, $fields);
+            return $paths->resolveAll($filters, $fields, $under);
         } catch (\LogicException $e) {
             throw new \LogicException(\sprintf('The JSON:API resource for type "%s" declares a filter that cannot run: %s', $type, $e->getMessage()), 0, $e);
         }

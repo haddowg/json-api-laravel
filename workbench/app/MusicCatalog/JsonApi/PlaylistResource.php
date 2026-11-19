@@ -17,6 +17,7 @@ use haddowg\JsonApi\Resource\Field\Integer;
 use haddowg\JsonApi\Resource\Field\Slug;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Field\Uuid;
+use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Hook\HookContext;
@@ -115,9 +116,16 @@ final class PlaylistResource extends AbstractResource implements ResourceLifecyc
                 // `->integer()` types the documented value: `pivot.` is an Eloquent
                 // convention this package resolves, so core cannot read a type off the
                 // backing pivot field the way it would off a plain column.
+                //
+                // `filter[addedAt]` reaches the same pivot row through `->through('pivot')`,
+                // the pivot row of the relation the filter runs under, so the range reads the
+                // `addedAt` pivot field as declared: an RFC 3339 range, typed in the document
+                // from the field, on the related and relationship endpoints and in
+                // `relatedQuery[orderedTracks][filter]`.
                 ->withFilters(
                     Where::make('position', 'pivot.position')->integer(),
                     Where::make('weight', 'pivot.weight')->integer(),
+                    DateRange::make('addedAt', 'addedAt')->through('pivot')->describedAs('When the track was added to the playlist.'),
                 )
                 ->extractUsing(static function (mixed $playlist): array {
                     if (!$playlist instanceof PlaylistDomain) {

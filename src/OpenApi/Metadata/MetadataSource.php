@@ -29,6 +29,7 @@ use haddowg\JsonApiLaravel\DataPersister\Eloquent\EloquentDataPersister;
 use haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister;
 use haddowg\JsonApiLaravel\DataPersister\WritesForeignKeysInterface;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\PivotRowRelationRouter;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
@@ -196,6 +197,7 @@ final class MetadataSource
             strictQueryParameters: $server->strictQueryParameters(),
             maxIncludeDepth: $server->maxIncludeDepth(),
             through: $this->throughFor(static fn(): string => $serverName),
+            pivotRows: $this->providers !== null ? new PivotRowRelationRouter($this->providers) : null,
         );
     }
 
@@ -324,6 +326,7 @@ final class MetadataSource
             strictQueryParameters: $strict,
             maxIncludeDepth: $maxIncludeDepth,
             through: $this->throughFor(static fn(?string $type): string => $serverOfType[$type ?? ''] ?? ServerRegistry::DEFAULT_SERVER),
+            pivotRows: $this->providers !== null ? new PivotRowRelationRouter($this->providers) : null,
         );
     }
 

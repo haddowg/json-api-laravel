@@ -33,7 +33,8 @@ warmers plus a deploy-time safety check:
    no model serves into a model with global scopes declares one unless no request reads it.
    A filter or sort declared with `->through()` must resolve, and on a type an Eloquent model
    serves, its path must be one the provider can walk
-   ([filters reaching through relations](eloquent.md#filters-reaching-through-relations-through)).
+   ([filters reaching through relations](eloquent.md#filters-reaching-through-relations-through)),
+   a `pivot` segment included ([paths through a pivot row](eloquent.md#paths-through-a-pivot-row)).
    Every sort a cursor-paged
    collection declares must also key its pages
    ([custom sorts on a cursor page](eloquent.md#custom-sorts-on-a-cursor-page)), and every declared

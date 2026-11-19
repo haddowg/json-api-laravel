@@ -246,13 +246,59 @@ Eloquent model serves or that a provider other than Eloquent scopes, since a `wh
 only the related model's global scopes, and a leaf that is no column of the reached model's
 table.
 
+#### Paths through a pivot row
+
+A `pivot` segment in the path
+([reaching a pivot row](https://github.com/haddowg/json-api/blob/main/docs/filters.md#reaching-a-pivot-row))
+reaches the pivot rows of a `belongsToMany` with stored pivot fields. A path that starts with
+`pivot` reads the pivot row of the relation it runs under, which the relation's query has
+joined, so it applies wherever the `pivot.` column filters do: the related and relationship
+endpoints, `relatedQuery[<relation>][filter]` and its counts. Ending there, the filter compares
+the join table's column the pivot field stores, cast as the pivot model casts it. Elsewhere,
+such as an included to-many's linkage read with no Relationship Queries filter, it is the
+unrecognised `400` a `pivot.` column filter is.
+
+```php
+BelongsToMany::make('playlists', 'playlists')
+    ->fields(Integer::make('position'), DateTime::make('addedAt')->storedAs('added_at')->readOnly())
+    ->withFilters(
+        DateRange::make('addedAt', 'addedAt')->through('pivot'),       // the join table's added_at
+        Where::make('addedBy', 'name')->through('pivot.addedBy'),       // a relation of the pivot model
+        WhereDoesntHave::make('unaudited', 'auditor')->through('pivot'), // no auditor on this row
+    );
+```
+
+After `pivot`, a segment names a relation method of the pivot model the `belongsToMany` names
+with `->using()`, such as `addedBy()`. The provider reads the type it reaches from the model that
+relation targets: the one type it serves with that model. A `morphTo` on the pivot model, a
+model no type serves and a model several types serve all fail route registration, since the
+reached type's scope, read gate and id encoder have to apply. From there the path goes on as any
+other, one `whereHas` per relation. The first one is built from the pivot model the way
+Eloquent builds a `whereHas`, so it correlates to the join row the query already holds.
+
+A `pivot` in the middle of a path, as in `tracks.playlists.pivot.addedBy`, is one more `EXISTS`
+over the join table: the rows linking the current row to each member, with the member itself
+kept to the rows its model's global scopes admit, so a link to a hidden member never matches.
+The rest of the path goes on from the pivot row.
+
+`jsonapi:optimize` refuses a `pivot` after any relation the provider reads no pivot rows of: one
+that isn't a `belongsToMany` with stored pivot fields, a `morphToMany` included, since its link
+rows aren't walked by a path yet. It also refuses a mid-path `pivot` whose members a provider
+other than Eloquent scopes, and a leaf after `pivot` that is no column of the join table.
+
+A sort takes only a leading `pivot`. Ending there, it orders by the join table's column; going
+on, the first correlated subselect is the pivot model's relation from the joined row. On a
+cursor page the level reads the join table's column, or the subselect, from the query row,
+whichever query the relation joins it on, so a windowed include orders and mints its tokens as
+the related endpoint does.
+
 ### Filtering through a path: `WhereThroughIn` and relationship leaves
 
 `WhereThrough` and `WhereThroughIn` are deprecated in favour of
 [`->through()`](#filters-reaching-through-relations-through) and are removed in the next major
 version. They keep the behaviour described here until then. A path that starts at the
-[pivot row](relationships.md#pivot-belongstomany-data) has no `->through()`
-form yet.
+[pivot row](relationships.md#pivot-belongstomany-data) moves to a leading `pivot` segment, see
+[paths through a pivot row](#paths-through-a-pivot-row).
 
 `WhereThroughIn` is core's [`WhereThrough` with a `WhereIn` at the
 leaf](https://github.com/haddowg/json-api/blob/main/docs/filters.md#matching-a-list-through-a-path-wherethroughin).

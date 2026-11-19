@@ -38,6 +38,14 @@ A provider that can filter and sort a `belongsToMany` on its join columns also i
 member's pivot values for `meta.pivot` without another query. Without it, pivot sort and filter
 keys are a `400` and `meta.pivot` comes from `fetchRelationshipPivot()`.
 
+That interface also decides where a `->through()` path starting with `pivot` runs: its filters and
+sorts reach `fetchRelatedCollection()` beside the `pivot.`-columned ones. A path that goes on past
+a pivot row, such as `pivot.addedBy`, needs the provider serving the relation's related type to
+implement core's
+[`PivotRowRelations`](https://github.com/haddowg/json-api/blob/main/src/Resource/Through/PivotRowRelations.php),
+naming the relation each pivot row holds and the type it reaches; without it, route
+registration refuses the path.
+
 ## `AbstractDataProvider` — start here
 
 Extend `AbstractDataProvider` and you inherit neutral defaults for every relationship seam, so
