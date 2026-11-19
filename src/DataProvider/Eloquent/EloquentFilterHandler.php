@@ -29,7 +29,9 @@ use haddowg\JsonApi\Resource\Filter\WhereSet;
 use haddowg\JsonApi\Resource\Filter\WhereSetMatch;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
+use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
+use haddowg\JsonApiLaravel\DataProvider\ScopesFilterHopsInterface;
 use haddowg\JsonApiLaravel\DataProvider\TargetsTypeInterface;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Database\Eloquent\CastsInboundAttributes;
@@ -91,7 +93,7 @@ use Illuminate\Database\Query\Builder as QueryBuilder;
  *
  * @implements FilterHandlerInterface<Builder<Model>>
  */
-final class EloquentFilterHandler implements FilterHandlerInterface, TargetsTypeInterface
+final class EloquentFilterHandler implements FilterHandlerInterface, TargetsTypeInterface, ScopesFilterHopsInterface
 {
     /**
      * Data-layer-specific remediation appended to the core {@see UnsupportedFilter}
@@ -132,6 +134,12 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     private array $named = [];
 
     /**
+     * The paths the filter being applied runs with, which name the relations it may match no
+     * row through. Each `whereHas` hop applies the related model's global scopes itself.
+     */
+    private ?FilterPaths $paths = null;
+
+    /**
      * @param iterable<EloquentFilterArmInterface<Model>>                                  $arms       author arms for custom filter types, consulted in order
      * @param ModelEncoders|null                                                     $encoders   picks the id encoder a compared key decodes with
      */
@@ -164,6 +172,14 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         return $handler;
     }
 
+    public function forPaths(FilterPaths $paths): static
+    {
+        $handler = clone $this;
+        $handler->paths = $paths;
+
+        return $handler;
+    }
+
     /**
      * A copy of this handler that reads a `pivot.`-prefixed column off the query's own model,
      * for a query over an identified `MorphToMany`'s link rows.
@@ -185,6 +201,16 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
                 Builder::class,
                 \get_debug_type($query),
             ));
+        }
+
+        // A relationship filter reaching through a relation the caller may not read matches
+        // as if every row there were hidden: an EXISTS through it is false.
+        if ($this->paths !== null && ($filter instanceof TraversesPath || $filter instanceof WhereHas || $filter instanceof WhereDoesntHave) && $this->paths->refusesAnyOf($filter)) {
+            if (!$filter instanceof WhereDoesntHave) {
+                $query->whereRaw('1 = 0');
+            }
+
+            return $query;
         }
 
         // Each arm mutates the builder in place (Eloquent's `where*` are fluent

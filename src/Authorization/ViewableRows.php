@@ -129,6 +129,59 @@ final class ViewableRows
     }
 
     /**
+     * Whether a filter or sort that reaches through `$relation`, declared on `$parentType`, is
+     * refused because the caller may not read what it holds for every parent at once. There is
+     * no row to ask about, so only checks that decide without one count
+     * ({@see Authorizer::decidesWithoutRow()}):
+     *
+     *  - a read permission the relation declares, a `security(read:)` or a defined
+     *    `view{Relation}` ability, replaces the related types' gates as it does at the
+     *    relation's endpoints. A bool one allows; an ability that takes the parent can't answer
+     *    for every parent, so it refuses;
+     *  - otherwise each related type's collection gate refuses, and so does its `view` gate
+     *    when it decides without the row. A `view` gate that reads the row is left to the
+     *    type's query scope, as it is on the type's own collection.
+     */
+    public function refusesThrough(RelationInterface $relation, string $parentType): bool
+    {
+        $read = $relation->securityRead();
+        if (\is_bool($read)) {
+            return false;
+        }
+
+        $parent = $this->blank($parentType) ?? new \stdClass();
+        $ability = \is_string($read) ? $read : $this->authorizer->conventionReadAbility($parentType, $relation, $parent, $this->serverName);
+        if ($ability !== null) {
+            return !$this->authorizer->decidesWithoutRow($parentType, $ability, $parent, $this->serverName)
+                || !$this->authorizer->allowsAbility($parentType, $ability, $parent, $this->serverName);
+        }
+
+        foreach ($relation->relatedTypes() as $type) {
+            if (!$this->mayList($type)) {
+                return true;
+            }
+
+            $view = $this->authorizer->resourceAuthorization($this->serverName, $type)?->ability(Operation::FetchOne) ?? Authorizer::conventionAbility(Operation::FetchOne);
+            // The check ignores the row it is handed, so any stand-in will do.
+            $row = $this->blank($type) ?? new \stdClass();
+            if (\is_string($view) && $this->authorizer->decidesWithoutRow($type, $view, $row, $this->serverName)
+                && !$this->authorizer->allows($type, Operation::FetchOne, $row, $this->serverName)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * A new, unsaved row of `$type`, or `null` when no persister makes one.
+     */
+    private function blank(string $type): ?object
+    {
+        return $this->persisters->supportsType($type) ? $this->persisters->forType($type)->instantiate($type) : null;
+    }
+
+    /**
      * Refuses a list of `$type` exactly as `GET /{type}` does for this caller.
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException

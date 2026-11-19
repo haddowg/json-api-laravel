@@ -46,6 +46,7 @@ use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
 use haddowg\JsonApiLaravel\DataProvider\ReadsByForeignKeyInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelatedBatch;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
+use haddowg\JsonApiLaravel\DataProvider\ScopedArrayFilterHandler;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
@@ -130,7 +131,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * execution the in-memory witness runs, so the two stay byte-identical). Every
      * monomorphic path pushes down to SQL through the Eloquent handlers instead.
      */
-    private readonly ArrayFilterHandler $arrayFilterHandler;
+    private readonly ScopedArrayFilterHandler $arrayFilterHandler;
 
     private readonly ArraySortHandler $arraySortHandler;
 
@@ -167,7 +168,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         $this->windowExecutor = new WindowExecutor();
         $this->filterHandler = new EloquentFilterHandler($filterArms, new ModelEncoders($modelByType, fn(string $type): ?IdEncoderInterface => $this->encoderFor($type)));
         $this->sortHandler = new EloquentSortHandler($sortArms);
-        $this->arrayFilterHandler = new ArrayFilterHandler();
+        $this->arrayFilterHandler = new ScopedArrayFilterHandler(new ArrayFilterHandler());
         $this->arraySortHandler = new ArraySortHandler();
         $this->keysetResolver = new KeysetResolver();
         $this->minter = new CursorTokenMinter(new CursorCodec());

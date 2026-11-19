@@ -75,7 +75,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
 
     private readonly WindowExecutor $windowExecutor;
 
-    private readonly ArrayFilterHandler $filterHandler;
+    private readonly ScopedArrayFilterHandler $filterHandler;
 
     private readonly ArraySortHandler $sortHandler;
 
@@ -115,7 +115,7 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
         $this->store = new InMemoryStore($items, $identify, $assignId, $coordinator);
         $this->applier = new CriteriaApplier();
         $this->windowExecutor = new WindowExecutor();
-        $this->filterHandler = new ArrayFilterHandler($filterArms);
+        $this->filterHandler = new ScopedArrayFilterHandler(new ArrayFilterHandler($filterArms));
         $this->sortHandler = new ArraySortHandler($sortArms);
         $this->keysetResolver = new KeysetResolver();
         $this->keyset = new InMemoryKeyset();

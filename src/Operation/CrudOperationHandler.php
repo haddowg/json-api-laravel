@@ -649,7 +649,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $resource = $server->hasResourceFor($type) ? $server->resourceFor($type) : null;
 
         $filters = $resource?->allFilters() ?? [];
-        $paths = FilterPaths::of($server, $resource);
+        $paths = FilterPaths::of($server, $resource, admission: $this->polymorphicMembers()->admission($server));
 
         // The always-on filter-value gate: a client-supplied
         // `filter[<key>]` value is validated against the filter's declared value

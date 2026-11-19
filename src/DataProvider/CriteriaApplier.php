@@ -8,12 +8,16 @@ use haddowg\JsonApi\Exception\FilterParamUnrecognized;
 use haddowg\JsonApi\Exception\FilterValueInvalid;
 use haddowg\JsonApi\Exception\SortingUnsupported;
 use haddowg\JsonApi\Exception\SortParamUnrecognized;
+use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterDefaults;
 use haddowg\JsonApi\Resource\Filter\FilterHandlerInterface;
+use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
+use haddowg\JsonApi\Resource\Filter\RelationHop;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApi\Resource\Sort\SortHandlerInterface;
 use haddowg\JsonApi\Resource\Sort\SortMatcher;
+use Illuminate\Auth\Access\AuthorizationException;
 
 /**
  * The storage-agnostic half of a collection fetch: matches the requested
@@ -112,10 +116,31 @@ final class CriteriaApplier
 
         foreach (FilterMatcher::directives($requested, $criteria->filters, $criteria->request) as $directive) {
             $filter = $criteria->paths?->resolve($directive->filter) ?? $directive->filter;
-            $query = $handler->apply($filter, $query, $directive->value);
+            $paths = $criteria->paths === null ? null : $this->readablePaths($criteria, $criteria->paths, $filter, $directive->key());
+            $applying = $paths !== null && $handler instanceof ScopesFilterHopsInterface ? $handler->forPaths($paths) : $handler;
+            $query = $applying->apply($filter, $query, $directive->value);
         }
 
         return $query;
+    }
+
+    /**
+     * The paths `$filter`, matched under `$key`, runs with: the relations it reaches through
+     * that the caller may not read. A filter the client asked for is refused instead, with the
+     * `403` a related read of the relation gets. A filter default isn't the client's, so it
+     * matches no row through such a relation.
+     *
+     * @throws AuthorizationException when the client's filter reaches through a relation the caller may not read
+     */
+    private function readablePaths(CollectionCriteria $criteria, FilterPaths $paths, FilterInterface $filter, string $key): FilterPaths
+    {
+        $request = $criteria->request;
+        $refused = $request === null ? [] : $paths->refusedHops($paths->hopsOf($filter), $request);
+        if ($refused !== [] && \array_key_exists($key, $criteria->queryParameters->filter)) {
+            throw new AuthorizationException(\sprintf('Access denied to the relation "%s" the filter "%s" reaches through.', $refused[0]->relation->name(), $key));
+        }
+
+        return $paths->scoped(\array_map(static fn(RelationHop $hop): RelationInterface => $hop->relation, $refused));
     }
 
     /**

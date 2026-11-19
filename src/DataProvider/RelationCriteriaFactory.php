@@ -63,6 +63,13 @@ final class RelationCriteriaFactory
     public const string PIVOT_PREFIX = 'pivot.';
 
     /**
+     * @param DataProviderRegistry|null $providers narrows the rows an in-memory filter walk reaches through a relation to those its related type's scoping provider admits
+     */
+    public function __construct(
+        private readonly ?DataProviderRegistry $providers = null,
+    ) {}
+
+    /**
      * The per-relation paginator for a related to-many collection: the relation's own
      * paginator, else the related resource's, else the server default — the 3-tier chain
      * (`relation -> related resource -> server default`). The related resource is `null`
@@ -139,7 +146,7 @@ final class RelationCriteriaFactory
             wantsCount: $wantsCount,
             request: $request,
             defaultSortResolved: $resolved,
-            paths: $server !== null ? FilterPaths::of($server, $relatedResource, $parentType) : null,
+            paths: $server !== null ? FilterPaths::of($server, $relatedResource, $parentType, $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->admission($server) : null) : null,
         );
     }
 
@@ -148,13 +155,17 @@ final class RelationCriteriaFactory
      * linkage: the include batch and a linkage read with no include. It carries the sort
      * vocabulary and default order of {@see criteriaFor()}, the filters whose defaults the
      * related endpoint folds in with no `filter` requested, and no window, so the linkage
-     * lists the members the related endpoint serves.
+     * lists the members the related endpoint serves. `$server` resolves a filter default's path
+     * against the related type, so the defaults apply the related types' scopes along it as the
+     * related endpoint does.
      */
     public function linkageCriteriaFor(
         ?AbstractResource $relatedResource,
         RelationInterface $relation,
         bool $includePivotFields,
         JsonApiRequestInterface $request,
+        ?SerializerResolverInterface $server = null,
+        ?string $parentType = null,
     ): CollectionCriteria {
         $sorts = $this->sortsFor($relatedResource, $relation, $includePivotFields);
         [$defaultSort, $resolved] = $this->defaultSortFor($relatedResource, $relation, $sorts, $request);
@@ -166,6 +177,7 @@ final class RelationCriteriaFactory
             defaultSort: $defaultSort,
             request: $request,
             defaultSortResolved: $resolved,
+            paths: $server !== null ? FilterPaths::of($server, $relatedResource, $parentType, $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->admission($server) : null) : null,
         );
     }
 

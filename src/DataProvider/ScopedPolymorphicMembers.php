@@ -73,6 +73,18 @@ final class ScopedPolymorphicMembers
     }
 
     /**
+     * {@see narrow()} for one relation's rows, as the closure {@see FilterPaths::of()} takes:
+     * the rows a filter's in-memory walk reaches through a relation declared on a type, kept
+     * to those the related type's scoping provider admits.
+     *
+     * @return \Closure(RelationInterface, string, list<object>): list<object>
+     */
+    public function admission(Server $server): \Closure
+    {
+        return fn(RelationInterface $relation, string $parentType, array $rows): array => $this->narrow($server, $parentType, $relation, [$rows])[0];
+    }
+
+    /**
      * Applies `$criteria` to members already narrowed, so a page of them stays full and its total
      * counts the narrowed set: the related endpoint's read of a polymorphic relation that reaches
      * a scoped type.
@@ -84,7 +96,7 @@ final class ScopedPolymorphicMembers
     public function window(CollectionCriteria $criteria, array $members): CollectionResult
     {
         /** @var list<object> $filtered */
-        $filtered = (new CriteriaApplier())->apply($criteria, $members, new ArrayFilterHandler(), new ArraySortHandler());
+        $filtered = (new CriteriaApplier())->apply($criteria, $members, new ScopedArrayFilterHandler(new ArrayFilterHandler()), new ArraySortHandler());
 
         return (new WindowExecutor())->run(
             $criteria->window,

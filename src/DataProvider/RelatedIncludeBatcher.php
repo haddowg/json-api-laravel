@@ -1083,6 +1083,7 @@ final class RelatedIncludeBatcher
             $relation,
             $provider instanceof QueriesPivotColumnsInterface && $provider->queriesPivotColumns($entity, $relation),
             $request,
+            $server,
         );
     }
 
