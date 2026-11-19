@@ -107,6 +107,28 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         $show->assertJsonPath('data.attributes.displayTitle', '1. Airbag');
     }
 
+    public function test_a_date_range_through_the_album_compares_its_available_from_day(): void
+    {
+        // OK Computer (tracks 1 and 2) is available from 1997-05-21, Dummy (track 3) from
+        // 1994-08-22. The album's `availableFrom` is a Date, so the bounds are days.
+        self::assertSame(['1', '2'], $this->trackIds('/api/tracks?sort=title&filter[albumAvailableFrom][min]=1995-01-01'));
+        self::assertSame(['1', '2', '3'], $this->trackIds('/api/tracks?sort=title&filter[albumAvailableFrom][max]=1997-05-21'));
+        $this->fetch('/api/tracks?filter[albumAvailableFrom][min]=1995-01-01T00:00:00Z')->assertStatus(400);
+    }
+
+    public function test_tracks_sort_by_their_albums_title_on_offset_and_cursor_pages(): void
+    {
+        self::assertSame(['3', '1', '2'], $this->trackIds('/api/tracks?sort=albumTitle,title'));
+        self::assertSame(['1', '2', '3'], $this->trackIds('/api/tracks?sort=-albumTitle,title'));
+
+        $first = $this->fetch('/api/tracks?sort=albumTitle,title&page[kind]=cursor&page[size]=2')->assertOk();
+        self::assertSame(['3', '1'], $this->ordered($first->json('data')));
+        $link = $first->json('links.next');
+        $next = \is_array($link) ? ($link['href'] ?? null) : $link;
+        self::assertIsString($next);
+        self::assertSame(['2'], $this->ordered($this->fetch((string) \preg_replace('#^https?://[^/]+#', '', $next))->assertOk()->json('data')));
+    }
+
     public function test_genres_show_carries_cache_headers(): void
     {
         $show = $this->fetch('/api/genres/trip-hop')->assertOk();
@@ -592,6 +614,26 @@ abstract class MusicCatalogSmokeTestCase extends Orchestra
         \sort($ids);
 
         return $ids;
+    }
+
+    /**
+     * The ids of the tracks `$uri` serves, in the order it serves them.
+     *
+     * @return list<string>
+     */
+    private function trackIds(string $uri): array
+    {
+        return $this->ordered($this->fetch($uri)->assertOk()->json('data'));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function ordered(mixed $data): array
+    {
+        self::assertIsArray($data);
+
+        return \array_values(\array_map(static fn(mixed $row): string => \is_array($row) && \is_string($row['id'] ?? null) ? $row['id'] : '', $data));
     }
 
     /**

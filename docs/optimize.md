@@ -31,6 +31,9 @@ warmers plus a deploy-time safety check:
    reach its rows: a [foreign key](relationships.md#relations-read-through-a-foreign-key) holds
    the parent's id and its related type reads and writes through it, and a to-many from a type
    no model serves into a model with global scopes declares one unless no request reads it.
+   A filter or sort declared with `->through()` must resolve, and on a type an Eloquent model
+   serves, its path must be one the provider can walk
+   ([filters reaching through relations](eloquent.md#filters-reaching-through-relations-through)).
    Every sort a cursor-paged
    collection declares must also key its pages
    ([custom sorts on a cursor page](eloquent.md#custom-sorts-on-a-cursor-page)), and every declared

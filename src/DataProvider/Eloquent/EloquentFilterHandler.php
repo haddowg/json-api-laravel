@@ -10,6 +10,7 @@ use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\FilterHandlerInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\Range;
+use haddowg\JsonApi\Resource\Filter\RelationHop;
 use haddowg\JsonApi\Resource\Filter\ThroughPath;
 use haddowg\JsonApi\Resource\Filter\TraversesPath;
 use haddowg\JsonApi\Resource\Filter\UnsupportedFilter;
@@ -29,6 +30,7 @@ use haddowg\JsonApi\Resource\Filter\WhereSet;
 use haddowg\JsonApi\Resource\Filter\WhereSetMatch;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
+use haddowg\JsonApi\Resource\Through\FiltersThrough;
 use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\ScopesFilterHopsInterface;
@@ -78,6 +80,10 @@ use Illuminate\Database\Query\Builder as QueryBuilder;
  *   `whereHas` whose leaf closure applies the comparison, or the `IN` list, on the
  *   final relation. A path resolved to a relationship leaf compares the related
  *   model's key with the decoded id.
+ * - Any filter declared with `->through()` is one nested `whereHas` per relation of
+ *   its path, so the related model's global scopes apply at every hop, and the
+ *   filter's own arm runs on the innermost query with the leaf core resolved. A
+ *   relation that holds nothing gives the `EXISTS` no row, so it never matches.
  *
  * Columns come from the server-side resource declaration, never the client, and
  * are validated as identifier paths and qualified against the model's table before
@@ -138,6 +144,12 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      * row through. Each `whereHas` hop applies the related model's global scopes itself.
      */
     private ?FilterPaths $paths = null;
+
+    /**
+     * Whether the filter being applied is the leaf of a `->through()` path whose ids core has
+     * decoded through the reached type's encoder already.
+     */
+    private bool $decodedLeaf = false;
 
     /**
      * @param iterable<EloquentFilterArmInterface<Model>>                                  $arms       author arms for custom filter types, consulted in order
@@ -203,6 +215,12 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             ));
         }
 
+        if ($filter instanceof FiltersThrough && $filter->throughRelations() !== null) {
+            $this->through($query, $filter, $value);
+
+            return $query;
+        }
+
         // A relationship filter reaching through a relation the caller may not read matches
         // as if every row there were hidden: an EXISTS through it is false.
         if ($this->paths !== null && ($filter instanceof TraversesPath || $filter instanceof WhereHas || $filter instanceof WhereDoesntHave || $filter instanceof WhereMorph) && $this->paths->refusesAnyOf($filter)) {
@@ -249,6 +267,69 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     }
 
     /**
+     * A filter reaching through relations ({@see FiltersThrough}): one `whereHas` per relation
+     * of its resolved path, each applying the related model's global scopes, with the filter's
+     * own arm run on the innermost query against the leaf. A relation the filter may match no
+     * row through admits none. An existence filter at the end of the path tests the relation
+     * the reached row holds, as one more `whereHas` or `whereDoesntHave`.
+     *
+     * @param Builder<Model> $query
+     */
+    private function through(Builder $query, FiltersThrough $filter, mixed $value): void
+    {
+        $leaf = $filter->atLeaf();
+        $path = $filter->resolvedThrough();
+        \assert($path !== null);
+        $leafValue = $filter->leafValue($value);
+        $leafRelation = $path->leafRelation();
+
+        $handler = clone $this;
+        $handler->pivot = null;
+        $handler->rows = false;
+        $handler->paths = null;
+        $handler->type = $path->leafType();
+        $handler->named = [$path->leafType()];
+        $handler->decodedLeaf = $path->leafId()?->encoder() !== null;
+
+        $this->whereHasAlong($query, $path->hops, function (Builder $reached) use ($handler, $leaf, $leafValue, $leafRelation): void {
+            if ($leafRelation !== null && ($leaf instanceof WhereHas || $leaf instanceof WhereDoesntHave)) {
+                $scope = fn(Builder $related) => $this->paths?->refuses($leafRelation) === true ? $related->whereRaw('1 = 0') : $related;
+                $leaf instanceof WhereDoesntHave
+                    ? $reached->whereDoesntHave($leaf->relationship, $scope)
+                    : $reached->whereHas($leaf->relationship, $scope);
+
+                return;
+            }
+
+            $handler->apply($leaf, $reached, $leafValue);
+        });
+    }
+
+    /**
+     * A `whereHas` over the first of `$hops` whose query nests the rest, with `$leaf` applied
+     * to the innermost.
+     *
+     * @param Builder<Model>          $query
+     * @param list<RelationHop>       $hops
+     * @param \Closure(Builder<Model>): void $leaf
+     */
+    private function whereHasAlong(Builder $query, array $hops, \Closure $leaf): void
+    {
+        $hop = \array_shift($hops);
+        \assert($hop !== null);
+
+        $query->whereHas($hop->storage(), function (Builder $related) use ($hop, $hops, $leaf): void {
+            if ($this->paths?->refuses($hop->relation) === true) {
+                $related->whereRaw('1 = 0');
+
+                return;
+            }
+
+            $hops === [] ? $leaf($related) : $this->whereHasAlong($related, $hops, $leaf);
+        });
+    }
+
+    /**
      * Delegates a custom {@see FilterInterface} to the first registered
      * {@see EloquentFilterArmInterface} that supports it; {@see UnsupportedFilter}
      * when none does.
@@ -274,7 +355,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     private function where(Where $filter, Builder $query, mixed $value): void
     {
         $expected = $filter->deserialize !== null ? ($filter->deserialize)($value) : $value;
-        if ($this->isKeyOf($query->getModel(), $filter->column)) {
+        if (!$this->decodedLeaf && $this->isKeyOf($query->getModel(), $filter->column)) {
             $expected = $this->storageKey($query->getModel(), $expected, $filter, $filter->column, $this->type);
         }
 
@@ -694,7 +775,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     private function idMembers(Builder $query, WhereIdIn|WhereIdNotIn $filter, mixed $value): array
     {
         $members = $this->members($filter, $value);
-        if (!$this->isKeyOf($query->getModel(), $filter->column)) {
+        if ($this->decodedLeaf || !$this->isKeyOf($query->getModel(), $filter->column)) {
             return $members;
         }
 

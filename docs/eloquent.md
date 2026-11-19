@@ -146,8 +146,9 @@ declare, and the provider translates:
 | `Range::make('rating', 'average_rating')` | a `>=`/`<=` bound pair |
 | `DateRange::make('releasedAt', 'released_at')` | a datetime bound pair, in the app timezone (see [below](#date-times-and-the-app-timezone)) |
 | `WhereHas::make('tracks')` | `whereHas('tracks')` (relationship existence) |
-| `WhereThrough::make('artist.name')` | a dotted-path correlated `EXISTS` |
-| `WhereThroughIn::make('label', 'artist.label')` | one correlated `EXISTS` over the path with a `whereIn` at the leaf |
+| any of these with `->through('campaign.advertiser')` | one nested `whereHas` per relation of the path, with the filter's own translation on the innermost (see [below](#filters-reaching-through-relations-through)) |
+| `WhereThrough::make('artist.name')` (deprecated) | a dotted-path correlated `EXISTS` |
+| `WhereThroughIn::make('label', 'artist.label')` (deprecated) | one correlated `EXISTS` over the path with a `whereIn` at the leaf |
 | `WhereSet::make('archived', 'archived_at')` | `whereNotNull` for `true`, `whereNull` for `false`, nothing for both |
 | `WhereMorph::make('subject')` on a `MorphTo` | `whereIn` on the model's `morphTo` type column, the alias the morph map gives the requested type's model, and on its id column when ids are sent |
 | `WhereMorph::make('linked', 'links')` on a `MorphToMany` | one `EXISTS` over the `through()` rows `identifiedByRows()` names, owned by the outer row |
@@ -213,7 +214,39 @@ an [arm](#custom-filters-and-sorts-the-arm-seam) on each provider, as any custom
 The OpenAPI `filter` parameter lists each family under `x-filter-families`, and a list filter
 gets its own `filter[<key>][]` parameter.
 
+### Filters reaching through relations: `->through()`
+
+A filter declared with [`->through()`](https://github.com/haddowg/json-api/blob/main/docs/filters.md#reaching-through-relations-with-through)
+reads a field of the type its path of relations reaches. The provider nests one `whereHas` per
+relation of the path, each on the relation method its `storedAs()` names, and runs the
+filter's own translation from the table above on the innermost query, against the column the
+reached field stores. For `campaign.advertiser` and a `Where` on the advertiser's name:
+
+    WHERE EXISTS (SELECT * FROM campaigns WHERE campaigns.id = leads.campaign_id
+      AND EXISTS (SELECT * FROM advertisers WHERE advertisers.id = campaigns.advertiser_id
+        AND advertisers.name = ?))
+
+Each `whereHas` applies the related model's global scopes, so a row a scope hides matches no
+filter. A to-many hop never multiplies rows. A relation that holds nothing gives the `EXISTS`
+no row, so it never matches, `WhereNull` and `WhereSet` sent `false` included; an existence
+filter at the end of a path, such as
+`WhereDoesntHave::make('unadvertised', 'advertiser')->through('campaign')`, is how to find
+empty relations, and it counts only the rows the scope admits. Core decodes a wire id the leaf
+compares once, through the reached type's encoder, so the leaf doesn't decode it again.
+
+`jsonapi:optimize` refuses a path the provider can't run, naming the type, the server and the
+filter: a segment that is no relation method of the model it starts from, a hop into a type no
+Eloquent model serves or that a provider other than Eloquent scopes, since a `whereHas` applies
+only the related model's global scopes, and a leaf that is no column of the reached model's
+table.
+
 ### Filtering through a path: `WhereThroughIn` and relationship leaves
+
+`WhereThrough` and `WhereThroughIn` are deprecated in favour of
+[`->through()`](#filters-reaching-through-relations-through) and are removed in the next major
+version. They keep the behaviour described here until then. A path that starts at the
+[pivot row](relationships.md#pivot-belongstomany-data) has no `->through()`
+form yet.
 
 `WhereThroughIn` is core's [`WhereThrough` with a `WhereIn` at the
 leaf](https://github.com/haddowg/json-api/blob/main/docs/filters.md#matching-a-list-through-a-path-wherethroughin).
@@ -675,6 +708,17 @@ every path, [include batching](#include-batching--spi-not-with) and
 [windows](#windowed-relationship-queries--sql-push-down-only) included. An `orderBy` on the
 Eloquent relation method gives way to a requested sort or the relation's own default, and
 leads the related type's default. A pivot key orders by the join table's column.
+
+A `SortByField` declared with [`->through()`](https://github.com/haddowg/json-api/blob/main/docs/sorts.md#sorting-by-a-related-field-through)
+orders by a correlated subselect per to-one relation of its path. Each is the relation's own
+existence query over the related model, so its global scopes apply, the innermost selects the
+leaf column and each outer one the next, one row each. A relation that holds nothing and a row
+a scope hides both leave the subselect empty, so the row sorts as a null column does: by the
+database's own order on an offset page, and as the largest value on a cursor page. On a cursor
+page the level selects the subselect beside the model's columns and the cursor reads its
+boundary value from that row, so the token and the keyset `WHERE` agree on scoped rows. A path
+through a to-many is refused when the sort is resolved, and `jsonapi:optimize` refuses a hop
+whose relation method isn't a `belongsTo`, `hasOne`, `morphOne` or `hasOneThrough`.
 
 ### Sort families
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Server;
 
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\MorphTo;
@@ -38,7 +39,9 @@ use Illuminate\Database\Eloquent\Relations\Relation;
  * path ending on a polymorphic relation, or a relationship-ending `WhereThrough` that can't
  * compare an id, fails the boot rather than the first request. A path ending on a model that
  * several types serve with different id encoders, where no type the declaration names
- * serves it, fails too, since nothing says which encoder decodes its values. A filter family
+ * serves it, fails too, since nothing says which encoder decodes its values. A filter declared
+ * with `->through()`, or an id filter keyed by a relation, resolves its path here too, a failure
+ * naming the type that declares it. A filter family
  * resolves per request, so only what it returns is checked, when it is matched.
  */
 final class FilterPathGuard
@@ -60,7 +63,7 @@ final class FilterPathGuard
         };
         $encoders = static fn(): ModelEncoders => new ModelEncoders($map(), static fn(string $served): ?IdEncoderInterface => self::encoderOf($resolver, $served));
 
-        self::guardEncoders($encoders, $map, $paths->resolveAll($resource->allFilters(), $fields), $type, $type, FilterPaths::namedTypes($fields, $type), servedBy: $servedBy);
+        self::guardEncoders($encoders, $map, self::resolved($paths, $resource->allFilters(), $fields, $type), $type, $type, FilterPaths::namedTypes($fields, $type), servedBy: $servedBy);
 
         foreach ($fields as $relation) {
             if (!$relation instanceof RelationInterface || $relation->allFilters() === []) {
@@ -79,7 +82,7 @@ final class FilterPathGuard
                 self::guardEncoders(
                     $encoders,
                     $map,
-                    $paths->resolveAll($relation->allFilters(), $relatedFields),
+                    self::resolved($paths, $relation->allFilters(), $relatedFields, $type),
                     $type,
                     $relatedTypes[0],
                     FilterPaths::namedTypes($relatedFields, $relatedTypes[0], $type),
@@ -87,6 +90,25 @@ final class FilterPathGuard
                     $servedBy,
                 );
             }
+        }
+    }
+
+    /**
+     * `$filters` resolved against `$fields`, a failure naming `$type`, the type declaring them.
+     *
+     * @param list<FilterInterface>                                    $filters
+     * @param iterable<FieldInterface> $fields
+     *
+     * @return list<FilterInterface>
+     *
+     * @throws \LogicException when a filter's path can't be resolved
+     */
+    private static function resolved(ThroughPathResolver $paths, array $filters, iterable $fields, string $type): array
+    {
+        try {
+            return $paths->resolveAll($filters, $fields);
+        } catch (\LogicException $e) {
+            throw new \LogicException(\sprintf('The JSON:API resource for type "%s" declares a filter that cannot run: %s', $type, $e->getMessage()), 0, $e);
         }
     }
 

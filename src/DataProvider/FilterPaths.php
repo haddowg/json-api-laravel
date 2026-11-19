@@ -13,6 +13,7 @@ use haddowg\JsonApi\Resource\Filter\RelationHop;
 use haddowg\JsonApi\Resource\Filter\ThroughPathResolver;
 use haddowg\JsonApi\Resource\Filter\ThroughReadAccess;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
+use haddowg\JsonApi\Resource\Sort\SortInterface;
 
 /**
  * Resolves a matched filter's traversal path against the fields of the type the filters run
@@ -23,9 +24,11 @@ use haddowg\JsonApi\Resource\SerializerResolverInterface;
  *
  * They also carry what the caller may read through each relation a filter reaches through:
  * {@see hopsOf()} and {@see refusedHops()} decide which filters the caller may not use,
- * {@see relationAt()} names the relation a hop of a dotted path walks so an in-memory walk can
- * narrow it to the rows its type's provider admits, and {@see refuses()} tells a data layer
- * that a hop admits no row at all.
+ * {@see hopAt()} names the relation a hop of a dotted path walks so an in-memory walk can
+ * narrow it to the rows its type's provider admits, {@see rowAdmission()} is that narrowing as
+ * the closure core's reference handlers take, and {@see refuses()} tells a data layer that a
+ * hop admits no row at all. Sorts declared with `->through()` resolve and list their hops here
+ * too.
  */
 final readonly class FilterPaths
 {
@@ -181,6 +184,52 @@ final readonly class FilterPaths
     }
 
     /**
+     * The admission an in-memory walk applies to the rows each hop reaches, as core's reference
+     * handlers' `withRowAdmission()` take it: the relation a `->through()` hop names, or else
+     * the one the walked storage path names, keeps the rows {@see admit()} lets through. A
+     * segment that is no relation, and a row that is no object, stay as they are.
+     *
+     * @return \Closure(string, list<mixed>, ?RelationInterface=): list<mixed>
+     */
+    public function rowAdmission(): \Closure
+    {
+        return $this->admitReached(...);
+    }
+
+    /**
+     * @param list<mixed> $reached
+     *
+     * @return list<mixed>
+     */
+    private function admitReached(string $path, array $reached, ?RelationInterface $relation = null): array
+    {
+        $hop = $this->hopAt($path);
+        if ($relation !== null && $hop?->relation !== $relation) {
+            // Relations sharing a storage member stay apart: the one the hop names decides.
+            $hop = new RelationHop($relation, $hop->parentType ?? '', $path);
+        }
+        if ($hop === null) {
+            return $reached;
+        }
+
+        if ($this->refuses($hop->relation)) {
+            return [];
+        }
+
+        // Only an object row has a provider to ask; an array row stays as it is.
+        $objects = \array_values(\array_filter($reached, \is_object(...)));
+        if ($objects === []) {
+            return $reached;
+        }
+        $admitted = [];
+        foreach ($this->admit($hop, $objects) as $row) {
+            $admitted[\spl_object_id($row)] = true;
+        }
+
+        return \array_values(\array_filter($reached, static fn(mixed $row): bool => !\is_object($row) || isset($admitted[\spl_object_id($row)])));
+    }
+
+    /**
      * The storage keys among `$keys`, targets of `$type` a `WhereMorph` reaches through
      * `$relation`, that the type's provider admits: none through a refused relation, and all
      * of them when no provider narrows them.
@@ -230,5 +279,25 @@ final readonly class FilterPaths
     public function resolve(FilterInterface $filter): FilterInterface
     {
         return $this->resolver->resolve($filter, $this->fields);
+    }
+
+    /**
+     * `$sort` with a path reaching through relations resolved; any other sort unchanged.
+     *
+     * @throws \LogicException when the path cannot be resolved
+     */
+    public function resolveSort(SortInterface $sort): SortInterface
+    {
+        return $this->resolver->resolveSort($sort, $this->fields);
+    }
+
+    /**
+     * The relations `$sort` reaches through, as {@see ThroughReadAccess::hopsOfSort()} lists them.
+     *
+     * @return list<RelationHop>
+     */
+    public function hopsOfSort(SortInterface $sort): array
+    {
+        return $this->type === null ? [] : $this->walker()->hopsOfSort($sort, $this->fields, $this->type);
     }
 }

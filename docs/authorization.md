@@ -420,6 +420,18 @@ the ids the type's scoping provider admits.
 The OpenAPI document offers `ACCESS_DENIED` on every operation whose filters, or whose
 `relatedQuery` filters, reach through a relation some caller can be refused.
 
+### Filters and sorts declared with `->through()`
+
+A filter declared with [`->through()`](https://github.com/haddowg/json-api/blob/main/docs/filters.md#reaching-through-relations-with-through),
+and an id filter keyed by a relation, follow the rules above for every relation of their path,
+and an existence filter at the end of one for the relation it tests too. A sort declared with
+`->through()` follows them as well: a row a scope hides sorts as a missing relation does, a sort
+the client asks for through a relation the caller may not read answers the same `403`, and a
+default order reads `null` through such a relation instead, on offset and cursor pages alike.
+The path names relations by their API names, so the permission of the relation it names
+applies. The OpenAPI document offers `ACCESS_DENIED` on the operations whose sorts reach
+through such a hop, as it does for filters.
+
 ## Custom actions
 
 A custom action declares its own ability on the attribute (not on the type):
