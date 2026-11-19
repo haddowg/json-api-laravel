@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature\ScopedConversions;
 
+use haddowg\JsonApiLaravel\Tests\Fixtures\ScopedConversions\JournalMark;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ScopedConversions\JournalMarks;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ScopedConversions\JournalResource;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ScopedConversions\Mood;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversNothing;
@@ -13,7 +16,8 @@ use PHPUnit\Framework\Attributes\Test;
 /**
  * A conversion declared inside `onCreate()` or `onUpdate()` applies to that write only:
  * `mood` becomes the enum case on a create and stays the string on an update, and `name`
- * is upper-cased on an update and stored as sent on a create. Atomic operations and
+ * is upper-cased on an update and stored as sent on a create, and a mark's `tone` becomes
+ * the case on a new link row and stays the string on a kept one. Atomic operations and
  * action input follow the same rule.
  *
  * @internal
@@ -40,6 +44,7 @@ abstract class ScopedConversionsTestCase extends Orchestra
     {
         parent::setUp();
         JournalResource::$moods = [];
+        JournalMarks::$rows = [];
     }
 
     #[Test]
@@ -49,7 +54,7 @@ abstract class ScopedConversionsTestCase extends Orchestra
 
         $response->assertCreated();
         self::assertSame('ada', $response->json('data.attributes.name'));
-        self::assertSame([\haddowg\JsonApiLaravel\Tests\Fixtures\ScopedConversions\Mood::class], JournalResource::$moods);
+        self::assertSame([Mood::class], JournalResource::$moods);
     }
 
     #[Test]
@@ -73,7 +78,7 @@ abstract class ScopedConversionsTestCase extends Orchestra
         $response->assertOk();
         self::assertSame('ada', $response->json('atomic:results.0.data.attributes.name'));
         self::assertSame('ADA', $response->json('atomic:results.1.data.attributes.name'));
-        self::assertSame([\haddowg\JsonApiLaravel\Tests\Fixtures\ScopedConversions\Mood::class, 'string'], JournalResource::$moods);
+        self::assertSame([Mood::class, 'string'], JournalResource::$moods);
     }
 
     #[Test]
@@ -83,7 +88,7 @@ abstract class ScopedConversionsTestCase extends Orchestra
 
         $response->assertOk();
         self::assertSame('ada', $response->json('meta.name'));
-        self::assertSame([\haddowg\JsonApiLaravel\Tests\Fixtures\ScopedConversions\Mood::class], $response->json('meta.moods'));
+        self::assertSame([Mood::class], $response->json('meta.moods'));
     }
 
     #[Test]
@@ -94,6 +99,33 @@ abstract class ScopedConversionsTestCase extends Orchestra
         $response->assertOk();
         self::assertSame('ADA', $response->json('meta.name'));
         self::assertSame(['string'], $response->json('meta.moods'));
+    }
+
+    #[Test]
+    public function aNewLinkRowConvertsItsPivotValueAndAKeptOneDoesNot(): void
+    {
+        $this->send('POST', '/api/journals/1/relationships/marks', ['data' => [
+            ['type' => 'journals', 'id' => '1', 'meta' => ['pivot' => ['tone' => 'calm']]],
+        ]])->assertSuccessful();
+        self::assertSame([['1', Mood::Calm]], $this->tones('1'));
+
+        $this->send('PATCH', '/api/journals/1/relationships/marks', ['data' => [
+            ['type' => 'journals', 'id' => '1', 'meta' => ['pivot' => ['tone' => 'busy']]],
+        ]])->assertOk();
+        self::assertSame([['1', 'busy']], $this->tones('1'));
+    }
+
+    /**
+     * Each of the journal's link rows as its member id and the tone it holds.
+     *
+     * @return list<array{0: string, 1: mixed}>
+     */
+    private function tones(string $journal): array
+    {
+        return \array_values(\array_map(
+            static fn(JournalMark $row): array => [$row->id, $row->tone],
+            \array_filter(JournalMarks::$rows, static fn(JournalMark $row): bool => $row->journal === $journal),
+        ));
     }
 
     /**
