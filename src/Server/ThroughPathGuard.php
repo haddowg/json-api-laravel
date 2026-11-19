@@ -57,15 +57,11 @@ final class ThroughPathGuard
     {
         $type = $resource::$type;
         $problems = [];
-        $resolver = ThroughPathResolver::forResolver($server);
 
         try {
-            self::resolveSorts($resolver, self::sortsOf($resource), $resource->allFields());
-            foreach (self::relatedResources($server, $resource) as [$relation, $related]) {
-                self::resolveSorts($resolver, self::relationSorts($relation), $related->allFields());
-            }
+            self::assertSortsResolve($server, $serverName, $resource);
         } catch (\LogicException $e) {
-            $problems[] = \sprintf('The JSON:API resource for type "%s" on server "%s" declares a sort that cannot run: %s', $type, $serverName, $e->getMessage());
+            $problems[] = $e->getMessage();
         }
 
         $model = $this->modelFor($type);
@@ -86,6 +82,27 @@ final class ThroughPathGuard
         }
 
         return $problems;
+    }
+
+    /**
+     * Resolves every sort `$resource` declares with `->through()`: its own, its default order's
+     * and each relation's. Route registration runs it, so a bad sort fails the boot as a bad
+     * filter path does, and {@see check()} reports it at `jsonapi:optimize`.
+     *
+     * @throws \LogicException naming the type and the server when a sort's path cannot be resolved
+     */
+    public static function assertSortsResolve(SerializerResolverInterface $server, string $serverName, AbstractResource $resource): void
+    {
+        $resolver = ThroughPathResolver::forResolver($server);
+
+        try {
+            self::resolveSorts($resolver, self::sortsOf($resource), $resource->allFields());
+            foreach (self::relatedResources($server, $resource) as [$relation, $related]) {
+                self::resolveSorts($resolver, self::relationSorts($relation), $related->allFields());
+            }
+        } catch (\LogicException $e) {
+            throw new \LogicException(\sprintf('The JSON:API resource for type "%s" on server "%s" declares a sort that cannot run: %s', $resource::$type, $serverName, $e->getMessage()), 0, $e);
+        }
     }
 
     /**

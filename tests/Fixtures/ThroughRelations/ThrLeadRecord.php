@@ -17,5 +17,6 @@ final class ThrLeadRecord
         public string $name = '',
         public ?ThrCampaignRecord $campaign = null,
         public array $templates = [],
+        public ?ThrLeadRecord $referrer = null,
     ) {}
 }

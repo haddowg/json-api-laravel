@@ -8,8 +8,10 @@ use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 
@@ -34,6 +36,9 @@ use Illuminate\Support\ServiceProvider;
  *  - 4 Joan, spring, template 3
  *  - 5 Katherine, no campaign, template 1
  *  - 6 Lin, winter, no templates
+ *
+ * Hedy was referred by Ada and Joan by Grace. Every lead's `sponsor` is its referrer, read
+ * through a relation the `readSponsor` ability refuses to every caller.
  *
  * @internal
  */
@@ -62,15 +67,15 @@ final class ThroughRelationsServiceProvider extends ServiceProvider
     ];
 
     /**
-     * @var list<array{int, string, ?string, list<int>}>
+     * @var list<array{int, string, ?string, list<int>, ?int}>
      */
     private const array LEADS = [
-        [1, 'Ada', self::SPRING, [1, 2]],
-        [2, 'Grace', self::SUMMER, [2]],
-        [3, 'Hedy', self::AUTUMN, []],
-        [4, 'Joan', self::SPRING, [3]],
-        [5, 'Katherine', null, [1]],
-        [6, 'Lin', self::WINTER, []],
+        [1, 'Ada', self::SPRING, [1, 2], null],
+        [2, 'Grace', self::SUMMER, [2], null],
+        [3, 'Hedy', self::AUTUMN, [], 1],
+        [4, 'Joan', self::SPRING, [3], 2],
+        [5, 'Katherine', null, [1], null],
+        [6, 'Lin', self::WINTER, [], null],
     ];
 
     public function register(): void
@@ -106,13 +111,19 @@ final class ThroughRelationsServiceProvider extends ServiceProvider
             $campaigns[$id] = $campaign;
         }
         $leads = [];
-        foreach (self::LEADS as [$id, $name, $campaign, $templateIds]) {
+        foreach (self::LEADS as [$id, $name, $campaign, $templateIds, $referrer]) {
             $owner = $campaign !== null ? ($campaigns[$campaign] ?? null) : null;
             $lead = new ThrLeadRecord((string) $id, $name, $owner, \array_map(static fn(int $template): ThrTemplateRecord => $templates[(string) $template], $templateIds));
             if ($owner !== null) {
                 $owner->leads[] = $lead;
             }
             $leads[(string) $id] = $lead;
+        }
+        foreach (self::LEADS as [$id, , , , $referrer]) {
+            $lead = $leads[(string) $id] ?? null;
+            if ($lead !== null && $referrer !== null) {
+                $lead->referrer = $leads[(string) $referrer] ?? null;
+            }
         }
 
         $identify = static function (object $item): string {
@@ -124,6 +135,11 @@ final class ThroughRelationsServiceProvider extends ServiceProvider
         JsonApi::provider(new InMemoryDataProvider('thrCampaigns', $campaigns, identify: $identify));
         JsonApi::provider(new InMemoryDataProvider('thrTemplates', $templates, identify: $identify));
         JsonApi::provider(new ScopedThrAdvertiserProvider(\array_values($advertisers)));
+    }
+
+    public function boot(): void
+    {
+        Gate::define('readSponsor', static fn(?Authenticatable $user): bool => false);
     }
 
     /**
@@ -152,6 +168,7 @@ final class ThroughRelationsServiceProvider extends ServiceProvider
             $table->unsignedInteger('id')->primary();
             $table->string('name');
             $table->string('campaign_id')->nullable();
+            $table->unsignedInteger('referrer_id')->nullable();
         });
         Schema::create('thr_lead_template', static function (Blueprint $table): void {
             $table->unsignedInteger('lead_id');
@@ -167,8 +184,8 @@ final class ThroughRelationsServiceProvider extends ServiceProvider
         foreach (self::CAMPAIGNS as $id => [$name, $budget, $start, $archived, $advertiser]) {
             DB::table('thr_campaigns')->insert(['id' => $id, 'name' => $name, 'budget' => $budget, 'start_date' => $start, 'archived_at' => $archived, 'advertiser_id' => $advertiser]);
         }
-        foreach (self::LEADS as [$id, $name, $campaign, $templateIds]) {
-            DB::table('thr_leads')->insert(['id' => $id, 'name' => $name, 'campaign_id' => $campaign]);
+        foreach (self::LEADS as [$id, $name, $campaign, $templateIds, $referrer]) {
+            DB::table('thr_leads')->insert(['id' => $id, 'name' => $name, 'campaign_id' => $campaign, 'referrer_id' => $referrer]);
             foreach ($templateIds as $template) {
                 DB::table('thr_lead_template')->insert(['lead_id' => $id, 'template_id' => $template]);
             }

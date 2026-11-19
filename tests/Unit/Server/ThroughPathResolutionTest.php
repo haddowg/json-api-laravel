@@ -30,7 +30,7 @@ final class ThroughPathResolutionTest extends TestCase
 {
     protected function tearDown(): void
     {
-        ThrBrokenResource::$declaration = 'storageName';
+        ThrBrokenResource::$declaration = 'none';
     }
 
     /**

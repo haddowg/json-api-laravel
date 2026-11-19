@@ -270,8 +270,9 @@ final class JsonApiServiceProvider extends ServiceProvider
 
             // Checks every to-many read order a server's resources declare against the sorts
             // each relation accepts, checks the keys each withoutFilterDefaults() names, and
-            // resolves every declared filter's traversal path, so a typo'd default or a
-            // polymorphic filter leaf fails the boot. The resources resolve lazily through a
+            // resolves every declared filter's traversal path and every sort declared with
+            // `->through()`, so a typo'd default, a polymorphic filter leaf or a sort through a
+            // to-many fails the boot. The resources resolve lazily through a
             // bare core server, not the configured one, keeping registration cheap; one that
             // cannot be built here is left to the optimize check.
             $relationOrderGuard = static function (string $server) use ($app): void {
@@ -315,6 +316,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $foreignKeys->check($registry, $type, $resource, unkeyed: false);
                     (new \haddowg\JsonApi\Serializer\RelationFilterDefaultsValidator($registry))->validate($type, $resource);
                     \haddowg\JsonApiLaravel\Server\FilterPathGuard::check($registry, $resource);
+                    \haddowg\JsonApiLaravel\Server\ThroughPathGuard::assertSortsResolve($registry, $server, $resource);
                     DocumentMetaResolver::assertDeclared($resource, $type, DocumentMetaResolver::deleteResponses($discovery, $server, $type));
                     RequestMetaResolver::assertDeclared($resource, $resource, $type, RequestMetaResolver::relationsOf($resource));
                 }

@@ -716,8 +716,9 @@ leaf column and each outer one the next, one row each. A relation that holds not
 a scope hides both leave the subselect empty, so the row sorts as a null column does: by the
 database's own order on an offset page, and as the largest value on a cursor page. On a cursor
 page the level selects the subselect beside the model's columns and the cursor reads its
-boundary value from that row, so the token and the keyset `WHERE` agree on scoped rows. A path
-through a to-many is refused when the sort is resolved, and `jsonapi:optimize` refuses a hop
+boundary value from that row, so the token and the keyset `WHERE` agree on scoped rows. Route
+registration and `jsonapi:optimize` resolve every declared sort, its type's default order and
+each relation's, so a path through a to-many fails the boot, and `jsonapi:optimize` refuses a hop
 whose relation method isn't a `belongsTo`, `hasOne`, `morphOne` or `hasOneThrough`.
 
 ### Sort families

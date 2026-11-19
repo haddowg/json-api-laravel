@@ -11,6 +11,7 @@ use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApi\Resource\Filter\WhereIdIn;
 use haddowg\JsonApi\Resource\Sort\SortByField;
+use haddowg\JsonApi\Resource\Sort\SortDirective;
 
 /**
  * A lead declaring one filter or sort that cannot resolve, chosen by {@see self::$declaration},
@@ -20,7 +21,7 @@ final class ThrBrokenResource extends AbstractResource
 {
     public static string $type = 'thrBroken';
 
-    public static string $declaration = 'storageName';
+    public static string $declaration = 'none';
 
     public function fields(): array
     {
@@ -45,5 +46,10 @@ final class ThrBrokenResource extends AbstractResource
     public function sorts(): array
     {
         return self::$declaration === 'toManySort' ? [SortByField::make('templateName', 'name')->through('templates')] : [];
+    }
+
+    public function defaultSort(): array
+    {
+        return self::$declaration === 'toManyDefault' ? [new SortDirective(SortByField::make('templateName', 'name')->through('templates'), false)] : [];
     }
 }

@@ -25,6 +25,14 @@ final class ThrLead extends Model
     }
 
     /**
+     * @return BelongsTo<ThrLead, $this>
+     */
+    public function referrer(): BelongsTo
+    {
+        return $this->belongsTo(ThrLead::class, 'referrer_id');
+    }
+
+    /**
      * @return BelongsToMany<ThrTemplate, $this>
      */
     public function templates(): BelongsToMany

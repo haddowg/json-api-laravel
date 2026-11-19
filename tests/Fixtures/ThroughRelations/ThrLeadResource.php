@@ -37,7 +37,8 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
 /**
  * Leads filtered and sorted through their campaign, its advertiser and their templates. The
  * relation to the campaign is stored as `campaign` but named `owningCampaign`, so every path
- * names it by its API name.
+ * names it by its API name. `referrer` reaches another lead, and `sponsor` the same lead through
+ * a relation no caller may read.
  */
 final class ThrLeadResource extends AbstractResource
 {
@@ -50,6 +51,10 @@ final class ThrLeadResource extends AbstractResource
             Str::make('name')->sortable(),
             BelongsTo::make('owningCampaign', 'thrCampaigns')->storedAs('campaign')->nullable(),
             BelongsToMany::make('templates', 'thrTemplates'),
+            // A lead referring this one, of the same type.
+            BelongsTo::make('referrer', 'thrLeads')->nullable(),
+            // The same lead, which no caller may read.
+            BelongsTo::make('sponsor', 'thrLeads')->storedAs('referrer')->nullable()->security(read: 'readSponsor'),
         ];
     }
 
@@ -97,6 +102,8 @@ final class ThrLeadResource extends AbstractResource
         return [
             SortByField::make('campaignStart', 'startsOn')->through('owningCampaign'),
             SortByField::make('advertiserName', 'name')->through('owningCampaign.advertiser'),
+            SortByField::make('referrerName', 'name')->through('referrer'),
+            SortByField::make('sponsorName', 'name')->through('sponsor'),
             SortFamily::make('by', static fn(string $suffix, JsonApiRequestInterface $request): ?SortInterface => $suffix === 'budget'
                 ? SortByField::make('by.budget', 'budget')->through('owningCampaign')
                 : null),

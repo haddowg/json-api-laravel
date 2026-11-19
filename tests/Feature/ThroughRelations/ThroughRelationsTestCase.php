@@ -158,6 +158,53 @@ abstract class ThroughRelationsTestCase extends Orchestra
     }
 
     #[Test]
+    public function aSortThroughASelfReferencingRelationReadsTheOtherRow(): void
+    {
+        // Hedy was referred by Ada and Joan by Grace; nobody referred the others.
+        self::assertSame(['1', '2', '5', '6', '3', '4'], $this->ids('/api/thrLeads?sort=referrerName,name'), 'offset');
+        self::assertSame(['3', '4', '1', '2', '5', '6'], $this->walkCursor('referrerName,name'), 'cursor');
+    }
+
+    #[Test]
+    public function aSortThroughARelationNoCallerMayReadIsForbidden(): void
+    {
+        // The related endpoint's own answer for the relation.
+        $this->fetch('/api/thrLeads/4/sponsor')->assertForbidden();
+        $this->fetch('/api/thrLeads?sort=sponsorName')->assertForbidden()->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
+        $this->fetch('/api/thrLeads?sort=sponsorName&page[kind]=cursor&page[size]=2')->assertForbidden();
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function windows(): iterable
+    {
+        yield 'read off the model' => ['pagedLeads'];
+        yield 'read through the foreign key' => ['keyedLeads'];
+    }
+
+    #[Test]
+    public function aCursorWindowReadsItsDefaultOrderAsNullThroughAForbiddenHop(): void
+    {
+        foreach (self::windows() as $case => [$relation]) {
+            // Joan's sponsor is Grace, but nobody may read it, so both sort as null, by name.
+            self::assertSame(['1', '4'], $this->windowIds($relation, ''), $case . ': include');
+            self::assertSame(['1', '4'], $this->ids('/api/thrCampaigns/' . self::SPRING . '/' . $relation), $case . ': related');
+        }
+    }
+
+    #[Test]
+    public function aCursorWindowSortsThroughARelationTheRelatedQueryNames(): void
+    {
+        foreach (self::windows() as $case => [$relation]) {
+            // Joan's referrer is Grace; Ada's is null, the largest value on a cursor page.
+            self::assertSame(['4', '1'], $this->windowIds($relation, '&relatedQuery[' . $relation . '][sort]=referrerName,name'), $case);
+            self::assertSame(['1', '4'], $this->windowIds($relation, '&relatedQuery[' . $relation . '][sort]=-referrerName,name'), $case . ': descending');
+            $this->get('/api/thrCampaigns/' . self::SPRING . '?include=' . $relation . '&relatedQuery[' . $relation . '][sort]=sponsorName', ['Accept' => self::QUERIES])->assertForbidden();
+        }
+    }
+
+    #[Test]
     public function aFilterDefaultReachesThroughAndARelationCanDropIt(): void
     {
         self::assertSame([self::SPRING], $this->ids('/api/thrCampaigns'));
@@ -179,6 +226,20 @@ abstract class ThroughRelationsTestCase extends Orchestra
         $response = $this->get('/api/thrCampaigns/' . self::SPRING . '?include=leads&relatedQuery[leads][filter][templateName]=Survey', ['Accept' => self::QUERIES]);
         $response->assertOk();
         self::assertSame(['4'], self::idsOf($response->json('data.relationships.leads.data')));
+    }
+
+    /**
+     * The ids in a spring campaign's `$relation` window, included with `$query` appended.
+     *
+     * @return list<string>
+     */
+    private function windowIds(string $relation, string $query): array
+    {
+        $uri = '/api/thrCampaigns/' . self::SPRING . '?include=' . $relation . $query;
+        $response = $this->get($uri, ['Accept' => self::QUERIES]);
+        self::assertSame(200, $response->getStatusCode(), $uri . ': ' . $response->getContent());
+
+        return self::idsOf($response->json('data.relationships.' . $relation . '.data'));
     }
 
     /**
