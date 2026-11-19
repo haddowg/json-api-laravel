@@ -6,6 +6,8 @@ namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
 use haddowg\JsonApi\Schema\Profile\FieldSelectionProfile;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
+use haddowg\JsonApiLaravel\Testing\SchemaConformanceTrait;
+use haddowg\JsonApiLaravel\Testing\SchemaDocumentKind;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\Group;
@@ -22,6 +24,8 @@ use Workbench\App\FieldSelection\PanelResource;
  */
 abstract class FieldSelectionConformanceTestCase extends Orchestra
 {
+    use SchemaConformanceTrait;
+
     public const string MEDIA_TYPE = 'application/vnd.api+json';
 
     private const string ATOMIC_MEDIA_TYPE = 'application/vnd.api+json; ext="https://jsonapi.org/ext/atomic"';
@@ -160,6 +164,24 @@ abstract class FieldSelectionConformanceTestCase extends Orchestra
     {
         self::assertSame(['layout' => ['theme' => 'grid']], $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=layout.theme')));
         self::assertSame(['layout' => ['region' => 'EU', 'theme' => 'grid']], $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=layout')));
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    #[Group('openapi')]
+    public function aNarrowedResponseMatchesTheGeneratedSchema(): void
+    {
+        // `layout` requires both its keys in the schema, so the narrowed value only
+        // validates once the testing kit narrows the attribute's schema too.
+        $response = $this->fetch('/api/panels/1?fields[panels]=name,layout.theme,values.cap');
+        self::assertSame(['theme' => 'grid'], $this->attributesOf($response)['layout'] ?? null);
+        $this->assertResponseMatchesGeneratedSchema($response, 'panels', SchemaDocumentKind::Single);
+
+        $collection = $this->fetch('/api/panels?fields[panels]=layout.region');
+        $this->assertResponseMatchesGeneratedSchema($collection, 'panels', SchemaDocumentKind::Collection);
+
+        $whole = $this->fetch('/api/panels/1?fields[panels]=layout,layout.theme');
+        $this->assertResponseMatchesGeneratedSchema($whole, 'panels', SchemaDocumentKind::Single);
     }
 
     #[Test]
