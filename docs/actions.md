@@ -69,7 +69,9 @@ gets no endpoints of its own, and the body is then validated against that type's
 alone. `inputType` may also be the mount type itself, which validates the body as a full
 create of it, required fields and all. A `PATCH` action validates and hydrates the body in
 the update context instead, so a field read-only on create can be written and `onUpdate()`
-rules apply.
+rules apply. Relationships the document carries are checked as a resource write checks them,
+their linkage and each member's pivot values included, and every number arrives in its
+field's type: a whole number sent as `5.0` to an integer is an `int`.
 
 The input and the resolved entity stay independent: the handler reads both and applies one
 onto the other. The input object comes from one of two places:
