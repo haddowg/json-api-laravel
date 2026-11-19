@@ -50,6 +50,12 @@ final class TpTrackResource extends AbstractResource
         ];
     }
 
+    public function filters(): array
+    {
+        // A pivot on the type's first relation, going on past the pivot row.
+        return self::inMemory() ? [] : [Where::make('playlistAdder', 'name')->through('playlists.pivot.addedBy')];
+    }
+
     private function cursorPlaylists(): BelongsToMany
     {
         $relation = BelongsToMany::make('cursorPlaylists', 'tpPlaylists')

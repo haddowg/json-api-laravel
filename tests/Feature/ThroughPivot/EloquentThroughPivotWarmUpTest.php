@@ -43,6 +43,8 @@ final class EloquentThroughPivotWarmUpTest extends Orchestra
         yield 'a sort through a mid-path pivot' => ['mid-path-pivot-sort', 'whose `pivot` follows a to-many relation'];
         yield 'a pivot row relation no type serves' => ['pivot-row-relation-no-type', 'which no registered type serves'];
         yield 'a leaf that is no column of the pivot table' => ['leaf-not-pivot-column', 'the filter "x" of relation "listedTracks" reaching through "pivot", which the Eloquent provider cannot run: "missing" is not a column of the pivot table "tp_album_track"'];
+        yield 'a morphTo on the pivot model' => ['pivot-row-morph-to', 'The pivot rows of relation "playlists" hold "subject", a morphTo, which reaches no single type'];
+        yield 'a pivot model without stored pivot fields' => ['association-class-without-stored-fields', 'the filter "x" reaching through "entryTracks.pivot.addedBy", which the Eloquent provider cannot run: the Eloquent provider reads the pivot rows of a BelongsToMany with stored pivot fields, and "entryTracks" is not one.'];
         yield 'the pivot rows of a morphToMany' => ['morph-to-many-pivot', 'the filter "x" of relation "taggedTracks" reaching through "pivot", which the Eloquent provider cannot run: "taggedTracks" is a MorphToMany'];
     }
 
@@ -56,6 +58,21 @@ final class EloquentThroughPivotWarmUpTest extends Orchestra
         self::assertInstanceOf(ServableResourceWarmer::class, $warmer);
 
         self::assertStringContainsString($message, \implode("\n", $warmer->warm()));
+    }
+
+    #[Test]
+    public function routeRegistrationRefusesAMorphToOnThePivotModel(): void
+    {
+        TpBrokenResource::$declaration = 'pivot-row-morph-to';
+        $router = $this->app?->make(Router::class);
+        $registrar = $this->app?->make(RouteRegistrar::class);
+        self::assertInstanceOf(Router::class, $router);
+        self::assertInstanceOf(RouteRegistrar::class, $registrar);
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('hold "subject", a morphTo, which reaches no single type');
+
+        $registrar->registerServer($router);
     }
 
     #[Test]

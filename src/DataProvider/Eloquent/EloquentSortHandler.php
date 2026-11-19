@@ -251,7 +251,7 @@ final class EloquentSortHandler implements SortHandlerInterface, ScopesFilterHop
             $parent = $model->newQueryWithoutRelationships();
             if ($this->paths?->refuses($under->relation) === true) {
                 // Reads null, as a relation the caller may not read through does.
-                return $parent->select($model->qualifyColumn($leaf->column))->whereRaw('1 = 0')->limit(1);
+                return $parent->selectRaw('NULL')->whereRaw('1 = 0')->limit(1);
             }
             if ($hops === []) {
                 return $this->pivot->getTable() . '.' . $leaf->column;

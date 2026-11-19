@@ -40,6 +40,16 @@ final class TpAlbum extends Model
     }
 
     /**
+     * Album tracks over the same join table through the playlist entries' pivot model.
+     *
+     * @return BelongsToMany<TpTrack, $this, TpEntry>
+     */
+    public function entryTracks(): BelongsToMany
+    {
+        return $this->belongsToMany(TpTrack::class, 'tp_album_track', 'album_id', 'track_id')->using(TpEntry::class);
+    }
+
+    /**
      * @return MorphToMany<TpTrack, $this>
      */
     public function taggedTracks(): MorphToMany

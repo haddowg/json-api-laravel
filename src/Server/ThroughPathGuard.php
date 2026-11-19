@@ -104,9 +104,9 @@ final class ThroughPathGuard
         $resolver = ThroughPathResolver::forResolver($server, $pivotRows);
 
         try {
-            self::resolveSorts($resolver, self::sortsOf($resource), $resource->allFields());
+            self::resolveSorts($resolver, self::sortsOf($resource), $resource->allFields(), null, $resource::$type);
             foreach (self::relatedResources($server, $resource) as [$relation, $related]) {
-                self::resolveSorts($resolver, self::relationSorts($relation), $related->allFields(), new RelationHop($relation, $resource::$type, $relation->column() ?? $relation->name()));
+                self::resolveSorts($resolver, self::relationSorts($relation), $related->allFields(), new RelationHop($relation, $resource::$type, $relation->column() ?? $relation->name()), $related::$type);
             }
         } catch (\LogicException $e) {
             throw new \LogicException(\sprintf('The JSON:API resource for type "%s" on server "%s" declares a sort that cannot run: %s', $resource::$type, $serverName, $e->getMessage()), 0, $e);
@@ -341,10 +341,10 @@ final class ThroughPathGuard
      *
      * @throws \LogicException when a path cannot be resolved
      */
-    private static function resolveSorts(ThroughPathResolver $resolver, array $sorts, iterable $fields, ?RelationHop $under = null): void
+    private static function resolveSorts(ThroughPathResolver $resolver, array $sorts, iterable $fields, ?RelationHop $under = null, string $type = ''): void
     {
         foreach ($sorts as $sort) {
-            $resolver->resolveSort($sort, $fields, $under);
+            $resolver->resolveSort($sort, $fields, $under, $type);
         }
     }
 }

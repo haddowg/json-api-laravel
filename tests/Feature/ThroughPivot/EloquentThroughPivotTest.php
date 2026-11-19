@@ -4,9 +4,25 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature\ThroughPivot;
 
+use haddowg\JsonApi\Resource\Field\BelongsToMany;
+use haddowg\JsonApi\Resource\Filter\RelationHop;
+use haddowg\JsonApi\Resource\Filter\ThroughPathResolver;
+use haddowg\JsonApi\Resource\Sort\SortByField;
+use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentPivotRowRelations;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentSortHandler;
+use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ThroughPivot\ThroughPivotServiceProvider;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ThroughPivot\TpPlaylistResource;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ThroughPivot\TpTrack;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ThroughPivot\TpTrackResource;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ThroughPivot\TpUser;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ThroughPivot\TpUserResource;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
+use Illuminate\Database\Eloquent\Relations\Pivot;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
@@ -25,6 +41,7 @@ use Workbench\App\Models\User;
  * @internal
  */
 #[CoversClass(EloquentPivotRowRelations::class)]
+#[CoversClass(EloquentSortHandler::class)]
 final class EloquentThroughPivotTest extends Orchestra
 {
     private const string MEDIA_TYPE = 'application/vnd.api+json';
@@ -141,6 +158,44 @@ final class EloquentThroughPivotTest extends Orchestra
         self::assertSame(['1'], $this->ids('/api/tpAlbums?filter[adder]=sam'));
         self::assertSame(['2'], $this->ids('/api/tpAlbums?filter[addedAt][min]=2026-04-01T00:00:00Z'));
         self::assertSame(['1'], $this->ids('/api/tpAlbums?filter[addedAt][max]=2026-02-15T00:00:00Z'));
+    }
+
+    #[Test]
+    public function aPivotOnTheFirstRelationOfACollectionGoesOnPastThePivotRow(): void
+    {
+        self::assertSame(['1', '3'], $this->ids('/api/tpTracks?filter[playlistAdder]=kim'));
+        self::assertSame(['1'], $this->ids('/api/tpTracks?filter[playlistAdder]=sam'));
+        self::assertSame([], $this->ids('/api/tpTracks?filter[playlistAdder]=ghost'));
+    }
+
+    #[Test]
+    public function aLeadingPivotSortUnderARelationTheCallerMayNotReadOrdersAsNull(): void
+    {
+        $relation = null;
+        foreach ((new TpTrackResource())->allFields() as $field) {
+            if ($field instanceof BelongsToMany && $field->name() === 'playlists') {
+                $relation = $field;
+            }
+        }
+        self::assertInstanceOf(BelongsToMany::class, $relation);
+        $users = (new TpUserResource())->allFields();
+        $resolver = new ThroughPathResolver(static fn(string $type): ?array => $type === 'tpUsers' ? $users : null, new EloquentPivotRowRelations(['tpTracks' => TpTrack::class, 'tpUsers' => TpUser::class]));
+        // The paths of a default order whose relation the caller may not read.
+        $paths = new FilterPaths($resolver, (new TpPlaylistResource())->allFields(), 'tpPlaylists', refused: [$relation], under: new RelationHop($relation, 'tpTracks', 'playlists'));
+
+        foreach (['added' => SortByField::make('added', 'addedAt')->through('pivot'), 'adder' => SortByField::make('adder', 'name')->through('pivot.addedBy')] as $key => $sort) {
+            /** @var EloquentBelongsToMany<Model, Model, Pivot, 'pivot'> $eloquent */
+            $eloquent = TpTrack::query()->findOrFail(1)->playlists();
+            /** @var Builder<Model> $builder */
+            $builder = $eloquent->getQuery()->select($eloquent->getRelated()->qualifyColumn('*'));
+            $handler = (new EloquentSortHandler())->forPivot($eloquent)->forPaths($paths);
+            $handler->apply([new SortDirective($paths->resolveSort($sort), descending: true)], $builder);
+
+            self::assertStringContainsString('1 = 0', $builder->toSql(), $key);
+            $ids = \array_map(static fn(Model $playlist): string => \is_scalar($key = $playlist->getKey()) ? (string) $key : '', \array_values($builder->get()->all()));
+            \sort($ids);
+            self::assertSame(['1', '2'], $ids, $key);
+        }
     }
 
     #[Test]

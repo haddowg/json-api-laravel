@@ -66,7 +66,7 @@ final class FilterPathGuard
         };
         $encoders = static fn(): ModelEncoders => new ModelEncoders($map(), static fn(string $served): ?IdEncoderInterface => self::encoderOf($resolver, $served));
 
-        self::guardEncoders($encoders, $map, self::resolved($paths, $resource->allFilters(), $fields, $type), $type, $type, FilterPaths::namedTypes($fields, $type), servedBy: $servedBy);
+        self::guardEncoders($encoders, $map, self::resolved($paths, $resource->allFilters(), $fields, $type, null, $type), $type, $type, FilterPaths::namedTypes($fields, $type), servedBy: $servedBy);
 
         foreach ($fields as $relation) {
             if (!$relation instanceof RelationInterface || $relation->allFilters() === []) {
@@ -85,7 +85,7 @@ final class FilterPathGuard
                 self::guardEncoders(
                     $encoders,
                     $map,
-                    self::resolved($paths, $relation->allFilters(), $relatedFields, $type, new RelationHop($relation, $type, $relation->column() ?? $relation->name())),
+                    self::resolved($paths, $relation->allFilters(), $relatedFields, $type, new RelationHop($relation, $type, $relation->column() ?? $relation->name()), $relatedTypes[0]),
                     $type,
                     $relatedTypes[0],
                     FilterPaths::namedTypes($relatedFields, $relatedTypes[0], $type),
@@ -106,10 +106,10 @@ final class FilterPathGuard
      *
      * @throws \LogicException when a filter's path can't be resolved
      */
-    private static function resolved(ThroughPathResolver $paths, array $filters, iterable $fields, string $type, ?RelationHop $under = null): array
+    private static function resolved(ThroughPathResolver $paths, array $filters, iterable $fields, string $type, ?RelationHop $under = null, string $runsOn = ''): array
     {
         try {
-            return $paths->resolveAll($filters, $fields, $under);
+            return $paths->resolveAll($filters, $fields, $under, $runsOn);
         } catch (\LogicException $e) {
             throw new \LogicException(\sprintf('The JSON:API resource for type "%s" declares a filter that cannot run: %s', $type, $e->getMessage()), 0, $e);
         }

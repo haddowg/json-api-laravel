@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Fixtures\ThroughPivot;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 
 /**
@@ -36,6 +37,14 @@ final class TpEntry extends Pivot
     public function auditor(): BelongsTo
     {
         return $this->belongsTo(TpAuditor::class, 'auditor_id');
+    }
+
+    /**
+     * @return MorphTo<\Illuminate\Database\Eloquent\Model, $this>
+     */
+    public function subject(): MorphTo
+    {
+        return $this->morphTo('subject');
     }
 
     /**

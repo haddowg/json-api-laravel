@@ -38,6 +38,9 @@ final class TpBrokenResource extends AbstractResource
                 'mid-path-pivot-sort' => $listed->fields(Integer::make('position')),
                 default => $listed,
             },
+            // A pivot model with no stored pivot fields declared: core accepts a path past its
+            // pivot row, which the Eloquent provider reads no pivot rows of.
+            BelongsToMany::make('entryTracks', 'tpTracks')->through(TpEntry::class),
             self::$declaration === 'morph-to-many-pivot'
                 ? MorphToMany::make('taggedTracks', ['tpTracks'])->identifiedBy(static fn(object $album): array => [])->fields(Integer::make('position'))->withFilters(Where::make('x', 'position')->through('pivot'))
                 : MorphToMany::make('taggedTracks', ['tpTracks']),
@@ -52,6 +55,8 @@ final class TpBrokenResource extends AbstractResource
             'unknown-pivot-row-relation' => [Where::make('x', 'name')->through('tracks.playlists.pivot.ghost')],
             'pivot-row-relation-no-type' => [Where::make('x', 'name')->through('tracks.playlists.pivot.owner')],
             'pivot-row-relation-several-types' => [Where::make('x', 'name')->through('tracks.playlists.pivot.addedBy')],
+            'pivot-row-morph-to' => [Where::make('x', 'name')->through('tracks.playlists.pivot.subject')],
+            'association-class-without-stored-fields' => [Where::make('x', 'name')->through('entryTracks.pivot.addedBy')],
             default => [],
         };
     }
