@@ -46,7 +46,7 @@ final class RequestMetaResolver
      * The request attribute marking a sub-request as one operation of an Atomic Operations
      * batch, whose declarations are read with the atomic flag set.
      */
-    public const string ATOMIC_ATTRIBUTE = '_jsonapi_atomic_operation';
+    public const string ATOMIC_ATTRIBUTE = MetaContext::ATOMIC_ATTRIBUTE;
 
     /** @var array<string, MetaShape> */
     private array $declared = [];

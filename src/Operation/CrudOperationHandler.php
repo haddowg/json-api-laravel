@@ -3155,14 +3155,16 @@ final class CrudOperationHandler implements OperationHandlerInterface
     }
 
     /**
-     * Notes the members an identified `MorphToMany` with stored pivot fields holds before a write
-     * of `$linkage`, so {@see writeLinkRows()} can tell a new member from an existing one once
-     * the relation's `fillUsing()` has written the link rows.
+     * Notes the members an identified `MorphToMany` with stored pivot fields, or an open pivot
+     * whose entry fills, holds before a write of `$linkage`, so {@see writeLinkRows()} can tell
+     * a new member from an existing one once the relation's `fillUsing()` has written the link
+     * rows.
      */
     private function queueLinkRowWrite(Server $server, object $parent, RelationInterface $relation, ToOneRelationship|ToManyRelationship $linkage, Mode $mode, JsonApiRequestInterface $request): void
     {
         if ($mode === Mode::Remove || !IdentifiedMorphMembers::identifies($relation) || !$linkage instanceof ToManyRelationship
-            || $relation->storedPivotFields() === [] || $relation->linkRowFields() !== null) {
+            || ($relation->storedPivotFields() === [] && !($relation->pivotAdditionalProperties()?->fills() ?? false))
+            || $relation->linkRowFields() !== null) {
             return;
         }
 

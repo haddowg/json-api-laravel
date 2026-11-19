@@ -66,7 +66,7 @@ final class BoardResource extends AbstractResource
      *
      * @return list<array{0: string, 1: int, 2: object}>
      */
-    private static function looseItems(mixed $board): array
+    public static function looseItems(mixed $board): array
     {
         $rows = match (true) {
             $board instanceof Board => $board->boardItems,
@@ -81,7 +81,7 @@ final class BoardResource extends AbstractResource
      * Keeps a row per member, deleting the dropped ones and creating the new ones; the pivot
      * values a write sends land on the rows after it.
      */
-    private static function fillLooseItems(mixed $board, ToManyRelationship $linkage, Mode $mode): void
+    public static function fillLooseItems(mixed $board, ToManyRelationship $linkage, Mode $mode): void
     {
         $sent = [];
         foreach ($linkage->resourceIdentifiers as $identifier) {

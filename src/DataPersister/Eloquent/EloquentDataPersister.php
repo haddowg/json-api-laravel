@@ -651,7 +651,8 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
      * Writes a declared `MorphToMany`'s link rows from core's plan: each deleted row is deleted,
      * each moving row saved at its temporary position, each kept row saved with its final
      * position and pivot values, then each new row of the `through()` model inserted with its
-     * owner associated and its values in storage form. Every pass finishes before the next, so
+     * owner associated and its values in storage form. An open pivot's extra members go to its
+     * entry's fill hook with the row before it is saved. Every pass finishes before the next, so
      * a unique owner and position index holds throughout.
      */
     public function writeLinkRows(string $type, object $parent, MorphToMany $relation, LinkRowWritePlan $plan, bool $flush = true): object
@@ -672,6 +673,8 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
                     $row = $write->member->row;
                     if ($row instanceof Model) {
                         $this->fillLinkRow($row, $relation, $write->values);
+                        $row = $write->fillAdditional($relation, $row);
+                        \assert($row instanceof Model);
                         $row->save();
                     }
                 }
@@ -690,6 +693,8 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
                     $row->setAttribute($fields->owner, $parent->getKey());
                 }
                 $this->fillLinkRow($row, $relation, $values);
+                $row = $write->fillAdditional($relation, $row);
+                \assert($row instanceof Model);
                 $row->save();
             }
 
