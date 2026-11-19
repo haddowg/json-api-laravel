@@ -81,6 +81,28 @@ abstract class PivotWriteTestCase extends Orchestra
         self::assertSame('/data/0/meta/pivot/position', $response->json('errors.0.source.pointer'));
     }
 
+    public function test_an_undeclared_pivot_member_is_422(): void
+    {
+        // `meta.pivot` is closed: a member no pivot field names is refused at its pointer,
+        // on the relationship endpoint and inside a whole-resource write, and nothing is written.
+        $response = $this->writeMany('POST', '/api/playlists/2/relationships/orderedTracks', [
+            ['type' => 'tracks', 'id' => '4', 'meta' => ['pivot' => ['position' => 5, 'colour' => 'red']]],
+        ]);
+
+        $response->assertStatus(422);
+        self::assertSame('/data/0/meta/pivot/colour', $response->json('errors.0.source.pointer'));
+        self::assertSame('The member "colour" is not declared.', $response->json('errors.0.detail'));
+        self::assertSame(['1'], $this->linkageIds($this->readRel('/api/playlists/2/relationships/orderedTracks')));
+
+        $whole = $this->json('PATCH', '/api/playlists/2', ['data' => [
+            'type' => 'playlists',
+            'id' => '2',
+            'relationships' => ['orderedTracks' => ['data' => [['type' => 'tracks', 'id' => '1', 'meta' => ['pivot' => ['position' => 1, 'colour' => 'red']]]]]],
+        ]], ['Accept' => self::MEDIA_TYPE, 'CONTENT_TYPE' => self::MEDIA_TYPE]);
+        $whole->assertStatus(422);
+        self::assertSame('/data/relationships/orderedTracks/data/0/meta/pivot/colour', $whole->json('errors.0.source.pointer'));
+    }
+
     public function test_a_weight_below_position_is_422(): void
     {
         // The cross-pivot-field rule `weight >= position` rejects an inverted pair over the

@@ -15,10 +15,13 @@ use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionExample;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionExtensions;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionFilters;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionLink;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionRequestMeta;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionSafety;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionScopes;
 use haddowg\JsonApi\OpenApi\Metadata\OperationExample;
+use haddowg\JsonApi\Resource\ActionRequestMetaContext;
 use haddowg\JsonApi\Resource\DeclaresActionDocumentMetaInterface;
+use haddowg\JsonApi\Resource\DeclaresActionRequestMetaInterface;
 use haddowg\JsonApiLaravel\Action\ActionDescriptor;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
 
@@ -38,7 +41,7 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiAction;
  * tags fall back to the mount type's default tag) so the projected document matches the
  * bundle's for an identical action.
  */
-final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAcceptedBodies, DeclaresActionExample, DeclaresActionSafety, DeclaresActionExtensions, DeclaresActionScopes, DeclaresActionDeprecation, DeclaresActionFilters
+final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAcceptedBodies, DeclaresActionExample, DeclaresActionSafety, DeclaresActionExtensions, DeclaresActionScopes, DeclaresActionDeprecation, DeclaresActionFilters, DeclaresActionRequestMeta
 {
     /**
      * @param list<string> $tags the OpenAPI tag names (already resolved against the mount type's default)
@@ -48,7 +51,14 @@ final readonly class ActionMetadata implements DeclaresActionLink, DeclaresAccep
         private array $tags,
         // The handler, when it declares its response documents' meta per status.
         private ?DeclaresActionDocumentMetaInterface $documentMeta = null,
+        // The handler, when it declares its request document's meta per method.
+        private ?DeclaresActionRequestMetaInterface $requestMeta = null,
     ) {}
+
+    public function requestDocumentMeta(ActionRequestMetaContext $context): iterable
+    {
+        return $this->requestMeta?->requestDocumentMeta($context) ?? [];
+    }
 
     public function path(): string
     {

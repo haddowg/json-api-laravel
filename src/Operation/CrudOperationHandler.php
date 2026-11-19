@@ -24,6 +24,7 @@ use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResponses;
+use haddowg\JsonApi\OpenApi\Metadata\OperationType;
 use haddowg\JsonApi\Operation\AddToRelationshipOperation;
 use haddowg\JsonApi\Operation\AtomicOperationsOperation;
 use haddowg\JsonApi\Operation\CreateResourceOperation;
@@ -64,7 +65,11 @@ use haddowg\JsonApi\Resource\Field\Union;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Filter\SupportsSingular;
+use haddowg\JsonApi\Resource\MetaContext;
+use haddowg\JsonApi\Resource\RelationshipMetaContext;
+use haddowg\JsonApi\Resource\RequestMetaContext;
 use haddowg\JsonApi\Resource\ResolvesCompletionRedirect;
+use haddowg\JsonApi\Resource\WrittenMeta;
 use haddowg\JsonApi\Response\AcceptedResponse;
 use haddowg\JsonApi\Response\AtomicResultsResponse;
 use haddowg\JsonApi\Response\DataResponse;
@@ -145,6 +150,7 @@ use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\FilterValueValidator;
 use haddowg\JsonApiLaravel\Validation\ReadOnlyAttributes;
 use haddowg\JsonApiLaravel\Validation\ResourceValidator;
+use haddowg\JsonApiLaravel\Validation\ValidationFailed;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
@@ -292,6 +298,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // The top-level meta each operation's document declares, whose extractUsing()
         // members are filled once the handler and its After hooks built the response.
         private readonly ?DocumentMetaResolver $documentMeta = null,
+        // The declared request and resource object meta each write is validated against.
+        private readonly ?RequestMetaResolver $requestMeta = null,
     ) {}
 
     /**
@@ -386,6 +394,14 @@ final class CrudOperationHandler implements OperationHandlerInterface
             && !$operation instanceof CustomActionOperation && !$operation instanceof DeleteResourceOperation
             && $this->documentMeta !== null && $server instanceof Server && $request instanceof JsonApiRequestInterface) {
             $response = $this->documentMeta->forOperation($server, $serverName, $operation)->applyTo($response, $request);
+        }
+
+        // An action's 202 job document carries the members its Accepted response declares.
+        if ($operation instanceof CustomActionOperation && $response instanceof AcceptedResponse && $request instanceof JsonApiRequestInterface) {
+            $accepted = DocumentMeta::forActionStatus($operation->responds(), 202);
+            if (!$accepted->isEmpty()) {
+                $response = $response->withMeta($accepted->fill($response->meta(), $response->job(), $request));
+            }
         }
 
         // An action's members are the ones its declared response carries for the status the
@@ -1926,6 +1942,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->validator->validate($resource, $request, true, subject: $entity);
         }
 
+        // The typed meta goes on both requests, for the hydrator and the hooks.
+        $written = $this->writtenMeta($server, $type, $body, RequestMetaContext::forOperation(OperationType::Create, RequestMetaResolver::isAtomic($body)), OperationType::Create);
+        $body = $written->on($body);
+        $request = $written->on($request);
+
         // The `create` policy gate authorizes the type here, before hydration —
         // validate-before-authorize preserves the bundle's 422-before-403. Create carries
         // no instance to the policy method, so the blank instance's class-string is used
@@ -1980,6 +2001,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // relationships are stripped so core never scalar-hydrates an association.
             $entity = $server->hydratorFor($type)->hydrate($this->datesInStorageZone($resource, $entity, $this->withoutRelationships($body)), $entity);
             \assert(\is_object($entity));
+            $entity = $this->fillResourceMeta($server, $type, $entity, $body, creating: true);
             $this->unionsInStoredForm($resource, $entity, $body, true);
 
             // The post-hydration entity seam (uniqueness's custom cousin): a resource's
@@ -2022,7 +2044,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // post-commit include/window/count wiring and the After* hooks below do not apply
         // (no resource was persisted), so the branch returns here.
         if ($entity instanceof AcceptedForProcessing) {
-            return $this->accepted($entity, $server);
+            return $this->accepted($entity, $server, $type, OperationType::Create, $request);
         }
 
         // A write response is the same resource document, so it honours `?include`, the
@@ -2105,6 +2127,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->validator->validate($resource, $request, false, existingObject: $entity, subject: $entity);
         }
 
+        $written = $this->writtenMeta($server, $type, $body, RequestMetaContext::forOperation(OperationType::Update, RequestMetaResolver::isAtomic($body)), OperationType::Update);
+        $body = $written->on($body);
+        $request = $written->on($request);
+
         // Whole-resource writes embedding `data.relationships`: stripped from the
         // body before hydration and set through the persister's relationship seam, a full
         // replacement per named association (never an incremental
@@ -2144,6 +2170,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
             $entity = $hydrator->hydrate($this->datesInStorageZone($resource, $entity, $this->withoutRelationships($body)), $entity);
             \assert(\is_object($entity));
+            $entity = $this->fillResourceMeta($server, $type, $entity, $body, creating: false);
             $this->unionsInStoredForm($resource, $entity, $body, false);
 
             if ($resource !== null) {
@@ -2175,7 +2202,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // `202 Accepted` pointing at the job resource, as the async create does; the
         // post-commit wiring and After* hooks below do not apply.
         if ($entity instanceof AcceptedForProcessing) {
-            return $this->accepted($entity, $server);
+            return $this->accepted($entity, $server, $type, OperationType::Update, $request);
         }
 
         // A write response honours `?include`, the Relationship Queries profile (windowed
@@ -2210,7 +2237,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * write past the batch's commit — so it is refused (`422`, rolling the batch back)
      * when a batch is in flight.
      */
-    private function accepted(AcceptedForProcessing $accepted, Server $server): AcceptedResponse
+    private function accepted(AcceptedForProcessing $accepted, Server $server, ?string $type = null, ?OperationType $operation = null, ?JsonApiRequestInterface $request = null): AcceptedResponse
     {
         if ($this->txContext?->isActive() ?? false) {
             throw new AsyncWriteNotAllowedInAtomicOperation();
@@ -2228,6 +2255,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $retryAfter = $accepted->retryAfter();
         if ($retryAfter !== null) {
             $response = $response->withRetryAfter($retryAfter);
+        }
+
+        // The job document's declared meta: the members a hook supplies from the job, beside
+        // what the persister set, which wins.
+        $meta = $type !== null && $operation !== null ? $this->documentMeta?->forAccepted($server, $type, $operation) : null;
+        if ($meta !== null && $request !== null && !$meta->isEmpty()) {
+            $response = $response->withMeta($meta->fill($response->meta(), $response->job(), $request));
         }
 
         return $response;
@@ -2253,6 +2287,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // removed.
         $this->authorizer->authorize($type, Operation::Delete, $entity, $this->serverNameOf($operation->context()));
 
+        // A delete may carry a meta-only body, validated against what the type declares.
+        $server = $operation->context()->server;
+        if ($server instanceof Server) {
+            $request = $this->writtenMeta($server, $type, $request, RequestMetaContext::forOperation(OperationType::Delete, RequestMetaResolver::isAtomic($request)))->on($request);
+        }
+
         // The before-delete lifecycle gate (a throw aborts before the persister deletes
         // — a delete guard's natural seam, e.g. a 409 when the resource is referenced), then
         // the delete, in one transaction: a write the gate made is undone when the delete fails.
@@ -2264,7 +2304,6 @@ final class CrudOperationHandler implements OperationHandlerInterface
         });
 
         // A type that declares a meta-only 200 and its members answers with them, else 204.
-        $server = $operation->context()->server;
         $meta = $server instanceof Server ? $this->documentMeta?->forDelete($server, $this->serverNameOf($operation->context()), $type) : null;
         $response = $meta !== null && !$meta->isEmpty() ? MetaResponse::fromMeta([]) : NoContentResponse::create();
 
@@ -2311,7 +2350,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         AddToRelationshipOperation|UpdateRelationshipOperation|RemoveFromRelationshipOperation $operation,
         JsonApiRequestInterface $body,
         Mode $mode,
-    ): IdentifierResponse|AcceptedResponse|ErrorResponse {
+    ): IdentifierResponse|MetaResponse|AcceptedResponse|ErrorResponse {
         $server = $operation->context()->server;
         \assert($server instanceof Server);
 
@@ -2366,6 +2405,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // surface leaves `embeddedRelationName` null (pointers root at `/data/…`); the resolver
         // enables the linkage-id-format pass.
         $this->validator->validateRelationshipLinkage($relation, $linkage, $mode, $existingPivot, $body, resolveResource: $this->resourceResolver($server));
+
+        $written = $this->writtenMeta($server, $type, $body, RequestMetaContext::forRelationship($relationshipName, $mode, RequestMetaResolver::isAtomic($body)));
+        $body = $written->on($body);
+        $request = $written->on($request);
 
         // The policy gate (NEW vs the bundle's event gate): a relationship
         // mutation authorizes the parent — `update` by default, or the relation's own
@@ -2426,25 +2469,32 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $this->scopeRelationshipEndpoint($server, $type, $parent, $relation, $request);
         }
 
-        // The 200 linkage echo carries `meta.pivot` for a pivot relation (Eloquent-only),
-        // exactly as the relationship-read endpoint does.
-        $response = IdentifierResponse::forRelationship(
-            $parent,
-            $writeOnly
-                ? $server->serializerFor($type)
-                : $this->relationshipLinkageSerializer($server, $type, $parent, $relation, $relationshipName),
-            $relationshipName,
-        );
+        // A type declaring this write's document meta answers a meta-only 200 instead of the
+        // linkage, its hooks receiving the parent. Otherwise the 200 linkage echo carries
+        // `meta.pivot` for a pivot relation, exactly as the relationship-read endpoint does.
+        $documentMeta = $this->documentMeta?->forRelationshipWrite($server, $type, new RelationshipMetaContext($relationshipName, $mode, RequestMetaResolver::isAtomic($body)));
+        $metaOnly = $documentMeta !== null && !$documentMeta->isEmpty();
+        $response = $metaOnly
+            ? MetaResponse::fromMeta([])
+            : IdentifierResponse::forRelationship(
+                $parent,
+                $writeOnly
+                    ? $server->serializerFor($type)
+                    : $this->relationshipLinkageSerializer($server, $type, $parent, $relation, $relationshipName),
+                $relationshipName,
+            );
 
         // The after-relationship-mutate lifecycle hook (post-commit) may replace the
         // linkage response. Deferred to post-commit under an active Atomic Operations
         // batch (replacement inert); fired inline on the single-op path.
-        return $this->deferOrFire(function () use ($type, $request, $parent, $relation, $linkage, $mode, $response): IdentifierResponse {
+        $response = $this->deferOrFire(function () use ($type, $request, $parent, $relation, $linkage, $mode, $response): IdentifierResponse|MetaResponse {
             $afterMutate = new AfterRelationshipMutateEvent($type, $request, $parent, $relation, $linkage, $mode, $this->serverName($request));
             $this->dispatch($afterMutate);
 
             return $afterMutate->response() ?? $response;
         }, $response);
+
+        return $response instanceof MetaResponse && $metaOnly ? $documentMeta->applyTo($response, $request, $parent) : $response;
     }
 
     /**
@@ -3151,6 +3201,23 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 }
 
                 $creating = !isset($held[$identifier->type . "\0" . $identifier->id]);
+                // The members the pivot's additionalProperties entry takes go to its fillUsing() hook.
+                $entry = $relation->pivotAdditionalProperties();
+                if ($entry !== null && $entry->fills()) {
+                    $shape = $relation->pivotMetaShape();
+                    $extra = $shape->additionalMembers($pivot);
+                    if ($extra !== []) {
+                        $data = [];
+                        foreach ($pivot as $key => $value) {
+                            $data[(string) $key] = $value;
+                        }
+                        $normalized = [];
+                        foreach ($shape->normalize($extra) as $key => $value) {
+                            $normalized[(string) $key] = $value;
+                        }
+                        $entry->fill($row, $normalized, $data);
+                    }
+                }
                 foreach ($relation->writablePivotFields($creating) as $field) {
                     if (\array_key_exists($field->name(), $pivot)) {
                         Accessor::set($row, $field->column() ?? $field->name(), $pivot[$field->name()]);
@@ -3206,6 +3273,62 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * write operation is always dispatched from an HTTP request through the controller,
      * so the context always carries one.
      */
+    /**
+     * Validates the `meta` a write sent against what its type declares: the request
+     * document's top-level `meta` for the write `$context` names, and for a create or an
+     * update the resource object's `data.meta`. A member the declaration does not name, or a
+     * value it refuses, is a `422` at `/meta/<member>` or `/data/meta/<member>`. Returns the
+     * typed values, which the caller puts on the requests the hydrator and the hooks read.
+     *
+     * @throws ValidationFailed
+     */
+    private function writtenMeta(Server $server, string $type, JsonApiRequestInterface $body, RequestMetaContext $context, ?OperationType $resourceWrite = null): WrittenMeta
+    {
+        if ($this->requestMeta === null) {
+            return new WrittenMeta();
+        }
+
+        $document = RequestMetaResolver::documentMetaOf($body);
+        $shape = $this->requestMeta->forWrite($server, $type, $context);
+        $errors = $this->validator->metaErrors($shape, $document, '/meta', true, $body);
+
+        $resourceShape = null;
+        $resource = null;
+        if ($resourceWrite !== null) {
+            $resource = RequestMetaResolver::resourceMetaOf($body);
+            $resourceShape = $this->requestMeta->forResource($server, $type, MetaContext::write($resourceWrite, $context->isAtomic()));
+            $errors = [...$errors, ...$this->validator->metaErrors($resourceShape, $resource, '/data/meta', $resourceWrite === OperationType::Create, $body)];
+        }
+        if ($errors !== []) {
+            throw new ValidationFailed($errors);
+        }
+
+        return new WrittenMeta(
+            \is_array($document) ? $shape->values($document, true, $body) : [],
+            $resourceShape !== null && \is_array($resource) ? $resourceShape->values($resource, $resourceWrite === OperationType::Create, $body) : [],
+        );
+    }
+
+    /**
+     * Hands `data.meta` to the declared members' `fillUsing()` hooks for a type whose
+     * hydrator is not a resource, which applies them itself while it hydrates.
+     */
+    private function fillResourceMeta(Server $server, string $type, object $entity, JsonApiRequestInterface $body, bool $creating): object
+    {
+        if ($this->requestMeta === null || $server->hydratorFor($type) instanceof AbstractResource) {
+            return $entity;
+        }
+        $meta = RequestMetaResolver::resourceMetaOf($body);
+        if (!\is_array($meta) || $meta === []) {
+            return $entity;
+        }
+        $shape = $this->requestMeta->forResource($server, $type, MetaContext::write($creating ? OperationType::Create : OperationType::Update, RequestMetaResolver::isAtomic($body)));
+        /** @var array<string, mixed> $meta */
+        $filled = $shape->isEmpty() ? $entity : $shape->fill($entity, $meta, $creating, $body);
+
+        return \is_object($filled) ? $filled : $entity;
+    }
+
     private function jsonApiRequest(OperationContext $context): JsonApiRequestInterface
     {
         $request = $context->httpRequest();

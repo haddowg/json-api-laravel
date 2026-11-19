@@ -5,15 +5,20 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Operation;
 
 use haddowg\JsonApi\OpenApi\Metadata\OperationType;
+use haddowg\JsonApi\Operation\AddToRelationshipOperation;
 use haddowg\JsonApi\Operation\CreateResourceOperation;
 use haddowg\JsonApi\Operation\CustomActionOperation;
 use haddowg\JsonApi\Operation\DeleteResourceOperation;
 use haddowg\JsonApi\Operation\FetchRelatedOperation;
 use haddowg\JsonApi\Operation\FetchResourceOperation;
 use haddowg\JsonApi\Operation\JsonApiOperationInterface;
+use haddowg\JsonApi\Operation\RemoveFromRelationshipOperation;
+use haddowg\JsonApi\Operation\UpdateRelationshipOperation;
 use haddowg\JsonApi\Operation\UpdateResourceOperation;
 use haddowg\JsonApi\Resource\DocumentMeta;
+use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\RelationshipMetaContext;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
@@ -67,6 +72,10 @@ final class DocumentMetaResolver
             $operation instanceof UpdateResourceOperation => [$operation->target()->type, OperationType::Update, 200],
             default => [null, null, 200],
         };
+        // A write accepted for later processing answers its job's document.
+        if ($status === 202 && $type !== null && ($kind === OperationType::Create || $kind === OperationType::Update)) {
+            return $this->forAccepted($server, $type, $kind);
+        }
         if ($status !== null && $status !== $documentStatus && !$operation instanceof CustomActionOperation && !$operation instanceof DeleteResourceOperation) {
             return new DocumentMeta();
         }
@@ -85,6 +94,19 @@ final class DocumentMetaResolver
             $operation instanceof DeleteResourceOperation => $status !== null && $status !== 200
                 ? new DocumentMeta()
                 : $this->forDelete($server, $serverName, $operation->target()->type),
+            $operation instanceof UpdateRelationshipOperation, $operation instanceof AddToRelationshipOperation, $operation instanceof RemoveFromRelationshipOperation => $this->forRelationshipWrite(
+                $server,
+                $operation->target()->type,
+                new RelationshipMetaContext(
+                    (string) $operation->target()->relationship,
+                    match (true) {
+                        $operation instanceof AddToRelationshipOperation => Mode::Add,
+                        $operation instanceof RemoveFromRelationshipOperation => Mode::Remove,
+                        default => Mode::Replace,
+                    },
+                    $operation->context()->httpRequest()?->getAttribute(RequestMetaResolver::ATOMIC_ATTRIBUTE) === true,
+                ),
+            ),
             default => new DocumentMeta(),
         };
     }
@@ -141,6 +163,39 @@ final class DocumentMetaResolver
         }
 
         return $this->declared[$key];
+    }
+
+    /**
+     * The members of the meta-only `200` the relationship write `$context` names answers
+     * with, which the parent type `$type` declares. Empty when it declares none, so the
+     * write answers its linkage.
+     *
+     * @throws \haddowg\JsonApi\Resource\DocumentMetaMisdeclared
+     */
+    public function forRelationshipWrite(Server $server, string $type, RelationshipMetaContext $context): DocumentMeta
+    {
+        $key = \spl_object_id($server) . "\0" . $type . "\0relationship\0" . $context->describe();
+
+        return $this->declared[$key] ??= DocumentMeta::forRelationship($this->serializer($server, $type) ?? new \stdClass(), $context, $type);
+    }
+
+    /**
+     * The members of the job document a create's or an update's `202` answers with, which
+     * `$type` declares through `acceptedDocumentMeta()`.
+     *
+     * @throws \haddowg\JsonApi\Resource\DocumentMetaMisdeclared
+     */
+    public function forAccepted(Server $server, string $type, OperationType $operation): DocumentMeta
+    {
+        $key = \spl_object_id($server) . "\0" . $type . "\0accepted\0" . $operation->value;
+
+        return $this->declared[$key] ??= DocumentMeta::forAccepted($this->serializer($server, $type) ?? new \stdClass(), $operation, [], $type);
+    }
+
+    private function serializer(Server $server, string $type): ?object
+    {
+        return $this->types->resourceFor($server, $type)
+            ?? ($server->hasSerializerFor($type) ? $server->serializerFor($type) : null);
     }
 
     /**

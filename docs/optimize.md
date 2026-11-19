@@ -33,7 +33,10 @@ warmers plus a deploy-time safety check:
    no model serves into a model with global scopes declares one unless no request reads it.
    Every sort a cursor-paged
    collection declares must also key its pages
-   ([custom sorts on a cursor page](eloquent.md#custom-sorts-on-a-cursor-page)). **A problem fails the
+   ([custom sorts on a cursor page](eloquent.md#custom-sorts-on-a-cursor-page)), and every declared
+   meta must read: a member declared twice, two `AdditionalProperties` entries, a `getMeta()`
+   override beside `resourceMeta()` or request meta on a raw-body action is reported
+   ([typed request meta](openapi.md#typed-request-and-resource-object-meta)). **A problem fails the
    command** (a non-zero exit), so a mis-declared resource fails the *deploy*, not a runtime
    `500`.
 2. **Discovery snapshot (opt-in).** When `jsonapi.discovery.cache` names a path, it writes the

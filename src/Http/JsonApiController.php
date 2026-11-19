@@ -20,6 +20,7 @@ use haddowg\JsonApi\Operation\Target;
 use haddowg\JsonApi\Request\JsonApiRequest;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\DocumentMeta;
+use haddowg\JsonApi\Resource\RenderedMeta;
 use haddowg\JsonApi\Response\MetaResponse;
 use haddowg\JsonApi\Response\RawResponse;
 use haddowg\JsonApi\Server\Server;
@@ -160,6 +161,11 @@ final class JsonApiController
             && !($operation instanceof DeleteResourceOperation && !$response instanceof MetaResponse)) {
             $this->checkDocumentMeta($this->documentMeta->forOperation($server, $serverName, $operation, $psrResponse->getStatusCode()), $psrResponse);
         }
+        // Each rendered resource object's meta, and each linkage identifier's, is checked
+        // against what its type and relation declare.
+        if (!$streamed && $this->documentMeta?->checks() === true && !$response instanceof RawResponse) {
+            self::checkResourceMeta($server, $psrResponse);
+        }
 
         return $this->httpFoundationFactory->createResponse($psrResponse, $streamed);
     }
@@ -187,6 +193,33 @@ final class JsonApiController
         $meta = \is_array($document) ? ($document['meta'] ?? []) : [];
 
         $declared->assertSatisfiedBy(\is_array($meta) ? $meta : []);
+    }
+
+    /**
+     * Refuses a success document whose resource objects' `meta`, or whose linkage
+     * identifiers' `meta`, does not match what their types and relations declare.
+     *
+     * @throws \haddowg\JsonApi\Resource\ResourceMetaMismatch
+     */
+    private static function checkResourceMeta(Server $server, ResponseInterface $response): void
+    {
+        if ($response->getStatusCode() >= 300) {
+            return;
+        }
+        $body = $response->getBody();
+        $content = (string) $body;
+        if ($body->isSeekable()) {
+            $body->rewind();
+        }
+        $document = $content === '' ? null : \json_decode($content, true, flags: \JSON_THROW_ON_ERROR);
+        if (!\is_array($document)) {
+            return;
+        }
+
+        RenderedMeta::assertConforms(
+            $document,
+            static fn(string $type): ?object => $server->hasSerializerFor($type) ? $server->serializerFor($type) : null,
+        );
     }
 
     /**

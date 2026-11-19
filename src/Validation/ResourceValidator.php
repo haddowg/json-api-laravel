@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Validation;
 
+use haddowg\JsonApi\Exception\AttributeValueInvalid;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\OpenApi\Schema;
@@ -33,6 +34,7 @@ use haddowg\JsonApi\Resource\Field\Obj;
 use haddowg\JsonApi\Resource\Field\OneOf;
 use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\MetaShape;
 use haddowg\JsonApi\Resource\ObjectValue;
 use haddowg\JsonApi\Resource\ObjectValues;
 use haddowg\JsonApi\Resource\UnionValue;
@@ -99,6 +101,8 @@ use Illuminate\Validation\Rule;
  */
 final class ResourceValidator
 {
+    private const string NOT_AN_OBJECT = 'This value should be an object.';
+
     private const string UNKNOWN_VARIANT = 'This value is not one of the allowed types.';
 
     /**
@@ -169,6 +173,73 @@ final class ResourceValidator
             ? $existingObject
             : ($subject instanceof Model ? $subject : null);
 
+        $errors = $this->fieldsErrors(
+            $resource->allFields(),
+            $incoming,
+            $attributes,
+            \array_merge($stored, $incoming),
+            $creating,
+            $request,
+            function (FieldInterface $field) use ($resource, $creating, $model, $attributes, $existingObject, $subject): array {
+                $unique = $this->uniqueRule($resource, $field, $creating, $model, $attributes);
+                $storedRows = [];
+                foreach ($this->storedRowsUniqueRules($resource, $field, $creating, $existingObject ?? $subject, $model) as $key => $rule) {
+                    $storedRows[] = [$key, $rule];
+                }
+
+                return [$unique === null ? [] : [$unique], $storedRows];
+            },
+        );
+
+        $ownIdError = $this->ownIdError($resource, $data);
+        if ($ownIdError !== null) {
+            $errors[] = $ownIdError;
+        }
+
+        // A to-many's linkage is its whole member set, so it must sit within the
+        // relation's minItems()/maxItems().
+        foreach ($this->resourceCardinalityErrors($resource, $data, $creating, $request) as $error) {
+            $errors[] = $error;
+        }
+
+        $errors = $this->withTypeMismatches($errors, ValueTypes::mismatchesIn($resource->allFields(), $incoming, $creating, $request));
+
+        if ($errors === []) {
+            return;
+        }
+
+        throw new ValidationFailed($errors);
+    }
+
+    /**
+     * The violations of a set of fields' values, as an attribute object validates them: each
+     * writable field's own rules, presence and nullability, its structured children and list
+     * elements, cross-field comparisons, open and bounded objects, `OneOf` variants, union
+     * members and `Shape` schemas, each at its `/data/attributes/...` pointer. The JSON type
+     * check is the caller's.
+     *
+     * @param iterable<FieldInterface> $fields
+     * @param array<string, mixed>     $incoming        the values the request sent
+     * @param array<string, mixed>     $attributes      the values the rules see, stored ones folded in on an update
+     * @param array<string, mixed>     $shapeAttributes the same with stored values in wire form, for the schema pass
+     * @param (\Closure(FieldInterface): array{0: list<\Illuminate\Contracts\Validation\Rule|\Illuminate\Validation\Rules\Unique>, 1: list<array{0: string, 1: StoredRowsUnique}>})|null $extraRules
+     *        the rules a field adds beside its own, and those added after every field's
+     * @param array<string, FieldInterface> $additional each undeclared member an open object takes, by name, to the field validating it
+     *
+     * @return list<Error>
+     */
+    private function fieldsErrors(
+        iterable $fields,
+        array $incoming,
+        array $attributes,
+        array $shapeAttributes,
+        bool $creating,
+        JsonApiRequestInterface $request,
+        ?\Closure $extraRules = null,
+        array $additional = [],
+    ): array {
+        $fields = \is_array($fields) ? \array_values($fields) : \iterator_to_array($fields, false);
+
         /** @var array<string, list<string|\Stringable|\Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\Rule>> $rules */
         $rules = [];
         /** @var list<array{0: string, 1: CompareField}> $compares */
@@ -178,7 +249,7 @@ final class ResourceValidator
         /** @var list<Error> $elementErrors */
         $elementErrors = [];
 
-        foreach ($resource->allFields() as $field) {
+        foreach ($fields as $field) {
             if ($field instanceof Id || $field instanceof RelationInterface) {
                 continue;
             }
@@ -211,13 +282,14 @@ final class ResourceValidator
                 $compares[] = [$name, $compare];
             }
 
-            $unique = $this->uniqueRule($resource, $field, $creating, $model, $attributes);
-            if ($unique !== null) {
-                $rules[$name][] = $unique;
-            }
-
-            foreach ($this->storedRowsUniqueRules($resource, $field, $creating, $existingObject ?? $subject, $model) as $key => $rule) {
-                $storedRowRules[] = [$key, $rule];
+            if ($extraRules !== null) {
+                [$own, $after] = $extraRules($field);
+                foreach ($own as $rule) {
+                    $rules[$name][] = $rule;
+                }
+                foreach ($after as $entry) {
+                    $storedRowRules[] = $entry;
+                }
             }
         }
 
@@ -246,42 +318,168 @@ final class ResourceValidator
             }
         }
 
-        foreach ($this->objectValueErrors($resource, $incoming, $creating, $request) as $error) {
+        // An open object's undeclared members each validate against the entry's value field,
+        // on their own, since a member's name may hold `.` or `*`.
+        foreach ($additional as $name => $field) {
+            [$memberRules, $memberErrors] = $this->memberFieldRules($field, $attributes[$name] ?? null, $creating, $request);
+            $pointer = $this->pointers->forAttribute('') . '/' . self::escape((string) $name);
+            foreach ($memberErrors as $error) {
+                $errors[] = $this->errorAt($error->detail, $this->underMember($error->source->pointer ?? '', $pointer));
+            }
+            $errors = [...$errors, ...$this->valueErrors($attributes[$name] ?? null, $memberRules, (string) $name, $pointer)];
+        }
+
+        foreach ($this->objectValueErrors($fields, $incoming, $creating, $request) as $error) {
             $errors[] = $error;
         }
 
         // The composite passes also run document-level: a OneOf's variant is selected by
         // the incoming discriminator (value-dependent, so no static rule map can carry
         // it), and a Shape is raw JSON Schema no illuminate rule can translate.
-        foreach ($this->oneOfErrors($resource, $attributes, $incoming, $creating, $request) as $error) {
+        foreach ($this->oneOfErrors($fields, $attributes, $incoming, $creating, $request) as $error) {
             $errors[] = $error;
         }
         // A union's rules are its selected member's, so they too depend on the value.
-        foreach ($this->unionErrors(UnionValues::in($resource->allFields(), $incoming, $creating, $request), $creating, $request) as $error) {
+        foreach ($this->unionErrors(UnionValues::in($fields, $incoming, $creating, $request), $creating, $request) as $error) {
             $errors[] = $error;
         }
-        foreach ($this->shapeErrors($resource, \array_merge($stored, $incoming), $incoming, $creating, $request) as $error) {
-            $errors[] = $error;
-        }
-
-        $ownIdError = $this->ownIdError($resource, $data);
-        if ($ownIdError !== null) {
-            $errors[] = $ownIdError;
-        }
-
-        // A to-many's linkage is its whole member set, so it must sit within the
-        // relation's minItems()/maxItems().
-        foreach ($this->resourceCardinalityErrors($resource, $data, $creating, $request) as $error) {
+        foreach ($this->shapeErrors($fields, $shapeAttributes, $incoming, $creating, $request) as $error) {
             $errors[] = $error;
         }
 
-        $errors = $this->withTypeMismatches($errors, ValueTypes::mismatchesIn($resource->allFields(), $incoming, $creating, $request));
+        return $errors;
+    }
 
-        if ($errors === []) {
-            return;
+    /**
+     * Validates a declared `meta` object a write sent, as an attribute object is validated:
+     * each member it does not declare is refused at its pointer unless the declaration's
+     * `additionalProperties` entry opens it, and every declared writable member, and every
+     * member the entry's value field takes, runs its rules and its JSON type check.
+     * `$pointer` locates the object, such as `/meta` or `/data/meta`. A declaration with
+     * nothing in it leaves the object unchecked.
+     *
+     * @return list<Error>
+     */
+    public function metaErrors(MetaShape $shape, mixed $meta, string $pointer, bool $creating, JsonApiRequestInterface $request): array
+    {
+        if ($shape->isEmpty()) {
+            return [];
+        }
+        if ($meta !== null && (!\is_array($meta) || (\array_is_list($meta) && $meta !== []))) {
+            return [$this->errorAt(self::NOT_AN_OBJECT, $pointer)];
+        }
+        // Each number is validated in the type its member documents, a whole 5.0 as 5.
+        $normalized = $shape->normalize($meta ?? []);
+        /** @var array<string, mixed> $values */
+        $values = \is_array($normalized) ? self::stringKeyed($normalized) : [];
+
+        $base = $this->pointers->forAttribute('');
+        $errors = [];
+        foreach ($shape->undeclared($values, $base) as $undeclared) {
+            $errors[] = $this->errorAt(\sprintf('The member "%s" is not declared.', self::lastSegment($undeclared)), $undeclared);
         }
 
-        throw new ValidationFailed($errors);
+        $additional = [];
+        $of = $shape->additional?->of();
+        if ($of !== null) {
+            foreach (\array_keys($shape->additionalMembers($values)) as $name) {
+                $additional[(string) $name] = $of;
+            }
+        }
+        $fields = $shape->writableFields($creating, $request);
+        $errors = [...$errors, ...$this->fieldsErrors($fields, $values, $values, $values, $creating, $request, null, $additional)];
+        $errors = $this->withTypeMismatches($errors, $shape->mismatches($values, $base, $creating, $request));
+        $errors = [...$errors, ...$this->wireFormatErrors($fields, $values, $base, $errors)];
+
+        return \array_map(fn(Error $error): Error => $this->rebased($error, $base, $pointer), $errors);
+    }
+
+    /**
+     * A value of the right JSON type in a shape its field documents but does not take,
+     * refused as the hydrator refuses an attribute's: one error at the member, unless
+     * another rule already reported it.
+     *
+     * @param list<FieldInterface> $fields
+     * @param array<string, mixed> $values
+     * @param list<Error>          $reported
+     *
+     * @return list<Error>
+     */
+    private function wireFormatErrors(array $fields, array $values, string $base, array $reported): array
+    {
+        $pointers = [];
+        foreach ($reported as $error) {
+            $pointers[$error->source->pointer ?? ''] = true;
+        }
+
+        $errors = [];
+        foreach ($fields as $field) {
+            $value = $values[$field->name()] ?? null;
+            if ($value === null) {
+                continue;
+            }
+            try {
+                $field->castWireValue($value);
+            } catch (AttributeValueInvalid $invalid) {
+                $pointer = $base . '/' . self::escape($invalid->attribute);
+                if (!isset($pointers[$pointer])) {
+                    $errors[] = $this->errorAt($invalid->reason, $pointer);
+                }
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * `$values` with every key a string.
+     *
+     * @param array<array-key, mixed> $values
+     *
+     * @return array<string, mixed>
+     */
+    private static function stringKeyed(array $values): array
+    {
+        $keyed = [];
+        foreach ($values as $key => $value) {
+            $keyed[(string) $key] = $value;
+        }
+
+        return $keyed;
+    }
+
+    private static function escape(string $segment): string
+    {
+        return \str_replace(['~', '/'], ['~0', '~1'], $segment);
+    }
+
+    private static function lastSegment(string $pointer): string
+    {
+        $segments = \explode('/', $pointer);
+
+        return \str_replace(['~1', '~0'], ['/', '~'], (string) \end($segments));
+    }
+
+    /**
+     * `$error` with a pointer under `$from` moved under `$to`.
+     */
+    private function rebased(Error $error, string $from, string $to): Error
+    {
+        $pointer = $error->source->pointer ?? '';
+        if ($pointer !== $from && !\str_starts_with($pointer, $from . '/')) {
+            return $error;
+        }
+
+        return new Error(
+            id: $error->id,
+            status: $error->status,
+            code: $error->code,
+            title: $error->title,
+            detail: $error->detail,
+            source: ErrorSource::fromPointer($to . \substr($pointer, \strlen($from))),
+            links: $error->links,
+            meta: $error->meta,
+        );
     }
 
     /**
@@ -451,7 +649,7 @@ final class ResourceValidator
         // and each member's writable pivot `meta` against the pivot fields' constraints in the
         // per-member new/existing context. `Mode::Remove` / a request-less call skip the pivot
         // pass; the id-format pass runs whenever a resource resolver is supplied.
-        $isPivot = $mode !== Mode::Remove && $relation instanceof PivotRelationInterface && $relation->pivotFields() !== [] && $request !== null;
+        $isPivot = $mode !== Mode::Remove && $relation instanceof PivotRelationInterface && ($relation->pivotFields() !== [] || !$relation->pivotMetaShape()->isEmpty()) && $request !== null;
 
         $errors = [];
         if ($linkage instanceof ToOneRelationship) {
@@ -646,9 +844,11 @@ final class ResourceValidator
         $creating = $stored === null;
         $meta = $stored === null ? $incoming : \array_merge($stored, $incoming);
 
+        $shapeErrors = $this->pivotMemberErrors($relation, $incoming, $this->linkageMetaPointer($embeddedRelationName, '', $index), $creating, $request);
+
         $writable = $relation->writablePivotFields($creating);
         if ($writable === []) {
-            return []; // no writable pivot field → nothing to validate
+            return $shapeErrors; // no writable pivot field → nothing more to validate
         }
 
         /** @var array<string, list<string|\Stringable|\Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\Rule>> $rules */
@@ -666,7 +866,7 @@ final class ResourceValidator
             }
         }
 
-        $errors = [];
+        $errors = $shapeErrors;
         $bag = $this->validatorFactory->make($meta, $rules)->errors();
         foreach ($bag->keys() as $key) {
             foreach ($bag->get($key) as $message) {
@@ -692,6 +892,34 @@ final class ResourceValidator
                 $mismatches = [...$mismatches, ...ValueTypes::mismatchesOf($field, $incoming[$field->name()], $pointer, $creating, $request)];
                 $errors = [...$errors, ...$this->unionErrors(UnionValues::of($field, $incoming[$field->name()], $pointer, $creating, $request), $creating, $request, $field->name())];
             }
+        }
+
+        return $this->withTypeMismatches($errors, $mismatches);
+    }
+
+    /**
+     * The members of a linkage member's `meta.pivot` the relation does not declare, each a
+     * `422` at its pointer, unless the pivot's `additionalProperties` entry opens the
+     * object, when each such member is checked against the entry's value field instead.
+     *
+     * @param array<string, mixed> $incoming the member's incoming pivot meta
+     *
+     * @return list<Error>
+     */
+    private function pivotMemberErrors(PivotRelationInterface $relation, array $incoming, string $pointer, bool $creating, JsonApiRequestInterface $request): array
+    {
+        $shape = $relation->pivotMetaShape();
+        $errors = [];
+        foreach ($shape->undeclared($incoming, $pointer) as $undeclared) {
+            $errors[] = $this->errorAt(\sprintf('The member "%s" is not declared.', self::lastSegment($undeclared)), $undeclared);
+        }
+        $of = $shape->additional?->of();
+        if ($of === null) {
+            return $errors;
+        }
+        $mismatches = [];
+        foreach ($shape->additionalMembers($incoming) as $member => $value) {
+            $mismatches = [...$mismatches, ...ValueTypes::mismatchesOf($of, $value, $pointer . '/' . self::escape($member), $creating, $request)];
         }
 
         return $this->withTypeMismatches($errors, $mismatches);
@@ -1155,12 +1383,14 @@ final class ResourceValidator
      *
      * @param array<string, mixed> $incoming the attributes the client sent
      *
+     * @param list<FieldInterface> $fields
+     *
      * @return list<Error>
      */
-    private function objectValueErrors(AbstractResource $resource, array $incoming, bool $creating, JsonApiRequestInterface $request): array
+    private function objectValueErrors(array $fields, array $incoming, bool $creating, JsonApiRequestInterface $request): array
     {
         $errors = [];
-        foreach (ObjectValues::in($resource->allFields(), $incoming, $creating, $request) as $object) {
+        foreach (ObjectValues::in($fields, $incoming, $creating, $request) as $object) {
             $counts = [];
             foreach ($object->memberCounts($creating) as $count) {
                 foreach ($this->translator->translate($count, $request) as $rule) {
@@ -1199,19 +1429,32 @@ final class ResourceValidator
 
         $members = [];
         foreach ($object->additional as $key => $member) {
-            $memberErrors = [];
-            $rules = [self::VALUE => $this->fieldRules($field, $creating, $request, $member, true)];
-            $nested = match (true) {
-                $field instanceof ArrayList => $this->listElementRules($field, self::VALUE, $member, $creating, $request, $memberErrors),
-                !\is_array($member) || ($member !== [] && \array_is_list($member)) => [],
-                $field instanceof Obj, $field instanceof Map => $this->childRules($field->children(), self::VALUE, $member, $creating, $request, true, true, $memberErrors),
-                $field instanceof OneOf => $this->elementRules($field, self::VALUE, $member, $creating, $request, $memberErrors),
-                default => [],
-            };
-            $members[$key] = [[...$rules, ...$nested], $memberErrors];
+            $members[$key] = $this->memberFieldRules($field, $member, $creating, $request);
         }
 
         return $members;
+    }
+
+    /**
+     * The placeholder rule map for one value validated on its own against `$field`, with the
+     * variant errors no rule can carry: the field's own rules, and its children or elements
+     * when it is structured.
+     *
+     * @return array{array<string, list<string|\Stringable|\Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\Rule>>, list<Error>}
+     */
+    private function memberFieldRules(FieldInterface $field, mixed $member, bool $creating, JsonApiRequestInterface $request): array
+    {
+        $memberErrors = [];
+        $rules = [self::VALUE => $this->fieldRules($field, $creating, $request, $member, true)];
+        $nested = match (true) {
+            $field instanceof ArrayList => $this->listElementRules($field, self::VALUE, $member, $creating, $request, $memberErrors),
+            !\is_array($member) || ($member !== [] && \array_is_list($member)) => [],
+            $field instanceof Obj, $field instanceof Map => $this->childRules($field->children(), self::VALUE, $member, $creating, $request, true, true, $memberErrors),
+            $field instanceof OneOf => $this->elementRules($field, self::VALUE, $member, $creating, $request, $memberErrors),
+            default => [],
+        };
+
+        return [[...$rules, ...$nested], $memberErrors];
     }
 
     /**
@@ -1261,12 +1504,14 @@ final class ResourceValidator
      * @param array<string, mixed> $attributes the merged incoming attribute map
      * @param array<string, mixed> $incoming   the attributes the client sent
      *
+     * @param list<FieldInterface> $fields
+     *
      * @return list<Error>
      */
-    private function oneOfErrors(AbstractResource $resource, array $attributes, array $incoming, bool $creating, JsonApiRequestInterface $request): array
+    private function oneOfErrors(array $fields, array $attributes, array $incoming, bool $creating, JsonApiRequestInterface $request): array
     {
         $errors = [];
-        foreach ($resource->allFields() as $field) {
+        foreach ($fields as $field) {
             if (!$field instanceof OneOf) {
                 continue;
             }
@@ -1367,9 +1612,11 @@ final class ResourceValidator
      * @param array<string, mixed> $attributes the merged incoming attribute map
      * @param array<string, mixed> $incoming   the attributes the client sent
      *
+     * @param list<FieldInterface> $fields
+     *
      * @return list<Error>
      */
-    private function shapeErrors(AbstractResource $resource, array $attributes, array $incoming, bool $creating, JsonApiRequestInterface $request): array
+    private function shapeErrors(array $fields, array $attributes, array $incoming, bool $creating, JsonApiRequestInterface $request): array
     {
         if ($this->schemaValues === null) {
             return []; // opis not installed — a Shape documents but does not validate
@@ -1379,7 +1626,7 @@ final class ResourceValidator
         $viewDecoded = false;
 
         $errors = [];
-        foreach ($resource->allFields() as $field) {
+        foreach ($fields as $field) {
             if ($field instanceof Id || $field instanceof RelationInterface) {
                 continue;
             }

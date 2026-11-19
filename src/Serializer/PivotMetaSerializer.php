@@ -6,9 +6,11 @@ namespace haddowg\JsonApiLaravel\Serializer;
 
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
+use haddowg\JsonApi\Resource\ResourceMeta;
 use haddowg\JsonApi\Schema\Link\ResourceLinks;
 use haddowg\JsonApi\Serializer\IncludeControlsInterface;
 use haddowg\JsonApi\Serializer\RendersDeclaredLinksInterface;
+use haddowg\JsonApi\Serializer\RendersResourceMetaInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 
 /**
@@ -16,15 +18,16 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  * per-member pivot values as `meta.pivot`, mirroring how core's
  * {@see \haddowg\JsonApi\Serializer\PolymorphicSerializer} decorates a polymorphic relation
  * (the Laravel twin of the Symfony bundle's serializer). It wraps the related type's real
- * serializer and delegates everything to it EXCEPT {@see getMeta()}, where it merges the
+ * serializer and delegates everything to it EXCEPT {@see getMeta()} and
+ * {@see renderResourceMeta()}, where it merges the
  * member's pivot values (`pivotMap[id]`, read off Eloquent's pivot accessor via
  * {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider::fetchRelationshipPivot()})
  * under a top-level `pivot` key into the inner serializer's meta.
  *
- * Pivot meta rides core's existing `getMeta()` path, which the transformer renders into
- * BOTH the full resource (the related endpoint `GET /{type}/{id}/{rel}`) and the resource
- * identifier (the relationship-linkage endpoint `GET /{type}/{id}/relationships/{rel}`) —
- * so binding this serializer for those two renders needs no core change. A member with no
+ * The transformer renders a full resource (the related endpoint `GET /{type}/{id}/{rel}`)
+ * through `renderResourceMeta()`, which adds the pivot to the inner serializer's declared
+ * resource meta, and a resource identifier (the relationship-linkage endpoint
+ * `GET /{type}/{id}/relationships/{rel}`) through `getMeta()`. A member with no
  * pivot entry (the in-memory witness returns none — the documented pivot boundary) renders
  * the inner meta unchanged, so `meta.pivot` is Eloquent-only.
  *
@@ -44,7 +47,7 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  * The `pivot` key keeps the values namespaced so they never collide with the member
  * resource's own meta, and so a client can tell pivot data from intrinsic meta.
  */
-final class PivotMetaSerializer implements SerializerInterface, IncludeControlsInterface, RendersDeclaredLinksInterface
+final class PivotMetaSerializer implements SerializerInterface, IncludeControlsInterface, RendersDeclaredLinksInterface, RendersResourceMetaInterface
 {
     /**
      * @param SerializerInterface                 $inner    the related type's real serializer
@@ -73,8 +76,27 @@ final class PivotMetaSerializer implements SerializerInterface, IncludeControlsI
 
     public function getMeta(mixed $object, JsonApiRequestInterface $request): array
     {
-        $meta = $this->inner->getMeta($object, $request);
+        return $this->withPivot($this->inner->getMeta($object, $request), $object, $request);
+    }
 
+    public function renderResourceMeta(mixed $object, JsonApiRequestInterface $request): array
+    {
+        $meta = $this->inner instanceof RendersResourceMetaInterface
+            ? $this->inner->renderResourceMeta($object, $request)
+            : ResourceMeta::render($this->inner, $object, $request);
+
+        return $this->withPivot($meta, $object, $request);
+    }
+
+    /**
+     * `$meta` with the member's pivot values under `pivot`.
+     *
+     * @param array<string, mixed> $meta
+     *
+     * @return array<string, mixed>
+     */
+    private function withPivot(array $meta, mixed $object, JsonApiRequestInterface $request): array
+    {
         $pivot = $this->pivotMap[$this->inner->getId($object)] ?? null;
         $computes = $this->relation !== null && $this->parent !== null && $this->relation->computedPivotFields() !== [];
         if ($this->relation !== null && ($pivot !== null || $computes)) {

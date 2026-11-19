@@ -9,6 +9,7 @@ use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\Negotiation\AcceptNegotiator;
+use haddowg\JsonApi\OpenApi\Metadata\OperationType;
 use haddowg\JsonApi\Operation\CustomActionOperation;
 use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
@@ -23,6 +24,8 @@ use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
+use haddowg\JsonApi\Resource\MetaContext;
+use haddowg\JsonApi\Resource\WrittenMeta;
 use haddowg\JsonApi\Response\AcceptedResponse;
 use haddowg\JsonApi\Response\DataResponse;
 use haddowg\JsonApi\Response\ErrorResponse;
@@ -50,11 +53,13 @@ use haddowg\JsonApiLaravel\Operation\ForeignKeyWrites;
 use haddowg\JsonApiLaravel\Operation\Operation;
 use haddowg\JsonApiLaravel\Operation\RelationFillHook;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
+use haddowg\JsonApiLaravel\Operation\RequestMetaResolver;
 use haddowg\JsonApiLaravel\Server\ServerNames;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\FilterValueValidator;
 use haddowg\JsonApiLaravel\Validation\ReadOnlyAttributes;
 use haddowg\JsonApiLaravel\Validation\ResourceValidator;
+use haddowg\JsonApiLaravel\Validation\ValidationFailed;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
@@ -104,6 +109,8 @@ final readonly class ActionInvoker
         // The linkage holder whose identified members the scoped-write check reads, as the
         // CRUD handler's does.
         private ?RequestScopedRelationshipLinkage $relationshipLinkage = null,
+        // The declared request meta of each action and the resource meta of its input type.
+        private ?RequestMetaResolver $requestMeta = null,
     ) {}
 
     public function invoke(CustomActionOperation $operation): DataResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|ErrorResponse|RawResponse
@@ -142,6 +149,11 @@ final readonly class ActionInvoker
             }
         }
 
+        // The call's top-level meta, and a document's `data.meta`, are validated against
+        // what the handler and the input type declare, and their typed values ride the
+        // request the hydrator and the handler read.
+        $written = $this->writtenMeta($server, $descriptor, $handler, $operation);
+
         // Document input: validate then hydrate the request document into a fresh inputType
         // instance (None/Raw carry no document, so input stays null).
         $input = null;
@@ -151,7 +163,7 @@ final readonly class ActionInvoker
                 return ErrorResponse::fromException(new ResourceNotFound());
             }
 
-            $input = $this->resolveAndHydrateInput($server, $descriptor, $handler, $body, $entity);
+            $input = $this->resolveAndHydrateInput($server, $descriptor, $handler, $written->on($body), $entity);
         }
 
         // A collection action taking its type's filters: the requested keys and values are
@@ -168,7 +180,7 @@ final readonly class ActionInvoker
             $descriptor,
             $entity,
             $input,
-            $this->request($operation),
+            $written->on($this->request($operation)),
             $operation->queryParameters(),
             $responseMediaType,
             $filters === [] ? null : fn(): FilteredCollection => new FilteredCollection(
@@ -232,6 +244,45 @@ final readonly class ActionInvoker
 
             return $response;
         }, $this->afterCommit);
+    }
+
+    /**
+     * Validates the call's top-level `meta` against the members the handler declares for its
+     * method, and a document input's `data.meta` against its input type's `resourceMeta()`,
+     * in the update context for a `PATCH` and the create context otherwise. A raw body
+     * carries no JSON:API `meta`.
+     *
+     * @throws ValidationFailed
+     */
+    private function writtenMeta(Server $server, ActionDescriptor $descriptor, ActionHandlerInterface $handler, CustomActionOperation $operation): WrittenMeta
+    {
+        $mode = $this->inputMode($operation, $descriptor);
+        if ($this->requestMeta === null || $mode === ActionInput::Raw) {
+            return new WrittenMeta();
+        }
+
+        $request = $this->request($operation);
+        $shape = $this->requestMeta->forAction($handler, $request->getMethod(), RequestMetaResolver::actionOwner($descriptor->path, $descriptor->type));
+        $document = $shape->isEmpty() ? null : RequestMetaResolver::documentMetaOf($request);
+        $errors = $this->validator->metaErrors($shape, $document, '/meta', true, $request);
+
+        $resourceShape = null;
+        $resource = null;
+        // A PATCH writes its input in the update context, as its attributes validate.
+        $creating = \strtoupper($request->getMethod()) !== 'PATCH';
+        if ($mode === ActionInput::Document && $descriptor->inputType !== '') {
+            $resource = RequestMetaResolver::resourceMetaOf($request);
+            $resourceShape = $this->requestMeta->forResource($server, $descriptor->inputType, MetaContext::write($creating ? OperationType::Create : OperationType::Update));
+            $errors = [...$errors, ...$this->validator->metaErrors($resourceShape, $resource, '/data/meta', $creating, $request)];
+        }
+        if ($errors !== []) {
+            throw new ValidationFailed($errors);
+        }
+
+        return new WrittenMeta(
+            \is_array($document) ? $shape->values($document, true, $request) : [],
+            $resourceShape !== null && \is_array($resource) ? $resourceShape->values($resource, $creating, $request) : [],
+        );
     }
 
     /**
@@ -354,8 +405,19 @@ final readonly class ActionInvoker
             [$instance, $body] = $this->relateInput($server, $resource, $instance, $body, $stored);
         }
 
-        $hydrated = $server->hydratorFor($inputType)->hydrate($body, $instance);
+        $hydrator = $server->hydratorFor($inputType);
+        $hydrated = $hydrator->hydrate($body, $instance);
         \assert(\is_object($hydrated));
+
+        // A resource hands `data.meta` to its declared members' hooks as it hydrates; a
+        // composed hydrator's type has them applied here.
+        $meta = RequestMetaResolver::resourceMetaOf($body);
+        if (!$hydrator instanceof AbstractResource && $this->requestMeta !== null && \is_array($meta) && $meta !== []) {
+            $creating = \strtoupper($body->getMethod()) !== 'PATCH';
+            /** @var array<string, mixed> $meta */
+            $filled = $this->requestMeta->forResource($server, $inputType, MetaContext::write($creating ? OperationType::Create : OperationType::Update))->fill($hydrated, $meta, $creating, $body);
+            $hydrated = \is_object($filled) ? $filled : $hydrated;
+        }
 
         return $hydrated;
     }

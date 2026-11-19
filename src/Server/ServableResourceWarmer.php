@@ -37,6 +37,7 @@ use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
 use haddowg\JsonApiLaravel\Operation\DocumentMetaResolver;
 use haddowg\JsonApiLaravel\Operation\Operation;
+use haddowg\JsonApiLaravel\Operation\RequestMetaResolver;
 use Illuminate\Database\Eloquent\Model;
 use Psr\Log\LoggerInterface;
 
@@ -115,6 +116,10 @@ use Psr\Log\LoggerInterface;
  *    a {@see SortByField} or a {@see KeysetSortInterface}, and on a provider that
  *    implements {@see KeysCursorSortsInterface} one it can order by. A sort family
  *    resolves its sorts per request, so it is checked then.
+ *  - **A type's declared meta must read.** Every request, resource object, relationship
+ *    write and `202` meta it, its relations and its actions' handlers declare is read, so a
+ *    member declared twice or two `additionalProperties` entries are reported, as is a
+ *    `getMeta()` override beside `resourceMeta()` and request meta on a raw-body action.
  *
  * Standalone-serializer types are validated too — a
  * fetch-opened standalone type without a provider is exactly the deploy-time
@@ -175,6 +180,7 @@ final class ServableResourceWarmer
                 $this->guardForeignKeys($serverName, $type, $descriptor->exposes(Operation::Update), $problems);
                 $this->guardFilterPaths($serverName, $type, $problems);
                 $this->guardDocumentMeta($serverName, $type, $problems);
+                $this->guardTypedMeta($serverName, $type, $problems);
                 $this->guardCursorSorts($serverName, $type, $problems);
                 $this->noteInMemoryLinkRows($serverName, $type);
             }
@@ -195,6 +201,7 @@ final class ServableResourceWarmer
                 $this->guardEloquentRelationMethods($serverName, $type, $problems);
                 $this->guardSortableFilterableColumns($serverName, $type, $problems);
                 $this->guardDocumentMeta($serverName, $type, $problems);
+                $this->guardTypedMeta($serverName, $type, $problems);
             }
 
             $this->guardRelatedEndpointTargets($serverName, $problems);
@@ -480,6 +487,40 @@ final class ServableResourceWarmer
                 }
             }
         } catch (DocumentMetaMisdeclared $e) {
+            $problems[] = $e->getMessage();
+        }
+    }
+
+    /**
+     * Reports a misdeclared request, resource object, relationship write or `202` meta on the
+     * type, its relations or an action handler mounted on it, standalone or inside an Atomic
+     * Operations batch, in core's {@see \haddowg\JsonApi\Resource\MetaMisdeclared}
+     * wording; a resource overriding the deprecated `getMeta()` beside its `resourceMeta()`;
+     * and an action taking a raw body that declares request meta. Route registration makes
+     * the same check, but a cached route table skips it.
+     *
+     * @param list<string> $problems
+     */
+    private function guardTypedMeta(string $serverName, string $type, array &$problems): void
+    {
+        $server = $this->servers->get($serverName);
+
+        try {
+            $resource = $this->types->resourceFor($server, $type);
+            RequestMetaResolver::assertDeclared(
+                $resource ?? ($server->hasHydratorFor($type) ? $server->hydratorFor($type) : null),
+                $resource ?? ($server->hasSerializerFor($type) ? $server->serializerFor($type) : null),
+                $type,
+                RequestMetaResolver::relationsOf($resource),
+            );
+            $actions = $this->actions;
+            foreach ($actions?->forServer($serverName) ?? [] as $action) {
+                $handler = $actions !== null && $action->type === $type ? $actions->requestMetaFor($action) : null;
+                if ($handler !== null) {
+                    RequestMetaResolver::assertActionDeclared($handler, $action);
+                }
+            }
+        } catch (\LogicException $e) {
             $problems[] = $e->getMessage();
         }
     }

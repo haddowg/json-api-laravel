@@ -86,6 +86,7 @@ use haddowg\JsonApiLaravel\OpenApi\Metadata\TagNameResolver;
 use haddowg\JsonApiLaravel\OpenApi\OpenApiDocumentUrls;
 use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
 use haddowg\JsonApiLaravel\Operation\DocumentMetaResolver;
+use haddowg\JsonApiLaravel\Operation\RequestMetaResolver;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
 use haddowg\JsonApiLaravel\Routing\JsonApiRoute;
 use haddowg\JsonApiLaravel\Routing\OpenApiRouteRegistrar;
@@ -315,21 +316,39 @@ final class JsonApiServiceProvider extends ServiceProvider
                     (new \haddowg\JsonApi\Serializer\RelationFilterDefaultsValidator($registry))->validate($type, $resource);
                     \haddowg\JsonApiLaravel\Server\FilterPathGuard::check($registry, $resource);
                     DocumentMetaResolver::assertDeclared($resource, $type, DocumentMetaResolver::deleteResponses($discovery, $server, $type));
+                    RequestMetaResolver::assertDeclared($resource, $resource, $type, RequestMetaResolver::relationsOf($resource));
                 }
 
-                // A composed type declares its documents' meta on its serializer, and an
-                // action's handler per status, so a misdeclaration fails the boot too.
+                // A composed type declares its documents' meta on its serializer, its request
+                // meta on its hydrator, and an action's handler per status and method, so a
+                // misdeclaration fails the boot too.
                 foreach ($discovery->serializersFor($server) as $descriptor) {
                     if (\is_a($descriptor->class, \haddowg\JsonApi\Serializer\DeclaresDocumentMetaInterface::class, true)) {
                         $serializer = $app->make($descriptor->class);
                         \assert(\is_object($serializer));
                         DocumentMetaResolver::assertDeclared($serializer, $descriptor->type, []);
                     }
+                    if (RequestMetaResolver::declaresMeta($descriptor->class)) {
+                        $serializer = $app->make($descriptor->class);
+                        \assert(\is_object($serializer));
+                        RequestMetaResolver::assertDeclared(null, $serializer, $descriptor->type, []);
+                    }
+                }
+                foreach ($discovery->hydratorsFor($server) as $descriptor) {
+                    if (RequestMetaResolver::declaresMeta($descriptor->class)) {
+                        $hydrator = $app->make($descriptor->class);
+                        \assert(\is_object($hydrator));
+                        RequestMetaResolver::assertDeclared($hydrator, null, $descriptor->type, []);
+                    }
                 }
                 $actions = $app->make(ActionRegistry::class);
                 \assert($actions instanceof ActionRegistry);
                 foreach ($actions->forServer($server) as $action) {
                     $actions->declaredResponsesFor($action);
+                    $handler = $actions->requestMetaFor($action);
+                    if ($handler !== null) {
+                        RequestMetaResolver::assertActionDeclared($handler, $action);
+                    }
                 }
             };
 
@@ -838,6 +857,7 @@ final class JsonApiServiceProvider extends ServiceProvider
         $this->app->singleton(RelationCriteriaFactory::class);
         // Caches each type's declared document meta per server, type and operation.
         $this->app->singleton(DocumentMetaResolver::class);
+        $this->app->singleton(RequestMetaResolver::class);
 
         // The count/pagination/linkage seam holders are stable singletons (injected into the
         // memoized Server once); the handler clears all three at the start of every dispatch

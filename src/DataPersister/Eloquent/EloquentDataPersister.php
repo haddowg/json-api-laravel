@@ -41,6 +41,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Eloquent\Relations\Pivot;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -920,7 +921,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
 
         // A Remove carries no pivot meta, and a bare join, or one whose pivot fields are all
         // computed, has no pivot columns — the id-only sync/attach/detach form covers both.
-        if ($mode === Mode::Remove || !$relation instanceof PivotRelation || $relation->storedPivotFields() === []) {
+        if ($mode === Mode::Remove || !$relation instanceof PivotRelation || !self::writesPivotColumns($relation)) {
             match ($mode) {
                 Mode::Replace => $eloquentRelation->sync([...$ids, ...$hidden]),
                 Mode::Add => $eloquentRelation->syncWithoutDetaching($ids),
@@ -1005,7 +1006,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             $eloquentRelation->updateExistingPivot($key, [$position => $at]);
         }
 
-        $stored = $relation instanceof PivotRelation && $relation->storedPivotFields() !== [];
+        $stored = $relation instanceof PivotRelation && self::writesPivotColumns($relation);
         $payload = [];
         foreach ($linkage->resourceIdentifiers as $identifier) {
             if ($identifier->id === null) {
@@ -1079,6 +1080,15 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
     }
 
     /**
+     * Whether a pivot relation writes columns of its join row: it stores a pivot field, or
+     * its additionalProperties entry takes the undeclared members through a fill hook.
+     */
+    private static function writesPivotColumns(PivotRelation $relation): bool
+    {
+        return $relation->storedPivotFields() !== [] || ($relation->pivotAdditionalProperties()?->fills() ?? false);
+    }
+
+    /**
      * The pivot-column payload for one linkage member: each writable pivot field present in
      * the member's `meta.pivot` mapped to its `column ?? name`, its wire value coerced through
      * the field's own {@see FieldInterface::castWireValue()} (an `Integer` → int, a `DateTime`
@@ -1125,6 +1135,35 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             }
 
             $attributes[$column] = $value;
+        }
+
+        // The members the pivot's additionalProperties entry takes go to its fillUsing() hook,
+        // which sets them on a pivot model; what it set joins the row's columns.
+        $entry = $relation->pivotAdditionalProperties();
+        if ($entry !== null && $entry->fills()) {
+            $shape = $relation->pivotMetaShape();
+            $members = $shape->additionalMembers($pivot);
+            if ($members !== []) {
+                $before = $pivotModel->getAttributes();
+                $data = [];
+                foreach ($pivot as $key => $value) {
+                    $data[(string) $key] = $value;
+                }
+                $normalized = [];
+                foreach ($shape->normalize($members) as $key => $value) {
+                    $normalized[(string) $key] = $value;
+                }
+                $filled = $entry->fill($pivotModel, $normalized, $data);
+                $row = $filled instanceof Model ? $filled : $pivotModel;
+                // A custom pivot class casts what it is handed as it saves; the plain one
+                // inserts the stored form.
+                $casts = $pivotClass !== Pivot::class;
+                foreach ($row->getAttributes() as $column => $value) {
+                    if (!\array_key_exists($column, $before) || $before[$column] !== $value) {
+                        $attributes[$column] = $casts ? $row->getAttribute($column) : $value;
+                    }
+                }
+            }
         }
 
         return $attributes;

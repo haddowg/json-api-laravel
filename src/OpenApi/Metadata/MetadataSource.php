@@ -421,6 +421,8 @@ final class MetadataSource
             maxIncludeDepth: self::includeControls($server, $type)?->maxIncludeDepth(),
             singleton: $descriptor->singleton,
             documentMeta: self::documentMetaDeclarer($server->hasSerializerFor($type) ? $server->serializerFor($type) : null),
+            requestMeta: $server->hasHydratorFor($type) ? $server->hydratorFor($type) : null,
+            resourceMeta: $server->hasSerializerFor($type) ? $server->serializerFor($type) : null,
         );
     }
 
@@ -522,6 +524,8 @@ final class MetadataSource
             maxIncludeDepth: self::includeControls($server, $type)?->maxIncludeDepth(),
             singleton: $descriptor->singleton,
             documentMeta: self::documentMetaDeclarer($resource ?? ($server->hasSerializerFor($type) ? $server->serializerFor($type) : null)),
+            requestMeta: $resource ?? ($server->hasHydratorFor($type) ? $server->hydratorFor($type) : null),
+            resourceMeta: $resource ?? ($server->hasSerializerFor($type) ? $server->serializerFor($type) : null),
         );
     }
 

@@ -315,6 +315,23 @@ BelongsToMany::make('orderedTracks', 'tracks')
 `weight >= position`, and `addedAt` is server-owned (`readOnly`). Pivot fields are merged into
 the payload **before validation**, so cross-field rules see them.
 
+`meta.pivot` is a closed object: a member no pivot field names is a `422` at its pointer, such as
+`/data/0/meta/pivot/colour`. One `AdditionalProperties::make()` entry among the fields opens it.
+Its `of()` field validates each extra member, and its `fillUsing()` hook receives a new instance
+of the relation's pivot model with the extra members, so it can set the columns that keep them:
+
+```php
+BelongsToMany::make('items', 'items')->fields(
+    Integer::make('position'),
+    AdditionalProperties::make()->of(Integer::make('*'))
+        ->fillUsing(static function (ShelfItem $row, array $members): ShelfItem {
+            $row->extras = $members;
+
+            return $row;
+        }),
+);
+```
+
 `meta.pivot` renders on the related endpoint, the relationship endpoint and the `200` linkage a
 relationship mutation answers with. Only a provider that reads pivot rows supplies the stored
 fields, so the in-memory provider renders none of them; it renders only the

@@ -90,6 +90,12 @@ side effect). It is a readonly value object with public properties, not getters:
 `$context->request`, `$context->serverName`, `$context->type`, and for the relationship
 hooks `$context->relation`, `$context->linkage` and `$context->mode`.
 
+`$context->writtenMeta()`, and `writtenMeta()` on the write events a listener receives, return
+the typed `meta` the write sent: `->document` for its top-level `meta` and `->resource` for its
+`data.meta`, each validated against what the type declares in `requestDocumentMeta()` and
+`resourceMeta()` (see [typed request meta](openapi.md#typed-request-and-resource-object-meta)).
+They are empty for a write that sent none.
+
 ## Hooks vs events vs model events
 
 - **Hooks** — logic that belongs to one resource; the ergonomic default.
