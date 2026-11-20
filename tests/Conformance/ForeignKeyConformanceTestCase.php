@@ -148,14 +148,14 @@ abstract class ForeignKeyConformanceTestCase extends Orchestra
     }
 
     #[Test]
-    public function anActionsInputHoldsAnEmptyLockedToMany(): void
+    public function aCollectionActionsInputHoldsAnEmptyLockedToMany(): void
     {
         $response = $this->jsonApi()
             ->withData(['type' => 'fk-revisable-grants', 'id' => 'g1', 'relationships' => ['lockedSecrets' => ['data' => []]]])
-            ->patch('/api/fk-revisable-grants/g1/-actions/revise')
+            ->patch('/api/fk-revisable-grants/-actions/revise-any')
             ->assertOk();
 
-        self::assertSame([], $this->attribute($this->decode($response)['data'] ?? null, 'received'));
+        self::assertSame(['received' => []], $this->decode($response)['meta'] ?? null);
     }
 
     #[Test]
@@ -189,13 +189,37 @@ abstract class ForeignKeyConformanceTestCase extends Orchestra
     }
 
     #[Test]
-    public function aPatchActionComparesALockedWriteOnlyToManyWithItsBlankInput(): void
+    public function aPatchActionNamingTheMembersOfALockedWriteOnlyToManyIsAccepted(): void
     {
-        // A PATCH action hydrates its input as an update onto a blank grant, so naming the
-        // very secrets g1 holds still changes the members it compares with.
-        $this->jsonApi()
-            ->withData(['type' => 'fk-revisable-grants', 'id' => 'g1', 'relationships' => ['lockedSecrets' => ['data' => [['type' => 'fk-secrets', 'id' => '1'], ['type' => 'fk-secrets', 'id' => '2']]]]])
-            ->patch('/api/fk-revisable-grants/g1/-actions/revise')
+        // The input is compared with g2, the grant the action was called on, which holds
+        // secret 1.
+        $response = $this->revise('/fk-revisable-grants/g2/-actions/revise', ['1'])->assertOk();
+
+        self::assertSame(['1'], $this->attribute($this->decode($response)['data'] ?? null, 'received'));
+    }
+
+    #[Test]
+    public function aPatchActionAddingAMemberToALockedWriteOnlyToManyIsForbidden(): void
+    {
+        $this->revise('/fk-revisable-grants/g2/-actions/revise', ['1', '2'])
+            ->assertForbidden()
+            ->assertJsonPath('errors.0.code', 'MEMBERSHIP_CHANGE_PROHIBITED');
+    }
+
+    #[Test]
+    public function aPatchActionRemovingAMemberFromALockedWriteOnlyToManyIsForbidden(): void
+    {
+        $this->revise('/fk-revisable-grants/g2/-actions/revise', [])
+            ->assertForbidden()
+            ->assertJsonPath('errors.0.code', 'MEMBERSHIP_CHANGE_PROHIBITED');
+    }
+
+    #[Test]
+    public function aCollectionPatchActionComparesALockedWriteOnlyToManyWithNoMembers(): void
+    {
+        // A collection action has no grant, so naming the secret g2 holds still changes the
+        // empty set it compares with, though the document names g2.
+        $this->revise('/fk-revisable-grants/-actions/revise-any', ['1'])
             ->assertForbidden()
             ->assertJsonPath('errors.0.code', 'MEMBERSHIP_CHANGE_PROHIBITED');
     }
@@ -641,6 +665,18 @@ abstract class ForeignKeyConformanceTestCase extends Orchestra
         \sort($keys);
 
         return $keys;
+    }
+
+    /**
+     * @param list<string> $ids
+     *
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    private function revise(string $path, array $ids): TestResponse
+    {
+        return $this->jsonApi()
+            ->withData(['type' => 'fk-revisable-grants', 'id' => 'g2', 'relationships' => ['lockedSecrets' => ['data' => \array_map(static fn(string $id): array => ['type' => 'fk-secrets', 'id' => $id], $ids)]]])
+            ->patch('/api' . $path);
     }
 
     private function attribute(mixed $resource, string $name): mixed

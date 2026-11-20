@@ -16,7 +16,9 @@ use haddowg\JsonApi\Request\MediaType;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Resource\Field\GuardsMembershipInterface;
+use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Mode;
+use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
@@ -141,7 +143,7 @@ final readonly class ActionInvoker
                 return ErrorResponse::fromException(new ResourceNotFound());
             }
 
-            $input = $this->resolveAndHydrateInput($server, $descriptor, $handler, $body);
+            $input = $this->resolveAndHydrateInput($server, $descriptor, $handler, $body, $entity);
         }
 
         // A collection action taking its type's filters: the requested keys and values are
@@ -314,12 +316,15 @@ final readonly class ActionInvoker
      * supplied by the handler when it implements {@see ActionInputFactoryInterface} (a
      * bespoke command DTO with no persister), else by the `inputType` persister's
      * `instantiate()` (the common case where `inputType` defaults to the mount type).
+     * `$entity` is the resource a resource-scope action was called on, `null` for a
+     * collection action.
      */
     private function resolveAndHydrateInput(
         Server $server,
         ActionDescriptor $descriptor,
         ActionHandlerInterface $handler,
         JsonApiRequestInterface $body,
+        ?object $entity,
     ): object {
         $inputType = $descriptor->inputType;
 
@@ -331,7 +336,10 @@ final readonly class ActionInvoker
 
         $resource = $handler instanceof ActionInputFactoryInterface ? null : $this->types->resourceFor($server, $inputType);
         if ($resource !== null) {
-            [$instance, $body] = $this->relateInput($server, $resource, $instance, $body);
+            // The input's members are compared with the resource the action was called on when
+            // the input reads as that resource's type, otherwise with the blank instance.
+            $current = $entity !== null && $inputType === $descriptor->type ? $entity : $instance;
+            [$instance, $body] = $this->relateInput($server, $resource, $instance, $body, $current);
         }
 
         $hydrated = $server->hydratorFor($inputType)->hydrate($body, $instance);
@@ -346,12 +354,12 @@ final readonly class ActionInvoker
      * hydration would assign the bare ids, as an attribute of a model. A model gets each
      * as a loaded relation, any other object through its accessor. A relation written by
      * its `fillUsing()` hook still gets the linkage, and a to-many that can't change its
-     * members is checked against the blank input first, as core checks it. A member that
-     * doesn't exist is a `404`.
+     * members is checked first against the members `$current` holds: the resource the
+     * action was called on, or the blank input. A member that doesn't exist is a `404`.
      *
      * @return array{object, JsonApiRequestInterface}
      */
-    private function relateInput(Server $server, AbstractResource $resource, object $instance, JsonApiRequestInterface $body): array
+    private function relateInput(Server $server, AbstractResource $resource, object $instance, JsonApiRequestInterface $body, object $current): array
     {
         /** @var array<string, mixed> $document */
         $document = (array) $body->getParsedBody();
@@ -375,8 +383,8 @@ final readonly class ActionInvoker
             }
 
             if (!$creating && $linkage instanceof ToManyRelationship && $relation instanceof GuardsMembershipInterface
-                && !$relation->allowsMembershipChangeFor($body, $instance)) {
-                $relation->assertMembershipUnchanged($body, $instance, $this->inputMembers($server, $relation, $instance, $body), $linkage);
+                && !$relation->allowsMembershipChangeFor($body, $current)) {
+                $relation->assertMembershipUnchanged($body, $current, $this->currentMembers($server, $relation, $current, $body), $linkage);
             }
 
             if (RelationFillHook::declaredBy($relation)) {
@@ -421,15 +429,24 @@ final readonly class ActionInvoker
     }
 
     /**
-     * The members `$relation` holds on the blank input, as `[type, id]` pairs, the way
-     * core reads them for its membership check.
+     * The members `$relation` holds on `$current`, as wire `[type, id]` pairs, read as the
+     * update of a resource reads them: an identified `MorphToMany`'s stored pairs, otherwise
+     * the relation's value read off a copy, so a relation an Eloquent model loads doesn't
+     * stay on the resource the handler is given.
      *
      * @return list<array{0: string, 1: string}>
      */
-    private function inputMembers(Server $server, RelationInterface $relation, object $instance, JsonApiRequestInterface $body): array
+    private function currentMembers(Server $server, RelationInterface $relation, object $current, JsonApiRequestInterface $body): array
     {
+        if ($relation instanceof MorphToMany && $relation->storesIdentifiers()) {
+            return \array_map(
+                static fn(array $pair): array => [$pair[0], self::wireId($server, $pair[0], $pair[1])],
+                $relation->storedIdentifierList($current, $body),
+            );
+        }
+
         $members = [];
-        foreach (\is_iterable($value = $relation->readValue(clone $instance, $body)) ? $value : [] as $member) {
+        foreach (\is_iterable($value = $relation->readValue(clone $current, $body)) ? $value : [] as $member) {
             if ($member instanceof ResourceIdentifier) {
                 $members[] = [$member->type, (string) $member->id];
             } elseif (\is_object($member) && ($serializer = $relation->resolveSerializer($member, $server)) !== null) {
@@ -440,6 +457,20 @@ final readonly class ActionInvoker
         }
 
         return $members;
+    }
+
+    private static function wireId(Server $server, string $type, string|int $key): string
+    {
+        $serializer = $server->hasSerializerFor($type) ? $server->serializerFor($type) : null;
+        if ($serializer instanceof AbstractResource) {
+            foreach ($serializer->allFields() as $field) {
+                if ($field instanceof Id) {
+                    return $field->encoder()?->encode($key) ?? (string) $key;
+                }
+            }
+        }
+
+        return (string) $key;
     }
 
     private function related(string $type, string $id): object
