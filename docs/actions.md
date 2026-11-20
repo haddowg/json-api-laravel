@@ -94,9 +94,13 @@ declared with one, and keeping the members the related type's scope hides, so a 
 restating the members it can see changes nothing. Restating them passes and adding or removing
 one is a `403`. A
 collection action has no resource, nor does an action whose input reads as another type, so
-it compares them with the blank input, which holds none. Nothing is saved, so
+it compares them with the blank input, which holds none: any member it names is a `403`, and
+an empty list passes. Nothing is saved, so
 the related models are left as they are. An input from `ActionInputFactoryInterface` is
-hydrated by core alone, so its relationships hold the related ids.
+hydrated by core alone, so its relationships hold the related ids. Its
+`cannotChangeMembership()` to-manys aren't checked at all, since the object the factory builds
+is no stored resource to compare them with; the factory or the handler decides what a change
+of them means.
 
 A `DataResponse` loads its resources' relations the way a read does, whether the handler
 built it with `$context->data()` or by hand. Linkage, `?include` and `?withCount` go through

@@ -225,6 +225,26 @@ abstract class ForeignKeyConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    public function aPatchActionWhoseInputIsAnotherTypeComparesALockedToManyWithNoMembers(): void
+    {
+        // The action is called on a user, so g2, the grant its input names, isn't read.
+        $this->revise('/fk-users/ada/-actions/revise-grant', ['1'])
+            ->assertForbidden()
+            ->assertJsonPath('errors.0.code', 'MEMBERSHIP_CHANGE_PROHIBITED');
+        $this->revise('/fk-users/ada/-actions/revise-grant', [])->assertOk()->assertJsonPath('meta', ['received' => []]);
+    }
+
+    #[Test]
+    public function aPatchActionsOwnInputTakesALockedToManyUnchecked(): void
+    {
+        // The handler builds its own input, which is no stored grant, so it decides what a
+        // change of the members means. g2 holds secret 1.
+        $this->revise('/fk-revisable-grants/g2/-actions/revise-command', ['2', '1'])
+            ->assertOk()
+            ->assertJsonPath('meta', ['received' => ['2', '1']]);
+    }
+
+    #[Test]
     public function anActionComparesALockedToManyWithTheItemsTheForeignKeyReads(): void
     {
         // As a PATCH of ada does, the action reads the items holding ada's key.
