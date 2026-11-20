@@ -33,6 +33,7 @@ use Workbench\App\ForeignKey\Models\FkNote;
 use Workbench\App\ForeignKey\Models\FkProfile;
 use Workbench\App\ForeignKey\Models\FkSecret;
 use Workbench\App\ForeignKey\Models\FkTeam;
+use Workbench\App\ForeignKey\RegroupTeamAction;
 use Workbench\App\ForeignKey\ReviseAnyGrantAction;
 use Workbench\App\ForeignKey\ReviseGrantAction;
 use Workbench\App\ForeignKey\ReviseGrantByCommandAction;
@@ -80,6 +81,7 @@ final class ForeignKeyEloquentServiceProvider extends ServiceProvider
             ReviseGrantByCommandAction::class,
             ReviseGrantFromUserAction::class,
             ReviseLockedItemsAction::class,
+            RegroupTeamAction::class,
         ]);
 
         JsonApi::provider(new EloquentDataProvider(self::MODEL_BY_TYPE), priority: -128);

@@ -34,6 +34,7 @@ use Workbench\App\ForeignKey\FkUserProvider;
 use Workbench\App\ForeignKey\FkUserResource;
 use Workbench\App\ForeignKey\ForeignKeySeed;
 use Workbench\App\ForeignKey\ImportSecretsAction;
+use Workbench\App\ForeignKey\RegroupTeamAction;
 use Workbench\App\ForeignKey\ReviseAnyGrantAction;
 use Workbench\App\ForeignKey\ReviseGrantAction;
 use Workbench\App\ForeignKey\ReviseGrantByCommandAction;
@@ -68,6 +69,7 @@ final class ForeignKeyInMemoryServiceProvider extends ServiceProvider
             ReviseGrantByCommandAction::class,
             ReviseGrantFromUserAction::class,
             ReviseLockedItemsAction::class,
+            RegroupTeamAction::class,
         ]);
 
         /** @var InMemorySnapshotCoordinator $coordinator */
