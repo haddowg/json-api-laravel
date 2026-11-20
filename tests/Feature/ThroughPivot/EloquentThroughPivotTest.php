@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMan
 use Illuminate\Database\Eloquent\Relations\Pivot;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -81,6 +82,17 @@ final class EloquentThroughPivotTest extends Orchestra
         self::assertSame(['2'], $this->ids('/api/tpTracks/1/playlists?filter[addedBy]=kim'));
         self::assertSame(['2'], $this->ids('/api/tpTracks/1/playlists?filter[adder]=2'));
         self::assertSame(['1', '2'], $this->ids('/api/tpTracks/1/playlists?filter[adder][]=1&filter[adder][]=2'));
+    }
+
+    #[Test]
+    public function aFamilyResolvingADeprecatedPathNoTypeCanGateAnswers500(): void
+    {
+        Log::spy();
+
+        $this->send('admin', '/api/tpTracks/1/playlists?filter[owner.name]=sam')->assertStatus(500);
+
+        Log::shouldHaveReceived('error')->once()->withArgs(static fn(string $message): bool => \str_contains($message, 'The filter family "owner" of relation "playlists" on type "tpTracks" resolved the filter "owner.name" to the path "pivot.owner.name", which goes on from the pivot row to a model no single registered type serves')
+            && \str_contains($message, 'This is a declaration fault'));
     }
 
     #[Test]

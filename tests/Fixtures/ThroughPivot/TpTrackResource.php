@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Fixtures\ThroughPivot;
 
 use haddowg\JsonApi\Pagination\CursorPaginator;
+use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\BelongsTo;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
@@ -14,6 +15,7 @@ use haddowg\JsonApi\Resource\Field\Integer;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\FilterBuilderInterface;
+use haddowg\JsonApi\Resource\Filter\FilterFamily;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
@@ -97,6 +99,9 @@ final class TpTrackResource extends AbstractResource
             ...$legacy,
             WhereThroughIn::make('legacyAdder', 'pivot.addedBy'),
             WhereThrough::make('legacyAuditedBy', 'pivot.auditor.name'),
+            // A family resolving to the deprecated path past the pivot row to the owner, a
+            // model no type serves, which route registration can't see.
+            FilterFamily::make('owner', static fn(string $suffix, JsonApiRequestInterface $request): FilterInterface => WhereThrough::make('owner.' . $suffix, 'pivot.owner.' . $suffix)->build()),
         ];
     }
 

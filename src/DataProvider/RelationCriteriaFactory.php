@@ -19,6 +19,7 @@ use haddowg\JsonApi\Resource\Filter\HasDefaultValue;
 use haddowg\JsonApi\Resource\Filter\RelationFilters;
 use haddowg\JsonApi\Resource\Filter\TargetsColumn;
 use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
+use haddowg\JsonApi\Resource\Filter\WhereGroup;
 use haddowg\JsonApi\Resource\Filter\WhereHas;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
@@ -147,7 +148,7 @@ final class RelationCriteriaFactory
         ?SerializerResolverInterface $server = null,
         ?string $parentType = null,
     ): CollectionCriteria {
-        $relationFilters = $includePivotFields ? $relation->allFilters() : self::withoutPivotFilters($relation->allFilters());
+        $relationFilters = $includePivotFields ? $this->guardedFamilies($relation, $parentType) : self::withoutPivotFilters($relation->allFilters());
         $sorts = $this->sortsFor($relatedResource, $relation, $includePivotFields || ($queriesPivotColumns ?? false));
         [$defaultSort, $resolved] = $this->defaultSortFor($relatedResource, $relation, $sorts, $request);
 
@@ -381,6 +382,69 @@ final class RelationCriteriaFactory
         }
 
         return $kept;
+    }
+
+    /**
+     * The relation's filters, each family wrapped so a filter it resolves is refused when its
+     * `pivot.`-prefixed path goes on from the pivot row to a model no single registered type
+     * serves. Route registration and `jsonapi:optimize` refuse such a declared filter, but a
+     * family resolves its filters per request, so the fault surfaces then, as a `500`, rather
+     * than walking those rows without any type's scope or read rules.
+     *
+     * @return list<FilterInterface>
+     */
+    private function guardedFamilies(RelationInterface $relation, ?string $parentType): array
+    {
+        $filters = [];
+        foreach ($relation->allFilters() as $filter) {
+            $filters[] = $filter instanceof FilterFamilyInterface
+                ? new NarrowedFilterFamily($filter, function (FilterInterface $resolved) use ($filter, $relation, $parentType): bool {
+                    $this->guardFamilyPivotPath($filter, $relation, $parentType, $resolved);
+
+                    return true;
+                })
+                : $filter;
+        }
+
+        return $filters;
+    }
+
+    /**
+     * @throws \LogicException naming the family, the filter and its path
+     */
+    private function guardFamilyPivotPath(FilterFamilyInterface $family, RelationInterface $relation, ?string $parentType, FilterInterface $filter): void
+    {
+        if ($filter instanceof WhereGroup) {
+            foreach ($filter->children as $child) {
+                $this->guardFamilyPivotPath($family, $relation, $parentType, $child);
+            }
+
+            return;
+        }
+
+        $pivotRows = $this->pivotRows();
+        $path = match (true) {
+            $filter instanceof WhereHas, $filter instanceof WhereDoesntHave => $filter->relationship,
+            $filter instanceof WhereThrough, $filter instanceof WhereThroughIn => $filter->path,
+            default => '',
+        };
+        if ($pivotRows === null || $parentType === null || !$relation instanceof PivotRelationInterface || !\str_starts_with($path, self::PIVOT_PREFIX)) {
+            return;
+        }
+
+        try {
+            $pivotRows->pivotRowRelation($relation, $parentType, \explode('.', $path)[1]);
+        } catch (\LogicException $e) {
+            throw new \LogicException(\sprintf(
+                'The filter family "%s" of relation "%s" on type "%s" resolved the filter "%s" to the path "%s", which goes on from the pivot row to a model no single registered type serves, so no type\'s read rules can apply to the rows it reaches. %s This is a declaration fault route registration refuses on a declared filter: register exactly one resource type for that model, or resolve the family to a path that does not reach it.',
+                $family->key(),
+                $relation->name(),
+                $parentType,
+                $filter->key(),
+                $path,
+                $e->getMessage(),
+            ), 0, $e);
+        }
     }
 
     /**

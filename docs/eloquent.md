@@ -209,7 +209,11 @@ That filter's constraints validate the value, so a family resolving to
 `Where::make(…)->integer()` rejects a non-integer, and one resolving to a `singular()` filter
 collapses the collection to one resource. On a relation, a family resolving to a
 `pivot.`-columned filter compares the join table wherever an exact pivot filter does, and is
-the same unrecognized `400` wherever an exact pivot filter is dropped.
+the same unrecognized `400` wherever an exact pivot filter is dropped. Route registration
+can't see the paths a family resolves, so a `pivot.`-prefixed path a family returns that
+reaches a model no single registered type serves is refused when the request resolves it.
+The request answers `500` and the error log names the family, the filter and the path, since
+the declaration is at fault rather than the request.
 
 Both providers match keys through core's `FilterMatcher`, on the primary collection, related
 and relationship endpoints, a relation's own `filters()`, the Relationship Queries profile's
