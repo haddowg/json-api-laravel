@@ -66,7 +66,7 @@ final class RelationAuthorizer implements RelationAuthorizerInterface, ThroughRe
 
     public function canReadThrough(RelationHop $hop, JsonApiRequestInterface $request): bool
     {
-        return !($this->rows?->refusesThrough($hop->relation, $hop->parentType) ?? false);
+        return !($this->rows?->refusesThrough($hop->relation, $hop->parentType, $hop->relatedTypes()) ?? false);
     }
 
     public function canWriteRelatedAttribute(mixed $owner, RelationInterface $relation, FieldInterface $field, mixed $model, JsonApiRequestInterface $request): bool

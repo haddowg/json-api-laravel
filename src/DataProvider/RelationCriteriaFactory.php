@@ -146,7 +146,7 @@ final class RelationCriteriaFactory
             wantsCount: $wantsCount,
             request: $request,
             defaultSortResolved: $resolved,
-            paths: $server !== null ? FilterPaths::of($server, $relatedResource, $parentType, $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->admission($server) : null) : null,
+            paths: $server !== null ? FilterPaths::of($server, $relatedResource, $parentType, $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->admission($server) : null, $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->morphAdmission($server) : null) : null,
         );
     }
 
@@ -177,7 +177,7 @@ final class RelationCriteriaFactory
             defaultSort: $defaultSort,
             request: $request,
             defaultSortResolved: $resolved,
-            paths: $server !== null ? FilterPaths::of($server, $relatedResource, $parentType, $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->admission($server) : null) : null,
+            paths: $server !== null ? FilterPaths::of($server, $relatedResource, $parentType, $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->admission($server) : null, $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->morphAdmission($server) : null) : null,
         );
     }
 

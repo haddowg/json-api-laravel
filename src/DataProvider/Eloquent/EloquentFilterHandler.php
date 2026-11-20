@@ -205,7 +205,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
 
         // A relationship filter reaching through a relation the caller may not read matches
         // as if every row there were hidden: an EXISTS through it is false.
-        if ($this->paths !== null && ($filter instanceof TraversesPath || $filter instanceof WhereHas || $filter instanceof WhereDoesntHave) && $this->paths->refusesAnyOf($filter)) {
+        if ($this->paths !== null && ($filter instanceof TraversesPath || $filter instanceof WhereHas || $filter instanceof WhereDoesntHave || $filter instanceof WhereMorph) && $this->paths->refusesAnyOf($filter)) {
             if (!$filter instanceof WhereDoesntHave) {
                 $query->whereRaw('1 = 0');
             }
@@ -435,6 +435,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
                 $class = $this->encoders?->modelFor($selection->type);
                 $stored = $class !== null ? [(new $class())->getMorphClass()] : [$selection->type];
                 $this->morphPredicate($query, $model->qualifyColumn($eloquent->getMorphType()), $stored, $model->qualifyColumn($eloquent->getForeignKeyName()), $selection->ids);
+                $this->scopeMorphTarget($query, $selection->type, $model->qualifyColumn($eloquent->getForeignKeyName()), $eloquent->getOwnerKeyName());
 
                 return;
             }
@@ -442,6 +443,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             $columns = $relation->identifierColumns();
             if ($columns !== null) {
                 $this->morphPredicate($query, $this->qualify($query, $columns->type), $columns->storedValues($selection->type), $this->qualify($query, $columns->id), $selection->ids);
+                $this->scopeMorphTarget($query, $selection->type, $this->qualify($query, $columns->id), null);
 
                 return;
             }
@@ -464,6 +466,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
                     $sub->whereColumn($row->qualifyColumn($rows->owner), $model->getQualifiedKeyName());
                 }
                 $this->morphPredicate($sub, $row->qualifyColumn($rows->type), $rows->storedValues($selection->type), $row->qualifyColumn($rows->id), $selection->ids);
+                $this->scopeMorphTarget($sub, $selection->type, $row->qualifyColumn($rows->id), null);
             });
 
             return;
@@ -475,6 +478,30 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             $filter->relation,
             $model::class,
         ));
+    }
+
+    /**
+     * Keeps the targets of `$type` a `WhereMorph` compares, by `$idColumn`, to those the
+     * model serving the type admits under its global scopes, as a related read of it does, so
+     * a hidden target never matches. A model with no global scope needs no `EXISTS`. The
+     * target is joined on `$ownerKey`, its primary key when null.
+     *
+     * @param Builder<Model>|QueryBuilder $query
+     */
+    private function scopeMorphTarget(Builder|QueryBuilder $query, string $type, string $idColumn, ?string $ownerKey): void
+    {
+        $class = $this->encoders?->modelFor($type);
+        if ($class === null) {
+            return;
+        }
+
+        $target = new $class();
+        if ($target->getGlobalScopes() === []) {
+            return;
+        }
+
+        $scoped = $target->newQuery()->selectRaw('1')->whereColumn($target->qualifyColumn($ownerKey ?? $target->getKeyName()), $idColumn);
+        $query->addWhereExistsQuery($scoped->toBase());
     }
 
     /**

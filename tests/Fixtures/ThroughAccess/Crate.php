@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Tests\Fixtures\ThroughAccess;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 final class Crate extends Model
 {
@@ -54,5 +55,13 @@ final class Crate extends Model
     public function auditor(): BelongsTo
     {
         return $this->belongsTo(Ledger::class, 'auditor_id');
+    }
+
+    /**
+     * @return MorphTo<Model, $this>
+     */
+    public function subject(): MorphTo
+    {
+        return $this->morphTo('subject', 'subject_type', 'subject_id');
     }
 }

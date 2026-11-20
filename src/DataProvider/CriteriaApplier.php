@@ -116,7 +116,7 @@ final class CriteriaApplier
 
         foreach (FilterMatcher::directives($requested, $criteria->filters, $criteria->request) as $directive) {
             $filter = $criteria->paths?->resolve($directive->filter) ?? $directive->filter;
-            $paths = $criteria->paths === null ? null : $this->readablePaths($criteria, $criteria->paths, $filter, $directive->key());
+            $paths = $criteria->paths === null ? null : $this->readablePaths($criteria, $criteria->paths, $filter, $directive->key(), $directive->value);
             $applying = $paths !== null && $handler instanceof ScopesFilterHopsInterface ? $handler->forPaths($paths) : $handler;
             $query = $applying->apply($filter, $query, $directive->value);
         }
@@ -132,10 +132,10 @@ final class CriteriaApplier
      *
      * @throws AuthorizationException when the client's filter reaches through a relation the caller may not read
      */
-    private function readablePaths(CollectionCriteria $criteria, FilterPaths $paths, FilterInterface $filter, string $key): FilterPaths
+    private function readablePaths(CollectionCriteria $criteria, FilterPaths $paths, FilterInterface $filter, string $key, mixed $value): FilterPaths
     {
         $request = $criteria->request;
-        $refused = $request === null ? [] : $paths->refusedHops($paths->hopsOf($filter), $request);
+        $refused = $request === null ? [] : $paths->refusedHops($paths->hopsOfRequested($filter, $value), $request);
         if ($refused !== [] && \array_key_exists($key, $criteria->queryParameters->filter)) {
             throw new AuthorizationException(\sprintf('Access denied to the relation "%s" the filter "%s" reaches through.', $refused[0]->relation->name(), $key));
         }

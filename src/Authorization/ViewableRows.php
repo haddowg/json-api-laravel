@@ -141,8 +141,13 @@ final class ViewableRows
      *  - otherwise each related type's collection gate refuses, and so does its `view` gate
      *    when it decides without the row. A `view` gate that reads the row is left to the
      *    type's query scope, as it is on the type's own collection.
+     *
+     * `$types` narrows the related types to decide by, as a `WhereMorph` hop names the one
+     * type it reaches; the relation's own types when null.
+     *
+     * @param list<string>|null $types
      */
-    public function refusesThrough(RelationInterface $relation, string $parentType): bool
+    public function refusesThrough(RelationInterface $relation, string $parentType, ?array $types = null): bool
     {
         $read = $relation->securityRead();
         if (\is_bool($read)) {
@@ -156,7 +161,7 @@ final class ViewableRows
                 || !$this->authorizer->allowsAbility($parentType, $ability, $parent, $this->serverName);
         }
 
-        foreach ($relation->relatedTypes() as $type) {
+        foreach ($types ?? $relation->relatedTypes() as $type) {
             if (!$this->mayList($type)) {
                 return true;
             }

@@ -93,7 +93,7 @@ final class OperationSecurityFacts
             return true;
         }
 
-        foreach ($hop->relation->relatedTypes() as $related) {
+        foreach ($hop->relatedTypes() as $related) {
             if ($this->enforces($server, $related, Operation::FetchCollection)) {
                 return true;
             }

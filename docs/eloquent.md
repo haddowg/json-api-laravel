@@ -303,6 +303,9 @@ identified by an `identifiedBy()` closure filters too. A model without a `morphT
 falls back to the columns core's `identifiedByColumns()` names, through its `typeMap`. On a
 `MorphToMany` the filter needs `identifiedByRows()`, and is one `EXISTS` over the `through()`
 rows owned by the outer row, through the owner's `belongsTo` or `morphTo` on the row model.
+When the model serving the requested type has global scopes, either form also requires the
+target to exist under them, so a target they hide never matches; see
+[filters that reach through relations](authorization.md#filters-that-reach-through-relations).
 
 The in-memory provider compares the fields `identifiedByColumns()` or `identifiedByRows()`
 name, through core's reference handler, so a type it serves needs one of them. Route

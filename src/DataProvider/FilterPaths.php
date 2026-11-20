@@ -35,6 +35,7 @@ final readonly class FilterPaths
      * @param list<string>                                                                        $named     every type the declaration names: the type itself, the related types of its relations, and the parent type of a relation whose filters these are
      * @param (\Closure(RelationInterface, string, list<object>): list<object>)|null               $admission the rows of those a relation, declared on the given type, reached that its related type's provider admits
      * @param list<RelationInterface>                                                             $refused   the relations through which the filter being applied matches no row
+     * @param (\Closure(RelationInterface, string, string, list<mixed>): list<mixed>)|null        $morphAdmission the storage keys of a type, reached through a polymorphic relation declared on the given type, that the type's provider admits
      */
     public function __construct(
         private ThroughPathResolver $resolver,
@@ -44,17 +45,20 @@ final readonly class FilterPaths
         private ?ThroughReadAccess $access = null,
         private ?\Closure $admission = null,
         private array $refused = [],
+        private ?\Closure $morphAdmission = null,
     ) {}
 
     /**
      * The paths of `$resource`'s filters, or of a relation's filters when `$resource` is its
      * related type. `null` when there is no single type to resolve against. `$admission`
      * narrows the rows an in-memory walk reaches through a relation to those the related
-     * type's provider admits.
+     * type's provider admits, and `$morphAdmission` the targets a `WhereMorph` reaches to the
+     * storage keys the requested type's provider admits.
      *
      * @param (\Closure(RelationInterface, string, list<object>): list<object>)|null $admission
+     * @param (\Closure(RelationInterface, string, string, list<mixed>): list<mixed>)|null $morphAdmission
      */
-    public static function of(SerializerResolverInterface $server, ?AbstractResource $resource, ?string $parentType = null, ?\Closure $admission = null): ?self
+    public static function of(SerializerResolverInterface $server, ?AbstractResource $resource, ?string $parentType = null, ?\Closure $admission = null, ?\Closure $morphAdmission = null): ?self
     {
         if ($resource === null) {
             return null;
@@ -62,7 +66,7 @@ final readonly class FilterPaths
 
         $type = $resource::$type !== '' ? $resource::$type : null;
 
-        return new self(ThroughPathResolver::forResolver($server), $resource->allFields(), $type, self::namedTypes($resource->allFields(), $type, $parentType), ThroughReadAccess::forResolver($server), $admission);
+        return new self(ThroughPathResolver::forResolver($server), $resource->allFields(), $type, self::namedTypes($resource->allFields(), $type, $parentType), ThroughReadAccess::forResolver($server), $admission, morphAdmission: $morphAdmission);
     }
 
     /**
@@ -72,7 +76,7 @@ final readonly class FilterPaths
      */
     public function scoped(array $refused = []): self
     {
-        return new self($this->resolver, $this->fields, $this->type, $this->named, $this->access, $this->admission, $refused);
+        return new self($this->resolver, $this->fields, $this->type, $this->named, $this->access, $this->admission, $refused, $this->morphAdmission);
     }
 
     /**
@@ -83,6 +87,18 @@ final readonly class FilterPaths
     public function hopsOf(FilterInterface $filter): array
     {
         return $this->type === null ? [] : $this->walker()->hopsOf($filter, $this->fields, $this->type);
+    }
+
+    /**
+     * The relations `$filter` reaches through for the requested `$value`, as
+     * {@see ThroughReadAccess::hopsOfRequested()} lists them: a `WhereMorph` reaches only the
+     * type the value names.
+     *
+     * @return list<RelationHop>
+     */
+    public function hopsOfRequested(FilterInterface $filter, mixed $value): array
+    {
+        return $this->type === null ? [] : $this->walker()->hopsOfRequested($filter, $value, $this->fields, $this->type);
     }
 
     /**
@@ -162,6 +178,24 @@ final readonly class FilterPaths
         }
 
         return $this->admission === null ? $rows : ($this->admission)($hop->relation, $hop->parentType, $rows);
+    }
+
+    /**
+     * The storage keys among `$keys`, targets of `$type` a `WhereMorph` reaches through
+     * `$relation`, that the type's provider admits: none through a refused relation, and all
+     * of them when no provider narrows them.
+     *
+     * @param list<mixed> $keys
+     *
+     * @return list<mixed>
+     */
+    public function admitMorph(RelationInterface $relation, string $type, array $keys): array
+    {
+        if ($this->refuses($relation)) {
+            return [];
+        }
+
+        return $this->morphAdmission === null || $this->type === null ? $keys : ($this->morphAdmission)($relation, $this->type, $type, $keys);
     }
 
     /**

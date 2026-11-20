@@ -385,9 +385,9 @@ That user sees only the project's `tasks` links, and `GET /projects/1/tasks` ans
 
 A filter that walks a relation, such as `WhereThrough::make('taskTitle', 'tasks.title')`,
 answers yes or no about the rows at the other end, so it follows the same rules as the data it
-reaches. They hold for `WhereThrough`, `WhereThroughIn`, `WhereHas`, `WhereDoesntHave` and every
-child of a group, on a collection, a related or relationship endpoint, a `relatedQuery` and a
-collection action's filters.
+reaches. They hold for `WhereThrough`, `WhereThroughIn`, `WhereHas`, `WhereDoesntHave`,
+`WhereMorph` and every child of a group, on a collection, a related or relationship endpoint, a
+`relatedQuery` and a collection action's filters.
 
 - A row the related type's scope hides never matches, at any hop. A `whereHas` applies the
   related model's global scopes itself, and in memory each hop's rows are narrowed to those the
@@ -409,6 +409,13 @@ A hop is readable unless one of these refuses the caller:
 
 A path segment names the relation stored under it. When several relations share a storage
 member, the one named after the segment applies.
+
+A `WhereMorph` reaches through its polymorphic relation to the one type the request names in
+`filter[subject][type]`. That type's checks decide the filter, so naming a type the caller may
+not read answers `403` while naming another of the relation's types still filters, and a target
+that type's scope hides never matches. On Eloquent the filter adds an `EXISTS` over the target
+model's query, with its global scopes, when the model has any. In memory the targets are kept to
+the ids the type's scoping provider admits.
 
 The OpenAPI document offers `ACCESS_DENIED` on every operation whose filters, or whose
 `relatedQuery` filters, reach through a relation some caller can be refused.

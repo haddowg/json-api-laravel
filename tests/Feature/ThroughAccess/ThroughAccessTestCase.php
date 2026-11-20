@@ -144,6 +144,28 @@ abstract class ThroughAccessTestCase extends Orchestra
     }
 
     #[Test]
+    public function aMorphTargetTheScopeHidesNeverMatches(): void
+    {
+        // Crate 1 is about parcel 2, grace's, and crate 2 about parcel 3, ada's.
+        self::assertSame(['2'], $this->crateIds('ada', 'filter[about][type]=parcels'));
+        self::assertSame(['1'], $this->crateIds('grace', 'filter[about][type]=parcels'));
+        self::assertSame(['1', '2'], $this->crateIds('admin', 'filter[about][type]=parcels'));
+        self::assertSame([], $this->crateIds('ada', 'filter[about][type]=parcels&filter[about][id]=2'));
+        self::assertSame(['2'], $this->crateIds('ada', 'filter[about][type]=parcels&filter[about][id]=2,3'));
+        self::assertSame(['1'], $this->crateIds('grace', 'filter[about][type]=parcels&filter[about][id]=2'));
+        self::assertSame(['2'], $this->crateIds('ada', 'filter[nameOrAbout][type]=parcels'));
+    }
+
+    #[Test]
+    public function aMorphTargetTypeTheCallerMayNotReadIsForbidden(): void
+    {
+        $this->assertForbidden('ada', '/api/crates?filter[about][type]=safes');
+        $this->assertForbidden('ada', '/api/crates?filter[about][type]=safes&filter[about][id]=1');
+        $this->assertForbidden('ada', '/api/crates?filter[nameOrAbout][type]=safes');
+        self::assertSame(['3'], $this->crateIds('admin', 'filter[about][type]=safes'));
+    }
+
+    #[Test]
     public function theSegmentNamesItsOwnRelationWhenAnotherSharesItsStorage(): void
     {
         // `sealedParcels` is admin-only and stored as `parcels`, but `parcels.label` names `parcels`.
@@ -201,6 +223,11 @@ abstract class ThroughAccessTestCase extends Orchestra
         self::assertTrue($facts->canRefuseThrough('default', $hop(new CrateResource(), 'safe')));
         self::assertTrue($facts->canRefuseThrough('default', $hop(new CrateResource(), 'ledger')));
         self::assertFalse($facts->canRefuseThrough('default', $hop(new ParcelResource(), 'tags')));
+
+        $subject = $hop(new CrateResource(), 'subject');
+        self::assertTrue($facts->canRefuseThrough('default', new RelationHop($subject->relation, 'crates', 'subject', target: 'safes')));
+        // A morph hop is decided by its target type alone, as a hop to that type is.
+        self::assertSame($facts->canRefuseThrough('default', $hop(new CrateResource(), 'parcels')), $facts->canRefuseThrough('default', new RelationHop($subject->relation, 'crates', 'subject', target: 'parcels')));
     }
 
     private function assertForbidden(string $user, string $uri, string $accept = self::MEDIA_TYPE, string $method = 'GET'): void

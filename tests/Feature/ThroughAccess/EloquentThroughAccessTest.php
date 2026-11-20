@@ -11,6 +11,8 @@ use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentFilterHandler;
 use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ThroughAccess\Crate;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ThroughAccess\CrateResource;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ThroughAccess\Parcel;
+use haddowg\JsonApiLaravel\Tests\Fixtures\ThroughAccess\Safe;
 use haddowg\JsonApiLaravel\Tests\Fixtures\ThroughAccess\VaultResource;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -59,6 +61,8 @@ final class EloquentThroughAccessTest extends ThroughAccessTestCase
             $table->unsignedInteger('safe_id')->nullable();
             $table->unsignedInteger('ledger_id')->nullable();
             $table->unsignedInteger('auditor_id')->nullable();
+            $table->string('subject_type')->nullable();
+            $table->string('subject_id')->nullable();
         });
         Schema::create('ta_parcels', static function (Blueprint $table): void {
             $table->increments('id');
@@ -80,9 +84,9 @@ final class EloquentThroughAccessTest extends ThroughAccessTestCase
         DB::table('ta_safes')->insert(['id' => 1, 'code' => 's1']);
         DB::table('ta_ledgers')->insert(['id' => 1, 'code' => 'l1']);
         DB::table('ta_crates')->insert([
-            ['id' => 1, 'name' => 'alpha', 'vault_id' => 1, 'safe_id' => 1, 'ledger_id' => 1, 'auditor_id' => 1],
-            ['id' => 2, 'name' => 'beta', 'vault_id' => 2, 'safe_id' => null, 'ledger_id' => null, 'auditor_id' => null],
-            ['id' => 3, 'name' => 'gamma', 'vault_id' => null, 'safe_id' => null, 'ledger_id' => null, 'auditor_id' => null],
+            ['id' => 1, 'name' => 'alpha', 'vault_id' => 1, 'safe_id' => 1, 'ledger_id' => 1, 'auditor_id' => 1, 'subject_type' => Parcel::class, 'subject_id' => '2'],
+            ['id' => 2, 'name' => 'beta', 'vault_id' => 2, 'safe_id' => null, 'ledger_id' => null, 'auditor_id' => null, 'subject_type' => Parcel::class, 'subject_id' => '3'],
+            ['id' => 3, 'name' => 'gamma', 'vault_id' => null, 'safe_id' => null, 'ledger_id' => null, 'auditor_id' => null, 'subject_type' => Safe::class, 'subject_id' => '1'],
         ]);
         DB::table('ta_parcels')->insert([
             ['id' => 1, 'owner_id' => '1', 'label' => 'apple', 'crate_id' => 1],

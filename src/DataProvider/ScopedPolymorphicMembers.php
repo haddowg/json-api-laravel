@@ -85,6 +85,39 @@ final class ScopedPolymorphicMembers
     }
 
     /**
+     * The closure {@see FilterPaths::of()} takes to narrow a `WhereMorph`'s targets: the
+     * storage keys of a type, reached through a polymorphic relation declared on a type, kept to
+     * those the type's scoping provider admits. A type no scoping provider serves keeps them all.
+     *
+     * @return \Closure(RelationInterface, string, string, list<mixed>): list<mixed>
+     */
+    public function morphAdmission(Server $server): \Closure
+    {
+        return fn(RelationInterface $relation, string $parentType, string $type, array $keys): array => $this->admittedKeys($server, $parentType, $type, $keys);
+    }
+
+    /**
+     * The keys among `$keys`, storage keys of `$type` reached from `$parentType`, that the
+     * type's scoping provider admits; all of them when no scoping provider serves it.
+     *
+     * @param array<mixed> $keys
+     *
+     * @return list<mixed>
+     */
+    private function admittedKeys(Server $server, string $parentType, string $type, array $keys): array
+    {
+        $keys = \array_values($keys);
+        $provider = $this->providers->scopedRelatedProvider($parentType, $type);
+        if ($provider === null || $keys === []) {
+            return $keys;
+        }
+
+        $admitted = $this->admittedIds($server, $provider, $type, \array_values(\array_unique(\array_map(static fn(mixed $key): string => \is_scalar($key) ? (string) $key : '', $keys))));
+
+        return \array_values(\array_filter($keys, static fn(mixed $key): bool => \is_scalar($key) && isset($admitted[(string) $key])));
+    }
+
+    /**
      * Applies `$criteria` to members already narrowed, so a page of them stays full and its total
      * counts the narrowed set: the related endpoint's read of a polymorphic relation that reaches
      * a scoped type.

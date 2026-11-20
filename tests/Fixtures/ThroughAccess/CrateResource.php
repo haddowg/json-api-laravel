@@ -8,10 +8,12 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\BelongsTo;
 use haddowg\JsonApi\Resource\Field\HasMany;
 use haddowg\JsonApi\Resource\Field\Id;
+use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApi\Resource\Filter\WhereAny;
 use haddowg\JsonApi\Resource\Filter\WhereHas;
+use haddowg\JsonApi\Resource\Filter\WhereMorph;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
@@ -38,6 +40,8 @@ final class CrateResource extends AbstractResource
             BelongsTo::make('ledger', 'ledgers')->nullable()->security(read: 'readLedger'),
             // A permission that reads the crate can't answer for every crate at once.
             BelongsTo::make('auditor', 'ledgers')->nullable()->security(read: 'auditCrate'),
+            // What each crate is about: a parcel, scoped to its owner, or a safe only admins read.
+            MorphTo::make('subject', ['parcels', 'safes'])->identifiedByColumns('subject_type', 'subject_id')->nullable()->hidden(),
         ];
     }
 
@@ -56,6 +60,8 @@ final class CrateResource extends AbstractResource
             WhereThrough::make('auditorCode', 'auditor.code'),
             WhereAny::make('search', Where::make('name'), WhereThrough::make('label', 'parcels.label')),
             WhereAny::make('anyCode', Where::make('name'), WhereThrough::make('code', 'vault.code')),
+            WhereMorph::make('about', 'subject'),
+            WhereAny::make('nameOrAbout', Where::make('name'), WhereMorph::make('about', 'subject')),
         ];
     }
 }
