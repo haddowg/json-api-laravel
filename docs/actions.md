@@ -623,7 +623,7 @@ OpenAPI projection so the generated document matches what the handler returns.
 | `input()` | the hydrated input object for a `Document` body, otherwise `null` |
 | `request()` | the PSR-7 `JsonApiRequestInterface`; a `Raw` body and uploaded files are read off it with `getBody()` / `getUploadedFiles()` |
 | `requestMeta()` | the request's top-level `meta`, validated and typed against what the handler declares for the method ([below](#declaring-request-meta)), or empty when it declares none |
-| `writtenMeta()` | the typed top-level `meta` and, for a `Document` input, the typed `data.meta` |
+| `writtenMeta()` | the typed top-level `meta` and, for a `Document` input, the typed `data.meta`, empty when its input type declares no `resourceMeta()` for the write |
 | `requestMediaType()` | the media type the body was sent as, lowercased and without parameters, or `null` when the request declared none |
 | `responseMediaType()` | the media type negotiated from `Accept` for the response ([raw responses](#a-raw-response-csv-pdf-and-other-bodies)) |
 | `queryParameters()` | core's parsed `QueryParameters` for the request |

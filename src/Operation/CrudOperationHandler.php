@@ -3308,11 +3308,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
             throw new ValidationFailed($errors);
         }
 
-        // A write whose type declares no request meta reads none through the typed accessor,
-        // as an action's does; the raw meta stays on the request.
+        // A write whose type declares no request meta or resource meta reads none through the
+        // typed accessor, as an action's does; the raw meta stays on the request.
         return new WrittenMeta(
             !$shape->isEmpty() && \is_array($document) ? $shape->values($document, true, $body) : [],
-            $resourceShape !== null && \is_array($resource) ? $resourceShape->values($resource, $resourceWrite === OperationType::Create, $body) : [],
+            $resourceShape !== null && !$resourceShape->isEmpty() && \is_array($resource) ? $resourceShape->values($resource, $resourceWrite === OperationType::Create, $body) : [],
         );
     }
 

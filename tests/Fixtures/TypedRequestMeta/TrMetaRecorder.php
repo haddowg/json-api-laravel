@@ -27,6 +27,13 @@ final class TrMetaRecorder
      */
     public static array $raw = [];
 
+    /**
+     * The resource object `meta` each event's request carried as sent.
+     *
+     * @var array<string, mixed>
+     */
+    public static array $rawResource = [];
+
     public function handle(BeforeCreateEvent|AfterCreateEvent|BeforeUpdateEvent|BeforeDeleteEvent|BeforeRelationshipMutateEvent $event): void
     {
         $meta = $event->writtenMeta();
@@ -34,5 +41,7 @@ final class TrMetaRecorder
         self::$seen[$key] = ['document' => $meta->document, 'resource' => $meta->resource];
         $body = $event->request->getParsedBody();
         self::$raw[$key] = \is_array($body) ? ($body['meta'] ?? null) : null;
+        $data = \is_array($body) ? ($body['data'] ?? null) : null;
+        self::$rawResource[$key] = \is_array($data) ? ($data['meta'] ?? null) : null;
     }
 }

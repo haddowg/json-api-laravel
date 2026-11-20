@@ -195,7 +195,8 @@ relationship events, `HookContext::writtenMeta()` in a resource's
 [lifecycle hooks](lifecycle-hooks.md#hookcontext), and `ActionContext::requestMeta()` and
 `writtenMeta()` in an [action](actions.md#declaring-request-meta). A write whose type declares
 no request meta for it reads an empty top-level `meta` through these, as an action declaring none
-does, and the raw `meta` stays on the request. `data.meta` members declaring
+does, and one whose type declares no `resourceMeta()` for it reads an empty `data.meta`. The raw
+`meta` and `data.meta` stay on the request. `data.meta` members declaring
 `fillUsing()` are applied to the model as it hydrates; the others stay on the written meta.
 
 A relationship write answers a meta-only `200` when its type's `documentMeta()` declares

@@ -117,6 +117,7 @@ abstract class TypedRequestMetaTestCase extends Orchestra
         parent::setUp();
         TrMetaRecorder::$seen = [];
         TrMetaRecorder::$raw = [];
+        TrMetaRecorder::$rawResource = [];
 
         if ($this->store() !== 'eloquent') {
             return;
@@ -370,10 +371,20 @@ abstract class TypedRequestMetaTestCase extends Orchestra
         $response = $this->send('POST', '/api/tr-plains', ['data' => ['type' => 'tr-plains', 'attributes' => ['name' => 'Free'], 'meta' => ['anything' => 1]], 'meta' => ['whatever' => ['x' => 1]]]);
         $response->assertStatus(201);
         self::assertSame(['free' => true], $response->json('data.meta'));
-        // The typed accessor reads no undeclared request meta, as an action's requestMeta() does,
-        // while the raw meta stays on the request and data.meta is carried as sent.
-        self::assertSame(['document' => [], 'resource' => ['anything' => 1]], TrMetaRecorder::$seen['tr-plains:BeforeCreateEvent'] ?? null);
+        // The typed accessor reads no undeclared request or resource meta, as an action's
+        // requestMeta() does, while the meta and data.meta as sent stay on the request.
+        self::assertSame(['document' => [], 'resource' => []], TrMetaRecorder::$seen['tr-plains:BeforeCreateEvent'] ?? null);
         self::assertSame(['whatever' => ['x' => 1]], TrMetaRecorder::$raw['tr-plains:BeforeCreateEvent'] ?? null);
+        self::assertSame(['anything' => 1], TrMetaRecorder::$rawResource['tr-plains:BeforeCreateEvent'] ?? null);
+
+        $this->send('PATCH', '/api/tr-plains/1', ['data' => ['type' => 'tr-plains', 'id' => '1', 'meta' => ['other' => true]]])->assertOk();
+        self::assertSame([], TrMetaRecorder::$seen['tr-plains:BeforeUpdateEvent']['resource'] ?? null);
+        self::assertSame(['other' => true], TrMetaRecorder::$rawResource['tr-plains:BeforeUpdateEvent'] ?? null);
+
+        // An action reading a tr-plains document has an empty typed data.meta as well.
+        $check = $this->send('POST', '/api/tr-plains/-actions/check', ['data' => ['type' => 'tr-plains', 'attributes' => ['name' => 'Free'], 'meta' => ['anything' => 1]]]);
+        $check->assertOk();
+        self::assertSame(['typed' => [], 'sent' => ['anything' => 1]], $check->json('meta'));
 
         config(['app.debug' => true]);
         $this->send('GET', '/api/tr-plains/1')->assertOk();
