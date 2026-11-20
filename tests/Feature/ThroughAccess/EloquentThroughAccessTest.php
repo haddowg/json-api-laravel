@@ -63,12 +63,16 @@ final class EloquentThroughAccessTest extends ThroughAccessTestCase
             $table->unsignedInteger('auditor_id')->nullable();
             $table->string('subject_type')->nullable();
             $table->string('subject_id')->nullable();
+            $table->string('stash_type')->nullable();
+            $table->string('stash_id')->nullable();
         });
         Schema::create('ta_parcels', static function (Blueprint $table): void {
             $table->increments('id');
             $table->string('owner_id');
             $table->string('label');
             $table->unsignedInteger('crate_id')->nullable();
+            $table->string('about_type')->nullable();
+            $table->string('about_id')->nullable();
         });
         Schema::create('ta_tags', static function (Blueprint $table): void {
             $table->increments('id');
@@ -84,14 +88,14 @@ final class EloquentThroughAccessTest extends ThroughAccessTestCase
         DB::table('ta_safes')->insert(['id' => 1, 'code' => 's1']);
         DB::table('ta_ledgers')->insert(['id' => 1, 'code' => 'l1']);
         DB::table('ta_crates')->insert([
-            ['id' => 1, 'name' => 'alpha', 'vault_id' => 1, 'safe_id' => 1, 'ledger_id' => 1, 'auditor_id' => 1, 'subject_type' => Parcel::class, 'subject_id' => '2'],
-            ['id' => 2, 'name' => 'beta', 'vault_id' => 2, 'safe_id' => null, 'ledger_id' => null, 'auditor_id' => null, 'subject_type' => Parcel::class, 'subject_id' => '3'],
-            ['id' => 3, 'name' => 'gamma', 'vault_id' => null, 'safe_id' => null, 'ledger_id' => null, 'auditor_id' => null, 'subject_type' => Safe::class, 'subject_id' => '1'],
+            ['id' => 1, 'name' => 'alpha', 'vault_id' => 1, 'safe_id' => 1, 'ledger_id' => 1, 'auditor_id' => 1, 'subject_type' => Parcel::class, 'subject_id' => '2', 'stash_type' => 'lockers', 'stash_id' => '2'],
+            ['id' => 2, 'name' => 'beta', 'vault_id' => 2, 'safe_id' => null, 'ledger_id' => null, 'auditor_id' => null, 'subject_type' => Parcel::class, 'subject_id' => '3', 'stash_type' => 'lockers', 'stash_id' => '3'],
+            ['id' => 3, 'name' => 'gamma', 'vault_id' => null, 'safe_id' => null, 'ledger_id' => null, 'auditor_id' => null, 'subject_type' => Safe::class, 'subject_id' => '1', 'stash_type' => null, 'stash_id' => null],
         ]);
         DB::table('ta_parcels')->insert([
-            ['id' => 1, 'owner_id' => '1', 'label' => 'apple', 'crate_id' => 1],
-            ['id' => 2, 'owner_id' => '2', 'label' => 'banana', 'crate_id' => 1],
-            ['id' => 3, 'owner_id' => '1', 'label' => 'cherry', 'crate_id' => 2],
+            ['id' => 1, 'owner_id' => '1', 'label' => 'apple', 'crate_id' => 1, 'about_type' => 'parcels', 'about_id' => '2'],
+            ['id' => 2, 'owner_id' => '2', 'label' => 'banana', 'crate_id' => 1, 'about_type' => null, 'about_id' => null],
+            ['id' => 3, 'owner_id' => '1', 'label' => 'cherry', 'crate_id' => 2, 'about_type' => 'parcels', 'about_id' => '1'],
         ]);
         DB::table('ta_tags')->insert([['id' => 1, 'name' => 'red', 'secret' => false], ['id' => 2, 'name' => 'hidden', 'secret' => true]]);
         DB::table('ta_parcel_tag')->insert([['parcel_id' => 1, 'tag_id' => 1], ['parcel_id' => 2, 'tag_id' => 2], ['parcel_id' => 3, 'tag_id' => 2]]);

@@ -483,8 +483,8 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     /**
      * Keeps the targets of `$type` a `WhereMorph` compares, by `$idColumn`, to those the
      * model serving the type admits under its global scopes, as a related read of it does, so
-     * a hidden target never matches. A model with no global scope needs no `EXISTS`. The
-     * target is joined on `$ownerKey`, its primary key when null.
+     * a hidden target never matches. A model with no global scope needs no subquery. The
+     * target is matched on `$ownerKey`, its primary key when null.
      *
      * @param Builder<Model>|QueryBuilder $query
      */
@@ -500,8 +500,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             return;
         }
 
-        $scoped = $target->newQuery()->selectRaw('1')->whereColumn($target->qualifyColumn($ownerKey ?? $target->getKeyName()), $idColumn);
-        $query->addWhereExistsQuery($scoped->toBase());
+        // A membership IN rather than a correlated EXISTS: the target may share the filtered
+        // model's table, and its scopes qualify columns with the table name.
+        $query->whereIn($idColumn, $target->newQuery()->select($target->qualifyColumn($ownerKey ?? $target->getKeyName()))->toBase());
     }
 
     /**

@@ -22,5 +22,7 @@ final class CrateRecord
         public ?CodedRecord $auditor = null,
         public ?string $subject_type = null,
         public ?string $subject_id = null,
+        public ?string $stash_type = null,
+        public ?string $stash_id = null,
     ) {}
 }

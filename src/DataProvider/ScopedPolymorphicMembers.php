@@ -6,6 +6,8 @@ namespace haddowg\JsonApiLaravel\DataProvider;
 
 use haddowg\JsonApi\Collection\CollectionResult;
 use haddowg\JsonApi\Collection\WindowExecutor;
+use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\InMemory\ArrayFilterHandler;
 use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortHandler;
@@ -88,33 +90,59 @@ final class ScopedPolymorphicMembers
      * The closure {@see FilterPaths::of()} takes to narrow a `WhereMorph`'s targets: the
      * storage keys of a type, reached through a polymorphic relation declared on a type, kept to
      * those the type's scoping provider admits. A type no scoping provider serves keeps them all.
+     * The stored keys were never read through any provider, so the type's provider decides even
+     * when it also serves the type the relation is declared on.
      *
      * @return \Closure(RelationInterface, string, string, list<mixed>): list<mixed>
      */
     public function morphAdmission(Server $server): \Closure
     {
-        return fn(RelationInterface $relation, string $parentType, string $type, array $keys): array => $this->admittedKeys($server, $parentType, $type, $keys);
+        return fn(RelationInterface $relation, string $parentType, string $type, array $keys): array => $this->admittedKeys($server, $type, $keys);
     }
 
     /**
-     * The keys among `$keys`, storage keys of `$type` reached from `$parentType`, that the
-     * type's scoping provider admits; all of them when no scoping provider serves it.
+     * The keys among `$keys`, storage keys of `$type`, that the type's scoping provider
+     * admits; all of them when no scoping provider serves it.
      *
      * @param array<mixed> $keys
      *
      * @return list<mixed>
      */
-    private function admittedKeys(Server $server, string $parentType, string $type, array $keys): array
+    private function admittedKeys(Server $server, string $type, array $keys): array
     {
         $keys = \array_values($keys);
-        $provider = $this->providers->scopedRelatedProvider($parentType, $type);
+        $provider = $this->providers->scopingProviderFor($type);
         if ($provider === null || $keys === []) {
             return $keys;
         }
 
-        $admitted = $this->admittedIds($server, $provider, $type, \array_values(\array_unique(\array_map(static fn(mixed $key): string => \is_scalar($key) ? (string) $key : '', $keys))));
+        // A provider reads wire ids, so each stored key is asked about as its type renders it.
+        $wire = [];
+        foreach ($keys as $key) {
+            if (\is_string($key) || \is_int($key)) {
+                $wire[(string) $key] = self::wireId($server, $type, $key);
+            }
+        }
+        $admitted = $this->admittedIds($server, $provider, $type, \array_values(\array_unique($wire)));
 
-        return \array_values(\array_filter($keys, static fn(mixed $key): bool => \is_scalar($key) && isset($admitted[(string) $key])));
+        return \array_values(\array_filter($keys, static fn(mixed $key): bool => (\is_string($key) || \is_int($key)) && isset($admitted[$wire[(string) $key]])));
+    }
+
+    /**
+     * A stored key as the type's serializer renders its id, through the id encoder it declares.
+     */
+    private static function wireId(Server $server, string $type, string|int $key): string
+    {
+        $serializer = $server->hasSerializerFor($type) ? $server->serializerFor($type) : null;
+        if ($serializer instanceof AbstractResource) {
+            foreach ($serializer->allFields() as $field) {
+                if ($field instanceof Id) {
+                    return $field->encoder()?->encode($key) ?? (string) $key;
+                }
+            }
+        }
+
+        return (string) $key;
     }
 
     /**

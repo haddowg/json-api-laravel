@@ -42,6 +42,7 @@ final class CrateResource extends AbstractResource
             BelongsTo::make('auditor', 'ledgers')->nullable()->security(read: 'auditCrate'),
             // What each crate is about: a parcel, scoped to its owner, or a safe only admins read.
             MorphTo::make('subject', ['parcels', 'safes'])->identifiedByColumns('subject_type', 'subject_id')->nullable()->hidden(),
+            MorphTo::make('stash', ['lockers'])->identifiedByColumns('stash_type', 'stash_id')->nullable()->hidden(),
         ];
     }
 
@@ -61,6 +62,7 @@ final class CrateResource extends AbstractResource
             WhereAny::make('search', Where::make('name'), WhereThrough::make('label', 'parcels.label')),
             WhereAny::make('anyCode', Where::make('name'), WhereThrough::make('code', 'vault.code')),
             WhereMorph::make('about', 'subject'),
+            WhereMorph::make('stash'),
             WhereAny::make('nameOrAbout', Where::make('name'), WhereMorph::make('about', 'subject')),
         ];
     }

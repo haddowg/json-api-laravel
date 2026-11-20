@@ -24,10 +24,10 @@ final class ThroughAccessServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([CrateResource::class, ParcelResource::class, TagResource::class, VaultResource::class, SafeResource::class, LedgerResource::class, TallyCratesAction::class]);
+        JsonApi::register([CrateResource::class, ParcelResource::class, LockerResource::class, TagResource::class, VaultResource::class, SafeResource::class, LedgerResource::class, TallyCratesAction::class]);
 
         if (config('through.store') !== 'memory') {
-            $models = ['crates' => Crate::class, 'parcels' => Parcel::class, 'tags' => Tag::class, 'vaults' => Vault::class, 'safes' => Safe::class, 'ledgers' => Ledger::class];
+            $models = ['crates' => Crate::class, 'parcels' => Parcel::class, 'lockers' => Parcel::class, 'tags' => Tag::class, 'vaults' => Vault::class, 'safes' => Safe::class, 'ledgers' => Ledger::class];
             JsonApi::provider(new EloquentDataProvider($models), priority: -128);
 
             return;
@@ -39,13 +39,13 @@ final class ThroughAccessServiceProvider extends ServiceProvider
         $l1 = new CodedRecord('1', 'l1');
         $red = new TagRecord('1', 'red');
         $hidden = new TagRecord('2', 'hidden', true);
-        $one = new CrateRecord('1', 'alpha', [], $v1, $s1, $l1, $l1, 'parcels', '2');
-        $two = new CrateRecord('2', 'beta', [], $v2, subject_type: 'parcels', subject_id: '3');
+        $one = new CrateRecord('1', 'alpha', [], $v1, $s1, $l1, $l1, 'parcels', '2', 'lockers', '2');
+        $two = new CrateRecord('2', 'beta', [], $v2, subject_type: 'parcels', subject_id: '3', stash_type: 'lockers', stash_id: '3');
         $three = new CrateRecord('3', 'gamma', subject_type: 'safes', subject_id: '1');
         $parcels = [
-            '1' => new ParcelRecord('1', '1', 'apple', $one, [$red]),
+            '1' => new ParcelRecord('1', '1', 'apple', $one, [$red], 'parcels', '2'),
             '2' => new ParcelRecord('2', '2', 'banana', $one, [$hidden]),
-            '3' => new ParcelRecord('3', '1', 'cherry', $two, [$hidden]),
+            '3' => new ParcelRecord('3', '1', 'cherry', $two, [$hidden], 'parcels', '1'),
         ];
         $one->parcels = [$parcels['1'], $parcels['2']];
         $two->parcels = [$parcels['3']];
@@ -56,6 +56,7 @@ final class ThroughAccessServiceProvider extends ServiceProvider
         JsonApi::provider(new InMemoryDataProvider('safes', ['1' => $s1], identify: $identify));
         JsonApi::provider(new InMemoryDataProvider('ledgers', ['1' => $l1], identify: $identify));
         JsonApi::provider(new OwnParcelsProvider($parcels));
+        JsonApi::provider(new OwnParcelsProvider(\array_combine(\array_map(static fn(string $id): string => 'L-' . $id, \array_map('strval', \array_keys($parcels))), $parcels), 'lockers'));
         JsonApi::provider(new PublicTagsProvider(['1' => $red, '2' => $hidden]));
     }
 }

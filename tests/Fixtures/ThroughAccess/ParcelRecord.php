@@ -18,5 +18,7 @@ final class ParcelRecord
         public string $label = '',
         public ?CrateRecord $crate = null,
         public array $tags = [],
+        public ?string $about_type = null,
+        public ?string $about_id = null,
     ) {}
 }

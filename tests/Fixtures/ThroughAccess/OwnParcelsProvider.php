@@ -24,11 +24,11 @@ final class OwnParcelsProvider extends AbstractDataProvider
     /**
      * @param array<array-key, ParcelRecord> $parcels
      */
-    public function __construct(private readonly array $parcels) {}
+    public function __construct(private readonly array $parcels, private readonly string $type = 'parcels') {}
 
     public function supports(string $type): bool
     {
-        return $type === 'parcels';
+        return $type === $this->type;
     }
 
     public function fetchOne(string $type, string $id): ?object
@@ -62,7 +62,7 @@ final class OwnParcelsProvider extends AbstractDataProvider
             }
         }
 
-        return new InMemoryDataProvider('parcels', $seen, identify: static fn(object $parcel): string => $parcel instanceof ParcelRecord ? $parcel->id : '');
+        return new InMemoryDataProvider($this->type, $seen, identify: static fn(object $parcel): string => $parcel instanceof ParcelRecord ? $parcel->id : '');
     }
 
     private static function sees(ParcelRecord $parcel): bool

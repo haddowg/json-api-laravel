@@ -157,6 +157,28 @@ abstract class ThroughAccessTestCase extends Orchestra
     }
 
     #[Test]
+    public function aMorphTargetOnTheFilteredTypesOwnTableIsScopedAsTheTarget(): void
+    {
+        // Parcel 1 is about grace's parcel 2, parcel 3 about ada's parcel 1.
+        self::assertSame(['3'], $this->parcelIds('ada', 'filter[about][type]=parcels'));
+        self::assertSame([], $this->parcelIds('ada', 'filter[about][type]=parcels&filter[about][id]=2'));
+        self::assertSame(['3'], $this->parcelIds('ada', 'filter[about][type]=parcels&filter[about][id]=1,2'));
+        self::assertSame([], $this->parcelIds('grace', 'filter[about][type]=parcels'));
+        self::assertSame(['1', '3'], $this->parcelIds('admin', 'filter[about][type]=parcels'));
+    }
+
+    #[Test]
+    public function aMorphTargetWhoseIdIsEncodedIsAdmittedByItsStoredKey(): void
+    {
+        // Crate 1 keeps grace's locker L-2, crate 2 ada's locker L-3.
+        self::assertSame(['2'], $this->crateIds('ada', 'filter[stash][type]=lockers'));
+        self::assertSame(['2'], $this->crateIds('ada', 'filter[stash][type]=lockers&filter[stash][id]=L-2,L-3'));
+        self::assertSame([], $this->crateIds('ada', 'filter[stash][type]=lockers&filter[stash][id]=L-2'));
+        self::assertSame(['1'], $this->crateIds('grace', 'filter[stash][type]=lockers'));
+        self::assertSame(['1', '2'], $this->crateIds('admin', 'filter[stash][type]=lockers'));
+    }
+
+    #[Test]
     public function aMorphTargetTypeTheCallerMayNotReadIsForbidden(): void
     {
         $this->assertForbidden('ada', '/api/crates?filter[about][type]=safes');
@@ -235,6 +257,14 @@ abstract class ThroughAccessTestCase extends Orchestra
         $response = $this->send($user, $method, $uri, $accept);
         $response->assertForbidden();
         $response->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function parcelIds(string $user, string $query): array
+    {
+        return $this->ids($this->document($user, '/api/parcels' . ($query === '' ? '' : '?' . $query))->json('data'));
     }
 
     /**

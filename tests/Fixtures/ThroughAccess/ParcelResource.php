@@ -8,8 +8,10 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\BelongsTo;
 use haddowg\JsonApi\Resource\Field\HasMany;
 use haddowg\JsonApi\Resource\Field\Id;
+use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\Where;
+use haddowg\JsonApi\Resource\Filter\WhereMorph;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
@@ -29,6 +31,8 @@ final class ParcelResource extends AbstractResource
             Str::make('label'),
             BelongsTo::make('crate', 'crates')->nullable(),
             HasMany::make('tags', 'tags'),
+            // Another parcel, on the same table, so the target's scope runs over the table being filtered.
+            MorphTo::make('about', ['parcels'])->identifiedByColumns('about_type', 'about_id')->nullable()->hidden(),
         ];
     }
 
@@ -38,6 +42,7 @@ final class ParcelResource extends AbstractResource
             Where::make('owner_id'),
             WhereThrough::make('tagName', 'tags.name'),
             WhereThrough::make('crateVault', 'crate.vault.code'),
+            WhereMorph::make('about'),
         ];
     }
 }
