@@ -13,10 +13,8 @@ use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Integer;
-use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\MetaContext;
-use haddowg\JsonApi\Resource\RelationshipMetaContext;
 use haddowg\JsonApi\Resource\RequestMetaContext;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Hook\HookContext;
@@ -77,11 +75,12 @@ final class TrNoteResource extends AbstractResource implements ResourceLifecycle
         ];
     }
 
-    public function relationshipDocumentMeta(RelationshipMetaContext $context): iterable
+    public function documentMeta(OperationType $operation): iterable
     {
-        return $context->isRelationship('items', Mode::Add)
-            ? [Integer::make('count')->required()->example(2)->extractUsing(static fn(object $note): int => $note instanceof Note ? $note->items()->count() : \count(\is_array($items = Accessor::get($note, 'items')) ? $items : []))]
-            : [];
+        return match ($operation) {
+            OperationType::AddRelationship => [Integer::make('count')->required()->example(2)->extractUsing(static fn(object $note): int => $note instanceof Note ? $note->items()->count() : \count(\is_array($items = Accessor::get($note, 'items')) ? $items : []))],
+            default => [],
+        };
     }
 
     public function beforeCreate(object $entity, HookContext $context): void

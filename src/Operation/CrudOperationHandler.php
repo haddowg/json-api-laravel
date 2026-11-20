@@ -66,7 +66,6 @@ use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\Filter\SupportsSingular;
 use haddowg\JsonApi\Resource\MetaContext;
-use haddowg\JsonApi\Resource\RelationshipMetaContext;
 use haddowg\JsonApi\Resource\RequestMetaContext;
 use haddowg\JsonApi\Resource\ResolvesCompletionRedirect;
 use haddowg\JsonApi\Resource\WrittenMeta;
@@ -2472,7 +2471,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // A type declaring this write's document meta answers a meta-only 200 instead of the
         // linkage, its hooks receiving the parent. Otherwise the 200 linkage echo carries
         // `meta.pivot` for a pivot relation, exactly as the relationship-read endpoint does.
-        $documentMeta = $this->documentMeta?->forRelationshipWrite($server, $type, new RelationshipMetaContext($relationshipName, $mode, RequestMetaResolver::isAtomic($body)));
+        $documentMeta = $this->documentMeta?->forRelationshipWrite($server, $type, match ($mode) {
+            Mode::Add => OperationType::AddRelationship,
+            Mode::Remove => OperationType::RemoveRelationship,
+            Mode::Replace => OperationType::UpdateRelationship,
+        });
         $metaOnly = $documentMeta !== null && !$documentMeta->isEmpty();
         $response = $metaOnly
             ? MetaResponse::fromMeta([])

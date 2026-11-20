@@ -16,12 +16,9 @@ use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\MetaContext;
 use haddowg\JsonApi\Resource\MetaShape;
-use haddowg\JsonApi\Resource\RelationshipMetaContext;
 use haddowg\JsonApi\Resource\RequestMeta;
 use haddowg\JsonApi\Resource\RequestMetaContext;
 use haddowg\JsonApi\Resource\ResourceMeta;
-use haddowg\JsonApi\Serializer\DeclaresAcceptedDocumentMetaInterface;
-use haddowg\JsonApi\Serializer\DeclaresRelationshipDocumentMetaInterface;
 use haddowg\JsonApi\Serializer\DeclaresResourceMetaInterface;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Action\ActionDescriptor;
@@ -159,7 +156,6 @@ final class RequestMetaResolver
             foreach ($relations as $relation) {
                 foreach ($relation->isToMany() ? [Mode::Replace, Mode::Add, Mode::Remove] : [Mode::Replace] as $mode) {
                     RequestMeta::forOperation($hydrator ?? new \stdClass(), RequestMetaContext::forRelationship($relation->name(), $mode, $atomic), $type);
-                    DocumentMeta::forRelationship($serializer ?? new \stdClass(), new RelationshipMetaContext($relation->name(), $mode, $atomic), $type);
                 }
             }
         }
@@ -173,6 +169,9 @@ final class RequestMetaResolver
         }
         foreach ([OperationType::Create, OperationType::Update] as $operation) {
             DocumentMeta::forAccepted($serializer ?? new \stdClass(), $operation, [], $type);
+        }
+        foreach ([OperationType::UpdateRelationship, OperationType::AddRelationship, OperationType::RemoveRelationship] as $operation) {
+            DocumentMeta::forOperation($serializer ?? new \stdClass(), $operation, $type);
         }
 
         $read = ResourceMeta::forType($serializer ?? new \stdClass(), MetaContext::read(), $type);
@@ -217,8 +216,6 @@ final class RequestMetaResolver
         foreach ([
             DeclaresRequestDocumentMetaInterface::class,
             DeclaresResourceMetaInterface::class,
-            DeclaresRelationshipDocumentMetaInterface::class,
-            DeclaresAcceptedDocumentMetaInterface::class,
         ] as $interface) {
             if (\is_a($class, $interface, true)) {
                 return true;

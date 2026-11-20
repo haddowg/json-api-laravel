@@ -623,7 +623,7 @@ final class MetadataSource
         }
 
         $descriptions = [];
-        foreach (OperationType::cases() as $operation) {
+        foreach (OperationType::resourceOperations() as $operation) {
             $value = $resource->describeOperation($operation);
             if ($value !== null) {
                 $descriptions[$operation->value] = $value;

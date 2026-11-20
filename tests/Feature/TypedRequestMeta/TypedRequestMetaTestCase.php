@@ -204,7 +204,7 @@ abstract class TypedRequestMetaTestCase extends Orchestra
         self::assertSame([['type' => 'tr-items', 'id' => '2']], $patch->json('data'), 'a replace declares no document meta, so it answers its linkage');
         self::assertSame(['reason' => 'swap'], TrMetaRecorder::$seen['tr-notes:BeforeRelationshipMutateEvent']['document'] ?? null);
 
-        // Adding answers the meta-only document its relationshipDocumentMeta() declares.
+        // Adding answers the meta-only document its documentMeta() declares for AddRelationship.
         $add = $this->send('POST', '/api/tr-notes/1/relationships/items', ['data' => [['type' => 'tr-items', 'id' => '1']], 'meta' => ['reason' => 'more']]);
         $add->assertOk();
         $document = $add->json();

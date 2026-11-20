@@ -6,7 +6,6 @@ namespace haddowg\JsonApiLaravel\OpenApi\Metadata;
 
 use haddowg\JsonApi\Hydrator\DeclaresRequestDocumentMetaInterface;
 use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
-use haddowg\JsonApi\OpenApi\Metadata\DeclaresAcceptedDocumentMeta;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresActionLinks;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresAlwaysCounted;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresClientIdCollisions;
@@ -21,7 +20,6 @@ use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationExamples;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationExtensions;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationScopes;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresRelatedOnly;
-use haddowg\JsonApi\OpenApi\Metadata\DeclaresRelationshipDocumentMeta;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresRequestDocumentMeta;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresResourceClass;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresResourceLinks;
@@ -41,13 +39,10 @@ use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Link\ActionLink;
 use haddowg\JsonApi\Resource\Link\DeclaredLink;
 use haddowg\JsonApi\Resource\MetaContext;
-use haddowg\JsonApi\Resource\RelationshipMetaContext;
 use haddowg\JsonApi\Resource\RequestMetaContext;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
-use haddowg\JsonApi\Serializer\DeclaresAcceptedDocumentMetaInterface;
 use haddowg\JsonApi\Serializer\DeclaresDocumentMetaInterface;
-use haddowg\JsonApi\Serializer\DeclaresRelationshipDocumentMetaInterface;
 use haddowg\JsonApi\Serializer\DeclaresResourceMetaInterface;
 
 /**
@@ -93,7 +88,7 @@ use haddowg\JsonApi\Serializer\DeclaresResourceMetaInterface;
  * serializer applies as a document's root, that no operation refuses `include`, that a
  * taken client id is a `409`, and that a hand-written hydrator never reads linkage.
  */
-final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresNamedOperationExtensions, DeclaresSingularName, DeclaresOperationExamples, DeclaresAlwaysCounted, DeclaresResourceLinks, DeclaresActionLinks, DeclaresOperationScopes, DeclaresResourceClass, DeclaresDeprecation, DeclaresRelatedOnly, DeclaresDefaultSort, DeclaresSortExample, DeclaresIncludeSafeguards, DeclaresInclusionUnsupported, DeclaresClientIdCollisions, DeclaresHydratorCardinality, DeclaresSingleton, DeclaresDocumentMeta, DeclaresRequestDocumentMeta, DeclaresResourceMeta, DeclaresRelationshipDocumentMeta, DeclaresAcceptedDocumentMeta
+final readonly class TypeMetadata implements DeclaresOperationExtensions, DeclaresNamedOperationExtensions, DeclaresSingularName, DeclaresOperationExamples, DeclaresAlwaysCounted, DeclaresResourceLinks, DeclaresActionLinks, DeclaresOperationScopes, DeclaresResourceClass, DeclaresDeprecation, DeclaresRelatedOnly, DeclaresDefaultSort, DeclaresSortExample, DeclaresIncludeSafeguards, DeclaresInclusionUnsupported, DeclaresClientIdCollisions, DeclaresHydratorCardinality, DeclaresSingleton, DeclaresDocumentMeta, DeclaresRequestDocumentMeta, DeclaresResourceMeta
 {
     /**
      * @param list<FieldInterface>            $fields
@@ -188,16 +183,6 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
         $declarer = $context->isWrite() && $this->requestMeta instanceof DeclaresResourceMetaInterface ? $this->requestMeta : $this->resourceMeta;
 
         return $declarer instanceof DeclaresResourceMetaInterface ? $declarer->resourceMeta($context) : [];
-    }
-
-    public function relationshipDocumentMeta(RelationshipMetaContext $context): iterable
-    {
-        return $this->resourceMeta instanceof DeclaresRelationshipDocumentMetaInterface ? $this->resourceMeta->relationshipDocumentMeta($context) : [];
-    }
-
-    public function acceptedDocumentMeta(OperationType $operation): iterable
-    {
-        return $this->resourceMeta instanceof DeclaresAcceptedDocumentMetaInterface ? $this->resourceMeta->acceptedDocumentMeta($operation) : [];
     }
 
     public function documentMeta(OperationType $operation, ?string $relation = null): iterable
