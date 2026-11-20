@@ -21,8 +21,8 @@ final class StampGrantAction implements ActionHandlerInterface
     {
         $grant = $context->entity();
         $input = $context->input();
-        \assert($grant instanceof FkGrant && $input instanceof FkGrant);
-        $grant->received = $input->received;
+        \assert($grant instanceof GrantInterface && $input instanceof GrantInterface);
+        $grant->receive(GrantInputIds::of($input, 'secrets'));
 
         return $context->data($grant);
     }

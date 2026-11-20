@@ -21,8 +21,8 @@ final class ReviseGrantAction implements ActionHandlerInterface
     {
         $grant = $context->entity();
         $input = $context->input();
-        \assert($grant instanceof FkGrant && $input instanceof FkGrant);
-        $grant->received = $input->lockedSecrets;
+        \assert($grant instanceof GrantInterface && $input instanceof GrantInterface);
+        $grant->receive(GrantInputIds::of($input, 'lockedSecrets'));
 
         return $context->data($grant);
     }

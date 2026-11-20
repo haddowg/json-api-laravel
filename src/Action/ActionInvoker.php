@@ -6,11 +6,18 @@ namespace haddowg\JsonApiLaravel\Action;
 
 use haddowg\JsonApi\Exception\FilterParamUnrecognized;
 use haddowg\JsonApi\Exception\ResourceNotFound;
+use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
+use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\Negotiation\AcceptNegotiator;
 use haddowg\JsonApi\Operation\CustomActionOperation;
 use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Request\MediaType;
+use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\Accessor;
+use haddowg\JsonApi\Resource\Field\GuardsMembershipInterface;
+use haddowg\JsonApi\Resource\Field\Mode;
+use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Response\AcceptedResponse;
@@ -20,6 +27,7 @@ use haddowg\JsonApi\Response\MetaResponse;
 use haddowg\JsonApi\Response\NoContentResponse;
 use haddowg\JsonApi\Response\RawResponse;
 use haddowg\JsonApi\Response\SeeOtherResponse;
+use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
 use haddowg\JsonApiLaravel\DataPersister\AfterCommit;
@@ -34,12 +42,15 @@ use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use haddowg\JsonApiLaravel\Event\AfterActionEvent;
 use haddowg\JsonApiLaravel\Event\BeforeActionEvent;
 use haddowg\JsonApiLaravel\Operation\Operation;
+use haddowg\JsonApiLaravel\Operation\RelationFillHook;
 use haddowg\JsonApiLaravel\Server\ServerNames;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\FilterValueValidator;
 use haddowg\JsonApiLaravel\Validation\ReadOnlyAttributes;
 use haddowg\JsonApiLaravel\Validation\ResourceValidator;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * Invokes a custom, non-CRUD action — the Laravel twin of the bundle's
@@ -318,10 +329,126 @@ final readonly class ActionInvoker
 
         $this->validate($server, $inputType, $body, $instance);
 
+        $resource = $handler instanceof ActionInputFactoryInterface ? null : $this->types->resourceFor($server, $inputType);
+        if ($resource !== null) {
+            [$instance, $body] = $this->relateInput($server, $resource, $instance, $body);
+        }
+
         $hydrated = $server->hydratorFor($inputType)->hydrate($body, $instance);
         \assert(\is_object($hydrated));
 
         return $hydrated;
+    }
+
+    /**
+     * Sets each relationship the input document names to the related models, as a write
+     * of the type holds them, and returns the document without its relationships. Core's
+     * hydration would assign the bare ids, as an attribute of a model. A model gets each
+     * as a loaded relation, any other object through its accessor. A relation written by
+     * its `fillUsing()` hook still gets the linkage, and a to-many that can't change its
+     * members is checked against the blank input first, as core checks it. A member that
+     * doesn't exist is a `404`.
+     *
+     * @return array{object, JsonApiRequestInterface}
+     */
+    private function relateInput(Server $server, AbstractResource $resource, object $instance, JsonApiRequestInterface $body): array
+    {
+        /** @var array<string, mixed> $document */
+        $document = (array) $body->getParsedBody();
+        $data = $document['data'] ?? null;
+        if (!\is_array($data) || !\is_array($data['relationships'] ?? null) || $data['relationships'] === []) {
+            return [$instance, $body];
+        }
+
+        $creating = $body->getMethod() === 'POST';
+        foreach (\array_keys($data['relationships']) as $name) {
+            $relation = $resource->relationNamed((string) $name);
+            if ($relation === null || $relation->isReadOnlyFor($creating, $body)) {
+                continue;
+            }
+
+            $linkage = $relation->isToMany()
+                ? ($body->hasToManyRelationship($relation->name()) ? $body->getToManyRelationship($relation->name()) : null)
+                : ($body->hasToOneRelationship($relation->name()) ? $body->getToOneRelationship($relation->name()) : null);
+            if ($linkage === null) {
+                continue;
+            }
+
+            if (!$creating && $linkage instanceof ToManyRelationship && $relation instanceof GuardsMembershipInterface
+                && !$relation->allowsMembershipChangeFor($body, $instance)) {
+                $relation->assertMembershipUnchanged($body, $instance, $this->inputMembers($server, $relation, $instance, $body), $linkage);
+            }
+
+            if (RelationFillHook::declaredBy($relation)) {
+                $instance = RelationFillHook::apply($relation, $instance, $linkage, Mode::Replace);
+
+                continue;
+            }
+
+            $member = $relation->column() ?? $relation->name();
+            if ($linkage instanceof ToOneRelationship) {
+                $identifier = $linkage->resourceIdentifier;
+                $related = $identifier?->id === null ? null : $this->related($identifier->type, $identifier->id);
+                if ($instance instanceof Model) {
+                    $instance->setRelation($member, $related);
+                } else {
+                    Accessor::set($instance, $member, $related);
+                }
+
+                continue;
+            }
+
+            $members = [];
+            foreach ($linkage->resourceIdentifiers as $identifier) {
+                if ($identifier->id !== null) {
+                    $members[] = $this->related($identifier->type, $identifier->id);
+                }
+            }
+            if ($instance instanceof Model) {
+                $models = \array_values(\array_filter($members, static fn(object $related): bool => $related instanceof Model));
+                $instance->setRelation($member, \count($models) === \count($members) ? new EloquentCollection($models) : new \Illuminate\Support\Collection($members));
+            } else {
+                Accessor::set($instance, $member, $members);
+            }
+        }
+
+        unset($data['relationships']);
+        $document['data'] = $data;
+        $stripped = $body->withParsedBody($document);
+        \assert($stripped instanceof JsonApiRequestInterface);
+
+        return [$instance, $stripped];
+    }
+
+    /**
+     * The members `$relation` holds on the blank input, as `[type, id]` pairs, the way
+     * core reads them for its membership check.
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    private function inputMembers(Server $server, RelationInterface $relation, object $instance, JsonApiRequestInterface $body): array
+    {
+        $members = [];
+        foreach (\is_iterable($value = $relation->readValue(clone $instance, $body)) ? $value : [] as $member) {
+            if ($member instanceof ResourceIdentifier) {
+                $members[] = [$member->type, (string) $member->id];
+            } elseif (\is_object($member) && ($serializer = $relation->resolveSerializer($member, $server)) !== null) {
+                $members[] = [$serializer->getType($member), $serializer->getId($member)];
+            } elseif (\is_string($member) || \is_int($member)) {
+                $members[] = [$relation->relatedTypes()[0] ?? '', (string) $member];
+            }
+        }
+
+        return $members;
+    }
+
+    private function related(string $type, string $id): object
+    {
+        if (!$this->providers->supportsType($type)) {
+            throw new ResourceNotFound();
+        }
+
+        return $this->providers->forType($type)->fetchOne($type, $id) ?? throw new ResourceNotFound();
     }
 
     /**

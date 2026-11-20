@@ -142,7 +142,29 @@ abstract class ForeignKeyConformanceTestCase extends Orchestra
             ->post('/api/fk-grants/g1/-actions/stamp')
             ->assertOk();
 
+        // The stamp action refuses an input whose secrets aren't the related models, so this
+        // also shows the input holds them, as a loaded relation on the Eloquent grant.
         self::assertSame(['1'], $this->attribute($this->decode($response)['data'] ?? null, 'received'));
+    }
+
+    #[Test]
+    public function anActionsInputHoldsAnEmptyLockedToMany(): void
+    {
+        $response = $this->jsonApi()
+            ->withData(['type' => 'fk-revisable-grants', 'id' => 'g1', 'relationships' => ['lockedSecrets' => ['data' => []]]])
+            ->patch('/api/fk-revisable-grants/g1/-actions/revise')
+            ->assertOk();
+
+        self::assertSame([], $this->attribute($this->decode($response)['data'] ?? null, 'received'));
+    }
+
+    #[Test]
+    public function anActionsInputNamingAMissingMemberIsNotFound(): void
+    {
+        $this->jsonApi()
+            ->withData(['type' => 'fk-grants', 'relationships' => ['secrets' => ['data' => [['type' => 'fk-secrets', 'id' => '999']]]]])
+            ->post('/api/fk-grants/g1/-actions/stamp')
+            ->assertNotFound();
     }
 
     #[Test]
