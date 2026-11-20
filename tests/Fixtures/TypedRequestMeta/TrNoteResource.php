@@ -75,10 +75,15 @@ final class TrNoteResource extends AbstractResource implements ResourceLifecycle
         ];
     }
 
-    public function documentMeta(OperationType $operation): iterable
+    public function documentMeta(OperationType $operation, ?string $relation = null): iterable
     {
-        return match ($operation) {
-            OperationType::AddRelationship => [Integer::make('count')->required()->example(2)->extractUsing(static fn(object $note): int => $note instanceof Note ? $note->items()->count() : \count(\is_array($items = Accessor::get($note, 'items')) ? $items : []))],
+        return match (true) {
+            $operation === OperationType::AddRelationship => [Integer::make('count')->required()->example(2)->extractUsing(static fn(object $note): int => $note instanceof Note ? $note->items()->count() : \count(\is_array($items = Accessor::get($note, 'items')) ? $items : []))],
+            $operation === OperationType::UpdateRelationship && $relation === 'lead' => [Str::make('ledBy')->required()->example('3')->extractUsing(static fn(object $note): string => match (true) {
+                $note instanceof Note => \is_scalar($key = $note->lead()->getParentKey()) ? (string) $key : '',
+                $note instanceof NoteRecord => (string) $note->lead?->id,
+                default => '',
+            })],
             default => [],
         };
     }

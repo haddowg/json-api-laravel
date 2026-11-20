@@ -221,6 +221,29 @@ abstract class TypedRequestMetaTestCase extends Orchestra
     }
 
     #[Test]
+    public function aReplaceDeclaredForOneRelationAnswersAMetaOnlyDocumentOnThatRelationOnly(): void
+    {
+        // documentMeta() declares the replace for lead alone, by the relation's name.
+        $lead = $this->send('PATCH', '/api/tr-notes/1/relationships/lead', ['data' => ['type' => 'tr-items', 'id' => '2']]);
+        $lead->assertOk();
+        $document = $lead->json();
+        self::assertIsArray($document);
+        self::assertSame(['ledBy' => '2'], $document['meta'] ?? null);
+        self::assertArrayNotHasKey('data', $document);
+
+        $items = $this->send('PATCH', '/api/tr-notes/1/relationships/items', ['data' => [['type' => 'tr-items', 'id' => '2']]]);
+        $items->assertOk();
+        self::assertSame([['type' => 'tr-items', 'id' => '2']], $items->json('data'));
+
+        $factory = $this->app?->make(DocumentFactory::class);
+        self::assertInstanceOf(DocumentFactory::class, $factory);
+        $openapi = \json_decode((string) \json_encode($factory->forServer('default')->toArray()), true);
+        self::assertIsArray($openapi);
+        self::assertSame(['$ref' => '#/components/schemas/TrNotesLeadUpdateRelationshipDocument'], self::find($openapi, 'paths', '/tr-notes/{id}/relationships/lead', 'patch', 'responses', '200', 'content', 'application/vnd.api+json', 'schema'));
+        self::assertSame(['$ref' => '#/components/schemas/TrNotesItemsRelationshipDocument'], self::find($openapi, 'paths', '/tr-notes/{id}/relationships/items', 'patch', 'responses', '200', 'content', 'application/vnd.api+json', 'schema'));
+    }
+
+    #[Test]
     public function anOpenResourceMetaTakesAnyMemberItsValueFieldAccepts(): void
     {
         $response = $this->send('POST', '/api/tr-items', ['data' => ['type' => 'tr-items', 'attributes' => ['name' => 'Nib'], 'meta' => ['floor' => 3.0, 'shelf' => 2]]]);

@@ -101,6 +101,7 @@ final class DocumentMetaResolver
                     $operation instanceof RemoveFromRelationshipOperation => OperationType::RemoveRelationship,
                     default => OperationType::UpdateRelationship,
                 },
+                (string) $operation->target()->relationship,
             ),
             default => new DocumentMeta(),
         };
@@ -161,18 +162,18 @@ final class DocumentMetaResolver
     }
 
     /**
-     * The members of the meta-only `200` a relationship write answers with, which the parent
-     * type `$type` declares in `documentMeta()` under the write's case, such as
-     * `OperationType::AddRelationship`. Empty when it declares none, so the write answers its
-     * linkage.
+     * The members of the meta-only `200` a write of the relationship `$relation` answers
+     * with, which the parent type `$type` declares in `documentMeta()` under the write's case,
+     * such as `OperationType::AddRelationship`, and that relation. Empty when it declares
+     * none, so the write answers its linkage.
      *
      * @throws \haddowg\JsonApi\Resource\DocumentMetaMisdeclared
      */
-    public function forRelationshipWrite(Server $server, string $type, OperationType $operation): DocumentMeta
+    public function forRelationshipWrite(Server $server, string $type, OperationType $operation, string $relation): DocumentMeta
     {
-        $key = \spl_object_id($server) . "\0" . $type . "\0relationship\0" . $operation->value;
+        $key = \spl_object_id($server) . "\0" . $type . "\0relationship\0" . $operation->value . "\0" . $relation;
 
-        return $this->declared[$key] ??= DocumentMeta::forOperation($this->serializer($server, $type) ?? new \stdClass(), $operation, $type);
+        return $this->declared[$key] ??= DocumentMeta::forOperation($this->serializer($server, $type) ?? new \stdClass(), $operation, $type, $relation);
     }
 
     /**

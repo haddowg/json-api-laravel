@@ -170,8 +170,10 @@ final class RequestMetaResolver
         foreach ([OperationType::Create, OperationType::Update] as $operation) {
             DocumentMeta::forAccepted($serializer ?? new \stdClass(), $operation, [], $type);
         }
-        foreach ([OperationType::UpdateRelationship, OperationType::AddRelationship, OperationType::RemoveRelationship] as $operation) {
-            DocumentMeta::forOperation($serializer ?? new \stdClass(), $operation, $type);
+        foreach ($relations as $relation) {
+            foreach ($relation->isToMany() ? [OperationType::UpdateRelationship, OperationType::AddRelationship, OperationType::RemoveRelationship] : [OperationType::UpdateRelationship] as $operation) {
+                DocumentMeta::forOperation($serializer ?? new \stdClass(), $operation, $type, $relation->name());
+            }
         }
 
         $read = ResourceMeta::forType($serializer ?? new \stdClass(), MetaContext::read(), $type);

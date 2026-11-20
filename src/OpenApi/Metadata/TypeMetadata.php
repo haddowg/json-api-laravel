@@ -185,9 +185,14 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
         return $declarer instanceof DeclaresResourceMetaInterface ? $declarer->resourceMeta($context) : [];
     }
 
+    /**
+     * Passes on the relation's name core gives a relationship write case, which the
+     * type's declaration receives when its override declares it.
+     */
     public function documentMeta(OperationType $operation, ?string $relation = null): iterable
     {
-        return $this->documentMeta?->documentMeta($operation) ?? [];
+        // @phpstan-ignore arguments.count
+        return $this->documentMeta?->documentMeta($operation, $relation) ?? [];
     }
 
     public function isSingleton(): bool

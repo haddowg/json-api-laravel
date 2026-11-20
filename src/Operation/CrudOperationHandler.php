@@ -2475,7 +2475,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             Mode::Add => OperationType::AddRelationship,
             Mode::Remove => OperationType::RemoveRelationship,
             Mode::Replace => OperationType::UpdateRelationship,
-        });
+        }, $relation->name());
         $metaOnly = $documentMeta !== null && !$documentMeta->isEmpty();
         $response = $metaOnly
             ? MetaResponse::fromMeta([])

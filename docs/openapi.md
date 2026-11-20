@@ -201,8 +201,11 @@ does, and one whose type declares no `resourceMeta()` for it reads an empty `dat
 
 A relationship write answers a meta-only `200` when its type's `documentMeta()` declares
 members for the write's case, `OperationType::UpdateRelationship`, `AddRelationship` or
-`RemoveRelationship`, which covers that mutation on every relationship of the type. Its hooks
-receive the parent, and it is documented as `<Type><Rel><Kind>RelationshipDocument`. A create's
+`RemoveRelationship`, which covers that mutation on every relationship of the type. An override
+declaring a second parameter, `?string $relation = null`, receives the name of the relation
+written and can declare one relationship alone; the other relationships then answer their
+linkage. Its hooks receive the parent, and it is documented as
+`<Type><Rel><Kind>RelationshipDocument` on that relationship's operation. A create's
 or update's `202` job document carries what `documentMeta()` declares for `CreateAccepted` or
 `UpdateAccepted`, and an action's `202` what its handler's `documentMeta(202)` declares; the
 persister's or the action's own `meta` wins.
