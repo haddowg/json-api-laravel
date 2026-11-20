@@ -80,6 +80,17 @@ onto the other. The input object comes from one of two places:
 2. otherwise the package instantiates via the `inputType`'s persister, which exists when
    `inputType` is a type with a create endpoint, such as the mount `type`.
 
+On an object the persister instantiated, each relationship the body names holds the
+related models, as a create of the type would. Each member is loaded through its type's
+provider, and one that doesn't exist, or that the provider's scope hides, is a `404`. An
+Eloquent model gets them as loaded relations, so `$input->tracks` is a collection of the
+named tracks and `$input->artist` the named artist, and nothing lands among its attributes;
+any other object gets them through its setter or property, a list for a to-many. A relation
+with a `fillUsing()` hook gets the linkage instead, and a to-many declared
+`cannotChangeMembership()` is checked against the blank input first. Nothing is saved, so
+the related models are left as they are. An input from `ActionInputFactoryInterface` is
+hydrated by core alone, so its relationships hold the related ids.
+
 A `DataResponse` loads its resources' relations the way a read does, whether the handler
 built it with `$context->data()` or by hand. Linkage, `?include` and `?withCount` go through
 the related type's provider, so the scope, filter defaults and default order its

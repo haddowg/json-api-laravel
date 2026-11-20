@@ -6,6 +6,7 @@ namespace Workbench\App\ForeignKey;
 
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
+use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApiLaravel\DataPersister\AbstractDataPersister;
@@ -19,7 +20,7 @@ use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 final class FkGrantPersister extends AbstractDataPersister implements TransactionalDataPersisterInterface
 {
     /**
-     * @var list<array<string, array<string, FkGrant>>>
+     * @var list<array<string, array<string, GrantInterface>>>
      */
     private array $snapshots = [];
 
@@ -29,7 +30,7 @@ final class FkGrantPersister extends AbstractDataPersister implements Transactio
     {
         $copy = [];
         foreach ($this->provider->grants as $type => $grants) {
-            $copy[$type] = \array_map(static fn(FkGrant $grant): FkGrant => clone $grant, $grants);
+            $copy[$type] = \array_map(static fn(GrantInterface $grant): GrantInterface => clone $grant, $grants);
         }
         $this->snapshots[] = $copy;
     }
@@ -54,17 +55,19 @@ final class FkGrantPersister extends AbstractDataPersister implements Transactio
 
     public function instantiate(string $type): object
     {
-        return new FkGrant();
+        return ($this->provider->make)('', []);
     }
 
     public function create(string $type, object $entity): object
     {
-        \assert($entity instanceof FkGrant);
-        if ($entity->id === '') {
-            $entity->id = 'g' . (\count($this->provider->grants[$type]) + 1);
+        \assert($entity instanceof GrantInterface);
+        $id = $entity->grantId();
+        if ($id === '') {
+            $id = 'g' . (\count($this->provider->grants[$type]) + 1);
+            Accessor::set($entity, 'id', $id);
         }
 
-        return $this->provider->grants[$type][$entity->id] = $entity;
+        return $this->provider->grants[$type][$id] = $entity;
     }
 
     public function update(string $type, object $entity): object
@@ -76,12 +79,12 @@ final class FkGrantPersister extends AbstractDataPersister implements Transactio
 
     public function mutateRelationship(string $type, object $entity, RelationInterface $relation, ToOneRelationship|ToManyRelationship $linkage, Mode $mode, bool $flush = true): object
     {
-        \assert($entity instanceof FkGrant && $linkage instanceof ToManyRelationship && $mode === Mode::Replace);
+        \assert($entity instanceof GrantInterface && $linkage instanceof ToManyRelationship && $mode === Mode::Replace);
         $ids = \array_map(static fn(mixed $id): string => \is_scalar($id) ? (string) $id : '', $linkage->getResourceIdentifierIds());
         if ($relation->name() === 'lockedSecrets') {
-            $entity->lockedSecrets = $ids;
+            Accessor::set($entity, 'lockedSecrets', $ids);
         } else {
-            $entity->received = $ids;
+            $entity->receive($ids);
         }
 
         return $entity;

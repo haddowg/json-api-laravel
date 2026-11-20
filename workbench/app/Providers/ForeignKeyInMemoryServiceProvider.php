@@ -94,7 +94,7 @@ final class ForeignKeyInMemoryServiceProvider extends ServiceProvider
         JsonApi::provider(new FkUserProvider(fn(): DataProviderRegistry => $this->app->make(DataProviderRegistry::class)));
         JsonApi::persister(new FkUserPersister());
 
-        $grants = new FkGrantProvider();
+        $grants = new FkGrantProvider(static fn(string $id, array $locked): \Workbench\App\ForeignKey\Domain\FkGrant => new \Workbench\App\ForeignKey\Domain\FkGrant($id, lockedSecrets: $locked));
         JsonApi::provider($grants);
         JsonApi::persister(new FkGrantPersister($grants));
     }

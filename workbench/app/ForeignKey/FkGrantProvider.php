@@ -12,19 +12,22 @@ use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
  * Serves `fk-grants` and `fk-revisable-grants` from a list {@see FkGrantPersister} writes to.
  * Each type starts with grant `g1`, whose locked secrets are 1 and 2.
  *
- * @extends AbstractDataProvider<FkGrant>
+ * @extends AbstractDataProvider<GrantInterface>
  */
 final class FkGrantProvider extends AbstractDataProvider
 {
     /**
-     * @var array<string, array<string, FkGrant>>
+     * @var array<string, array<string, GrantInterface>>
      */
     public array $grants = [];
 
-    public function __construct()
+    /**
+     * @param \Closure(string, list<string>): GrantInterface $make builds a grant from its id and locked secret ids
+     */
+    public function __construct(public readonly \Closure $make)
     {
         foreach (['fk-grants', 'fk-revisable-grants'] as $type) {
-            $this->grants[$type] = ['g1' => new FkGrant('g1', lockedSecrets: ['1', '2'])];
+            $this->grants[$type] = ['g1' => $make('g1', ['1', '2'])];
         }
     }
 

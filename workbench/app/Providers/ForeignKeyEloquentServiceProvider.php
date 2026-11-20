@@ -79,7 +79,7 @@ final class ForeignKeyEloquentServiceProvider extends ServiceProvider
         JsonApi::provider(new FkUserProvider(fn(): DataProviderRegistry => $this->app->make(DataProviderRegistry::class)));
         JsonApi::persister(new FkUserPersister());
 
-        $grants = new FkGrantProvider();
+        $grants = new FkGrantProvider(static fn(string $id, array $locked): \Workbench\App\ForeignKey\Models\FkGrant => \Workbench\App\ForeignKey\Models\FkGrant::seeded($id, $locked));
         JsonApi::provider($grants);
         JsonApi::persister(new FkGrantPersister($grants));
 
