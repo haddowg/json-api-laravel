@@ -333,7 +333,7 @@ final class OwnTasksOnly extends AbstractDataProvider
             }
         }
 
-        return new InMemoryDataProvider('tasks', $owned, identify: static fn(object $task): string => $task instanceof TaskRecord ? $task->id : '');
+        return new InMemoryDataProvider('tasks', $owned, identify: static fn(TaskRecord $task): string => $task->id);
     }
 
     private function owns(TaskRecord $task): bool

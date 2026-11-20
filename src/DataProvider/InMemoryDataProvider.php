@@ -57,10 +57,18 @@ use Illuminate\Database\Eloquent\Builder;
  * is the one seam it cannot model (no association entity in memory) — it returns `[]`, so
  * every incoming member is treated as new; pivot READ is an Eloquent-only capability.
  *
+ * `TModel` is the class of the stored rows, inferred from `$items` or the closures, so
+ * a closure typed on that class is accepted.
+ *
+ * @template-covariant TModel of object = object
+ *
  * @extends AbstractDataProvider<object>
  */
 final class InMemoryDataProvider extends AbstractDataProvider implements FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, ReadsByForeignKeyInterface
 {
+    /**
+     * @var InMemoryStore<TModel>
+     */
     private readonly InMemoryStore $store;
 
     private readonly CriteriaApplier $applier;
@@ -78,10 +86,10 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
     private readonly CursorTokenMinter $minter;
 
     /**
-     * @param iterable<int|string, object>          $items       objects keyed by id
-     * @param (\Closure(object): string)|null       $identify    reads an item's id; required only if a
+     * @param iterable<int|string, TModel>          $items       objects keyed by id
+     * @param (\Closure(TModel): string)|null       $identify    reads an item's id; required only if a
      *                                                            persister writes through {@see store()}
-     * @param (\Closure(object, string): void)|null $assignId    writes a minted id onto an item; pass it to make
+     * @param (\Closure(TModel, string): void)|null $assignId    writes a minted id onto an item; pass it to make
      *                                                            the shared store assign store-provided
      *                                                            (auto-increment) ids on an id-less create
      * @param string                                $idColumn    the model member the cursor (keyset) page reads as the
@@ -117,6 +125,8 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
     /**
      * The backing store, shared with an {@see \haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister}
      * to make this type writable.
+     *
+     * @return InMemoryStore<TModel>
      */
     public function store(): InMemoryStore
     {
