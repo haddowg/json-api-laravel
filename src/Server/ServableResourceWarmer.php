@@ -513,9 +513,8 @@ final class ServableResourceWarmer
                 $type,
                 RequestMetaResolver::relationsOf($resource),
             );
-            $actions = $this->actions;
-            foreach ($actions?->forServer($serverName) ?? [] as $action) {
-                $handler = $actions !== null && $action->type === $type ? $actions->requestMetaFor($action) : null;
+            foreach ($this->actions === null ? [] : $this->actions->forServer($serverName) as $action) {
+                $handler = $action->type === $type ? $this->actions?->requestMetaFor($action) : null;
                 if ($handler !== null) {
                     RequestMetaResolver::assertActionDeclared($handler, $action);
                 }
