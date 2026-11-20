@@ -17,6 +17,8 @@ return new class extends Migration {
             $table->increments('id');
             $table->json('value')->nullable();
             $table->json('label')->nullable();
+            $table->json('amount')->nullable();
+            $table->json('reading')->nullable();
             $table->json('mode')->nullable();
             $table->json('due')->nullable();
             $table->json('at')->nullable();

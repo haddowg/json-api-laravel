@@ -174,7 +174,8 @@ document.
 
 A [`Union`](https://github.com/haddowg/json-api/blob/main/docs/field-types.md#union) holds a
 string, a number, a boolean or a list of those, and the value's JSON type picks the one member
-that applies. Core casts the value through that member, so the package only validates it:
+that applies. A union may hold both an `Integer` and a `Decimal`, and then a number sent
+without a fraction goes to the `Integer` and one sent with it to the `Decimal`. Core casts the value through that member, so the package only validates it:
 
 ```php
 Union::make('value')->of(
@@ -217,7 +218,10 @@ of the value, the same JSON the Symfony bundle stores. A top-level date member h
 stored form instead: a `Date` member's `"2026-01-02"`, a `DateTime` member's formatted
 string such as `"2026-01-02T03:04:05+02:00"`, and a list as its elements' own forms, such
 as `["a",2.0,true]`. `AsJsonValue` keeps the zero fraction a `Decimal` member stores, where
-Laravel's `array` cast would write `2`. A read renders the stored form directly, so reading
+Laravel's `array` cast would write `2`. That matters most for a union holding both an
+`Integer` and a `Decimal` member, where the number's form picks the member: `500` goes to
+the `Integer` and `500.0` to the `Decimal`, and an `array` cast would read `500.0` back as
+`500`, which then renders through the `Integer`. A read renders the stored form directly, so reading
 the attribute off the model gives that string, not a `\DateTimeImmutable`. Call the
 union's `fromStoredForm()` in an accessor if your code wants the instant back. A union
 pivot field is stored in the same form.

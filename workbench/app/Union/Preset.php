@@ -17,6 +17,8 @@ final class Preset
         public string $id = '',
         public mixed $value = null,
         public mixed $label = null,
+        public mixed $amount = null,
+        public mixed $reading = null,
         public mixed $mode = null,
         public mixed $due = null,
         public mixed $at = null,
