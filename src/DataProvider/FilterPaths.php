@@ -59,8 +59,9 @@ final readonly class FilterPaths
      * related type. `null` when there is no single type to resolve against. `$admission`
      * narrows the rows an in-memory walk reaches through a relation to those the related
      * type's provider admits. `$relation`, declared on `$parentType`, is the relation the
-     * filters run under on its reads, and `$pivotRows` names the relations a pivot row holds. `$morphAdmission` narrows the
-     * targets a `WhereMorph` reaches to the storage keys the requested type's provider admits.
+     * filters run under on its reads, and `$pivotRows` names the relations a pivot row holds.
+     * `$morphAdmission` narrows the targets a `WhereMorph` reaches to the storage keys the
+     * requested type's provider admits.
      *
      * @param (\Closure(RelationInterface, string, list<object>): list<object>)|null $admission
      * @param (\Closure(RelationInterface, string, string, list<mixed>): list<mixed>)|null $morphAdmission

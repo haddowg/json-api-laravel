@@ -362,7 +362,8 @@ on the related endpoint, the relationship endpoint, a Relationship Queries
 reports. The endpoints page at the relation's paginator, and both read each member's pivot row in
 the same query as the page, so `meta.pivot` costs no extra query. The Eloquent provider resolves the `pivot.` prefix against the join table.
 A provider that stores no pivot columns, such as the in-memory one, answers a pivot sort or
-filter key with a `400`, and so a filter or sort whose `->through()` path reaches a pivot row.
+filter key with a `400`, and so a filter or sort whose `->through()` path reaches a pivot row;
+see [the in-memory provider](custom-data-providers.md#the-in-memory-provider) for each case.
 
 Declare a value constraint on each pivot filter (`->integer()` above). Core types an
 unconstrained filter's OpenAPI value from the single column it targets, and `pivot.` means
@@ -415,11 +416,14 @@ with a leading `pivot` segment, and the existence filters move with them:
 )
 ```
 
-The migrated filters apply on the same endpoints and match the same rows, with one difference.
-Each relation the path walks now reaches a type, the one serving the model the pivot model's
-relation targets, so that type's read gate applies: a caller who may not read it gets a `403`
-where the prefixed filter answered. The related model's global scopes applied before and still
-do, and ids still decode through that type's encoder. See
+The migrated filters apply on the same endpoints and match the same rows, and both forms follow
+the same read rules. Each relation the path walks reaches a type, the one serving the model the
+pivot model's relation targets: that type's global scopes hide rows from either form, and a
+caller who may not read it, or may not read the relation the filter runs under, gets a `403`
+from either. Ids decode through that type's encoder in both. A pivot model relation targeting a
+model no registered type serves, or several types serve, reaches no type whose rules apply: the
+prefixed filter keeps reaching it under the model's global scopes alone, and the migrated form
+can't be declared until one type owns that model. See
 [paths through a pivot row](eloquent.md#paths-through-a-pivot-row).
 
 ### Computed pivot fields

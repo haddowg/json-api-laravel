@@ -258,6 +258,40 @@ final class EloquentThroughPivotTest extends Orchestra
     }
 
     #[Test]
+    public function bothFormsHideTheSameRowsFromEveryCaller(): void
+    {
+        // Ghost, user 3, added track 2 to playlist 1, and the users' scope hides him.
+        foreach (['admin', 'ada'] as $user) {
+            foreach ([['legacyAdder=3', 'adder=3'], ['legacyAdder=1,3', 'adder=1,3'], ['legacyAddedBy=ghost', 'addedBy=ghost'], ['legacyAuditedBy=audrey', 'auditedBy=audrey']] as [$legacy, $migrated]) {
+                if ($user === 'ada' && \str_contains($legacy, 'Audited')) {
+                    continue;
+                }
+                foreach (['/api/tpTracks/1/playlists', '/api/tpTracks/2/playlists'] as $uri) {
+                    self::assertSame(
+                        $this->ids($uri . '?filter[' . \str_replace('=', ']=', $migrated), $user),
+                        $this->ids($uri . '?filter[' . \str_replace('=', ']=', $legacy), $user),
+                        $legacy . ' on ' . $uri . ' for ' . $user,
+                    );
+                }
+            }
+        }
+    }
+
+    #[Test]
+    public function bothFormsAreRefusedThroughAHopTheCallerMayNotRead(): void
+    {
+        // Only admins may list auditors, so a pivot row's auditor is a hop ada may not read.
+        foreach (['legacyAuditedBy=audrey' => 'auditedBy=audrey', 'legacyUnaudited=1' => 'unaudited=1'] as $legacy => $migrated) {
+            foreach ([$legacy, $migrated] as $filter) {
+                $response = $this->send('ada', '/api/tpTracks/1/playlists?filter[' . \str_replace('=', ']=', $filter));
+                $response->assertStatus(403);
+                $response->assertJsonPath('errors.0.code', 'ACCESS_DENIED');
+            }
+        }
+        self::assertSame(['1'], $this->ids('/api/tpTracks/1/playlists?filter[legacyAuditedBy]=audrey'));
+    }
+
+    #[Test]
     public function aLeadingPivotFilterIsUnrecognisedWhereNoPivotQueryRuns(): void
     {
         // An included to-many's linkage reads no pivot row, so its relatedQuery filter by one is

@@ -68,7 +68,8 @@ final class TpTrackResource extends AbstractResource
 
     /**
      * An in-memory store holds no pivot rows, so it can't name the relations one holds, and
-     * declares only the paths ending on a pivot field, which it refuses with a `400`.
+     * declares only the paths ending on a pivot field and two deprecated `pivot.` traversals,
+     * which it refuses with a `400`.
      */
     private static function inMemory(): bool
     {
@@ -85,15 +86,17 @@ final class TpTrackResource extends AbstractResource
             Where::make('position', 'position')->through('pivot')->integer(),
         ];
 
-        return self::inMemory() ? $fields : [
+        $legacy = [WhereThrough::make('legacyAddedBy', 'pivot.addedBy.name'), WhereDoesntHave::make('legacyUnaudited', 'pivot.auditor')];
+
+        return self::inMemory() ? [...$fields, ...$legacy] : [
             ...$fields,
             Where::make('addedBy', 'name')->through('pivot.addedBy'),
             WhereIdIn::make('adder')->through('pivot.addedBy')->acceptsList(),
             Where::make('auditedBy', 'name')->through('pivot.auditor'),
             WhereDoesntHave::make('unaudited', 'auditor')->through('pivot'),
-            WhereThrough::make('legacyAddedBy', 'pivot.addedBy.name'),
+            ...$legacy,
             WhereThroughIn::make('legacyAdder', 'pivot.addedBy'),
-            WhereDoesntHave::make('legacyUnaudited', 'pivot.auditor'),
+            WhereThrough::make('legacyAuditedBy', 'pivot.auditor.name'),
         ];
     }
 
