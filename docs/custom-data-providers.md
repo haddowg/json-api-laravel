@@ -141,6 +141,13 @@ JsonApi::provider($provider);
 JsonApi::persister(new InMemoryDataPersister('genres', $provider->store(), fn() => new Genre()));
 ```
 
+The provider, its store and the persister take the class of the rows as a template type, read
+from the seeded rows or from the closures, so `identify` and `assignId` can type their item as
+that class, such as `static fn(Genre $genre): string => $genre->slug`, and pass PHPStan. A
+declaration that names the classes without the type, such as the return type
+`InMemoryDataProvider`, reads as rows of any object, and `InMemoryDataProvider<Genre>` names
+one class.
+
 ## The write interface
 
 ```php
