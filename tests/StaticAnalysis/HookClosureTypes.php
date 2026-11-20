@@ -23,6 +23,7 @@ use haddowg\JsonApiLaravel\Action\ActionContext;
 use haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentKeysetExpression;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
+use haddowg\JsonApiLaravel\Facades\JsonApi;
 use haddowg\JsonApiLaravel\Testing\JsonApiAssertions;
 use haddowg\JsonApiLaravel\Validation\Constraint\LaravelRules;
 use Illuminate\Testing\TestResponse;
@@ -75,6 +76,8 @@ final class HookClosureTypes
      * The package's own seams an application passes closures to.
      *
      * @param TestResponse<\Symfony\Component\HttpFoundation\Response> $response
+     *
+     * @return InMemoryDataPersister<HookAlbum>
      */
     public static function seams(ActionContext $context, TestResponse $response): InMemoryDataPersister
     {
@@ -83,17 +86,14 @@ final class HookClosureTypes
         $provider = new InMemoryDataProvider(
             'albums',
             [],
-            static function (object $item): string {
-                \assert($item instanceof HookAlbum);
-
-                return (string) $item->id;
-            },
-            static function (object $item, string $id): void {
-                \assert($item instanceof HookAlbum);
-
+            static fn(HookAlbum $item): string => (string) $item->id,
+            static function (HookAlbum $item, string $id): void {
                 $item->id = (int) $id;
             },
         );
+        JsonApi::provider(new InMemoryDataProvider('albums', ['1' => new HookAlbum()], static fn(HookAlbum $item): string => (string) $item->id));
+        JsonApi::persister(self::persisterOver(self::albums()));
+
         $persister = new InMemoryDataPersister('albums', $provider->store(), static fn(): HookAlbum => new HookAlbum());
 
         EloquentKeysetExpression::make('CAST(rank AS REAL)')->castUsing(static fn(string|int|float|bool $value): float => (float) $value);
@@ -103,5 +103,23 @@ final class HookClosureTypes
         JsonApiAssertions::error($response, 422, static function (JsonApiErrors $errors): void {});
 
         return $persister;
+    }
+
+    /**
+     * @return InMemoryDataProvider<HookAlbum>
+     */
+    private static function albums(): InMemoryDataProvider
+    {
+        return new InMemoryDataProvider('albums', [], static fn(HookAlbum $item): string => (string) $item->id);
+    }
+
+    /**
+     * @param InMemoryDataProvider<HookAlbum> $provider
+     *
+     * @return InMemoryDataPersister<HookAlbum>
+     */
+    private static function persisterOver(InMemoryDataProvider $provider): InMemoryDataPersister
+    {
+        return new InMemoryDataPersister('albums', $provider->store(), static fn(): HookAlbum => new HookAlbum());
     }
 }
