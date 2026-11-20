@@ -367,7 +367,10 @@ renders whole whatever the fieldset lists, unless the fieldset selects keys of i
 declaration rejects, a dotted member on any other field or a relationship, a path past a key
 that isn't selectable, a `*` anywhere but after a selectable list, an index into a list, and
 an empty key are the `400` `FIELDSET_MEMBER_UNRECOGNIZED` an [unknown member](configuration.md#strict_query_parameters)
-is. Request bodies are unchanged.
+is. Request bodies are unchanged. A type whose resource names a `serializer:` override is
+narrowed the same way, against the resource's fields, as
+[custom serializers](custom-serializers-hydrators.md#overriding-a-resources-serializer-or-hydrator-with-a-bound-class)
+describes.
 
 `fields[type]` lists field names in JSON:API 1.1, so a response that narrows an attribute
 applies core's [Field Selection profile](https://haddowg.github.io/json-api/profiles/field-selection/).
