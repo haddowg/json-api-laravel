@@ -222,6 +222,11 @@ the request with core's `RenderedMeta::checking()`, so rendering refuses that cl
 member, with `ResourceMetaMismatch`, or `DocumentMetaMismatch` for a document's top-level
 `meta`. Production checks nothing.
 
+The standalone JSON Schema of each type, `GET /schemas.json` and `jsonapi:jsonschema:export`,
+types the same `meta` inline: the resource object's `meta` as `<Type>ResourceMeta`, and each
+relation's linkage identifiers' `meta` with its declared identifier meta and pivot fields. A
+type or relation declaring none keeps an open object.
+
 `getMeta()` is deprecated, for removal in the next major. A resource returning
 `[AdditionalProperties::make()->extractUsing(fn ($model, $request) => /* what getMeta() returned */)]`
 from `resourceMeta()` renders the same `meta` and documents the object as open. A resource that

@@ -33,4 +33,13 @@ final class EloquentTypedRequestMetaTest extends TypedRequestMetaTestCase
         self::assertSame('/data/0/meta/pivot/floor', $wrong->json('errors.0.source.pointer'));
         self::assertSame(0, DB::table('tr_shelf_item')->where(['shelf_id' => 1, 'item_id' => 1])->count());
     }
+
+    #[Test]
+    public function theStandaloneSchemaTypesAnOpenPivotOnItsLinkage(): void
+    {
+        $meta = self::find($this->standaloneSchema('tr-shelves'), 'properties', 'relationships', 'properties', 'items', 'properties', 'data', 'items', 'properties', 'meta');
+        self::assertIsArray($meta);
+        self::assertSame(['position'], \array_keys((array) self::find($meta, 'properties', 'pivot', 'properties')));
+        self::assertSame(['integer', 'null'], self::find($meta, 'properties', 'pivot', 'additionalProperties', 'type'));
+    }
 }

@@ -9,6 +9,7 @@ use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
+use haddowg\JsonApiLaravel\OpenApi\JsonSchemaFactory;
 use haddowg\JsonApiLaravel\Testing\InteractsWithJsonApi;
 use haddowg\JsonApiLaravel\Tests\Fixtures\TypedRequestMeta\TrMetaRecorder;
 use haddowg\JsonApiLaravel\Tests\Fixtures\TypedRequestMeta\TypedRequestMetaServiceProvider;
@@ -446,6 +447,31 @@ abstract class TypedRequestMetaTestCase extends Orchestra
     }
 
     #[Test]
+    public function theStandaloneSchemaTypesTheDeclaredResourceMeta(): void
+    {
+        $notes = $this->standaloneSchema('tr-notes');
+        self::assertSame(['revision'], \array_keys((array) self::find($notes, 'properties', 'meta', 'properties')));
+        self::assertFalse(self::find($notes, 'properties', 'meta', 'additionalProperties'));
+
+        $plains = $this->standaloneSchema('tr-plains');
+        self::assertSame(['type' => 'object'], self::find($plains, 'properties', 'meta'));
+        self::assertSame(['type' => 'object'], self::find($plains, 'properties', 'relationships'));
+    }
+
+    /**
+     * @return array<array-key, mixed>
+     */
+    protected function standaloneSchema(string $type): array
+    {
+        $factory = $this->app?->make(JsonSchemaFactory::class);
+        self::assertInstanceOf(JsonSchemaFactory::class, $factory);
+        $schema = \json_decode((string) \json_encode($factory->forType($type)), true);
+        self::assertIsArray($schema);
+
+        return $schema;
+    }
+
+    #[Test]
     public function theGeneratedDocumentTypesTheDeclaredMeta(): void
     {
         $factory = $this->app?->make(DocumentFactory::class);
@@ -553,7 +579,7 @@ abstract class TypedRequestMetaTestCase extends Orchestra
     /**
      * @param array<array-key, mixed> $document
      */
-    private static function find(array $document, int|string ...$keys): mixed
+    protected static function find(array $document, int|string ...$keys): mixed
     {
         $node = $document;
         foreach ($keys as $key) {
