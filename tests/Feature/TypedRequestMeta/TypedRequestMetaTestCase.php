@@ -435,6 +435,36 @@ abstract class TypedRequestMetaTestCase extends Orchestra
     }
 
     #[Test]
+    public function anAtomicResultRendersTheDeclaredMemberOverAClashingEntryMember(): void
+    {
+        $response = $this->atomic(['atomic:operations' => [self::renameStamp('Clash')]]);
+
+        $response->assertOk();
+        self::assertSame(['stamp' => 'declared', 'ink' => 'blue'], $response->json('atomic:results.0.data.meta'));
+    }
+
+    #[Test]
+    public function debugRefusesAClashingEntryMemberInsideAnAtomicBatch(): void
+    {
+        config(['app.debug' => true]);
+        $this->atomic(['atomic:operations' => [self::renameStamp('Calm')]])->assertOk();
+
+        $clash = $this->atomic(['atomic:operations' => [self::renameStamp('Clash')]]);
+        $clash->assertStatus(500);
+        self::assertStringContainsString('returned the member \\"stamp\\", which a declared member of the same name replaced', (string) $clash->getContent());
+    }
+
+    /**
+     * An atomic update renaming the stamp stored as plain row 1.
+     *
+     * @return array<string, mixed>
+     */
+    private static function renameStamp(string $name): array
+    {
+        return ['op' => 'update', 'ref' => ['type' => 'tr-stamps', 'id' => '1'], 'data' => ['type' => 'tr-stamps', 'id' => '1', 'attributes' => ['name' => $name]]];
+    }
+
+    #[Test]
     public function debugChecksEachAtomicResult(): void
     {
         config(['app.debug' => true]);

@@ -47,7 +47,7 @@ final class TypedRequestMetaServiceProvider extends ServiceProvider
         }
 
         JsonApi::register([
-            TrNoteResource::class, TrItemResource::class, TrPlainResource::class, TrExportResource::class,
+            TrNoteResource::class, TrItemResource::class, TrPlainResource::class, TrStampResource::class, TrExportResource::class,
             TrJobSerializer::class, TrLabelSerializer::class, TrTagSerializer::class, ArchiveNote::class, ImportItem::class, QueueNote::class,
         ]);
         JsonApi::persister(new TrExportsPersister());
@@ -62,7 +62,7 @@ final class TypedRequestMetaServiceProvider extends ServiceProvider
 
         // The open pivot is written to a join row, which only Eloquent keeps.
         JsonApi::register([TrShelfResource::class]);
-        $models = ['tr-notes' => Note::class, 'tr-items' => Item::class, 'tr-plains' => Plain::class, 'tr-shelves' => Shelf::class];
+        $models = ['tr-notes' => Note::class, 'tr-items' => Item::class, 'tr-plains' => Plain::class, 'tr-stamps' => Plain::class, 'tr-shelves' => Shelf::class];
         JsonApi::provider(new EloquentDataProvider($models), priority: -128);
         JsonApi::persister(new EloquentDataPersister($models), priority: -128);
         $this->app->singleton(RelationshipLoadStateInterface::class, EloquentRelationshipLoadState::class);
@@ -106,6 +106,8 @@ final class TypedRequestMetaServiceProvider extends ServiceProvider
         JsonApi::provider($noteProvider);
         JsonApi::provider($itemProvider);
         JsonApi::provider($plainProvider);
+        $stampProvider = new InMemoryDataProvider('tr-stamps', ['1' => new PlainRecord('1', 'Plain')], identify: $identify, assignId: $assignId, coordinator: $coordinator);
+        JsonApi::provider($stampProvider);
 
         $resolve = static fn(string $type, string $id): ?object => match ($type) {
             'tr-notes' => $noteProvider->store()->find($id),
@@ -115,5 +117,6 @@ final class TypedRequestMetaServiceProvider extends ServiceProvider
         JsonApi::persister(new InMemoryDataPersister('tr-notes', $noteProvider->store(), static fn(): NoteRecord => new NoteRecord(), $resolve));
         JsonApi::persister(new InMemoryDataPersister('tr-items', $itemProvider->store(), static fn(): ItemRecord => new ItemRecord(), $resolve));
         JsonApi::persister(new InMemoryDataPersister('tr-plains', $plainProvider->store(), static fn(): PlainRecord => new PlainRecord(), $resolve));
+        JsonApi::persister(new InMemoryDataPersister('tr-stamps', $stampProvider->store(), static fn(): PlainRecord => new PlainRecord(), $resolve));
     }
 }
