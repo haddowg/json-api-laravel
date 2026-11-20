@@ -71,6 +71,7 @@ final class TypedRequestMetaServiceProvider extends ServiceProvider
     {
         // An update of a note is refused for a request asking to be denied.
         Gate::define('updateTrNote', static fn(?Authenticatable $user, object $note): bool => !request()->hasHeader('X-Deny-Update'));
+        Gate::define('deleteTrNote', static fn(?Authenticatable $user, object $note): bool => !request()->hasHeader('X-Deny-Delete'));
 
         foreach ([BeforeCreateEvent::class, AfterCreateEvent::class, BeforeUpdateEvent::class, BeforeDeleteEvent::class, BeforeRelationshipMutateEvent::class] as $event) {
             Event::listen($event, [TrMetaRecorder::class, 'handle']);

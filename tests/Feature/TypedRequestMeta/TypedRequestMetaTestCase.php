@@ -309,6 +309,46 @@ abstract class TypedRequestMetaTestCase extends Orchestra
     }
 
     #[Test]
+    public function aForbiddenDeleteIsRefusedBeforeItsMetaIsValidated(): void
+    {
+        $this->send('DELETE', '/api/tr-notes/2', ['meta' => ['reason' => 5]], ['X-Deny-Delete' => '1'])->assertStatus(403);
+        self::assertArrayNotHasKey('tr-notes:BeforeDeleteEvent', TrMetaRecorder::$seen);
+
+        self::assertSame(['/meta/reason'], \array_keys($this->violations($this->send('DELETE', '/api/tr-notes/2', ['meta' => ['reason' => 5]]))));
+    }
+
+    #[Test]
+    public function anHrefAddressedAtomicOperationTakesItsTargetsDeclaration(): void
+    {
+        $ok = $this->atomic(['atomic:operations' => [
+            ['op' => 'add', 'href' => '/api/tr-notes', 'data' => ['type' => 'tr-notes', 'attributes' => ['title' => 'Batch'], 'meta' => ['batchSource' => 'feed']], 'meta' => ['idempotencyKey' => 'k', 'batchTag' => 'b']],
+            ['op' => 'update', 'href' => '/api/tr-notes/1', 'data' => ['type' => 'tr-notes', 'id' => '1', 'attributes' => ['title' => 'Plan again']], 'meta' => ['reason' => 'typo']],
+            ['op' => 'add', 'href' => '/api/tr-notes/1/relationships/items', 'data' => [['type' => 'tr-items', 'id' => '2']], 'meta' => ['reason' => 'more']],
+        ]]);
+        $ok->assertOk();
+        self::assertSame('b', TrMetaRecorder::$seen['tr-notes:BeforeCreateEvent']['document']['batchTag'] ?? null);
+        self::assertSame(['reason' => 'typo'], TrMetaRecorder::$seen['tr-notes:BeforeUpdateEvent']['document'] ?? null);
+        self::assertSame(['reason' => 'more'], TrMetaRecorder::$seen['tr-notes:BeforeRelationshipMutateEvent']['document'] ?? null);
+        self::assertSame(['count' => 2], $ok->json('atomic:results.2.meta'), 'a relationship add answers its meta-only result');
+        $id = $ok->json('atomic:results.0.data.id');
+        self::assertIsString($id);
+        self::assertSame('feed', $this->sourceOf($id), 'the atomic declaration\'s fill hook stored it');
+
+        self::assertSame(['/atomic:operations/0/meta/batchTag'], \array_keys($this->violations($this->atomic(['atomic:operations' => [
+            ['op' => 'add', 'href' => '/api/tr-notes', 'data' => ['type' => 'tr-notes', 'attributes' => ['title' => 'Batch']], 'meta' => ['idempotencyKey' => 'k']],
+        ]]))));
+        self::assertSame(['/atomic:operations/0/data/meta/source' => 'The member "source" is not declared.'], $this->violations($this->atomic(['atomic:operations' => [
+            ['op' => 'add', 'href' => '/api/tr-notes', 'data' => ['type' => 'tr-notes', 'attributes' => ['title' => 'Batch'], 'meta' => ['source' => 'feed']], 'meta' => ['idempotencyKey' => 'k', 'batchTag' => 'b']],
+        ]])));
+        self::assertSame(['/atomic:operations/0/meta/bogus' => 'The member "bogus" is not declared.'], $this->violations($this->atomic(['atomic:operations' => [
+            ['op' => 'update', 'href' => '/api/tr-notes/1/relationships/items', 'data' => [['type' => 'tr-items', 'id' => '1']], 'meta' => ['bogus' => true]],
+        ]])));
+        self::assertSame(['/atomic:operations/0/meta/reason'], \array_keys($this->violations($this->atomic(['atomic:operations' => [
+            ['op' => 'remove', 'href' => '/api/tr-notes/2'],
+        ]]))));
+    }
+
+    #[Test]
     public function aWritesAcceptedJobDocumentCarriesItsDeclaredMeta(): void
     {
         $export = $this->send('POST', '/api/tr-exports', ['data' => ['type' => 'tr-exports', 'attributes' => ['name' => 'All']]]);

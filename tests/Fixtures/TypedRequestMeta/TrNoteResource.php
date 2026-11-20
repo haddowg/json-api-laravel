@@ -28,9 +28,9 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * Notes declare the meta each write takes, their resource objects' meta both ways, and
  * the meta-only document adding items answers with. Inside an atomic batch a write's
  * `data.meta` names its source `batchSource` rather than `source`. An update is gated by
- * the `updateTrNote` ability.
+ * the `updateTrNote` ability and a delete by `deleteTrNote`.
  */
-#[AsJsonApiResource(abilities: [Operation::Update->value => 'updateTrNote'])]
+#[AsJsonApiResource(abilities: [Operation::Update->value => 'updateTrNote', Operation::Delete->value => 'deleteTrNote'])]
 final class TrNoteResource extends AbstractResource implements ResourceLifecycleHooksInterface
 {
     use ResourceLifecycleHooksTrait;
