@@ -408,6 +408,32 @@ abstract class TypedRequestMetaTestCase extends Orchestra
     }
 
     #[Test]
+    public function productionRendersTheDeclaredMemberOverAClashingEntryMember(): void
+    {
+        $response = $this->send('GET', '/api/tr-tags/blue', headers: ['X-Clash-Meta' => '1', 'X-Clash-Document-Meta' => '1']);
+
+        $response->assertOk();
+        self::assertSame(['uses' => 2, 'color' => 'red'], $response->json('data.meta'));
+        self::assertSame(['total' => 1], $response->json('meta'));
+    }
+
+    #[Test]
+    public function debugRefusesAnEntryMemberClashingWithADeclaredOne(): void
+    {
+        config(['app.debug' => true]);
+
+        $this->send('GET', '/api/tr-tags/blue')->assertOk();
+
+        $resource = $this->send('GET', '/api/tr-tags/blue', headers: ['X-Clash-Meta' => '1']);
+        $resource->assertStatus(500);
+        self::assertStringContainsString('returned the member \\"uses\\", which a declared member of the same name replaced', (string) $resource->getContent());
+
+        $document = $this->send('GET', '/api/tr-tags/blue', headers: ['X-Clash-Document-Meta' => '1']);
+        $document->assertStatus(500);
+        self::assertStringContainsString('returned the member \\"total\\"', (string) $document->getContent());
+    }
+
+    #[Test]
     public function debugChecksEachAtomicResult(): void
     {
         config(['app.debug' => true]);

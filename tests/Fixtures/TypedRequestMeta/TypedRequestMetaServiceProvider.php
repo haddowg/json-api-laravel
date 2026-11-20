@@ -48,10 +48,11 @@ final class TypedRequestMetaServiceProvider extends ServiceProvider
 
         JsonApi::register([
             TrNoteResource::class, TrItemResource::class, TrPlainResource::class, TrExportResource::class,
-            TrJobSerializer::class, TrLabelSerializer::class, ArchiveNote::class, ImportItem::class, QueueNote::class,
+            TrJobSerializer::class, TrLabelSerializer::class, TrTagSerializer::class, ArchiveNote::class, ImportItem::class, QueueNote::class,
         ]);
         JsonApi::persister(new TrExportsPersister());
         JsonApi::provider(new InMemoryDataProvider('tr-labels', ['urgent' => new TrLabel('urgent', 'Urgent')], identify: static fn(object $label): string => $label instanceof TrLabel ? $label->id : ''));
+        JsonApi::provider(new InMemoryDataProvider('tr-tags', ['blue' => new TrLabel('blue', 'Blue')], identify: static fn(object $tag): string => $tag instanceof TrLabel ? $tag->id : ''));
 
         if (config('typed_request_meta.store') === 'memory') {
             $this->registerInMemory();

@@ -216,7 +216,11 @@ columns the hook sets onto the join row.
 With `app.debug` on, the controller and the atomic batch check every rendered resource object's
 `meta`, and every linkage identifier's pivot and identifier meta, against the declarations, and
 throw `ResourceMetaMismatch`, rendered as a `500`, for a missing required member, an undeclared
-member of a closed object or a value of the wrong JSON type. Production checks nothing.
+member of a closed object or a value of the wrong JSON type. A declared member always wins
+over an `AdditionalProperties` entry's member of the same name; in debug the controller marks
+the request with core's `RenderedMeta::checking()`, so rendering refuses that clash, naming the
+member, with `ResourceMetaMismatch`, or `DocumentMetaMismatch` for a document's top-level
+`meta`. Production checks nothing.
 
 `getMeta()` is deprecated, for removal in the next major. A resource returning
 `[AdditionalProperties::make()->extractUsing(fn ($model, $request) => /* what getMeta() returned */)]`

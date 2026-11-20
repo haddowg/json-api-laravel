@@ -360,6 +360,11 @@ final class JsonApiController
     {
         $psrRequest = WireBody::apply($this->psrHttpFactory->createRequest($request), $request)
             ->withQueryParams(WireQuery::params($request));
+        // In debug, rendering refuses an AdditionalProperties member that a declared member
+        // replaced; every atomic sub-request derives from this one and keeps the mark.
+        if ($this->documentMeta?->checks() === true) {
+            $psrRequest = RenderedMeta::checking($psrRequest);
+        }
 
         return $psrRequest instanceof JsonApiRequestInterface ? $psrRequest : new JsonApiRequest($psrRequest);
     }
