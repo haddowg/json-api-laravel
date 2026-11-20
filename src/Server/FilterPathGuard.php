@@ -10,6 +10,7 @@ use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
+use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\RelationHop;
@@ -81,6 +82,9 @@ final class FilterPathGuard
             $related = $resolver->serializerFor($relatedTypes[0]);
             if ($related instanceof AbstractResource) {
                 self::refusePivotClash($resource, $relation, $related);
+                if ($pivotRows !== null && $relation instanceof PivotRelationInterface) {
+                    self::refuseUngatedPivotPaths($type, $relation, $relation->allFilters(), $pivotRows);
+                }
                 $relatedFields = $related->allFields();
                 self::guardEncoders(
                     $encoders,
@@ -300,6 +304,49 @@ final class FilterPathGuard
         $container = Container::getInstance();
 
         return $container->bound(ModelMapResolver::class) ? $container->make(ModelMapResolver::class)->map() : [];
+    }
+
+    /**
+     * Refuses a deprecated `pivot.`-prefixed `WhereThrough`, `WhereThroughIn`, `WhereHas` or
+     * `WhereDoesntHave`, groups searched, whose path goes on from the pivot row through a
+     * relation of the pivot model to a model no registered type serves, or several do: no
+     * type's scope or gate could apply to the rows it reaches, as the `->through()` form
+     * already refuses.
+     *
+     * @param list<FilterInterface> $filters
+     *
+     * @throws \LogicException naming the type, relation, filter and path
+     */
+    private static function refuseUngatedPivotPaths(string $type, PivotRelationInterface $relation, array $filters, PivotRowRelations $pivotRows): void
+    {
+        foreach ($filters as $filter) {
+            if ($filter instanceof WhereGroup) {
+                self::refuseUngatedPivotPaths($type, $relation, $filter->children, $pivotRows);
+
+                continue;
+            }
+            $path = match (true) {
+                $filter instanceof WhereHas, $filter instanceof WhereDoesntHave => $filter->relationship,
+                $filter instanceof WhereThrough, $filter instanceof WhereThroughIn => $filter->path,
+                default => '',
+            };
+            if (!\str_starts_with($path, RelationCriteriaFactory::PIVOT_PREFIX)) {
+                continue;
+            }
+
+            try {
+                $pivotRows->pivotRowRelation($relation, $type, \explode('.', $path)[1]);
+            } catch (\LogicException $e) {
+                throw new \LogicException(\sprintf(
+                    'The JSON:API resource for type "%s" declares the filter "%s" of relation "%s", whose deprecated path "%s" goes on from the pivot row to a model no single registered type serves, so no type\'s read rules can apply to the rows it reaches. %s Register exactly one resource type for that model, or migrate the filter to a ->through() path that does not reach it.',
+                    $type,
+                    $filter->key(),
+                    $relation->name(),
+                    $path,
+                    $e->getMessage(),
+                ), 0, $e);
+            }
+        }
     }
 
     /**

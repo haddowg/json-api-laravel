@@ -420,10 +420,13 @@ The migrated filters apply on the same endpoints and match the same rows, and bo
 the same read rules. Each relation the path walks reaches a type, the one serving the model the
 pivot model's relation targets: that type's global scopes hide rows from either form, and a
 caller who may not read it, or may not read the relation the filter runs under, gets a `403`
-from either. Ids decode through that type's encoder in both. A pivot model relation targeting a
-model no registered type serves, or several types serve, reaches no type whose rules apply: the
-prefixed filter keeps reaching it under the model's global scopes alone, and the migrated form
-can't be declared until one type owns that model. See
+from either. Ids decode through that type's encoder in both. The pivot model's relations back
+to the parent and to the member reach the parent type and the relation's related type, even when
+another type serves the same model. Any other pivot model relation targeting a model no
+registered type serves, or several types serve, reaches no type whose rules apply, so route
+registration and `jsonapi:optimize` refuse a filter reaching it in either form, naming the
+filter and its path. Register one type for that model, or move the filter to a `->through()`
+path that doesn't reach it. See
 [paths through a pivot row](eloquent.md#paths-through-a-pivot-row).
 
 ### Computed pivot fields

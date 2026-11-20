@@ -86,6 +86,10 @@ final class ThroughPivotServiceProvider extends ServiceProvider
         if (TpBrokenResource::$declaration === 'pivot-row-relation-several-types') {
             $models['tpUserAliases'] = TpUser::class;
         }
+        if (TpBrokenResource::$declaration === 'legacy-through-several') {
+            $models['tpOwners'] = TpOwner::class;
+            $models['tpOwnerAliases'] = TpOwner::class;
+        }
         JsonApi::provider(new EloquentDataProvider($models), priority: -128);
     }
 

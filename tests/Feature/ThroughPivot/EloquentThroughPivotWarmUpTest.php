@@ -60,6 +60,60 @@ final class EloquentThroughPivotWarmUpTest extends Orchestra
         self::assertStringContainsString($message, \implode("\n", $warmer->warm()));
     }
 
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function deprecatedPivotRefusals(): iterable
+    {
+        yield 'a traversal' => ['legacy-through-untyped', 'declares the filter "ownerName" of relation "entryTracks", whose deprecated path "pivot.owner.name" goes on from the pivot row to a model no single registered type serves'];
+        yield 'a list traversal' => ['legacy-through-in-untyped', 'the filter "owner" of relation "entryTracks", whose deprecated path "pivot.owner"'];
+        yield 'a WhereHas' => ['legacy-has-untyped', 'the filter "owned" of relation "entryTracks", whose deprecated path "pivot.owner"'];
+        yield 'a WhereDoesntHave' => ['legacy-doesnt-have-untyped', 'the filter "unowned" of relation "entryTracks", whose deprecated path "pivot.owner"'];
+        yield 'a traversal inside a group' => ['legacy-grouped-untyped', 'the filter "ownerSearch" of relation "entryTracks"'];
+        yield 'the model no type serves' => ['legacy-has-untyped', 'which no registered type serves, so a path through it reaches no type whose rules apply.'];
+        yield 'the fix it names' => ['legacy-through-untyped', 'Register exactly one resource type for that model, or migrate the filter to a ->through() path that does not reach it.'];
+    }
+
+    #[Test]
+    #[DataProvider('deprecatedPivotRefusals')]
+    public function theWarmerRefusesADeprecatedPivotPathNoSingleTypeGates(string $declaration, string $message): void
+    {
+        TpBrokenResource::$declaration = $declaration;
+
+        $warmer = $this->app?->make(ServableResourceWarmer::class);
+        self::assertInstanceOf(ServableResourceWarmer::class, $warmer);
+
+        self::assertStringContainsString($message, \implode("\n", $warmer->warm()));
+    }
+
+    #[Test]
+    #[DataProvider('deprecatedPivotRefusals')]
+    public function routeRegistrationRefusesADeprecatedPivotPathNoSingleTypeGates(string $declaration, string $message): void
+    {
+        TpBrokenResource::$declaration = $declaration;
+        $router = $this->app?->make(Router::class);
+        $registrar = $this->app?->make(RouteRegistrar::class);
+        self::assertInstanceOf(Router::class, $router);
+        self::assertInstanceOf(RouteRegistrar::class, $registrar);
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage($message);
+
+        $registrar->registerServer($router);
+    }
+
+    #[Test]
+    public function theBootRefusesADeprecatedPivotPathToAModelSeveralTypesServe(): void
+    {
+        // The provider's model map is read when it registers, so the app boots again.
+        TpBrokenResource::$declaration = 'legacy-through-several';
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('whose deprecated path "pivot.owner.name" goes on from the pivot row to a model no single registered type serves, so no type\'s read rules can apply to the rows it reaches. The pivot rows of relation "entryTracks" hold "owner", a relation to ' . \haddowg\JsonApiLaravel\Tests\Fixtures\ThroughPivot\TpOwner::class . ', which several types serve (tpOwners, tpOwnerAliases)');
+
+        $this->refreshApplication();
+    }
+
     #[Test]
     public function routeRegistrationRefusesAMorphToOnThePivotModel(): void
     {

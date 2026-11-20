@@ -270,9 +270,12 @@ BelongsToMany::make('playlists', 'playlists')
 
 After `pivot`, a segment names a relation method of the pivot model the `belongsToMany` names
 with `->using()`, such as `addedBy()`. The provider reads the type it reaches from the model that
-relation targets: the one type it serves with that model. A `morphTo` on the pivot model, a
-model no type serves and a model several types serve all fail route registration, since the
-reached type's scope, read gate and id encoder have to apply. From there the path goes on as any
+relation targets: the one type it serves with that model, or for the pivot model's relations
+back to the parent and to the member, the parent type and the relation's related type. A
+`morphTo` on the pivot model, a model no type serves and a model several types serve all fail
+route registration, since the reached type's scope, read gate and id encoder have to apply. A
+deprecated `pivot.`-prefixed `WhereThrough`, `WhereThroughIn`, `WhereHas` or `WhereDoesntHave`
+going on from the pivot row is refused the same way. From there the path goes on as any
 other, one `whereHas` per relation. The first one is built from the pivot model the way
 Eloquent builds a `whereHas`, so it correlates to the join row the query already holds.
 
