@@ -86,8 +86,12 @@ provider, and one that doesn't exist, or that the provider's scope hides, is a `
 Eloquent model gets them as loaded relations, so `$input->tracks` is a collection of the
 named tracks and `$input->artist` the named artist, and nothing lands among its attributes;
 any other object gets them through its setter or property, a list for a to-many. A relation
-with a `fillUsing()` hook gets the linkage instead, and a to-many declared
-`cannotChangeMembership()` is checked against the blank input first. Nothing is saved, so
+with a `fillUsing()` hook gets the linkage instead. A to-many declared
+`cannotChangeMembership()` is checked first. On an action called on a resource whose
+`inputType` is the mount type, the members the body names are compared with the ones that
+resource holds now, so restating them passes and adding or removing one is a `403`. A
+collection action has no resource, nor does an action whose input reads as another type, so
+it compares them with the blank input, which holds none. Nothing is saved, so
 the related models are left as they are. An input from `ActionInputFactoryInterface` is
 hydrated by core alone, so its relationships hold the related ids.
 
