@@ -167,6 +167,12 @@ constraints, so `WhereIn::make('ids')->integer()->acceptsList()` rejects
 `filter[ids][]=1&filter[ids][]=x`. Without `acceptsList()` a set filter reads both forms
 leniently, as it always has.
 
+A `WhereIn` or `WhereNotIn` declaring `deserializeUsing()` hands the validated members to its
+closure in one call and runs `whereIn` or `whereNotIn` over the list it returns, so the
+constraints and `enum()` apply to the values a client sends. An empty returned list matches
+nothing for `WhereIn` and excludes nothing for `WhereNotIn`, as an empty requested list does.
+See [Mapping a requested list](https://github.com/haddowg/json-api/blob/main/docs/filters.md#mapping-a-requested-list-deserializeusing).
+
 ### Filter families
 
 Some filter keys are data, the filter twin of a [sort family](#sort-families). Core's

@@ -1047,13 +1047,16 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
 
     /**
      * A set filter's members: a declared list reads them through its {@see \haddowg\JsonApi\Resource\Filter\ListValue},
-     * so an array-only list keeps a delimiter inside a member; any other set filter splits leniently.
+     * so an array-only list keeps a delimiter inside a member; any other set filter splits leniently. A
+     * `WhereIn` or `WhereNotIn` then maps them through its `deserializeUsing()`.
      *
      * @return list<mixed>
      */
     private function members(WhereIn|WhereNotIn|WhereIdIn|WhereIdNotIn $filter, mixed $value): array
     {
-        return $filter->list?->members($value) ?? $this->toList($value, $filter->delimiter);
+        $members = $filter->list?->members($value) ?? $this->toList($value, $filter->delimiter);
+
+        return $filter instanceof WhereIn || $filter instanceof WhereNotIn ? $filter->comparedValues($members) : $members;
     }
 
     /**
