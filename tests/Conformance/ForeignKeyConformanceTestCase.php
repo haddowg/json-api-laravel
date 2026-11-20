@@ -225,6 +225,19 @@ abstract class ForeignKeyConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    public function anActionComparesALockedToManyWithTheItemsTheForeignKeyReads(): void
+    {
+        // As a PATCH of ada does, the action reads the items holding ada's key.
+        $revise = fn(string ...$ids): TestResponse => $this->jsonApi()
+            ->withData(['type' => 'fk-users', 'id' => 'ada', 'relationships' => ['lockedItems' => ['data' => \array_map(static fn(string $id): array => ['type' => 'fk-items', 'id' => $id], $ids)]]])
+            ->patch('/api/fk-users/ada/-actions/revise');
+
+        $revise('5', '4', '3', '2', '1')->assertOk();
+        $revise('1')->assertForbidden()->assertJsonPath('errors.0.code', 'MEMBERSHIP_CHANGE_PROHIBITED');
+        $revise('1', '2', '3', '4', '5', '6')->assertForbidden();
+    }
+
+    #[Test]
     public function aPlainReadOfAProviderBackedParentRenders(): void
     {
         $document = $this->fetch('/fk-users/ada');

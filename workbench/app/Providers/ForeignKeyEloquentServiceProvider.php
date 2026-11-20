@@ -35,6 +35,7 @@ use Workbench\App\ForeignKey\Models\FkSecret;
 use Workbench\App\ForeignKey\Models\FkTeam;
 use Workbench\App\ForeignKey\ReviseAnyGrantAction;
 use Workbench\App\ForeignKey\ReviseGrantAction;
+use Workbench\App\ForeignKey\ReviseLockedItemsAction;
 use Workbench\App\ForeignKey\StampGrantAction;
 
 /**
@@ -74,6 +75,7 @@ final class ForeignKeyEloquentServiceProvider extends ServiceProvider
             StampGrantAction::class,
             ReviseGrantAction::class,
             ReviseAnyGrantAction::class,
+            ReviseLockedItemsAction::class,
         ]);
 
         JsonApi::provider(new EloquentDataProvider(self::MODEL_BY_TYPE), priority: -128);

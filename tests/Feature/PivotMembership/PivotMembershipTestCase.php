@@ -121,6 +121,22 @@ abstract class PivotMembershipTestCase extends Orchestra
     }
 
     #[Test]
+    public function anActionAgreesWithAReplaceOverTheRecordTheScopeHides(): void
+    {
+        // As a PATCH of crate 1 does, naming the records it can see keeps the hidden one.
+        $revise = fn(string ...$ids): TestResponse => $this->write('PATCH', '/api/crates/1/-actions/revise', ['data' => [
+            'type' => 'crates',
+            'id' => '1',
+            'relationships' => ['records' => ['data' => $this->records(...$ids)]],
+        ]]);
+
+        $revise('4', '2', '3')->assertOk();
+        $this->assertMembershipChangeProhibited($revise('2', '3'));
+        $this->assertMembershipChangeProhibited($revise('2', '3', '4', '5'));
+        self::assertSame(['2', '3', '4', '6'], $this->storedRecords(1));
+    }
+
+    #[Test]
     public function anEmbeddedReplaceThatReordersTheRecordsIsAccepted(): void
     {
         $response = $this->patchCrate('1', $this->records('3', '4', '2'));
