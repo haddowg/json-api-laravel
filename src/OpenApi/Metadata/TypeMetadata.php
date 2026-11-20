@@ -186,12 +186,10 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
     }
 
     /**
-     * Passes on the relation's name core gives a relationship write case, which the
-     * type's declaration receives when its override declares it.
+     * Passes on the relation's name core gives a relationship write case.
      */
     public function documentMeta(OperationType $operation, ?string $relation = null): iterable
     {
-        // @phpstan-ignore arguments.count
         return $this->documentMeta?->documentMeta($operation, $relation) ?? [];
     }
 
