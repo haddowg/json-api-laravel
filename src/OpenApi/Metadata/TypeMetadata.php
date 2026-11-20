@@ -162,7 +162,7 @@ final readonly class TypeMetadata implements DeclaresOperationExtensions, Declar
         private ?DeclaresDocumentMetaInterface $documentMeta = null,
     ) {}
 
-    public function documentMeta(OperationType $operation): iterable
+    public function documentMeta(OperationType $operation, ?string $relation = null): iterable
     {
         return $this->documentMeta?->documentMeta($operation) ?? [];
     }
