@@ -66,7 +66,7 @@ abstract class UnionConformanceTestCase extends Orchestra
     {
         yield 'string member' => [['value' => 'gold'], ['value' => 'gold']];
         yield 'number member' => [['value' => 2.5], ['value' => 2.5]];
-        yield 'whole number to a decimal member' => [['value' => 3], ['value' => 3]];
+        yield 'whole number to a decimal member' => [['value' => 3], ['value' => 3.0]];
         yield 'boolean member' => [['value' => false], ['value' => false]];
         yield 'list member' => [['value' => ['gold', 2.5, true]], ['value' => ['gold', 2.5, true]]];
         yield 'empty list member' => [['value' => []], ['value' => []]];
@@ -112,8 +112,8 @@ abstract class UnionConformanceTestCase extends Orchestra
         $response = $this->update(['value' => ['x', 1]]);
 
         $response->assertStatus(200);
-        self::assertSame(['x', 1], $response->json('data.attributes.value'));
-        self::assertSame(['x', 1], $this->getJson('/api/presets/1', ['Accept' => self::MEDIA_TYPE])->json('data.attributes.value'));
+        self::assertSame(['x', 1.0], $response->json('data.attributes.value'));
+        self::assertSame(['x', 1.0], $this->getJson('/api/presets/1', ['Accept' => self::MEDIA_TYPE])->json('data.attributes.value'));
     }
 
     /**
