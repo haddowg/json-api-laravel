@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
-use haddowg\JsonApi\Schema\Profile\FieldSelectionProfile;
+use haddowg\JsonApi\Schema\Profile\NestedFieldsetsProfile;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
 use haddowg\JsonApiLaravel\Testing\SchemaConformanceTrait;
@@ -13,17 +13,17 @@ use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
-use Workbench\App\FieldSelection\Panel;
-use Workbench\App\FieldSelection\PanelResource;
+use Workbench\App\NestedFieldsets\Panel;
+use Workbench\App\NestedFieldsets\PanelResource;
 
 /**
- * The field-selection conformance witness, run against both providers, the Laravel twin
- * of the Symfony bundle's `FieldSelectionConformanceTestCase`: a
+ * The nested fieldsets conformance witness, run against both providers, the Laravel twin
+ * of the Symfony bundle's `NestedFieldsetsConformanceTestCase`: a
  * `fields[TYPE]=<attribute>.<key>` member renders only that key of an attribute declaring
- * selectable keys, wherever the type renders, and the response applies and advertises
- * the Field Selection profile only when it narrows something.
+ * a nested fieldset, wherever the type renders, and the response applies and advertises
+ * the Nested Fieldsets profile only when it narrows something.
  */
-abstract class FieldSelectionConformanceTestCase extends Orchestra
+abstract class NestedFieldsetsConformanceTestCase extends Orchestra
 {
     use SchemaConformanceTrait;
 
@@ -31,7 +31,7 @@ abstract class FieldSelectionConformanceTestCase extends Orchestra
 
     private const string ATOMIC_MEDIA_TYPE = 'application/vnd.api+json; ext="https://jsonapi.org/ext/atomic"';
 
-    private const string NARROWED = 'application/vnd.api+json; profile="' . FieldSelectionProfile::URI . '"';
+    private const string NARROWED = 'application/vnd.api+json; profile="' . NestedFieldsetsProfile::URI . '"';
 
     /**
      * @return class-string
@@ -135,7 +135,7 @@ abstract class FieldSelectionConformanceTestCase extends Orchestra
         $response = $this->fetch('/api/panels/1?fields[panels]=values.cap');
 
         self::assertSame(self::NARROWED, $response->headers->get('Content-Type'));
-        self::assertSame([FieldSelectionProfile::URI], $this->jsonApiOf($response)['profile'] ?? null);
+        self::assertSame([NestedFieldsetsProfile::URI], $this->jsonApiOf($response)['profile'] ?? null);
         self::assertStringContainsString('Accept', (string) $response->headers->get('Vary'));
     }
 
@@ -323,7 +323,7 @@ abstract class FieldSelectionConformanceTestCase extends Orchestra
     #[Test]
     #[Group('spec:sparse-fieldsets')]
     #[Group('spec:errors')]
-    public function aPathBelowAKeyThatIsNotSelectableIsThe400(): void
+    public function aPathBelowAKeyWithoutANestedFieldsetIsThe400(): void
     {
         $this->assertUnrecognized('/api/panels/1?fields[panels]=address.postcode.x', 'address.postcode.x');
         $this->assertUnrecognized('/api/panels/1?fields[panels]=address.history.street', 'address.history.street');
@@ -542,7 +542,7 @@ abstract class FieldSelectionConformanceTestCase extends Orchestra
     #[Test]
     #[Group('spec:sparse-fieldsets')]
     #[Group('spec:errors')]
-    public function aWildcardOnAnythingButAListOfSelectableObjectsIsThe400(): void
+    public function aWildcardOnAnythingButAListOfObjectsWithANestedFieldsetIsThe400(): void
     {
         $this->assertUnrecognized('/api/panels/1?fields[panels]=name.*', 'name.*');
         $this->assertUnrecognized('/api/panels/1?fields[panels]=values.*', 'values.*');
@@ -574,7 +574,7 @@ abstract class FieldSelectionConformanceTestCase extends Orchestra
 
         $response->assertOk();
         self::assertSame(['values' => ['cap' => '7']], $response->json('atomic:results.0.data.attributes'));
-        self::assertStringContainsString('profile="' . FieldSelectionProfile::URI . '"', (string) $response->headers->get('Content-Type'));
+        self::assertStringContainsString('profile="' . NestedFieldsetsProfile::URI . '"', (string) $response->headers->get('Content-Type'));
     }
 
     #[Test]
@@ -686,7 +686,7 @@ abstract class FieldSelectionConformanceTestCase extends Orchestra
     #[Test]
     #[Group('spec:sparse-fieldsets')]
     #[Group('spec:errors')]
-    public function aDottedMemberOnAnAttributeWithoutSelectableKeysIsThe400(): void
+    public function aDottedMemberOnAnAttributeWithoutNestedFieldsetKeysIsThe400(): void
     {
         $this->assertUnrecognized('/api/panels/1?fields[panels]=settings.theme', 'settings.theme');
         $this->assertUnrecognized('/api/panels/1?fields[panels]=name.first', 'name.first');

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Workbench\App\FieldSelection;
+namespace Workbench\App\NestedFieldsets;
 
 /**
  * The plain model behind the in-memory `panels` type, and the seed both providers share.

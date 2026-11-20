@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Workbench\App\FieldSelection;
+namespace Workbench\App\NestedFieldsets;
 
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\Id;
@@ -26,7 +26,7 @@ final class PinboardResource extends AbstractResource
             Str::make('name')->required(),
             Obj::make('values')->nullable()
                 ->additionalProperties(Str::make('*')->nullable())
-                ->selectableKeys(pattern: '[a-z][a-z0-9_]*')
+                ->nestedFieldset(pattern: '[a-z][a-z0-9_]*')
                 ->notSparseField(),
         ];
     }

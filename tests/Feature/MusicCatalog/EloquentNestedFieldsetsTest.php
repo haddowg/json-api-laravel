@@ -10,12 +10,12 @@ use Workbench\App\MusicCatalog\Providers\MusicCatalogEloquentServiceProvider;
 use Workbench\Database\Seeders\McCatalogSeeder;
 
 /**
- * The Eloquent arm of the field-selection witness, over a migrated and seeded SQLite database.
+ * The Eloquent arm of the nested fieldsets witness, over a migrated and seeded SQLite database.
  *
  * @internal
  */
 #[CoversNothing]
-final class EloquentFieldSelectionTest extends FieldSelectionTestCase
+final class EloquentNestedFieldsetsTest extends NestedFieldsetsTestCase
 {
     /**
      * @param \Illuminate\Foundation\Application $app

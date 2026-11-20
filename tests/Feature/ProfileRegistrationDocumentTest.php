@@ -6,7 +6,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature;
 
 use haddowg\JsonApi\Pagination\CursorPaginationProfile;
 use haddowg\JsonApi\Schema\Profile\CountableProfile;
-use haddowg\JsonApi\Schema\Profile\FieldSelectionProfile;
+use haddowg\JsonApi\Schema\Profile\NestedFieldsetsProfile;
 use haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile;
 use haddowg\JsonApiLaravel\OpenApi\DocumentFactory;
 use haddowg\JsonApiLaravel\Tests\Support\InteractsWithOpenApiDocument;
@@ -46,7 +46,7 @@ final class ProfileRegistrationDocumentTest extends TestCase
         // The default registration pins the jsonapi.profile enum to the four built-in
         // URIs, in the canonical order that must match the Symfony bundle for byte-parity.
         $this->assertSame(
-            [CursorPaginationProfile::URI, CountableProfile::URI, RelationshipQueriesProfile::URI, FieldSelectionProfile::URI],
+            [CursorPaginationProfile::URI, CountableProfile::URI, RelationshipQueriesProfile::URI, NestedFieldsetsProfile::URI],
             $this->arrayAt($this->document(), 'components', 'schemas', 'JsonApi', 'properties', 'profile', 'items', 'enum'),
         );
     }

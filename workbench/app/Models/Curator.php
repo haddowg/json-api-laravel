@@ -7,8 +7,8 @@ namespace Workbench\App\Models;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * The `curators` Eloquent model of the field-selection conformance suite, the same shape
- * as the in-memory {@see \Workbench\App\FieldSelection\Curator}.
+ * The `curators` Eloquent model of the nested fieldsets conformance suite, the same shape
+ * as the in-memory {@see \Workbench\App\NestedFieldsets\Curator}.
  *
  * @property int                       $id
  * @property string                    $name

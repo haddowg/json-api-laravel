@@ -138,7 +138,7 @@ return [
         \haddowg\JsonApi\Pagination\CursorPaginationProfile::class,
         \haddowg\JsonApi\Schema\Profile\CountableProfile::class,
         \haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile::class,
-        \haddowg\JsonApi\Schema\Profile\FieldSelectionProfile::class,
+        \haddowg\JsonApi\Schema\Profile\NestedFieldsetsProfile::class,
     ],
 
     /*

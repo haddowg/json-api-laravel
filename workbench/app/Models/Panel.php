@@ -8,8 +8,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * The `panels` Eloquent model backing the field-selection conformance suite, the same
- * shape as the in-memory {@see \Workbench\App\FieldSelection\Panel}: each object
+ * The `panels` Eloquent model backing the nested fieldsets conformance suite, the same
+ * shape as the in-memory {@see \Workbench\App\NestedFieldsets\Panel}: each object
  * attribute is one `json` column with an `array` cast.
  *
  * @property int                       $id

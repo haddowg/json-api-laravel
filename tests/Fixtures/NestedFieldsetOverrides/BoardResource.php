@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace haddowg\JsonApiLaravel\Tests\Fixtures\KeySelectionOverrides;
+namespace haddowg\JsonApiLaravel\Tests\Fixtures\NestedFieldsetOverrides;
 
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Workbench\App\FieldSelection;
+namespace Workbench\App\NestedFieldsets;
 
 /**
  * The kinds of a panel block, the discriminator of the `blocks` union list.

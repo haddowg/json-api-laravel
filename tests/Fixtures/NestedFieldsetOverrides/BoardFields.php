@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace haddowg\JsonApiLaravel\Tests\Fixtures\KeySelectionOverrides;
+namespace haddowg\JsonApiLaravel\Tests\Fixtures\NestedFieldsetOverrides;
 
 use haddowg\JsonApi\Resource\Field\ArrayList;
 use haddowg\JsonApi\Resource\Field\Decimal;
@@ -31,18 +31,18 @@ final class BoardFields
             Str::make('name'),
             Obj::make('values')->nullable()
                 ->additionalProperties(Str::make('*')->nullable())
-                ->selectableKeys(pattern: '[a-z][a-z0-9_]*'),
+                ->nestedFieldset(pattern: '[a-z][a-z0-9_]*'),
             Obj::make('address')->nullable()
                 ->fields(
                     Str::make('street'),
                     Str::make('postcode'),
-                    Obj::make('geo')->fields(Decimal::make('lat'), Decimal::make('lng'))->selectableKeys(pattern: '[a-z]+'),
+                    Obj::make('geo')->fields(Decimal::make('lat'), Decimal::make('lng'))->nestedFieldset(pattern: '[a-z]+'),
                 )
-                ->selectableKeys(pattern: '[a-z]+'),
+                ->nestedFieldset(pattern: '[a-z]+'),
             ArrayList::make('rows')->nullable()->of(
                 Obj::make('row')
-                    ->fields(Str::make('label'), Obj::make('size')->fields(Integer::make('w'), Integer::make('h'))->selectableKeys(pattern: '[a-z]'))
-                    ->selectableKeys(pattern: '[a-z]+'),
+                    ->fields(Str::make('label'), Obj::make('size')->fields(Integer::make('w'), Integer::make('h'))->nestedFieldset(pattern: '[a-z]'))
+                    ->nestedFieldset(pattern: '[a-z]+'),
             ),
         ];
     }

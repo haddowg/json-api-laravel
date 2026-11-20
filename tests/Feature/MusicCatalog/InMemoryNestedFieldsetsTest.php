@@ -9,12 +9,12 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 use Workbench\App\MusicCatalog\Providers\MusicCatalogInMemoryServiceProvider;
 
 /**
- * The in-memory arm of the field-selection witness, over the seeded object graph.
+ * The in-memory arm of the nested fieldsets witness, over the seeded object graph.
  *
  * @internal
  */
 #[CoversNothing]
-final class InMemoryFieldSelectionTest extends FieldSelectionTestCase
+final class InMemoryNestedFieldsetsTest extends NestedFieldsetsTestCase
 {
     /**
      * @param \Illuminate\Foundation\Application $app

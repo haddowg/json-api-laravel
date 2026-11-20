@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace haddowg\JsonApiLaravel\Tests\Fixtures\KeySelectionOverrides;
+namespace haddowg\JsonApiLaravel\Tests\Fixtures\NestedFieldsetOverrides;
 
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
-use haddowg\JsonApi\Resource\Field\KeySelection;
-use haddowg\JsonApi\Serializer\SelectsAttributeKeysInterface;
+use haddowg\JsonApi\Resource\Field\NestedFieldset;
+use haddowg\JsonApi\Serializer\SerializesNestedFieldsetsInterface;
 
 /**
  * Renders a board as an `easels` resource and receives the keys a request selected,
@@ -14,7 +14,7 @@ use haddowg\JsonApi\Serializer\SelectsAttributeKeysInterface;
  *
  * @internal
  */
-final class EaselSerializer extends BoardSerializer implements SelectsAttributeKeysInterface
+final class EaselSerializer extends BoardSerializer implements SerializesNestedFieldsetsInterface
 {
     /**
      * The paths each call received, in call order.
@@ -28,9 +28,9 @@ final class EaselSerializer extends BoardSerializer implements SelectsAttributeK
         return 'easels';
     }
 
-    public function getSelectedAttribute(mixed $object, JsonApiRequestInterface $request, string $name, KeySelection $only): mixed
+    public function getNestedFieldsetAttribute(mixed $object, JsonApiRequestInterface $request, string $name, NestedFieldset $fieldset): mixed
     {
-        self::$selections[] = [$name, $only->paths()];
+        self::$selections[] = [$name, $fieldset->paths()];
         $attribute = $this->getAttributes($object, $request)[$name] ?? null;
 
         return $attribute === null ? null : $attribute($object, $request, $name);

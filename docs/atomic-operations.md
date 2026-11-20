@@ -112,8 +112,8 @@ malformed batch, an unknown query parameter, a pre-flight refusal or a rolled-ba
 always declare it, since both headers named it. The Symfony bundle applies the same rule.
 
 A `?fields[type]` parameter on `/operations` narrows each result's resource, its
-[selected keys](resources.md#selecting-keys-of-an-object-attribute) included, and a batch that
-narrows an attribute advertises the Field Selection profile on its `Content-Type`. A key the
+[selected keys](resources.md#nested-fieldsets) included, and a batch that
+narrows an attribute advertises the Nested Fieldsets profile on its `Content-Type`. A key the
 attribute doesn't accept is the `400` `FIELDSET_MEMBER_UNRECOGNIZED` before any operation runs.
 An `?include` is not processed, so a result never carries `included`.
 

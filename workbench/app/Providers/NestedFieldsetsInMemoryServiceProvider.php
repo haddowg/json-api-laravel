@@ -8,18 +8,18 @@ use haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
-use Workbench\App\FieldSelection\Curator;
-use Workbench\App\FieldSelection\CuratorResource;
-use Workbench\App\FieldSelection\Panel;
-use Workbench\App\FieldSelection\PanelResource;
-use Workbench\App\FieldSelection\PinboardResource;
+use Workbench\App\NestedFieldsets\Curator;
+use Workbench\App\NestedFieldsets\CuratorResource;
+use Workbench\App\NestedFieldsets\Panel;
+use Workbench\App\NestedFieldsets\PanelResource;
+use Workbench\App\NestedFieldsets\PinboardResource;
 
 /**
- * The **in-memory** half of the field-selection conformance wiring: one seeded graph in
+ * The **in-memory** half of the nested fieldsets conformance wiring: one seeded graph in
  * which panel 1 links curator 1, and a persister for each type sharing its store. The
  * seed mirrors the Eloquent half's rows so identical assertions referee both providers.
  */
-final class FieldSelectionInMemoryServiceProvider extends ServiceProvider
+final class NestedFieldsetsInMemoryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {

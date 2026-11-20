@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Workbench\App\FieldSelection;
+namespace Workbench\App\NestedFieldsets;
 
 /**
  * The plain model behind the in-memory `curators` type.

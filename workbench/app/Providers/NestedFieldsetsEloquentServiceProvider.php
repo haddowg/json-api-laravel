@@ -8,17 +8,17 @@ use haddowg\JsonApiLaravel\DataPersister\Eloquent\EloquentDataPersister;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Support\ServiceProvider;
-use Workbench\App\FieldSelection\CuratorResource;
-use Workbench\App\FieldSelection\PanelResource;
-use Workbench\App\FieldSelection\PinboardResource;
 use Workbench\App\Models\Curator;
 use Workbench\App\Models\Panel;
+use Workbench\App\NestedFieldsets\CuratorResource;
+use Workbench\App\NestedFieldsets\PanelResource;
+use Workbench\App\NestedFieldsets\PinboardResource;
 
 /**
- * The **Eloquent** half of the field-selection conformance wiring: the same resources
+ * The **Eloquent** half of the nested fieldsets conformance wiring: the same resources
  * the in-memory half serves, each object attribute a real `json` column.
  */
-final class FieldSelectionEloquentServiceProvider extends ServiceProvider
+final class NestedFieldsetsEloquentServiceProvider extends ServiceProvider
 {
     public function register(): void
     {

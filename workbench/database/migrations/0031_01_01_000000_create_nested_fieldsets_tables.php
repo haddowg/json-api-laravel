@@ -7,7 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * The `fs_panels` and `fs_curators` schema backing the Eloquent field-selection
+ * The `fs_panels` and `fs_curators` schema backing the Eloquent nested fieldsets
  * conformance suite: each object attribute is one nullable `json` column.
  */
 return new class extends Migration {

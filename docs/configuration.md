@@ -123,7 +123,7 @@ When `true` (default), an unrecognized top-level query-parameter family is rejec
 `400`, so a client typo surfaces cleanly instead of being silently dropped. The same gate
 rejects a `fields[type]` member that names no declared field of a registered type, with a
 `400` `FIELDSET_MEMBER_UNRECOGNIZED`. An `<attribute>.<key>` member is known when the
-attribute declares [selectable keys](resources.md#selecting-keys-of-an-object-attribute)
+attribute declares a [nested fieldset](resources.md#nested-fieldsets)
 that accept the key; any other dotted member is unknown. A profile's family, such as the Countable profile's
 `withCount`, is recognized only when the profile is registered and the client negotiated
 it in `Accept`. Set `false` for the tolerant (silent-ignore) behaviour.
@@ -156,19 +156,19 @@ declares its own). See [pagination](pagination.md).
     \haddowg\JsonApi\Pagination\CursorPaginationProfile::class,
     \haddowg\JsonApi\Schema\Profile\CountableProfile::class,
     \haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile::class,
-    \haddowg\JsonApi\Schema\Profile\FieldSelectionProfile::class,
+    \haddowg\JsonApi\Schema\Profile\NestedFieldsetsProfile::class,
 ],
 ```
 
 The JSON:API profiles every server recognizes, as class-strings resolved through the
 container. The default is core's four built-ins: cursor pagination, Countable (`?withCount`),
-Relationship Queries (`relatedQuery`) and Field Selection. A registered profile is advertised in
+Relationship Queries (`relatedQuery`) and Nested Fieldsets. A registered profile is advertised in
 `jsonapi.profile` and the `Content-Type` `profile` parameter when a client negotiates it, its
 query family is parsed only under that negotiation, and its OpenAPI parameters are generated
-only while it is registered. Field Selection is the exception to negotiation: a client never
+only while it is registered. Nested Fieldsets is the exception to negotiation: a client never
 sends it, and a response advertises it whenever the request narrows an attribute to some of
-its keys. Without `FieldSelectionProfile` a request still selects keys of an attribute
-declaring [selectable keys](resources.md#selecting-keys-of-an-object-attribute), but the
+its keys. Without `NestedFieldsetsProfile` a request still selects keys of an attribute
+declaring a [nested fieldset](resources.md#nested-fieldsets), but the
 response no longer advertises the profile.
 
 Trim an entry to stop recognizing and advertising that profile; its OpenAPI parameters go

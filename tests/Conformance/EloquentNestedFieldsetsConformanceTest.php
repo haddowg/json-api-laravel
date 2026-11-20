@@ -5,23 +5,23 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
 use PHPUnit\Framework\Attributes\CoversNothing;
-use Workbench\App\FieldSelection\Curator as CuratorSeed;
-use Workbench\App\FieldSelection\Panel as PanelSeed;
 use Workbench\App\Models\Curator;
 use Workbench\App\Models\Panel;
-use Workbench\App\Providers\FieldSelectionEloquentServiceProvider;
+use Workbench\App\NestedFieldsets\Curator as CuratorSeed;
+use Workbench\App\NestedFieldsets\Panel as PanelSeed;
+use Workbench\App\Providers\NestedFieldsetsEloquentServiceProvider;
 
 /**
- * The field-selection conformance cases over the Eloquent provider, each object a real
+ * The nested fieldsets conformance cases over the Eloquent provider, each object a real
  * `json` column in in-memory SQLite. The provider loads the model whole and core trims
  * the value on render.
  */
 #[CoversNothing]
-final class EloquentFieldSelectionConformanceTest extends FieldSelectionConformanceTestCase
+final class EloquentNestedFieldsetsConformanceTest extends NestedFieldsetsConformanceTestCase
 {
     protected function conformanceServiceProvider(): string
     {
-        return FieldSelectionEloquentServiceProvider::class;
+        return NestedFieldsetsEloquentServiceProvider::class;
     }
 
     /**

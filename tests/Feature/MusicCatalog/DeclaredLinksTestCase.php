@@ -113,9 +113,9 @@ abstract class DeclaredLinksTestCase extends Orchestra
         $doc = $this->resolve(DocumentFactory::class)->forServer('default')->toArray();
 
         // The related-only `reissues` type, the deprecated `devices` type, the `accounts`
-        // singleton, the albums collection's typed meta and the albums' selectable credits
+        // singleton, the albums collection's typed meta and the albums' credits with their nested fieldset
         // each carry a tier above the baseline.
-        self::assertSame(\max(GeneratorContract::BASELINE, GeneratorContract::DEPRECATION, GeneratorContract::RELATED_ONLY, GeneratorContract::SINGLETONS, GeneratorContract::TYPED_DOCUMENT_META, GeneratorContract::FIELD_SELECTION), $this->at($doc, 'info', 'x-generator', 'contract'));
+        self::assertSame(\max(GeneratorContract::BASELINE, GeneratorContract::DEPRECATION, GeneratorContract::RELATED_ONLY, GeneratorContract::SINGLETONS, GeneratorContract::TYPED_DOCUMENT_META, GeneratorContract::NESTED_FIELDSETS), $this->at($doc, 'info', 'x-generator', 'contract'));
 
         foreach (['AlbumsResourceLinks', 'TracksResourceLinks'] as $name) {
             self::assertSame(['$ref' => '#/components/schemas/ResourceLinks'], $this->at($doc, 'components', 'schemas', $name, 'allOf', 0), $name);

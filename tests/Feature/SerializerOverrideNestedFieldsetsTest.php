@@ -4,27 +4,27 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature;
 
-use haddowg\JsonApi\Schema\Profile\FieldSelectionProfile;
+use haddowg\JsonApi\Schema\Profile\NestedFieldsetsProfile;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
-use haddowg\JsonApiLaravel\Tests\Fixtures\KeySelectionOverrides\EaselSerializer;
-use haddowg\JsonApiLaravel\Tests\Fixtures\KeySelectionOverrides\KeySelectionOverridesServiceProvider;
+use haddowg\JsonApiLaravel\Tests\Fixtures\NestedFieldsetOverrides\EaselSerializer;
+use haddowg\JsonApiLaravel\Tests\Fixtures\NestedFieldsetOverrides\NestedFieldsetOverridesServiceProvider;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * A type whose resource declares selectable keys but renders through a serializer
+ * A type whose resource declares a nested fieldset but renders through a serializer
  * override is narrowed by the resource's fields, as its OpenAPI document says. `boards`
- * renders every attribute whole; `easels` implements core's `SelectsAttributeKeysInterface`
+ * renders every attribute whole; `easels` implements core's `SerializesNestedFieldsetsInterface`
  * and records the selection it receives.
  *
  * @internal
  */
 #[CoversNothing]
 #[Group('spec:sparse-fieldsets')]
-final class SerializerOverrideFieldSelectionTest extends TestCase
+final class SerializerOverrideNestedFieldsetsTest extends TestCase
 {
-    private const string NARROWED = 'application/vnd.api+json; profile="' . FieldSelectionProfile::URI . '"';
+    private const string NARROWED = 'application/vnd.api+json; profile="' . NestedFieldsetsProfile::URI . '"';
 
     protected function setUp(): void
     {
@@ -45,7 +45,7 @@ final class SerializerOverrideFieldSelectionTest extends TestCase
             'rows' => [['size' => ['w' => 1]], ['size' => ['w' => 3]]],
         ], $response->json('data.attributes'));
         self::assertSame(self::NARROWED, $response->headers->get('Content-Type'));
-        self::assertSame([FieldSelectionProfile::URI], $response->json('jsonapi.profile'));
+        self::assertSame([NestedFieldsetsProfile::URI], $response->json('jsonapi.profile'));
     }
 
     public function test_an_override_narrows_every_resource_of_a_collection(): void
@@ -61,7 +61,7 @@ final class SerializerOverrideFieldSelectionTest extends TestCase
         $response = $this->fetch('/api/boards/1?fields[boards]=values,values.cap');
 
         $response->assertOk();
-        self::assertSame(['values' => KeySelectionOverridesServiceProvider::VALUES], $response->json('data.attributes'));
+        self::assertSame(['values' => NestedFieldsetOverridesServiceProvider::VALUES], $response->json('data.attributes'));
         self::assertSame(self::MEDIA_TYPE, $response->headers->get('Content-Type'));
     }
 
@@ -93,7 +93,7 @@ final class SerializerOverrideFieldSelectionTest extends TestCase
     {
         return [
             JsonApiServiceProvider::class,
-            KeySelectionOverridesServiceProvider::class,
+            NestedFieldsetOverridesServiceProvider::class,
         ];
     }
 

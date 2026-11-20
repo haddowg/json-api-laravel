@@ -142,16 +142,16 @@ An override naming a class that does not implement its core contract fails disco
 starting point — the hydrator base supplies the create/update dispatch and the
 client-generated-id policy, leaving you the attribute fan-out.
 
-The resource's fields still decide what a request may [select by key](resources.md#selecting-keys-of-an-object-attribute).
-An attribute the resource declares with `selectableKeys()` is narrowed through a serializer
+The resource's fields still decide what a request may [select by key](resources.md#nested-fieldsets).
+An attribute the resource declares with `nestedFieldset()` is narrowed through a serializer
 override too: core calls the override's attribute callable and trims the value to the
 selected keys, so `fields[tracks]=credits.producer` renders `credits` holding only
-`producer`, and the response carries the Field Selection profile. An override that can load
-less implements core's `SelectsAttributeKeysInterface`, whose `getSelectedAttribute()` core
-calls with the `KeySelection` in place of the callable, still trimming what it returns. A
+`producer`, and the response carries the Nested Fieldsets profile. An override that can load
+less implements core's `SerializesNestedFieldsetsInterface`, whose `getNestedFieldsetAttribute()` core
+calls with the `NestedFieldset` in place of the callable, still trimming what it returns. A
 key the resource doesn't accept is the usual `400` when the override implements
 `DeclaresFieldNamesInterface`, and dropped otherwise. A standalone `#[AsJsonApiSerializer]`
-has no resource, so it declares no selectable keys.
+has no resource, so it declares no nested fieldset.
 
 Reach for the override only when the cheaper seams fall short: **per-field
 `serializeUsing`/`extractUsing`/`fillUsing`** closures (above) cover most wire-shape changes

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace haddowg\JsonApiLaravel\Tests\Fixtures\KeySelectionOverrides;
+namespace haddowg\JsonApiLaravel\Tests\Fixtures\NestedFieldsetOverrides;
 
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
@@ -14,7 +14,7 @@ use Illuminate\Support\ServiceProvider;
  *
  * @internal
  */
-final class KeySelectionOverridesServiceProvider extends ServiceProvider
+final class NestedFieldsetOverridesServiceProvider extends ServiceProvider
 {
     public const array VALUES = ['cap' => '10', 'countries' => 'GB,FR', 'region' => 'EU'];
 
