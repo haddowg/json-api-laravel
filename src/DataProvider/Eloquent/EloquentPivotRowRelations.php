@@ -25,7 +25,8 @@ use Illuminate\Database\Eloquent\Relations\Relation;
  * Names the relations a pivot row holds from the Eloquent pivot model a `belongsToMany` joins
  * through, its `->using()` class: a relation method of that model is the relation under the
  * method's name, a to-one or a to-many as Eloquent defines it, reaching the one type this
- * provider serves with the model it targets.
+ * provider serves with the model it targets. The row's own ends reach the parent type and the
+ * relation's related type, even when another type serves the same model.
  *
  * @internal
  */
@@ -65,7 +66,9 @@ final class EloquentPivotRowRelations implements PivotRowRelations
         }
 
         $target = $held->getRelated()::class;
-        $types = \array_keys(\array_filter($this->modelByType, static fn(string $model): bool => $model === $target));
+        // The row's own ends are the parent and the member, whose types the relation names.
+        $end = $held instanceof EloquentBelongsTo ? self::endType($relation, $parentType, $this->modelByType[$parentType] ?? null, $held->getForeignKeyName()) : null;
+        $types = $end !== null ? [$end] : \array_keys(\array_filter($this->modelByType, static fn(string $model): bool => $model === $target));
         if (\count($types) !== 1) {
             throw new \LogicException(\sprintf(
                 $types === []
@@ -86,12 +89,33 @@ final class EloquentPivotRowRelations implements PivotRowRelations
     }
 
     /**
-     * A fresh pivot row of `$relation` declared on `$parent`, or `null` when it is no
-     * `belongsToMany` of that model. A `morphToMany` reads no pivot rows a path walks.
+     * The type a pivot row's `belongsTo` on `$foreignKey` reaches when it is one of the row's
+     * own ends: `$parentType` for the key pointing back at the parent, the relation's related
+     * type for the one pointing at the member, and `null` for any other key.
      *
      * @param class-string<Model>|null $parent
      */
-    public static function pivotRow(RelationInterface $relation, ?string $parent): ?Pivot
+    private static function endType(RelationInterface $relation, string $parentType, ?string $parent, string $foreignKey): ?string
+    {
+        $eloquent = self::eloquentRelation($relation, $parent);
+
+        return match (true) {
+            $eloquent === null => null,
+            $foreignKey === $eloquent->getForeignPivotKeyName() => $parentType,
+            $foreignKey === $eloquent->getRelatedPivotKeyName() => $relation->relatedTypes()[0] ?? null,
+            default => null,
+        };
+    }
+
+    /**
+     * The Eloquent `belongsToMany` behind `$relation` on a fresh `$parent`, or `null` when it is
+     * none, or a `morphToMany`.
+     *
+     * @param class-string<Model>|null $parent
+     *
+     * @return EloquentBelongsToMany<Model, Model>|null
+     */
+    private static function eloquentRelation(RelationInterface $relation, ?string $parent): ?EloquentBelongsToMany
     {
         if (!$relation instanceof BelongsToMany || $parent === null) {
             return null;
@@ -104,7 +128,20 @@ final class EloquentPivotRowRelations implements PivotRowRelations
         }
 
         $eloquent = $model->{$method}();
-        if (!$eloquent instanceof EloquentBelongsToMany || $eloquent instanceof EloquentMorphToMany) {
+
+        return $eloquent instanceof EloquentBelongsToMany && !$eloquent instanceof EloquentMorphToMany ? $eloquent : null;
+    }
+
+    /**
+     * A fresh pivot row of `$relation` declared on `$parent`, or `null` when it is no
+     * `belongsToMany` of that model. A `morphToMany` reads no pivot rows a path walks.
+     *
+     * @param class-string<Model>|null $parent
+     */
+    public static function pivotRow(RelationInterface $relation, ?string $parent): ?Pivot
+    {
+        $eloquent = self::eloquentRelation($relation, $parent);
+        if ($eloquent === null) {
             return null;
         }
 

@@ -120,6 +120,13 @@ final class EloquentPivotRowFiltersTest extends Orchestra
     }
 
     #[Test]
+    public function aPivotRowFilterOnTheRowsOwnEndsIsNamedByTheRelation(): void
+    {
+        self::assertSame([self::FIRST_NAME], $this->related(10, 'filter[rowDefinition]=' . self::FIRST_NAME));
+        self::assertSame([self::COMPANY, self::FIRST_NAME], $this->related(20, 'filter[rowTemplate]=20'));
+    }
+
+    #[Test]
     public function aPivotRowFilterAppliesOnTheRelationshipEndpoint(): void
     {
         $linkage = fn(int $template, string $query): array => \array_column($this->rows($this->read('/api/campaign-templates/' . $template . '/relationships/placeholders?' . $query), 'data'), 'id');
