@@ -35,6 +35,9 @@ warmers plus a deploy-time safety check:
    serves, its path must be one the provider can walk
    ([filters reaching through relations](eloquent.md#filters-reaching-through-relations-through)),
    a `pivot` segment included ([paths through a pivot row](eloquent.md#paths-through-a-pivot-row)).
+   The check that the leaf column exists reads the table's columns from the database, so it is
+   skipped when the schema can't be read at boot, or the table isn't there yet; a typo in a leaf
+   column then surfaces at request time as a database error instead.
    Every sort a cursor-paged
    collection declares must also key its pages
    ([custom sorts on a cursor page](eloquent.md#custom-sorts-on-a-cursor-page)), and every declared

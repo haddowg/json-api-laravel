@@ -60,6 +60,38 @@ final class InMemoryThroughPivotTest extends Orchestra
     }
 
     #[Test]
+    public function aDeprecatedPivotTraversalIsUnrecognisedAsWell(): void
+    {
+        // Its through form can't be declared here, since a path past `pivot` fails warm-up.
+        foreach (['filter[legacyAddedBy]=kim', 'filter[legacyUnaudited]=1'] as $filter) {
+            $this->get('/api/tpTracks/1/playlists?' . $filter)->assertStatus(400)->assertJsonPath('errors.0.code', 'FILTERING_UNRECOGNIZED');
+        }
+    }
+
+    #[Test]
+    public function aMidPathPivotFilterDefaultIsUnrecognisedOnEveryRead(): void
+    {
+        $this->probe('default');
+
+        $this->get('/api/tpAlbums')->assertStatus(400)->assertJsonPath('errors.0.code', 'FILTERING_UNRECOGNIZED');
+    }
+
+    #[Test]
+    public function routeRegistrationRefusesAPathPastThePivotRow(): void
+    {
+        $this->probe('past_pivot');
+        $router = $this->app?->make(Router::class);
+        $registrar = $this->app?->make(RouteRegistrar::class);
+        self::assertInstanceOf(Router::class, $router);
+        self::assertInstanceOf(RouteRegistrar::class, $registrar);
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('is not a relation the pivot rows of "playlists" hold');
+
+        $registrar->registerServer($router);
+    }
+
+    #[Test]
     public function aSortThroughThePivotRowIsUnrecognised(): void
     {
         // The relation's only sort reads the pivot row, so it is left with none at all.
@@ -82,6 +114,13 @@ final class InMemoryThroughPivotTest extends Orchestra
         $this->expectExceptionMessage('Relation "cursorPlaylists" on resource type "tpTracks" is ordered by "added", which reaches through its pivot row, but the data provider of "tpPlaylists" does not query the relation\'s join');
 
         $registrar->registerServer($router);
+    }
+
+    private function probe(string $declaration): void
+    {
+        /** @var \Illuminate\Contracts\Config\Repository $config */
+        $config = $this->app?->make('config');
+        $config->set('through_pivot.memory_probe', $declaration);
     }
 
     /**

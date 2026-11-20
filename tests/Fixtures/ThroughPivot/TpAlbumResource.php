@@ -35,7 +35,15 @@ final class TpAlbumResource extends AbstractResource
         $addedAt = DateRange::make('addedAt', 'addedAt')->through('tracks.playlists.pivot');
 
         // An in-memory store can't name the relations a pivot row holds.
-        return config('through_pivot.store') === 'memory' ? [$addedAt] : [
+        if (config('through_pivot.store') === 'memory') {
+            return match (config('through_pivot.memory_probe')) {
+                'default' => [$addedAt, Where::make('position', 'position')->through('tracks.playlists.pivot')->integer()->default(1)],
+                'past_pivot' => [$addedAt, Where::make('adder', 'name')->through('tracks.playlists.pivot.addedBy')],
+                default => [$addedAt],
+            };
+        }
+
+        return [
             $addedAt,
             Where::make('adder', 'name')->through('tracks.playlists.pivot.addedBy'),
             Where::make('auditor', 'name')->through('tracks.playlists.pivot.auditor'),

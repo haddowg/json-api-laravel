@@ -156,6 +156,17 @@ declaration that names the classes without the type, such as the return type
 `InMemoryDataProvider`, reads as rows of any object, and `InMemoryDataProvider<Genre>` names
 one class.
 
+Its rows hold no pivot rows, so a path that reaches one needs a store that has them, such as the
+Eloquent provider. On a type the in-memory provider serves:
+
+- a filter whose `->through()` path starts with `pivot` and ends on a pivot field answers `400`
+  `FILTERING_UNRECOGNIZED`, as a `pivot.` column filter does, and so does a deprecated
+  `pivot.`-prefixed traversal;
+- a filter whose path reaches a pivot row mid-path, such as `tracks.playlists.pivot`, answers
+  the same `400`, and a default declared on one answers it on every read of the endpoint;
+- a path that goes on past `pivot`, such as `pivot.addedBy`, fails route registration and
+  `jsonapi:optimize`, since the provider can't name the relations a pivot row holds.
+
 ## The write interface
 
 ```php
