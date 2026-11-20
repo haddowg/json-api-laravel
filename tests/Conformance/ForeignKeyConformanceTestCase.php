@@ -167,6 +167,18 @@ abstract class ForeignKeyConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    public function aPatchActionComparesALockedWriteOnlyToManyWithItsBlankInput(): void
+    {
+        // A PATCH action hydrates its input as an update onto a blank grant, so naming the
+        // very secrets g1 holds still changes the members it compares with.
+        $this->jsonApi()
+            ->withData(['type' => 'fk-revisable-grants', 'id' => 'g1', 'relationships' => ['lockedSecrets' => ['data' => [['type' => 'fk-secrets', 'id' => '1'], ['type' => 'fk-secrets', 'id' => '2']]]]])
+            ->patch('/api/fk-revisable-grants/g1/-actions/revise')
+            ->assertForbidden()
+            ->assertJsonPath('errors.0.code', 'MEMBERSHIP_CHANGE_PROHIBITED');
+    }
+
+    #[Test]
     public function aPlainReadOfAProviderBackedParentRenders(): void
     {
         $document = $this->fetch('/fk-users/ada');

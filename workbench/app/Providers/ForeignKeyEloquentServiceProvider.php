@@ -33,6 +33,7 @@ use Workbench\App\ForeignKey\Models\FkNote;
 use Workbench\App\ForeignKey\Models\FkProfile;
 use Workbench\App\ForeignKey\Models\FkSecret;
 use Workbench\App\ForeignKey\Models\FkTeam;
+use Workbench\App\ForeignKey\ReviseGrantAction;
 use Workbench\App\ForeignKey\StampGrantAction;
 
 /**
@@ -70,6 +71,7 @@ final class ForeignKeyEloquentServiceProvider extends ServiceProvider
             FkGrantResource::class,
             FkRevisableGrantResource::class,
             StampGrantAction::class,
+            ReviseGrantAction::class,
         ]);
 
         JsonApi::provider(new EloquentDataProvider(self::MODEL_BY_TYPE), priority: -128);
