@@ -232,9 +232,39 @@ abstract class ForeignKeyConformanceTestCase extends Orchestra
             ->withData(['type' => 'fk-users', 'id' => 'ada', 'relationships' => ['lockedItems' => ['data' => \array_map(static fn(string $id): array => ['type' => 'fk-items', 'id' => $id], $ids)]]])
             ->patch('/api/fk-users/ada/-actions/revise');
 
-        $revise('5', '4', '3', '2', '1')->assertOk();
+        // FkUser declares lockedItems, so its input holds the items themselves.
+        $revise('5', '4', '3', '2', '1')->assertOk()->assertJsonPath('meta', ['revised' => true, 'lockedItems' => ['5', '4', '3', '2', '1']]);
         $revise('1')->assertForbidden()->assertJsonPath('errors.0.code', 'MEMBERSHIP_CHANGE_PROHIBITED');
         $revise('1', '2', '3', '4', '5', '6')->assertForbidden();
+    }
+
+    #[Test]
+    #[Group('spec:actions')]
+    public function anActionInputWithNoPropertyForAForeignKeyToManyLeavesItsLinkageToTheHandler(): void
+    {
+        $dynamic = [];
+        \set_error_handler(static function (int $level, string $message) use (&$dynamic): bool {
+            if (!\str_contains($message, 'dynamic property')) {
+                return false;
+            }
+            $dynamic[] = $message;
+
+            return true;
+        }, \E_DEPRECATED);
+        try {
+            $regroup = fn(string ...$ids): TestResponse => $this->jsonApi()
+                ->withData(['type' => 'fk-teams', 'id' => '1', 'relationships' => ['members' => ['data' => \array_map(static fn(string $id): array => ['type' => 'fk-members', 'id' => $id], $ids)]]])
+                ->patch('/api/fk-teams/1/-actions/regroup');
+            $response = $regroup('4', '1');
+            $missing = $regroup('99');
+        } finally {
+            \restore_error_handler();
+        }
+
+        $response->assertOk()->assertJsonPath('meta', ['members' => ['4', '1']]);
+        self::assertSame([], $dynamic);
+        $missing->assertNotFound();
+        self::assertSame(['1', '2', '3'], $this->ids($this->fetch('/fk-teams/1/members?page[size]=10')['data'] ?? null));
     }
 
     #[Test]
