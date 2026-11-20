@@ -34,6 +34,7 @@ use Workbench\App\ForeignKey\FkUserProvider;
 use Workbench\App\ForeignKey\FkUserResource;
 use Workbench\App\ForeignKey\ForeignKeySeed;
 use Workbench\App\ForeignKey\ImportSecretsAction;
+use Workbench\App\ForeignKey\ReviseGrantAction;
 use Workbench\App\ForeignKey\StampGrantAction;
 
 /**
@@ -58,6 +59,7 @@ final class ForeignKeyInMemoryServiceProvider extends ServiceProvider
             FkGrantResource::class,
             FkRevisableGrantResource::class,
             StampGrantAction::class,
+            ReviseGrantAction::class,
         ]);
 
         /** @var InMemorySnapshotCoordinator $coordinator */
