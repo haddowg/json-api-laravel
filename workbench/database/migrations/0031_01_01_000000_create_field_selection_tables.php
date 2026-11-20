@@ -31,6 +31,7 @@ return new class extends Migration {
             $table->json('rows')->nullable();
             $table->json('archive')->nullable();
             $table->json('tags')->nullable();
+            $table->json('blocks')->nullable();
             $table->unsignedInteger('curator_id')->nullable();
         });
     }

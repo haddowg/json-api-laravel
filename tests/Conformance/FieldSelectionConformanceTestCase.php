@@ -378,8 +378,21 @@ abstract class FieldSelectionConformanceTestCase extends Orchestra
     {
         $whole = $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=rows'));
 
-        self::assertSame($whole, $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=rows.*')));
+        $wildcard = $this->fetch('/api/panels/1?fields[panels]=rows.*');
+        self::assertSame($whole, $this->attributesOf($wildcard));
         self::assertCount(2, \is_array($whole['rows'] ?? null) ? $whole['rows'] : []);
+        self::assertSame(self::MEDIA_TYPE, $wildcard->headers->get('Content-Type'));
+        self::assertSame(['version' => '1.1'], $this->jsonApiOf($wildcard));
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    public function aNestedListNamedThroughAWildcardAloneIsSelectedWhole(): void
+    {
+        self::assertSame(
+            $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=rows.*.cells')),
+            $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=rows.*.cells.*')),
+        );
     }
 
     #[Test]
@@ -392,7 +405,9 @@ abstract class FieldSelectionConformanceTestCase extends Orchestra
         self::assertSame($whole, $this->attributesOf($listed));
         self::assertSame(self::MEDIA_TYPE, $listed->headers->get('Content-Type'));
 
-        self::assertSame($whole, $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=rows.*,rows.*.label')));
+        $wildcard = $this->fetch('/api/panels/1?fields[panels]=rows.*,rows.*.label');
+        self::assertSame($whole, $this->attributesOf($wildcard));
+        self::assertSame(self::MEDIA_TYPE, $wildcard->headers->get('Content-Type'));
         self::assertSame(
             ['rows' => [['size' => ['w' => 1, 'h' => 2]], ['size' => ['w' => 3, 'h' => 4]]]],
             $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=rows.*.size,rows.*.size.w')),
@@ -465,6 +480,63 @@ abstract class FieldSelectionConformanceTestCase extends Orchestra
         self::assertStringContainsString('"pattern":"^exhibits\\\\.\\\\*\\\\.(?:[a-z]+)$"', $paths);
         self::assertStringNotContainsString('^tags\\\\.', $paths);
         self::assertStringNotContainsString('^address\\\\.history\\\\.', $paths);
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    public function aWildcardOverAOneOfRendersTheKeysEachItemsVariantAccepts(): void
+    {
+        $response = $this->fetch('/api/panels/1?fields[panels]=blocks.*.title,blocks.*.url');
+
+        $response->assertOk();
+        self::assertSame(
+            ['blocks' => [['type' => 'text', 'title' => 'Intro'], ['type' => 'image', 'url' => '/a.png'], ['type' => 'divider']]],
+            $this->attributesOf($response),
+        );
+        self::assertSame(self::NARROWED, $response->headers->get('Content-Type'));
+        self::assertSame(
+            ['blocks' => [['type' => 'text', 'meta' => ['lang' => 'en']], ['type' => 'image'], ['type' => 'divider']]],
+            $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=blocks.*.meta.lang')),
+        );
+        self::assertSame(
+            $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=blocks')),
+            $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=blocks.*')),
+        );
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    #[Group('openapi')]
+    public function aOneOfListNarrowedResponseMatchesTheGeneratedSchema(): void
+    {
+        $response = $this->fetch('/api/panels/1?fields[panels]=name,blocks.*.title,blocks.*.meta.lang,blocks.*.url');
+
+        $response->assertOk();
+        $this->assertResponseMatchesGeneratedSchema($response, 'panels', SchemaDocumentKind::Single);
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    #[Group('openapi')]
+    public function theFieldsParameterDocumentsEveryVariantsPaths(): void
+    {
+        $factory = $this->app?->make(DocumentFactory::class);
+        self::assertInstanceOf(DocumentFactory::class, $factory);
+        $paths = \json_encode($factory->forServer()->toArray()['paths'] ?? [], \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES);
+
+        self::assertStringContainsString('"pattern":"^blocks\\\\.\\\\*\\\\.(?:title|body|meta)$"', $paths);
+        self::assertStringContainsString('"pattern":"^blocks\\\\.\\\\*\\\\.meta\\\\.(?:lang|tone)$"', $paths);
+        self::assertStringContainsString('"pattern":"^blocks\\\\.\\\\*\\\\.(?:url)$"', $paths);
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    #[Group('spec:errors')]
+    public function aWildcardKeyNoVariantAcceptsIsThe400(): void
+    {
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=blocks.*.style', 'blocks.*.style');
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=blocks.*.title.x', 'blocks.*.title.x');
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=blocks.*.meta.x', 'blocks.*.meta.x');
     }
 
     #[Test]

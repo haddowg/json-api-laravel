@@ -18,6 +18,11 @@ final class Panel
         ['label' => 'B', 'size' => ['w' => 3, 'h' => 4], 'cells' => []],
     ];
     public const array SEED_TAGS = ['red', 'blue'];
+    public const array SEED_BLOCKS = [
+        ['type' => 'text', 'title' => 'Intro', 'body' => 'Hello', 'meta' => ['lang' => 'en', 'tone' => 'warm']],
+        ['type' => 'image', 'title' => 'Pic', 'url' => '/a.png'],
+        ['type' => 'divider', 'style' => 'dashed'],
+    ];
 
     /**
      * @param array<string, mixed>|null $values
@@ -27,6 +32,7 @@ final class Panel
      * @param list<mixed>|null          $rows
      * @param list<mixed>|null          $archive
      * @param list<string>|null         $tags
+     * @param list<mixed>|null          $blocks
      */
     public function __construct(
         public string $id = '',
@@ -39,5 +45,6 @@ final class Panel
         public ?array $rows = null,
         public ?array $archive = null,
         public ?array $tags = null,
+        public ?array $blocks = null,
     ) {}
 }

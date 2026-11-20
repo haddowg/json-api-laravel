@@ -60,6 +60,7 @@ final class EloquentFieldSelectionConformanceTest extends FieldSelectionConforma
             'rows' => PanelSeed::SEED_ROWS,
             'archive' => [],
             'tags' => PanelSeed::SEED_TAGS,
+            'blocks' => PanelSeed::SEED_BLOCKS,
             'curator_id' => 1,
         ]);
     }
