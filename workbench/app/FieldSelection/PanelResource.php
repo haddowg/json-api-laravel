@@ -27,9 +27,10 @@ use Workbench\App\Models\Panel as PanelModel;
  * closed object whose keys can't be selected, and `address` is a closed object whose
  * `geo` is selectable in turn while its `history` list is not. `rows` and `archive` are
  * lists whose items' keys are selected through `*`, each row holding an object and a list
- * selectable in turn and open to other members, `tags` is a list of strings, and `blocks` is
- * a list of a union whose text and image variants each declare their own selectable keys
- * and whose divider declares none.
+ * selectable in turn and open to other members, `tags` is a list of strings, `blocks` is a
+ * list of a union bound to an enum whose text and image variants each declare their own
+ * selectable keys and whose divider declares none, and `hero` is a union attribute whose
+ * image variant declares them and whose video variant doesn't.
  */
 #[AsJsonApiResource]
 final class PanelResource extends AbstractResource
@@ -100,13 +101,19 @@ final class PanelResource extends AbstractResource
             ArrayList::make('archive')->nullable()->of(self::row()),
             ArrayList::make('tags')->nullable(),
             ArrayList::make('blocks')->nullable()->of(
-                OneOf::make('block')->discriminator('type')
-                    ->variant('text', Str::make('title'), Str::make('body'), Obj::make('meta')->fields(Str::make('lang'), Str::make('tone'))->selectableKeys(pattern: 'lang|tone'))
-                    ->variant('image', Str::make('title'), Str::make('url'))
-                    ->variant('divider', Str::make('style'))
-                    ->selectableKeys('text', pattern: 'title|body|meta')
-                    ->selectableKeys('image', pattern: 'url'),
+                OneOf::make('block')->discriminator('type', BlockType::class)
+                    ->variants(static fn(BlockType $type): Obj => match ($type) {
+                        BlockType::Text => Obj::make('text')
+                            ->fields(Str::make('title'), Str::make('body'), Obj::make('meta')->fields(Str::make('lang'), Str::make('tone'))->selectableKeys(pattern: 'lang|tone'))
+                            ->selectableKeys(pattern: 'title|body|meta')
+                            ->build(),
+                        BlockType::Image => Obj::make('image')->fields(Str::make('title'), Str::make('url'))->selectableKeys(pattern: 'url')->build(),
+                        BlockType::Divider => Obj::make('divider')->fields(Str::make('style'))->build(),
+                    }),
             ),
+            OneOf::make('hero')->nullable()->discriminator('kind')
+                ->variant('image', Obj::make('image')->fields(Str::make('src'), Str::make('alt'))->selectableKeys(pattern: 'src|alt'))
+                ->variant('video', Str::make('url')),
             BelongsTo::make('curator', 'curators')->nullable(),
         ];
     }

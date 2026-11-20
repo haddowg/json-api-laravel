@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property list<mixed>|null          $archive
  * @property list<string>|null         $tags
  * @property list<mixed>|null          $blocks
+ * @property array<string, mixed>|null $hero
  * @property int|null                  $curator_id
  */
 final class Panel extends Model
@@ -47,6 +48,7 @@ final class Panel extends Model
         'archive' => 'array',
         'tags' => 'array',
         'blocks' => 'array',
+        'hero' => 'array',
     ];
 
     /**

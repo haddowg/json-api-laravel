@@ -23,6 +23,7 @@ final class Panel
         ['type' => 'image', 'title' => 'Pic', 'url' => '/a.png'],
         ['type' => 'divider', 'style' => 'dashed'],
     ];
+    public const array SEED_HERO = ['kind' => 'image', 'src' => '/h.png', 'alt' => 'Hero'];
 
     /**
      * @param array<string, mixed>|null $values
@@ -33,6 +34,7 @@ final class Panel
      * @param list<mixed>|null          $archive
      * @param list<string>|null         $tags
      * @param list<mixed>|null          $blocks
+     * @param array<string, mixed>|null $hero
      */
     public function __construct(
         public string $id = '',
@@ -46,5 +48,6 @@ final class Panel
         public ?array $archive = null,
         public ?array $tags = null,
         public ?array $blocks = null,
+        public ?array $hero = null,
     ) {}
 }

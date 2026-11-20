@@ -614,6 +614,48 @@ abstract class FieldSelectionConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:sparse-fieldsets')]
+    public function aOneOfAttributeRendersItsDiscriminatorAndTheKeysItsVariantAccepts(): void
+    {
+        $response = $this->fetch('/api/panels/1?fields[panels]=hero.src');
+
+        $response->assertOk();
+        self::assertSame(['hero' => ['kind' => 'image', 'src' => '/h.png']], $this->attributesOf($response));
+        self::assertSame(self::NARROWED, $response->headers->get('Content-Type'));
+        $this->assertResponseMatchesGeneratedSchema($response, 'panels', SchemaDocumentKind::Single);
+        $this->assertUnrecognized('/api/panels/1?fields[panels]=hero.url', 'hero.url');
+
+        $video = $this->json('PATCH', '/api/panels/1?fields[panels]=hero.src', ['data' => [
+            'type' => 'panels',
+            'id' => '1',
+            'attributes' => ['hero' => ['kind' => 'video', 'url' => '/v.mp4']],
+        ]], ['Accept' => self::MEDIA_TYPE, 'CONTENT_TYPE' => self::MEDIA_TYPE]);
+        $video->assertOk();
+        self::assertStringContainsString('"attributes":{"hero":{"kind":"video"}}', (string) $video->getContent());
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
+    public function aWriteOfAnEnumBoundUnionListIsStoredAndNarrowedThroughItsCases(): void
+    {
+        $blocks = [
+            ['type' => 'image', 'title' => 'Pic', 'url' => '/b.png'],
+            ['type' => 'text', 'title' => 'Outro', 'body' => 'Bye', 'meta' => ['lang' => 'fr', 'tone' => 'calm']],
+        ];
+        $response = $this->json('PATCH', '/api/panels/1?fields[panels]=blocks.*.url,blocks.*.meta.lang', ['data' => [
+            'type' => 'panels',
+            'id' => '1',
+            'attributes' => ['blocks' => $blocks],
+        ]], ['Accept' => self::MEDIA_TYPE, 'CONTENT_TYPE' => self::MEDIA_TYPE]);
+
+        $response->assertOk();
+        self::assertSame(['blocks' => [['type' => 'image', 'url' => '/b.png'], ['type' => 'text', 'meta' => ['lang' => 'fr']]]], $this->attributesOf($response));
+
+        $this->detachPersistedState();
+        self::assertSame($blocks, $this->attributesOf($this->fetch('/api/panels/1?fields[panels]=blocks'))['blocks'] ?? null);
+    }
+
+    #[Test]
+    #[Group('spec:sparse-fieldsets')]
     public function aNotSparseFieldRendersWholeUnlessItsKeysAreSelected(): void
     {
         $whole = $this->fetch('/api/pinboards/1?fields[pinboards]=name');
