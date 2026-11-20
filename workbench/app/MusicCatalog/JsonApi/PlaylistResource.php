@@ -9,6 +9,7 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Constraint\Comparison;
 use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Resource\Field\BelongsTo;
+use haddowg\JsonApi\Resource\Field\BelongsToBuilder;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\Boolean;
 use haddowg\JsonApi\Resource\Field\DateTime;
@@ -51,12 +52,15 @@ use Workbench\App\MusicCatalog\Security\PlaylistApiPolicy;
  *    the pivot-bearing `belongsToMany` `orderedTracks` (position/weight/addedAt via the
  *    `mc_playlist_track` association — the count-free pivot witness).
  *
- * It is registered on both servers because {@see TrackResource} is (a track's `playlists`
+ * The type is served on both servers because {@see TrackResource} is (a track's `playlists`
  * relation exposes `GET /tracks/{id}/playlists`, which returns playlist resource objects)
- * and because a user's `playlists` relation does the same under `/admin`.
+ * and because a user's `playlists` relation does the same under `/admin`. This class serves
+ * the default server, where `owner` is read-only, and {@see PlaylistAdminResource} extends
+ * it to serve the admin server, where `owner` stays writable. Each server reads only its
+ * own class's attribute, so the admin class repeats this one.
  */
 #[AsJsonApiResource(
-    server: ['default', 'admin'],
+    server: ['default'],
     // Only update + delete declare an ability — create and the reads carry no ability, so
     // (with no type-wide policy) they inherit the document-level default requirement, exactly
     // as the Symfony example's playlist (which declares only securityUpdate/securityDelete).
@@ -68,7 +72,7 @@ use Workbench\App\MusicCatalog\Security\PlaylistApiPolicy;
     // Deleting a playlist needs the admin scope on top of the write scope the resolver gives.
     operationScopes: ['delete' => ['library:write', 'library:admin']],
 )]
-final class PlaylistResource extends AbstractResource implements ResourceLifecycleHooksInterface
+class PlaylistResource extends AbstractResource implements ResourceLifecycleHooksInterface
 {
     use ResourceLifecycleHooksTrait;
 
@@ -89,10 +93,9 @@ final class PlaylistResource extends AbstractResource implements ResourceLifecyc
             // resource object cannot be served there. A linkage `{type: users, id}`
             // asserts no shape; an admin client dereferences it at `/admin/users/{id}`.
             // exampleId() gives its linkage examples an id where `users` is not registered.
-            BelongsTo::make('owner', 'users')
-                ->security(read: 'inspectOwner')
-                ->withoutRelatedEndpoint()
-                ->exampleId('1'),
+            // A default-server client has no user id to write either, so owner() declares
+            // it read-only here and PlaylistAdminResource keeps it writable under `/admin`.
+            $this->owner(),
             // The renamed-relation witness: served at `/playlists/{id}/public-owner` and
             // `/playlists/{id}/relationships/public-owner`, and its links and the OpenAPI
             // paths name that segment. The member name and `?include=publicOwner` keep the
@@ -143,6 +146,19 @@ final class PlaylistResource extends AbstractResource implements ResourceLifecyc
                 })
                 ->paginate(PagePaginator::make()->withDefaultPerPage(2)),
         ];
+    }
+
+    /**
+     * The `owner` relation as the default server serves it: read-only, since `users` is
+     * admin-only and a client of this server cannot name a user.
+     */
+    protected function owner(): BelongsToBuilder
+    {
+        return BelongsTo::make('owner', 'users')
+            ->security(read: 'inspectOwner')
+            ->withoutRelatedEndpoint()
+            ->exampleId('1')
+            ->readOnly();
     }
 
     /**
