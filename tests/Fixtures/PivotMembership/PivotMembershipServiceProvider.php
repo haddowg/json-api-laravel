@@ -47,7 +47,7 @@ final class PivotMembershipServiceProvider extends ServiceProvider
 
     public function register(): void
     {
-        JsonApi::register([CrateResource::class, RecordResource::class]);
+        JsonApi::register([CrateResource::class, RecordResource::class, ReviseCrateRecords::class]);
 
         if (config('pm.store') === 'memory') {
             $records = [];

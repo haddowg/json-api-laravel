@@ -41,10 +41,14 @@ use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
 use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
+use haddowg\JsonApiLaravel\DataProvider\ForeignKeyReads;
+use haddowg\JsonApiLaravel\DataProvider\ScopedRelationshipWrites;
 use haddowg\JsonApiLaravel\Event\AfterActionEvent;
 use haddowg\JsonApiLaravel\Event\BeforeActionEvent;
+use haddowg\JsonApiLaravel\Operation\ForeignKeyWrites;
 use haddowg\JsonApiLaravel\Operation\Operation;
 use haddowg\JsonApiLaravel\Operation\RelationFillHook;
+use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Server\ServerNames;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use haddowg\JsonApiLaravel\Validation\FilterValueValidator;
@@ -96,6 +100,9 @@ final readonly class ActionInvoker
         private ?FilterValueValidator $filterValidator = null,
         private ?WriteTransactionContext $txContext = null,
         private ?AfterCommit $afterCommit = null,
+        // The linkage holder whose identified members the scoped-write check reads, as the
+        // CRUD handler's does.
+        private ?RequestScopedRelationshipLinkage $relationshipLinkage = null,
     ) {}
 
     public function invoke(CustomActionOperation $operation): DataResponse|MetaResponse|NoContentResponse|AcceptedResponse|SeeOtherResponse|ErrorResponse|RawResponse
@@ -338,8 +345,8 @@ final readonly class ActionInvoker
         if ($resource !== null) {
             // The input's members are compared with the resource the action was called on when
             // the input reads as that resource's type, otherwise with the blank instance.
-            $current = $entity !== null && $inputType === $descriptor->type ? $entity : $instance;
-            [$instance, $body] = $this->relateInput($server, $resource, $instance, $body, $current);
+            $stored = $entity !== null && $inputType === $descriptor->type ? $entity : null;
+            [$instance, $body] = $this->relateInput($server, $resource, $instance, $body, $stored);
         }
 
         $hydrated = $server->hydratorFor($inputType)->hydrate($body, $instance);
@@ -354,12 +361,13 @@ final readonly class ActionInvoker
      * hydration would assign the bare ids, as an attribute of a model. A model gets each
      * as a loaded relation, any other object through its accessor. A relation written by
      * its `fillUsing()` hook still gets the linkage, and a to-many that can't change its
-     * members is checked first against the members `$current` holds: the resource the
-     * action was called on, or the blank input. A member that doesn't exist is a `404`.
+     * members is checked first against the members `$stored` holds, the resource the
+     * action was called on, or the blank input when it is `null`. A member that doesn't
+     * exist is a `404`.
      *
      * @return array{object, JsonApiRequestInterface}
      */
-    private function relateInput(Server $server, AbstractResource $resource, object $instance, JsonApiRequestInterface $body, object $current): array
+    private function relateInput(Server $server, AbstractResource $resource, object $instance, JsonApiRequestInterface $body, ?object $stored): array
     {
         /** @var array<string, mixed> $document */
         $document = (array) $body->getParsedBody();
@@ -383,8 +391,8 @@ final readonly class ActionInvoker
             }
 
             if (!$creating && $linkage instanceof ToManyRelationship && $relation instanceof GuardsMembershipInterface
-                && !$relation->allowsMembershipChangeFor($body, $current)) {
-                $relation->assertMembershipUnchanged($body, $current, $this->currentMembers($server, $relation, $current, $body), $linkage);
+                && !$relation->allowsMembershipChangeFor($body, $stored ?? $instance)) {
+                $this->guardMembership($server, $resource, $relation, $linkage, $body, $stored ?? $instance, $stored !== null);
             }
 
             if (RelationFillHook::declaredBy($relation)) {
@@ -457,6 +465,40 @@ final readonly class ActionInvoker
         }
 
         return $members;
+    }
+
+    /**
+     * Refuses a replacement that changes the members of a to-many declaring
+     * `cannotChangeMembership()`, read as an update of the resource reads them: the rows its
+     * foreign key serves for a relation declared with one, otherwise its members with the ones
+     * the related type's scope hides kept in the linkage, so a client restating the members it
+     * can see changes nothing. The blank input of an action called on no resource holds none.
+     *
+     * @throws \haddowg\JsonApi\Exception\MembershipChangeProhibited
+     */
+    private function guardMembership(Server $server, AbstractResource $resource, RelationInterface&GuardsMembershipInterface $relation, ToManyRelationship $linkage, JsonApiRequestInterface $body, object $current, bool $stored): void
+    {
+        if (!$stored) {
+            $relation->assertMembershipUnchanged($body, $current, $this->currentMembers($server, $relation, $current, $body), $linkage);
+
+            return;
+        }
+
+        $reads = new ForeignKeyReads($this->providers);
+        if ($reads->reads($relation)) {
+            $writes = new ForeignKeyWrites($this->providers, $this->persisters, $reads);
+            $relation->assertMembershipUnchanged($body, $current, $writes->memberPairs($server, $resource::$type, $current, $relation, $body), $linkage);
+
+            return;
+        }
+
+        $scoped = new ScopedRelationshipWrites($this->providers, $this->relationshipLinkage?->members());
+        $relation->assertMembershipUnchanged(
+            $body,
+            $current,
+            $this->currentMembers($server, $relation, $current, $body),
+            $scoped->withHiddenMembers($current, $relation, $linkage, $server, $body),
+        );
     }
 
     private static function wireId(Server $server, string $type, string|int $key): string
