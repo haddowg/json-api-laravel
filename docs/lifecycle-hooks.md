@@ -94,7 +94,9 @@ hooks `$context->relation`, `$context->linkage` and `$context->mode`.
 the typed `meta` the write sent: `->document` for its top-level `meta` and `->resource` for its
 `data.meta`, each validated against what the type declares in `requestDocumentMeta()` and
 `resourceMeta()` (see [typed request meta](openapi.md#typed-request-and-resource-object-meta)).
-They are empty for a write that sent none.
+They are empty for a write that sent none. `->document` is also empty when the type declares no
+request meta for the write, as an action's `requestMeta()` is; the raw `meta` stays readable on
+`$context->request`.
 
 ## Hooks vs events vs model events
 

@@ -20,9 +20,19 @@ final class TrMetaRecorder
      */
     public static array $seen = [];
 
+    /**
+     * The top-level `meta` each event's request carried as sent.
+     *
+     * @var array<string, mixed>
+     */
+    public static array $raw = [];
+
     public function handle(BeforeCreateEvent|AfterCreateEvent|BeforeUpdateEvent|BeforeDeleteEvent|BeforeRelationshipMutateEvent $event): void
     {
         $meta = $event->writtenMeta();
-        self::$seen[$event->type . ':' . (new \ReflectionClass($event))->getShortName()] = ['document' => $meta->document, 'resource' => $meta->resource];
+        $key = $event->type . ':' . (new \ReflectionClass($event))->getShortName();
+        self::$seen[$key] = ['document' => $meta->document, 'resource' => $meta->resource];
+        $body = $event->request->getParsedBody();
+        self::$raw[$key] = \is_array($body) ? ($body['meta'] ?? null) : null;
     }
 }

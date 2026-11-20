@@ -186,13 +186,16 @@ constraints, its JSON type or its strict date format refuse, each number first p
 member's type. A delete may send a meta-only body, which is checked against the type's `Delete`
 declaration. Inside an [atomic batch](atomic-operations.md) each operation's `meta` is checked
 against what its type declares for an atomic operation, at
-`/atomic:operations/<n>/meta/<member>`, and the batch's own `meta` stays free-form. A type
-declaring nothing keeps `meta` open in both directions.
+`/atomic:operations/<n>/meta/<member>`, and the batch's own `meta` stays free-form. An operation
+addressed by `href` takes the declaration of the type and write its `href` resolves to, as one
+addressed by `ref` does. A type declaring nothing keeps `meta` open in both directions.
 
 The typed values reach the write: `writtenMeta()` on the create, update, save, delete and
 relationship events, `HookContext::writtenMeta()` in a resource's
 [lifecycle hooks](lifecycle-hooks.md#hookcontext), and `ActionContext::requestMeta()` and
-`writtenMeta()` in an [action](actions.md#declaring-request-meta). `data.meta` members declaring
+`writtenMeta()` in an [action](actions.md#declaring-request-meta). A write whose type declares
+no request meta for it reads an empty top-level `meta` through these, as an action declaring none
+does, and the raw `meta` stays on the request. `data.meta` members declaring
 `fillUsing()` are applied to the model as it hydrates; the others stay on the written meta.
 
 A relationship write answers a meta-only `200` when its type declares

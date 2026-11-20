@@ -115,6 +115,7 @@ abstract class TypedRequestMetaTestCase extends Orchestra
     {
         parent::setUp();
         TrMetaRecorder::$seen = [];
+        TrMetaRecorder::$raw = [];
 
         if ($this->store() !== 'eloquent') {
             return;
@@ -328,6 +329,10 @@ abstract class TypedRequestMetaTestCase extends Orchestra
         $response = $this->send('POST', '/api/tr-plains', ['data' => ['type' => 'tr-plains', 'attributes' => ['name' => 'Free'], 'meta' => ['anything' => 1]], 'meta' => ['whatever' => ['x' => 1]]]);
         $response->assertStatus(201);
         self::assertSame(['free' => true], $response->json('data.meta'));
+        // The typed accessor reads no undeclared request meta, as an action's requestMeta() does,
+        // while the raw meta stays on the request and data.meta is carried as sent.
+        self::assertSame(['document' => [], 'resource' => ['anything' => 1]], TrMetaRecorder::$seen['tr-plains:BeforeCreateEvent'] ?? null);
+        self::assertSame(['whatever' => ['x' => 1]], TrMetaRecorder::$raw['tr-plains:BeforeCreateEvent'] ?? null);
 
         config(['app.debug' => true]);
         $this->send('GET', '/api/tr-plains/1')->assertOk();
