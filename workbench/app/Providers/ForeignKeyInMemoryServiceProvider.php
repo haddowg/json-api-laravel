@@ -37,6 +37,8 @@ use Workbench\App\ForeignKey\ImportSecretsAction;
 use Workbench\App\ForeignKey\RegroupTeamAction;
 use Workbench\App\ForeignKey\ReviseAnyGrantAction;
 use Workbench\App\ForeignKey\ReviseGrantAction;
+use Workbench\App\ForeignKey\ReviseGrantByCommandAction;
+use Workbench\App\ForeignKey\ReviseGrantFromUserAction;
 use Workbench\App\ForeignKey\ReviseLockedItemsAction;
 use Workbench\App\ForeignKey\StampGrantAction;
 
@@ -64,6 +66,8 @@ final class ForeignKeyInMemoryServiceProvider extends ServiceProvider
             StampGrantAction::class,
             ReviseGrantAction::class,
             ReviseAnyGrantAction::class,
+            ReviseGrantByCommandAction::class,
+            ReviseGrantFromUserAction::class,
             ReviseLockedItemsAction::class,
             RegroupTeamAction::class,
         ]);
