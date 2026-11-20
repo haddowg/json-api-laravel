@@ -24,7 +24,7 @@ final class TmClashResource extends AbstractResource
         return [Id::make(), Str::make('name')];
     }
 
-    public function documentMeta(OperationType $operation): iterable
+    public function documentMeta(OperationType $operation, ?string $relation = null): iterable
     {
         return $operation === OperationType::FetchCollection ? [Integer::make('page')] : [];
     }
