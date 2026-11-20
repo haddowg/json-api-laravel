@@ -12,6 +12,13 @@ namespace Workbench\App\ForeignKey;
 final class FkUser
 {
     /**
+     * The items an action's input names; reads of `lockedItems` go through the foreign key.
+     *
+     * @var list<object>
+     */
+    public array $lockedItems = [];
+
+    /**
      * @param list<object> $pinned
      */
     public function __construct(
