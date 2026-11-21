@@ -7,7 +7,9 @@ namespace haddowg\JsonApiLaravel\Authorization;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Filter\RelationHop;
 use haddowg\JsonApi\Resource\RelationAuthorizerInterface;
+use haddowg\JsonApi\Resource\ThroughReadGateInterface;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Operation\Operation;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
@@ -20,13 +22,14 @@ use haddowg\JsonApiLaravel\Server\ServerRegistry;
  * `security(read:)` ability against the parent, the rule the related and relationship reads
  * apply; a relation without a string ability inherits the parent's read, which the caller
  * already passed to see the parent. A to-many whose related type the caller may not list
- * renders no data either. A flattened `on()` write needs the
+ * renders no data either. A filter that reaches through a relation is decided by
+ * {@see ViewableRows::refusesThrough()}. A flattened `on()` write needs the
  * `update` ability (or its rename) of the related type on the row it writes onto.
  *
  * One instance serves one server. The server is resolved lazily, because the server is built
  * with this authorizer.
  */
-final class RelationAuthorizer implements RelationAuthorizerInterface
+final class RelationAuthorizer implements RelationAuthorizerInterface, ThroughReadGateInterface
 {
     /**
      * The type declaring each relation instance of the server, filled on first use.
@@ -59,6 +62,11 @@ final class RelationAuthorizer implements RelationAuthorizerInterface
         }
 
         return !$this->refusesList($relation);
+    }
+
+    public function canReadThrough(RelationHop $hop, JsonApiRequestInterface $request): bool
+    {
+        return !($this->rows?->refusesThrough($hop->relation, $hop->parentType, $hop->relatedTypes()) ?? false);
     }
 
     public function canWriteRelatedAttribute(mixed $owner, RelationInterface $relation, FieldInterface $field, mixed $model, JsonApiRequestInterface $request): bool

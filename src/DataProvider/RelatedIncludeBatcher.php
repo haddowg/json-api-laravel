@@ -394,7 +394,7 @@ final class RelatedIncludeBatcher
             if ($this->ordersLinkage($server, $type, $entities[0], $relation, $request)) {
                 $rendering = \array_values(\array_filter($entities, fn(object $entity): bool => $this->rendersData($server, $entity, $relation)));
                 if ($rendering !== [] && (!$batch || $this->executeLoad($server, $rendering, $type, $relation, $request, $linkages) === null)) {
-                    $this->loadOrdered($server, $rendering, $relation, $request, $linkages);
+                    $this->loadOrdered($server, $rendering, $type, $relation, $request, $linkages);
                 }
 
                 continue;
@@ -601,7 +601,7 @@ final class RelatedIncludeBatcher
         \assert($provider !== null);
 
         $criteria = $relation->isToMany()
-            ? $this->linkageCriteria($server, $provider, $entities[0], $relation, $request)
+            ? $this->linkageCriteria($server, $type, $provider, $entities[0], $relation, $request)
             : $this->plainIncludeCriteria($request);
         $serializer = $server->serializerFor($type);
         $batch = $this->providers->fetchRelatedBatch($type, $rendering, $relation, $criteria, $request, static fn(object $entity): string => $serializer->getId($entity));
@@ -851,7 +851,7 @@ final class RelatedIncludeBatcher
 
         $targets = $batch && $monomorphic ? $this->executeLoad($server, $entities, $type, $relation, $request, $linkages) : null;
         if ($targets === null && $this->ordersLinkage($server, $type, $entities[0], $relation, $request)) {
-            $this->loadOrdered($server, $entities, $relation, $request, $linkages);
+            $this->loadOrdered($server, $entities, $type, $relation, $request, $linkages);
         }
         if ($targets !== null) {
             // Thread the root-scoped safeguards into the next level unchanged.
@@ -950,7 +950,7 @@ final class RelatedIncludeBatcher
 
         $provider = $this->providers->forType($type);
         $criteria = $relation->isToMany()
-            ? $this->linkageCriteria($server, $provider, $entities[0], $relation, $request)
+            ? $this->linkageCriteria($server, $type, $provider, $entities[0], $relation, $request)
             : $this->plainIncludeCriteria($request);
         $batch = $provider->fetchRelatedCollectionBatch($type, $entities, $relation, $criteria, $request);
         $outOfBand = $relation->isToMany() && ($criteria->defaultSort !== [] || FilterDefaults::apply([], $criteria->filters) !== []);
@@ -1042,7 +1042,7 @@ final class RelatedIncludeBatcher
             return false;
         }
 
-        $criteria = $this->linkageCriteria($server, $this->providers->forType($type), $entity, $relation, $request);
+        $criteria = $this->linkageCriteria($server, $type, $this->providers->forType($type), $entity, $relation, $request);
 
         return $criteria->defaultSort !== [] || FilterDefaults::apply([], $criteria->filters) !== [];
     }
@@ -1055,13 +1055,13 @@ final class RelatedIncludeBatcher
      * @param list<object>                                                            $entities
      * @param array<int, array<string, RelationshipLinkage|ToOneRelationshipLinkage>> $linkages
      */
-    private function loadOrdered(Server $server, array $entities, RelationInterface $relation, JsonApiRequestInterface $request, array &$linkages): void
+    private function loadOrdered(Server $server, array $entities, string $type, RelationInterface $relation, JsonApiRequestInterface $request, array &$linkages): void
     {
         $relatedType = $relation->relatedTypes()[0];
         $provider = $this->providers->forType($relatedType);
 
         foreach ($entities as $entity) {
-            $criteria = $this->linkageCriteria($server, $provider, $entity, $relation, $request);
+            $criteria = $this->linkageCriteria($server, $type, $provider, $entity, $relation, $request);
             $linkages[\spl_object_id($entity)][$relation->name()] = new RelationshipLinkage(
                 $this->itemsOf($provider->fetchRelatedCollection($relatedType, $entity, $relation, $criteria, $request)),
             );
@@ -1074,7 +1074,7 @@ final class RelatedIncludeBatcher
      *
      * @param DataProviderInterface<object> $provider
      */
-    private function linkageCriteria(Server $server, DataProviderInterface $provider, object $entity, RelationInterface $relation, JsonApiRequestInterface $request): CollectionCriteria
+    private function linkageCriteria(Server $server, string $type, DataProviderInterface $provider, object $entity, RelationInterface $relation, JsonApiRequestInterface $request): CollectionCriteria
     {
         $relatedType = $relation->relatedTypes()[0] ?? null;
 
@@ -1083,6 +1083,8 @@ final class RelatedIncludeBatcher
             $relation,
             $provider instanceof QueriesPivotColumnsInterface && $provider->queriesPivotColumns($entity, $relation),
             $request,
+            $server,
+            $type,
         );
     }
 

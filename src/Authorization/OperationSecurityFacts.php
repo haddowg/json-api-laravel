@@ -15,6 +15,7 @@ use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\HasMany;
 use haddowg\JsonApi\Resource\Field\HasOne;
+use haddowg\JsonApi\Resource\Filter\RelationHop;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataPersister\Eloquent\EloquentDataPersister;
 use haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister;
@@ -75,6 +76,38 @@ final class OperationSecurityFacts
     public function canRequireAuthentication(string $server, array $types, ?TypeMetadataInterface $type, OperationKey $operation): bool
     {
         return $this->middleware($server, $type, $operation)[0];
+    }
+
+    /**
+     * Whether a caller can be refused a filter that reaches through `$hop`, as
+     * {@see ViewableRows::refusesThrough()} decides at runtime: the relation's read permission
+     * when it declares one, else the related types' `viewAny` and `view` checks.
+     */
+    public function canRefuseThrough(string $server, RelationHop $hop): bool
+    {
+        $read = $hop->relation->securityRead();
+        if (\is_bool($read)) {
+            return false;
+        }
+        if (\is_string($read) || $this->definesReadAbilityNamed($server, $hop->parentType, $hop->relation->name())) {
+            return true;
+        }
+
+        foreach ($hop->relatedTypes() as $related) {
+            if ($this->enforces($server, $related, Operation::FetchCollection)) {
+                return true;
+            }
+
+            // A `view` check that reads the row is left to the query scope, so only one that
+            // decides without it refuses a filter.
+            $view = $this->authorizer->resourceAuthorization($server, $related)?->ability(Operation::FetchOne) ?? Authorizer::conventionAbility(Operation::FetchOne);
+            $row = $this->persisters->supportsType($related) ? $this->persisters->forType($related)->instantiate($related) : null;
+            if (\is_string($view) && $this->enforces($server, $related, Operation::FetchOne) && $this->authorizer->decidesWithoutRow($related, $view, $row, $server)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -271,7 +304,12 @@ final class OperationSecurityFacts
      */
     private function definesReadAbility(string $server, string $type, RelationMetadataInterface $relation): bool
     {
-        $ability = 'view' . \Illuminate\Support\Str::studly($relation->name());
+        return $this->definesReadAbilityNamed($server, $type, $relation->name());
+    }
+
+    private function definesReadAbilityNamed(string $server, string $type, string $relation): bool
+    {
+        $ability = 'view' . \Illuminate\Support\Str::studly($relation);
         if (\in_array($ability, ['viewAny', 'view', 'create', 'update', 'delete', 'restore', 'forceDelete'], true)) {
             return false;
         }

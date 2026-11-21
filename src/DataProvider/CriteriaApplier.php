@@ -4,16 +4,22 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\DataProvider;
 
+use haddowg\JsonApi\Collection\Keyset\KeysetColumn;
 use haddowg\JsonApi\Exception\FilterParamUnrecognized;
 use haddowg\JsonApi\Exception\FilterValueInvalid;
 use haddowg\JsonApi\Exception\SortingUnsupported;
 use haddowg\JsonApi\Exception\SortParamUnrecognized;
+use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterDefaults;
 use haddowg\JsonApi\Resource\Filter\FilterHandlerInterface;
+use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
+use haddowg\JsonApi\Resource\Filter\RelationHop;
+use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApi\Resource\Sort\SortHandlerInterface;
 use haddowg\JsonApi\Resource\Sort\SortMatcher;
+use Illuminate\Auth\Access\AuthorizationException;
 
 /**
  * The storage-agnostic half of a collection fetch: matches the requested
@@ -112,19 +118,48 @@ final class CriteriaApplier
 
         foreach (FilterMatcher::directives($requested, $criteria->filters, $criteria->request) as $directive) {
             $filter = $criteria->paths?->resolve($directive->filter) ?? $directive->filter;
-            $query = $handler->apply($filter, $query, $directive->value);
+            $paths = $criteria->paths === null ? null : $this->readablePaths($criteria, $criteria->paths, $filter, $directive->key(), $directive->value);
+            $applying = $paths !== null && $handler instanceof ScopesFilterHopsInterface ? $handler->forPaths($paths) : $handler;
+            $query = $applying->apply($filter, $query, $directive->value);
         }
 
         return $query;
     }
 
     /**
+     * The paths `$filter`, matched under `$key`, runs with: the relations it reaches through
+     * that the caller may not read. A filter the client asked for is refused instead, with the
+     * `403` a related read of the relation gets. A filter default isn't the client's, so it
+     * matches no row through such a relation.
+     *
+     * @throws AuthorizationException when the client's filter reaches through a relation the caller may not read
+     */
+    private function readablePaths(CollectionCriteria $criteria, FilterPaths $paths, FilterInterface $filter, string $key, mixed $value): FilterPaths
+    {
+        $request = $criteria->request;
+        $refused = $request === null ? [] : $paths->refusedHops($paths->hopsOfRequested($filter, $value), $request);
+        if ($refused !== [] && \array_key_exists($key, $criteria->queryParameters->filter)) {
+            throw new AuthorizationException(\sprintf('Access denied to the relation "%s" the filter "%s" reaches through.', $refused[0]->relation->name(), $key));
+        }
+
+        return $paths->scoped(\array_map(static fn(RelationHop $hop): RelationInterface => $hop->relation, $refused));
+    }
+
+    /**
+     * Applies the requested sorts, or the default order when none is requested, each sort
+     * reaching through relations resolved against the type the criteria run against and
+     * gated as {@see readableSortPaths()} decides.
+     *
      * @template TQuery
      *
      * @param TQuery                                     $query
      * @param SortHandlerInterface<contravariant TQuery> $handler
      *
      * @return TQuery
+     *
+     * @throws SortingUnsupported     when sorting is requested but no sorts are declared
+     * @throws SortParamUnrecognized  when a requested or default sort names an undeclared sort
+     * @throws AuthorizationException when the client's sort reaches through a relation the caller may not read
      */
     private function applySorts(CollectionCriteria $criteria, mixed $query, SortHandlerInterface $handler): mixed
     {
@@ -135,22 +170,113 @@ final class CriteriaApplier
         // appended to a requested sort (core's docs/sorts.md). The defaults are still
         // matched against the declared sort vocabulary (same as a requested sort),
         // so a default naming an undeclared sort is a server-config error rather
-        // than a silently dropped directive.
-        if ($requested === []) {
-            $directives = $this->defaultDirectives($criteria);
-            if ($directives === []) {
-                return $query;
-            }
-
-            return $handler->apply($directives, $query);
+        // than a silently dropped directive. Requested sorts match in request order
+        // (exact keys, then sort families); the handler owns the combination (sorts do
+        // not compose commutatively), so the whole list is applied in ONE composite
+        // call, most significant first.
+        $directives = $requested === []
+            ? $this->defaultDirectives($criteria)
+            : SortMatcher::directives($requested, $criteria->sorts, $criteria->request);
+        if ($directives === []) {
+            return $query;
         }
 
-        // Matched in request order (exact keys, then sort families); the handler owns
-        // the combination (sorts do not compose commutatively), so the whole list is
-        // applied in ONE composite call, most significant first.
-        $directives = SortMatcher::directives($requested, $criteria->sorts, $criteria->request);
+        $directives = \array_map(static fn(SortDirective $directive): SortDirective => self::resolvedDirective($criteria, $directive), $directives);
+        if ($criteria->paths !== null) {
+            $paths = $this->readableSortPaths($criteria, $criteria->paths, $directives);
+            if ($handler instanceof ScopesFilterHopsInterface) {
+                $handler = $handler->forPaths($paths);
+            }
+        }
 
         return $handler->apply($directives, $query);
+    }
+
+    /**
+     * The paths sorts reaching through relations run with, as {@see readablePaths()} decides
+     * for a filter: a sort the client asked for through a relation the caller may not read is
+     * refused with the `403` a related read of the relation gets, and a default order reads
+     * `null` through such a relation, as if every row there were hidden.
+     *
+     * @param list<SortDirective> $directives
+     *
+     * @throws AuthorizationException when the client's sort reaches through a relation the caller may not read
+     */
+    private function readableSortPaths(CollectionCriteria $criteria, FilterPaths $paths, array $directives): FilterPaths
+    {
+        $request = $criteria->request;
+        $requested = $criteria->queryParameters->sort !== [];
+        $refused = [];
+        foreach ($directives as $directive) {
+            $hops = $request === null ? [] : $paths->refusedHops($paths->hopsOfSort($directive->sort), $request);
+            if ($hops !== [] && $requested) {
+                throw new AuthorizationException(\sprintf('Access denied to the relation "%s" the sort "%s" reaches through.', $hops[0]->relation->name(), $directive->sort->key()));
+            }
+            foreach ($hops as $hop) {
+                $refused[] = $hop->relation;
+            }
+        }
+
+        return $paths->scoped($refused);
+    }
+
+    /**
+     * The keyset columns of a cursor page with each sort reaching through relations resolved
+     * against the type the criteria run against, and the paths its levels read them with,
+     * decided as {@see readableSortPaths()} decides them for an offset page. With `$admitting`,
+     * each such level reads its value through the rows the reached types' providers admit, so a
+     * row a scope hides sorts as `null`, as the in-memory walk needs.
+     *
+     * @param list<KeysetColumn> $columns
+     *
+     * @return array{list<KeysetColumn>, FilterPaths|null}
+     *
+     * @throws AuthorizationException when the client's sort reaches through a relation the caller may not read
+     */
+    public function keysetColumns(CollectionCriteria $criteria, array $columns, bool $admitting = false): array
+    {
+        $paths = $criteria->paths;
+        if ($paths === null) {
+            return [$columns, null];
+        }
+
+        $resolved = [];
+        $directives = [];
+        foreach ($columns as $column) {
+            $sort = $column->sort;
+            if ($sort instanceof SortByField && $sort->through !== null) {
+                $sort = $paths->resolveSort($sort);
+                \assert($sort instanceof SortByField);
+                $directives[] = new SortDirective($sort, $column->descending);
+            }
+            $resolved[] = [$column, $sort];
+        }
+        if ($directives === []) {
+            return [$columns, null];
+        }
+
+        $readable = $this->readableSortPaths($criteria, $paths, $directives);
+        $admit = $admitting ? $readable->rowAdmission() : null;
+
+        return [\array_map(static function (array $pair) use ($admit): KeysetColumn {
+            [$column, $sort] = $pair;
+            if (!$sort instanceof SortByField || $sort->through === null) {
+                return $column;
+            }
+
+            return new KeysetColumn($column->column, $column->descending, $admit !== null ? new AdmittedKeysetSort($sort, $admit) : $sort);
+        }, $resolved), $readable];
+    }
+
+    /**
+     * `$directive` with a sort reaching through relations resolved against the type the
+     * criteria run against.
+     */
+    private static function resolvedDirective(CollectionCriteria $criteria, SortDirective $directive): SortDirective
+    {
+        $sort = $criteria->paths?->resolveSort($directive->sort) ?? $directive->sort;
+
+        return $sort === $directive->sort ? $directive : new SortDirective($sort, $directive->descending);
     }
 
     /**

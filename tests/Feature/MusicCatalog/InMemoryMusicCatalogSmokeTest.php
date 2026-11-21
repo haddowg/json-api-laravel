@@ -46,11 +46,13 @@ final class InMemoryMusicCatalogSmokeTest extends MusicCatalogSmokeTestCase
     public function test_pivot_sorts_and_filters_are_unrecognised_without_a_pivot_store(): void
     {
         // The in-memory provider stores no pivot columns, so it cannot order or narrow by
-        // them: a pivot key is a 400 on both the relationship and the related endpoint.
+        // them: a pivot key, or a filter through the pivot row, is a 400 on both the
+        // relationship and the related endpoint.
         foreach (['relationships/orderedTracks', 'orderedTracks'] as $path) {
             $uri = '/api/playlists/' . Fixtures::PLAYLIST_ONE . '/' . $path;
             $this->fetch($uri . '?sort=position')->assertStatus(400)->assertJsonPath('errors.0.code', 'SORTING_UNRECOGNIZED');
             $this->fetch($uri . '?filter[weight]=1')->assertStatus(400)->assertJsonPath('errors.0.code', 'FILTERING_UNRECOGNIZED');
+            $this->fetch($uri . '?filter[addedAt][min]=2024-01-01T12:00:00Z')->assertStatus(400)->assertJsonPath('errors.0.code', 'FILTERING_UNRECOGNIZED');
         }
     }
 }

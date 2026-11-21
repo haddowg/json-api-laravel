@@ -26,12 +26,14 @@ use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\LinkRowFields;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
+use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\InMemory\ArrayFilterHandler;
 use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortHandler;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
+use haddowg\JsonApi\Resource\Through\PivotRowRelations;
 use haddowg\JsonApi\Schema\Relationship\IdentifiedMember;
 use haddowg\JsonApiLaravel\DataProvider\AbstractDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\AdmitsIdsInterface;
@@ -46,6 +48,8 @@ use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
 use haddowg\JsonApiLaravel\DataProvider\ReadsByForeignKeyInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelatedBatch;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
+use haddowg\JsonApiLaravel\DataProvider\ScopedArrayFilterHandler;
+use haddowg\JsonApiLaravel\DataProvider\ScopedArraySortHandler;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
@@ -113,7 +117,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
  *
  * @extends AbstractDataProvider<object>
  */
-final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, LinkRowQueryInterface, LinkRowKeysInterface, ReadsByForeignKeyInterface, KeysCursorSortsInterface
+final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, LinkRowQueryInterface, LinkRowKeysInterface, ReadsByForeignKeyInterface, KeysCursorSortsInterface, PivotRowRelations
 {
     private readonly CriteriaApplier $applier;
 
@@ -130,9 +134,9 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * execution the in-memory witness runs, so the two stay byte-identical). Every
      * monomorphic path pushes down to SQL through the Eloquent handlers instead.
      */
-    private readonly ArrayFilterHandler $arrayFilterHandler;
+    private readonly ScopedArrayFilterHandler $arrayFilterHandler;
 
-    private readonly ArraySortHandler $arraySortHandler;
+    private readonly ScopedArraySortHandler $arraySortHandler;
 
     private readonly KeysetResolver $keysetResolver;
 
@@ -149,6 +153,8 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * reference wiring (`new EloquentDataProvider($modelByType)`) keeps working.
      */
     private ?IdEncoderResolver $idEncoders;
+
+    private readonly EloquentPivotRowRelations $pivotRows;
 
     private bool $idEncodersResolved;
 
@@ -167,10 +173,21 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         $this->windowExecutor = new WindowExecutor();
         $this->filterHandler = new EloquentFilterHandler($filterArms, new ModelEncoders($modelByType, fn(string $type): ?IdEncoderInterface => $this->encoderFor($type)));
         $this->sortHandler = new EloquentSortHandler($sortArms);
-        $this->arrayFilterHandler = new ArrayFilterHandler();
-        $this->arraySortHandler = new ArraySortHandler();
+        $this->arrayFilterHandler = new ScopedArrayFilterHandler(new ArrayFilterHandler());
+        $this->arraySortHandler = new ScopedArraySortHandler(new ArraySortHandler());
         $this->keysetResolver = new KeysetResolver();
         $this->minter = new CursorTokenMinter(new CursorCodec());
+        $this->pivotRows = new EloquentPivotRowRelations($modelByType);
+    }
+
+    /**
+     * The relation the pivot rows of `$relation` hold under `$member`: a relation method of
+     * the pivot model it joins through, reaching the type this provider serves with the model
+     * that relation targets.
+     */
+    public function pivotRowRelation(PivotRelationInterface $relation, string $parentType, string $member): ?RelationInterface
+    {
+        return $this->pivotRows->pivotRowRelation($relation, $parentType, $member);
     }
 
     public function supports(string $type): bool
@@ -796,13 +813,13 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // The keyset columns (active sort + the deduped PK tiebreak) from the ONE resolver
         // the per-parent keyset path (runCursor) and the in-memory witness use — the PK
         // tiebreak direction rides the last active directive, NOT a hardcoded id ASC.
-        $columns = $this->keysetResolver->resolve(
+        [$columns, $paths] = $this->applier->keysetColumns($criteria, $this->keysetResolver->resolve(
             $criteria->queryParameters->sort,
             $criteria->sorts,
             $criteria->defaultSort,
             $related->getKeyName(),
             request: $criteria->request,
-        );
+        ));
 
         // Filters only (the keyset owns the order), then the forced NULL=largest keyset
         // ORDER BY onto the relation's own eager query — the raw `CASE … IS NULL …` term
@@ -815,7 +832,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         [$filterHandler, $sortHandler] = $this->handlersFor($eager, $models[0], $relation);
         $pivot = $eager instanceof EloquentBelongsToMany && $this->pivotRelation($models[0], $relation) !== null ? $eager : null;
         $this->applier->apply($this->filtersOnly($criteria), $eager->getQuery(), $filterHandler, $sortHandler);
-        $keyset = new EloquentKeyset($related, $sortHandler, $pivot?->getTable());
+        $keyset = new EloquentKeyset($related, $paths !== null ? $sortHandler->forPaths($paths) : $sortHandler, $pivot?->getTable());
         $keyset->orderBy($eager->getQuery(), $columns);
 
         // A cursor page is count-free by definition (a CursorPaginator never counts), so the
@@ -1232,16 +1249,17 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     {
         $builder = $this->foreignKeyQuery($relatedType, $column, $parents);
         $related = $builder->getModel();
-        $columns = $this->keysetResolver->resolve(
+        [$columns, $paths] = $this->applier->keysetColumns($criteria, $this->keysetResolver->resolve(
             $criteria->queryParameters->sort,
             $criteria->sorts,
             $criteria->defaultSort,
             $related->getKeyName(),
             request: $criteria->request,
-        );
+        ));
 
         $this->applier->apply($this->filtersOnly($criteria), $builder, $this->filterHandler, $this->sortHandler);
-        (new EloquentKeyset($related, $this->sortHandler))->orderBy($builder, $columns);
+        $keyset = new EloquentKeyset($related, $paths !== null ? $this->sortHandler->forPaths($paths) : $this->sortHandler);
+        $keyset->orderBy($builder, $columns);
         $builder->getQuery()->groupLimit($window->limit + 1, $column);
 
         $readValue = static fn(object $row, string $keysetColumn): string|int|float|bool|null => CursorTokenMinter::coerce(self::keysetValue($row, $keysetColumn, null));
@@ -1249,7 +1267,13 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         $results = [];
         foreach ($this->partitionByForeignKey($builder->get()->all(), $attribute, $parents) as $wireId => $items) {
             $hasSurplus = \count($items) > $window->limit;
-            $results[$wireId] = $this->minter->mint($window, $columns, \array_slice($items, 0, $window->limit), $hasSurplus, $readValue);
+            $results[$wireId] = $this->mintSelected(
+                $keyset,
+                $columns,
+                \array_values(\array_slice($items, 0, $window->limit)),
+                fn(array $columns, array $page, callable $readValue): CursorCollectionResult => $this->minter->mint($window, $columns, $page, $hasSurplus, $readValue),
+                $readValue,
+            );
         }
 
         return new RelatedBatch($results);
@@ -1878,13 +1902,15 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         $model = $builder->getModel();
         $pkColumn = $model->getKeyName();
 
-        $columns = $this->keysetResolver->resolve(
+        // Each sort reaching through relations resolves and is checked as an offset page's is,
+        // and `$paths` names the relations a default order reads null through.
+        [$columns, $paths] = $this->applier->keysetColumns($criteria, $this->keysetResolver->resolve(
             $criteria->queryParameters->sort,
             $criteria->sorts,
             $criteria->defaultSort,
             $pkColumn,
             request: $criteria->request,
-        );
+        ));
 
         // Apply the FILTERS only (the keyset owns the order). A sort-stripped,
         // window-less criteria reuses the shared applier so the filter semantics are
@@ -1906,7 +1932,8 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // `?withCount=_self_` counts the filtered collection, before the keyset bound.
         $counter = $criteria->wantsCount ? clone $builder : null;
 
-        $keyset = new EloquentKeyset($model, $sortHandler ?? $this->sortHandler, $pivot?->getTable());
+        $sortHandler ??= $this->sortHandler;
+        $keyset = new EloquentKeyset($model, $paths !== null ? $sortHandler->forPaths($paths) : $sortHandler, $pivot?->getTable());
         if ($boundary !== null) {
             $keyset->applyAfter($builder, $boundary, $orderColumns);
         }

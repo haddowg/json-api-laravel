@@ -8,11 +8,13 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
 use haddowg\JsonApi\Resource\Sort\RelationSorts;
+use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
 use haddowg\JsonApi\Resource\Sort\SortMatcher;
 use haddowg\JsonApi\Serializer\RelationOrderValidator;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
+use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\OpenApi\PivotFields;
 
 /**
@@ -43,7 +45,8 @@ final class RelationOrderGuard
             $order = RelationSorts::ownDefault($relation);
             $pivotKeys = \array_map(static fn(SortInterface $sort): string => $sort->key(), PivotFields::sortsFor($relation));
             $relatedType = $relation->relatedTypes()[0] ?? null;
-            if ($order === [] || $pivotKeys === [] || $relatedType === null) {
+            $readsPivotRow = \array_filter($order, static fn(SortDirective $directive): bool => RelationCriteriaFactory::readsPivotRow($directive->sort)) !== [];
+            if ($order === [] || ($pivotKeys === [] && !$readsPivotRow) || $relatedType === null) {
                 continue;
             }
 
@@ -56,6 +59,17 @@ final class RelationOrderGuard
             $vocabulary = SortMatcher::merge($related instanceof AbstractResource ? $related->allSorts() : [], $relation->sorts());
             foreach ($order as $directive) {
                 $key = $directive->sort->key();
+                if (RelationCriteriaFactory::readsPivotRow($directive->sort)) {
+                    throw new \LogicException(\sprintf(
+                        'Relation "%s" on resource type "%s" is ordered by "%s", which reaches through its pivot row, but the data provider of "%s" does not query the relation\'s join, so it cannot read a pivot row. Order it by a field of "%s", or serve "%s" from a provider that reads pivot rows.',
+                        $relation->name(),
+                        $type,
+                        $key,
+                        $relatedType,
+                        $relatedType,
+                        $relatedType,
+                    ));
+                }
                 if (\in_array($key, $pivotKeys, true) && !SortMatcher::recognises($vocabulary, $key)) {
                     throw new \LogicException(\sprintf(
                         'Relation "%s" on resource type "%s" is ordered by the pivot field "%s", but the data provider of "%s" does not query the relation\'s join, so it cannot order by a pivot field. Order it by a field of "%s", or serve "%s" from a provider that reads pivot rows.',
