@@ -87,11 +87,11 @@ final class EloquentThroughPivotTest extends Orchestra
     #[Test]
     public function aFamilyResolvingADeprecatedPathNoTypeCanGateAnswers500(): void
     {
-        Log::spy();
+        $log = Log::spy();
 
         $this->send('admin', '/api/tpTracks/1/playlists?filter[owner.name]=sam')->assertStatus(500);
 
-        Log::shouldHaveReceived('error')->once()->withArgs(static fn(string $message): bool => \str_contains($message, 'The filter family "owner" of relation "playlists" on type "tpTracks" resolved the filter "owner.name" to the path "pivot.owner.name", which goes on from the pivot row to a model no single registered type serves')
+        $log->shouldHaveReceived('error')->once()->withArgs(static fn(string $message): bool => \str_contains($message, 'The filter family "owner" of relation "playlists" on type "tpTracks" resolved the filter "owner.name" to the path "pivot.owner.name", which goes on from the pivot row to a model no single registered type serves')
             && \str_contains($message, 'This is a declaration fault'));
     }
 
