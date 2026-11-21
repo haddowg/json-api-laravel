@@ -225,6 +225,7 @@ trims it from the list stops that:
     \haddowg\JsonApi\Pagination\CursorPaginationProfile::class,   // keep this one for cursor pages
     \haddowg\JsonApi\Schema\Profile\CountableProfile::class,
     \haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile::class,
+    \haddowg\JsonApi\Schema\Profile\NestedFieldsetsProfile::class,
 ],
 ```
 

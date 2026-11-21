@@ -192,7 +192,11 @@ final class EloquentSortHandler implements SortHandlerInterface, ScopesFilterHop
     public function keysetExpression(KeysetSortInterface $sort, Builder $query): EloquentKeysetExpression
     {
         if ($sort instanceof SortByField && $sort->through !== null) {
-            $value = $this->throughValue($sort, $query)->toBase();
+            $value = $this->throughValue($sort, $query);
+            if (\is_string($value)) {
+                return EloquentKeysetExpression::make($query->getQuery()->getGrammar()->wrap($value))->valueFromQuery();
+            }
+            $value = $value->toBase();
 
             // The boundary row's value is the one the scoped subselect reached, so the cursor
             // reads it from the query rather than walking the model's relations.
@@ -218,11 +222,17 @@ final class EloquentSortHandler implements SortHandlerInterface, ScopesFilterHop
      * model's own query so its global scopes apply, the innermost selecting the leaf column
      * and each outer one selecting the next, one row each.
      *
+     * A path starting with `pivot` reads the pivot row the relation's query joined, so it
+     * runs only on a pivot relation's query, whichever alias the query is asked on: ending
+     * there, it orders by the join table's column, and going on, the first subselect is the
+     * pivot model's relation correlated to that row. A `pivot` anywhere else follows a
+     * to-many, which core refuses for a sort.
+     *
      * @param Builder<Model> $query
      *
-     * @return Builder<Model>
+     * @return Builder<Model>|string the subselect, or the join table's qualified column
      */
-    private function throughValue(SortByField $sort, Builder $query): Builder
+    private function throughValue(SortByField $sort, Builder $query): Builder|string
     {
         $leaf = $sort->atLeaf();
         $path = $sort->resolvedThrough();
@@ -230,8 +240,29 @@ final class EloquentSortHandler implements SortHandlerInterface, ScopesFilterHop
 
         $parent = $query;
         $model = $query->getModel();
+        $hops = $path->hops;
+        if ($path->startsWithPivot()) {
+            if ($this->pivot === null) {
+                throw new \LogicException(\sprintf('Sort "%s" reaches through "%s", which starts at the pivot row of the relation it runs under, but it runs on a query that joins no pivot row.', $sort->key(), $path->path));
+            }
+            $under = \array_shift($hops);
+            $model = $this->pivot->newPivot();
+            /** @var Builder<Model> $parent */
+            $parent = $model->newQueryWithoutRelationships();
+            if ($this->paths?->refuses($under->relation) === true) {
+                // Reads null, as a relation the caller may not read through does.
+                return $parent->selectRaw('NULL')->whereRaw('1 = 0')->limit(1);
+            }
+            if ($hops === []) {
+                return $this->pivot->getTable() . '.' . $leaf->column;
+            }
+        }
+
         $subqueries = [];
-        foreach ($path->hops as $hop) {
+        foreach ($hops as $hop) {
+            if ($hop->pivot) {
+                throw new \LogicException(\sprintf('Sort "%s" reaches through "%s", whose pivot row a sort can read only at the start of its path.', $sort->key(), $path->path));
+            }
             $method = $hop->storage();
             $relation = \method_exists($model, $method) ? $model->{$method}() : null;
             if (!$relation instanceof EloquentRelation) {

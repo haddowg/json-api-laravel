@@ -9,7 +9,7 @@ use Illuminate\Support\Str;
 
 /**
  * Where a template's placeholder is rendered, linked to the pivot row rather than to the
- * definition. Not a resource: its binary UUID key is minted by its constructor and cast to
+ * definition. Its binary UUID key is minted by its constructor and cast to
  * the canonical string.
  *
  * @property string $id

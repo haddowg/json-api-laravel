@@ -10,8 +10,10 @@ use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
+use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Filter\RelationHop;
 use haddowg\JsonApi\Resource\Filter\ThroughPathResolver;
 use haddowg\JsonApi\Resource\Filter\TraversesPath;
 use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
@@ -21,6 +23,7 @@ use haddowg\JsonApi\Resource\Filter\WhereMorph;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
+use haddowg\JsonApi\Resource\Through\PivotRowRelations;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\AmbiguousModelEncoder;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\BelongsToLeaf;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\ModelEncoders;
@@ -49,12 +52,13 @@ final class FilterPathGuard
     /**
      * @param array<string, class-string<Model>>|null                      $modelByType the Eloquent model map, read from the container when not given
      * @param (\Closure(string): (class-string<Model>|false|null))|null $servedBy    the model of the Eloquent provider serving a type, `false` when another provider serves it, or `null` when that isn't known yet
+     * @param PivotRowRelations|null                                     $pivotRows   the relations pivot rows hold, which a path going on past a `pivot` segment walks
      *
      * @throws \LogicException when a declared filter's path can't be resolved, or its encoder can't be settled
      */
-    public static function check(SerializerResolverInterface $resolver, AbstractResource $resource, ?array $modelByType = null, ?\Closure $servedBy = null): void
+    public static function check(SerializerResolverInterface $resolver, AbstractResource $resource, ?array $modelByType = null, ?\Closure $servedBy = null, ?PivotRowRelations $pivotRows = null): void
     {
-        $paths = ThroughPathResolver::forResolver($resolver);
+        $paths = ThroughPathResolver::forResolver($resolver, $pivotRows);
         $fields = $resource->allFields();
         $type = $resource::$type;
         // Read only once a filter needs it, so a resource without one never resolves the map.
@@ -63,7 +67,7 @@ final class FilterPathGuard
         };
         $encoders = static fn(): ModelEncoders => new ModelEncoders($map(), static fn(string $served): ?IdEncoderInterface => self::encoderOf($resolver, $served));
 
-        self::guardEncoders($encoders, $map, self::resolved($paths, $resource->allFilters(), $fields, $type), $type, $type, FilterPaths::namedTypes($fields, $type), servedBy: $servedBy);
+        self::guardEncoders($encoders, $map, self::resolved($paths, $resource->allFilters(), $fields, $type, null, $type), $type, $type, FilterPaths::namedTypes($fields, $type), servedBy: $servedBy);
 
         foreach ($fields as $relation) {
             if (!$relation instanceof RelationInterface || $relation->allFilters() === []) {
@@ -78,11 +82,14 @@ final class FilterPathGuard
             $related = $resolver->serializerFor($relatedTypes[0]);
             if ($related instanceof AbstractResource) {
                 self::refusePivotClash($resource, $relation, $related);
+                if ($pivotRows !== null && $relation instanceof PivotRelationInterface) {
+                    self::refuseUngatedPivotPaths($type, $relation, $relation->allFilters(), $pivotRows);
+                }
                 $relatedFields = $related->allFields();
                 self::guardEncoders(
                     $encoders,
                     $map,
-                    self::resolved($paths, $relation->allFilters(), $relatedFields, $type),
+                    self::resolved($paths, $relation->allFilters(), $relatedFields, $type, new RelationHop($relation, $type, $relation->column() ?? $relation->name()), $relatedTypes[0]),
                     $type,
                     $relatedTypes[0],
                     FilterPaths::namedTypes($relatedFields, $relatedTypes[0], $type),
@@ -103,10 +110,10 @@ final class FilterPathGuard
      *
      * @throws \LogicException when a filter's path can't be resolved
      */
-    private static function resolved(ThroughPathResolver $paths, array $filters, iterable $fields, string $type): array
+    private static function resolved(ThroughPathResolver $paths, array $filters, iterable $fields, string $type, ?RelationHop $under = null, string $runsOn = ''): array
     {
         try {
-            return $paths->resolveAll($filters, $fields);
+            return $paths->resolveAll($filters, $fields, $under, $runsOn);
         } catch (\LogicException $e) {
             throw new \LogicException(\sprintf('The JSON:API resource for type "%s" declares a filter that cannot run: %s', $type, $e->getMessage()), 0, $e);
         }
@@ -297,6 +304,49 @@ final class FilterPathGuard
         $container = Container::getInstance();
 
         return $container->bound(ModelMapResolver::class) ? $container->make(ModelMapResolver::class)->map() : [];
+    }
+
+    /**
+     * Refuses a deprecated `pivot.`-prefixed `WhereThrough`, `WhereThroughIn`, `WhereHas` or
+     * `WhereDoesntHave`, groups searched, whose path goes on from the pivot row through a
+     * relation of the pivot model to a model no registered type serves, or several do: no
+     * type's scope or gate could apply to the rows it reaches, as the `->through()` form
+     * already refuses.
+     *
+     * @param list<FilterInterface> $filters
+     *
+     * @throws \LogicException naming the type, relation, filter and path
+     */
+    private static function refuseUngatedPivotPaths(string $type, PivotRelationInterface $relation, array $filters, PivotRowRelations $pivotRows): void
+    {
+        foreach ($filters as $filter) {
+            if ($filter instanceof WhereGroup) {
+                self::refuseUngatedPivotPaths($type, $relation, $filter->children, $pivotRows);
+
+                continue;
+            }
+            $path = match (true) {
+                $filter instanceof WhereHas, $filter instanceof WhereDoesntHave => $filter->relationship,
+                $filter instanceof WhereThrough, $filter instanceof WhereThroughIn => $filter->path,
+                default => '',
+            };
+            if (!\str_starts_with($path, RelationCriteriaFactory::PIVOT_PREFIX)) {
+                continue;
+            }
+
+            try {
+                $pivotRows->pivotRowRelation($relation, $type, \explode('.', $path)[1]);
+            } catch (\LogicException $e) {
+                throw new \LogicException(\sprintf(
+                    'The JSON:API resource for type "%s" declares the filter "%s" of relation "%s", whose deprecated path "%s" goes on from the pivot row to a model no single registered type serves, so no type\'s read rules can apply to the rows it reaches. %s Register exactly one resource type for that model, or migrate the filter to a ->through() path that does not reach it.',
+                    $type,
+                    $filter->key(),
+                    $relation->name(),
+                    $path,
+                    $e->getMessage(),
+                ), 0, $e);
+            }
+        }
     }
 
     /**

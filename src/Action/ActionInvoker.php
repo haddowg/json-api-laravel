@@ -46,6 +46,7 @@ use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
 use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use haddowg\JsonApiLaravel\DataProvider\ForeignKeyReads;
+use haddowg\JsonApiLaravel\DataProvider\PivotRowRelationRouter;
 use haddowg\JsonApiLaravel\DataProvider\ScopedPolymorphicMembers;
 use haddowg\JsonApiLaravel\DataProvider\ScopedRelationshipWrites;
 use haddowg\JsonApiLaravel\Event\AfterActionEvent;
@@ -171,7 +172,7 @@ final readonly class ActionInvoker
         // checked as the collection fetch checks them, so a 400 precedes any 403.
         $filters = $scope === ActionScope::Collection ? $this->effectiveFilters($server, $type, $descriptor) : [];
         $requestedFilter = $operation->queryParameters()->filter;
-        $paths = $filters !== [] ? FilterPaths::of($server, $server->resourceFor($type), admission: (new ScopedPolymorphicMembers($this->providers))->admission($server), morphAdmission: (new ScopedPolymorphicMembers($this->providers))->morphAdmission($server)) : null;
+        $paths = $filters !== [] ? FilterPaths::of($server, $server->resourceFor($type), admission: (new ScopedPolymorphicMembers($this->providers))->admission($server), pivotRows: new PivotRowRelationRouter($this->providers), morphAdmission: (new ScopedPolymorphicMembers($this->providers))->morphAdmission($server)) : null;
         if ($filters !== []) {
             $this->validateFilter($requestedFilter, $filters, $this->request($operation), $paths);
         }

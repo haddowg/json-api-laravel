@@ -33,6 +33,7 @@ use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\KeysCursorSortsInterface;
+use haddowg\JsonApiLaravel\DataProvider\PivotRowRelationRouter;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
@@ -567,7 +568,7 @@ final class ServableResourceWarmer
         }
 
         try {
-            FilterPathGuard::check($server, $resource, servedBy: fn(string $served): string|false|null => $this->providers->supportsType($served) ? ($this->eloquentModelClassFor($served) ?? false) : null);
+            FilterPathGuard::check($server, $resource, servedBy: fn(string $served): string|false|null => $this->providers->supportsType($served) ? ($this->eloquentModelClassFor($served) ?? false) : null, pivotRows: new PivotRowRelationRouter($this->providers));
         } catch (\LogicException $e) {
             $problems[] = $e->getMessage();
         }

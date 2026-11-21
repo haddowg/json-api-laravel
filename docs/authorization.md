@@ -429,7 +429,8 @@ and an existence filter at the end of one for the relation it tests too. A sort 
 the client asks for through a relation the caller may not read answers the same `403`, and a
 default order reads `null` through such a relation instead, on offset and cursor pages alike.
 The path names relations by their API names, so the permission of the relation it names
-applies. The OpenAPI document offers `ACCESS_DENIED` on the operations whose sorts reach
+applies. A `pivot` segment is read under the permission of the relation whose pivot rows it
+reaches, and a relation the pivot model holds under its reached type's rules. The OpenAPI document offers `ACCESS_DENIED` on the operations whose sorts reach
 through such a hop, as it does for filters.
 
 ## Custom actions

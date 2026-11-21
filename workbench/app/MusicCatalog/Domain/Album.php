@@ -16,6 +16,8 @@ final class Album
 {
     /**
      * @param array<string, mixed>|null $release_info the `releaseInfo` Map value (label/catalogueNumber)
+     * @param array<string, string>|null $credits      who did what on the album, keyed by role
+     * @param list<array<string, mixed>>|null $editions every edition of the album
      * @param ?Artist                   $artist       the album's artist (null → `data: null` linkage)
      * @param list<Track>               $tracks       the album's tracks
      */
@@ -30,6 +32,8 @@ final class Album
         public ?\DateTimeImmutable $available_from = null,
         public ?\DateTimeImmutable $available_until = null,
         public ?array $release_info = null,
+        public ?array $credits = null,
+        public ?array $editions = null,
         public ?Artist $artist = null,
         public array $tracks = [],
     ) {}

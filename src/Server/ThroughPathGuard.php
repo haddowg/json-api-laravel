@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Server;
 
 use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\DefaultSortedRelationInterface;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
+use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Filter\RelationHop;
 use haddowg\JsonApi\Resource\Filter\ThroughPathResolver;
 use haddowg\JsonApi\Resource\Filter\WhereGroup;
 use haddowg\JsonApi\Resource\Filter\WhereIdIn;
@@ -16,11 +19,14 @@ use haddowg\JsonApi\Resource\Filter\WhereIdNotIn;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
+use haddowg\JsonApi\Resource\Through\PivotRowRelations;
 use haddowg\JsonApi\Resource\Through\ReachesThrough;
 use haddowg\JsonApi\Resource\Through\RelationPath;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentPivotRowRelations;
 use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
+use haddowg\JsonApiLaravel\DataProvider\PivotRowRelationRouter;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -39,7 +45,9 @@ use Illuminate\Database\Eloquent\Relations\Relation;
  *    segment is a relation method of the model it starts from, a sort's a to-one, every hop
  *    reaches a type an Eloquent model serves and no other provider scopes, since a `whereHas`
  *    applies only the related model's global scopes, and the leaf is a column, or for an
- *    existence filter a relation, of the model the path reaches.
+ *    existence filter a relation, of the model the path reaches. A `pivot` segment follows a
+ *    `belongsToMany` with stored pivot fields, never a `morphToMany`, a mid-path one reaches
+ *    members no other provider scopes, and a leaf after it is a column of the join table.
  *
  * A filter or sort family resolves per request, so only what it returns is checked, when it is
  * matched.
@@ -59,7 +67,7 @@ final class ThroughPathGuard
         $problems = [];
 
         try {
-            self::assertSortsResolve($server, $serverName, $resource);
+            self::assertSortsResolve($server, $serverName, $resource, new PivotRowRelationRouter($this->providers));
         } catch (\LogicException $e) {
             $problems[] = $e->getMessage();
         }
@@ -67,7 +75,7 @@ final class ThroughPathGuard
         $model = $this->modelFor($type);
         if ($model !== null) {
             $declared = [...$resource->allFilters(), ...self::sortsOf($resource)];
-            $this->guardPaths($serverName, $type, null, $type, $model, $declared, FilterPaths::of($server, $resource), $problems);
+            $this->guardPaths($serverName, $type, null, $type, $model, $declared, FilterPaths::of($server, $resource, pivotRows: new PivotRowRelationRouter($this->providers)), $problems);
         }
 
         foreach (self::relatedResources($server, $resource) as [$relation, $related]) {
@@ -78,7 +86,7 @@ final class ThroughPathGuard
             }
 
             $declared = [...$relation->allFilters(), ...self::relationSorts($relation)];
-            $this->guardPaths($serverName, $type, $relation, $relatedType, $relatedModel, $declared, FilterPaths::of($server, $related, $type), $problems);
+            $this->guardPaths($serverName, $type, $relation, $relatedType, $relatedModel, $declared, FilterPaths::of($server, $related, $type, relation: $relation, pivotRows: new PivotRowRelationRouter($this->providers)), $problems);
         }
 
         return $problems;
@@ -91,14 +99,14 @@ final class ThroughPathGuard
      *
      * @throws \LogicException naming the type and the server when a sort's path cannot be resolved
      */
-    public static function assertSortsResolve(SerializerResolverInterface $server, string $serverName, AbstractResource $resource): void
+    public static function assertSortsResolve(SerializerResolverInterface $server, string $serverName, AbstractResource $resource, ?PivotRowRelations $pivotRows = null): void
     {
-        $resolver = ThroughPathResolver::forResolver($server);
+        $resolver = ThroughPathResolver::forResolver($server, $pivotRows);
 
         try {
-            self::resolveSorts($resolver, self::sortsOf($resource), $resource->allFields());
+            self::resolveSorts($resolver, self::sortsOf($resource), $resource->allFields(), null, $resource::$type);
             foreach (self::relatedResources($server, $resource) as [$relation, $related]) {
-                self::resolveSorts($resolver, self::relationSorts($relation), $related->allFields());
+                self::resolveSorts($resolver, self::relationSorts($relation), $related->allFields(), new RelationHop($relation, $resource::$type, $relation->column() ?? $relation->name()), $related::$type);
             }
         } catch (\LogicException $e) {
             throw new \LogicException(\sprintf('The JSON:API resource for type "%s" on server "%s" declares a sort that cannot run: %s', $resource::$type, $serverName, $e->getMessage()), 0, $e);
@@ -158,7 +166,25 @@ final class ThroughPathGuard
      */
     private function whyNot(bool $sort, string $parentType, Model $model, RelationPath $path): ?string
     {
-        foreach ($path->hops as $hop) {
+        $row = null;
+        foreach ($path->hops as $index => $hop) {
+            if ($hop->pivot) {
+                $leading = $index === 0 && $path->startsWithPivot();
+                $owner = $leading ? $this->modelFor($hop->parentType) : $model::class;
+                $why = $this->whyNotPivot($hop, $owner, $leading ? null : $parentType);
+                if ($why !== null) {
+                    return $why;
+                }
+                \assert($owner !== null);
+                $row = EloquentPivotRowRelations::pivotRow($hop->relation, $owner);
+                \assert($row !== null);
+                $model = $row;
+                $parentType = '';
+
+                continue;
+            }
+
+            $row = null;
             $method = $hop->storage();
             $relation = \method_exists($model, $method) ? $model->{$method}() : null;
             if (!$relation instanceof Relation) {
@@ -190,7 +216,7 @@ final class ThroughPathGuard
         }
 
         $column = $path->leafColumn();
-        if (\str_contains($column, '.') || \array_key_exists($column, $model->getCasts())) {
+        if (\str_contains($column, '.') || ($row === null && \array_key_exists($column, $model->getCasts()))) {
             return null;
         }
 
@@ -200,9 +226,52 @@ final class ThroughPathGuard
             return null; // schema not introspectable at build time
         }
 
-        return $columns === [] || \in_array($column, $columns, true)
-            ? null
+        if ($columns === [] || \in_array($column, $columns, true)) {
+            return null;
+        }
+
+        return $row !== null
+            ? \sprintf('"%s" is not a column of the pivot table "%s" that "%s" joins through.', $column, $model->getTable(), $path->hops[\count($path->hops) - 1]->relation->name())
             : \sprintf('"%s" is not a column of %s\'s table "%s".', $column, $model::class, $model->getTable());
+    }
+
+    /**
+     * Why the Eloquent provider can't read the pivot rows a `pivot` hop reaches from `$owner`,
+     * or null when it can: it reads those of a `belongsToMany` with stored pivot fields, as its
+     * pivot query does. In the middle of a path, the hop joins the members too, so their type
+     * must be one an Eloquent model serves and no other provider scopes; `$parentType` is
+     * then the type the hop starts from.
+     *
+     * @param class-string<Model>|null $owner
+     */
+    private function whyNotPivot(RelationHop $hop, ?string $owner, ?string $parentType): ?string
+    {
+        $relation = $hop->relation;
+        if ($relation instanceof MorphToMany) {
+            return \sprintf('"%s" is a MorphToMany, whose pivot rows a path doesn\'t walk yet; reach them from a BelongsToMany with stored pivot fields.', $relation->name());
+        }
+        if (!$relation instanceof BelongsToMany || $relation->storedPivotFields() === []) {
+            return \sprintf('the Eloquent provider reads the pivot rows of a BelongsToMany with stored pivot fields, and "%s" is not one.', $relation->name());
+        }
+        if ($owner === null) {
+            return \sprintf('the type "%s" that declares "%s" is served by no Eloquent model.', $hop->parentType, $relation->name());
+        }
+        if (EloquentPivotRowRelations::pivotRow($relation, $owner) === null) {
+            return \sprintf('"%s" is not a belongsToMany relation of %s.', $relation->column() ?? $relation->name(), $owner);
+        }
+        if ($parentType === null) {
+            return null;
+        }
+
+        $relatedType = $hop->relatedType();
+        if ($this->providers->scopedRelatedProvider($parentType, $relatedType) !== null) {
+            return \sprintf('the type "%s" is scoped by a provider other than Eloquent, whose scope an Eloquent query cannot apply to the members the pivot rows link.', $relatedType);
+        }
+        if ($this->modelFor($relatedType) === null) {
+            return \sprintf('the relation "%s" reaches the type "%s", which no Eloquent model serves.', $relation->name(), $relatedType);
+        }
+
+        return null;
     }
 
     /**
@@ -272,10 +341,10 @@ final class ThroughPathGuard
      *
      * @throws \LogicException when a path cannot be resolved
      */
-    private static function resolveSorts(ThroughPathResolver $resolver, array $sorts, iterable $fields): void
+    private static function resolveSorts(ThroughPathResolver $resolver, array $sorts, iterable $fields, ?RelationHop $under = null, string $type = ''): void
     {
         foreach ($sorts as $sort) {
-            $resolver->resolveSort($sort, $fields);
+            $resolver->resolveSort($sort, $fields, $under, $type);
         }
     }
 }
