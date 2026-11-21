@@ -1,5 +1,35 @@
 # Changelog
 
+## [2.22.0](https://github.com/haddowg/json-api-laravel/compare/v2.21.1...v2.22.0) (2026-11-21)
+
+
+### Features
+
+* narrow an object attribute to the keys a nested fieldset names ([26cdaf5](https://github.com/haddowg/json-api-laravel/commit/26cdaf596f6aab578dadf6a0ba946c85e76cd4e5))
+* run filters and sorts that reach through relations ([26cdaf5](https://github.com/haddowg/json-api-laravel/commit/26cdaf596f6aab578dadf6a0ba946c85e76cd4e5))
+* run pivot segments in paths that reach through relations ([26cdaf5](https://github.com/haddowg/json-api-laravel/commit/26cdaf596f6aab578dadf6a0ba946c85e76cd4e5))
+* type the in-memory provider's closures on the class of its rows ([#312](https://github.com/haddowg/json-api-laravel/issues/312)) ([1e4decd](https://github.com/haddowg/json-api-laravel/commit/1e4decdcf45451835969023ae769ec665f6342bc))
+* validate and fill typed request and resource object meta ([26cdaf5](https://github.com/haddowg/json-api-laravel/commit/26cdaf596f6aab578dadf6a0ba946c85e76cd4e5))
+
+
+### Bug Fixes
+
+* cast a pivot value for the write that creates or keeps its row ([#311](https://github.com/haddowg/json-api-laravel/issues/311)) ([0e8afcd](https://github.com/haddowg/json-api-laravel/commit/0e8afcd02119f803b4e46af9a62f3d9838305095))
+* check the relationships and pivot values an action's input document carries ([9357f47](https://github.com/haddowg/json-api-laravel/commit/9357f471394974db209f1b56bf18f193cad29f79))
+* compare an action's input membership with the resource it was called on ([#315](https://github.com/haddowg/json-api-laravel/issues/315)) ([6194af3](https://github.com/haddowg/json-api-laravel/commit/6194af3cdaada46b3e0dadac65eb38978d4a8696))
+* compare and store each written number in its field's type ([9357f47](https://github.com/haddowg/json-api-laravel/commit/9357f471394974db209f1b56bf18f193cad29f79))
+* declare the relation parameter on every documentMeta implementation ([#320](https://github.com/haddowg/json-api-laravel/issues/320)) ([28f4890](https://github.com/haddowg/json-api-laravel/commit/28f489016fa3ac356649afd3b3de1e21aab6775b))
+* guard the warmer's action loop with a null check on the registry ([#310](https://github.com/haddowg/json-api-laravel/issues/310)) ([4081915](https://github.com/haddowg/json-api-laravel/commit/408191570bceda65b68f464e27729a8e17cf7663))
+* hold the related models in an action input's relationships ([#314](https://github.com/haddowg/json-api-laravel/issues/314)) ([503d51c](https://github.com/haddowg/json-api-laravel/commit/503d51c3c0955e59168e9cdd91cd520612955556))
+* keep the fraction of every whole float in a served or exported document ([#317](https://github.com/haddowg/json-api-laravel/issues/317)) ([8541977](https://github.com/haddowg/json-api-laravel/commit/85419770bd5a74a7d1c9ddf6c67d4b6ba13e973b))
+* leave a foreign-key to-many to the handler when an action input has nowhere to hold it ([#318](https://github.com/haddowg/json-api-laravel/issues/318)) ([632d76d](https://github.com/haddowg/json-api-laravel/commit/632d76dc3c864c31e8a5128749298db31edc1b76))
+* leave the membership of an action input a factory builds to the factory or handler ([#319](https://github.com/haddowg/json-api-laravel/issues/319)) ([96dcf9a](https://github.com/haddowg/json-api-laravel/commit/96dcf9adec29fbeb865415142bf2e26ea4a14633))
+* load a notSparseField relation the fieldset leaves out ([#299](https://github.com/haddowg/json-api-laravel/issues/299)) ([34395ec](https://github.com/haddowg/json-api-laravel/commit/34395ec15220227edf26cea827ee1a405fd9e263))
+* read an action input's locked members as a PATCH of the resource does ([#316](https://github.com/haddowg/json-api-laravel/issues/316)) ([b99c12f](https://github.com/haddowg/json-api-laravel/commit/b99c12fad18940ceec278e6749edc94837447b33))
+* refuse filters that reach through relations the caller cannot read ([26cdaf5](https://github.com/haddowg/json-api-laravel/commit/26cdaf596f6aab578dadf6a0ba946c85e76cd4e5))
+* serve the workbench's playlist owner read-only on the default server ([26cdaf5](https://github.com/haddowg/json-api-laravel/commit/26cdaf596f6aab578dadf6a0ba946c85e76cd4e5))
+* validate a PATCH action's input in the update context ([#300](https://github.com/haddowg/json-api-laravel/issues/300)) ([1965f12](https://github.com/haddowg/json-api-laravel/commit/1965f1206b6f5cb6fcfa3919dca3029a77501126))
+
 ## [2.21.1](https://github.com/haddowg/json-api-laravel/compare/v2.21.0...v2.21.1) (2026-11-18)
 
 
