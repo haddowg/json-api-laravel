@@ -98,6 +98,17 @@ final class EloquentPivotKeysTest extends Orchestra
     }
 
     #[Test]
+    public function anIdFilterReachesTheTemplatesByTheirCampaignKey(): void
+    {
+        $names = fn(string $query): array => \array_column(\array_column($this->rows($this->read('/api/placeholder-definitions?sort=name&' . $query), 'data'), 'attributes'), 'name');
+
+        self::assertSame(['company', 'first-name'], $names('filter[templates]=20'));
+        self::assertSame(['first-name', 'last-name'], $names('filter[templates]=10'));
+        self::assertSame([], $names('filter[templates]=30'));
+        self::assertSame(['first-name', 'last-name'], $names('filter[notTemplate]=20'));
+    }
+
+    #[Test]
     public function theRelatedEndpointReadsTemplatesThroughThePivot(): void
     {
         $rows = $this->rows($this->read('/api/placeholder-definitions/' . self::FIRST_NAME . '/templates?sort=name'), 'data');
