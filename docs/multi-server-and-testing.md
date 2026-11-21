@@ -55,7 +55,10 @@ Route names carry the server: `jsonapi.admin.albums.show`. OpenAPI projects one 
 server by default (`/docs.json`, `/admin/docs.json`) — see [openapi](openapi.md) and
 [routing](routing.md). The same type may render differently per server (an admin server can
 expose more fields via a distinct resource) — see
-[capability-composition](capability-composition.md).
+[capability-composition](capability-composition.md). The workbench's music catalog serves
+`playlists` this way: its `PlaylistAdminResource` extends the default server's
+`PlaylistResource` to make `owner` writable on the admin server, where `users` is
+registered, while the default server serves it read-only.
 
 ### Authorization, headers and tags per server
 
