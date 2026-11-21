@@ -21,7 +21,8 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
  * The union witness, shared by both providers. `value` is the nullable union of a bounded
  * string, a number, a boolean and a bounded list of a nested union. `label` is required,
  * `mode` has an enum string member, so it projects as a `oneOf`, and is not nullable.
- * `due` and `at` have a top-level date and date-time member, and `extra` holds a union
+ * `amount` and `reading` hold both an `Integer` and a `Decimal` member, `reading` with
+ * different bounds on each. `due` and `at` have a top-level date and date-time member, and `extra` holds a union
  * inside an object.
  */
 #[AsJsonApiResource]
@@ -40,6 +41,8 @@ final class PresetResource extends AbstractResource
                 ArrayList::make()->maxItems(3)->of(Union::of(Str::make()->maxLength(10), Decimal::make(), Boolean::make())),
             )->nullable(),
             Union::make('label')->of(Str::make()->maxLength(20), Integer::make(), Boolean::make(), ArrayList::make())->required(),
+            Union::make('amount')->of(Str::make(), Integer::make(), Decimal::make(), Boolean::make())->nullable(),
+            Union::make('reading')->of(Integer::make()->min(100), Decimal::make()->max(10.0))->nullable(),
             Union::make('mode')->of(Str::make()->in(['auto', 'off']), Integer::make()->min(0)),
             Union::make('due')->of(Date::make(), Boolean::make())->nullable(),
             Union::make('at')->of(DateTime::make(), Boolean::make())->nullable(),

@@ -25,6 +25,7 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\MetaContext;
+use haddowg\JsonApi\Resource\WireNumbers;
 use haddowg\JsonApi\Resource\WrittenMeta;
 use haddowg\JsonApi\Response\AcceptedResponse;
 use haddowg\JsonApi\Response\DataResponse;
@@ -391,6 +392,12 @@ final readonly class ActionInvoker
     ): object {
         $inputType = $descriptor->inputType;
 
+        // Each number in the type its field documents, before anything validates it.
+        $resource = $this->types->resourceFor($server, $inputType);
+        if ($resource !== null) {
+            $body = WireNumbers::resourceDocument($resource, $body);
+        }
+
         $instance = $handler instanceof ActionInputFactoryInterface
             ? $handler->newInput($body)
             : $this->persisters->forType($inputType)->instantiate($inputType);
@@ -673,6 +680,38 @@ final readonly class ActionInvoker
         $creating = $body->getMethod() !== 'PATCH';
         ReadOnlyAttributes::reject($server, $resource, $body, $creating);
         $this->validator->validate($resource, $body, $creating, subject: $instance);
+
+        // Each relationship the input carries is checked as a resource write checks it: its
+        // linkage ids and types, and its members' pivot values. The input is a fresh
+        // instance, so every member is a new one.
+        $resolveResource = static fn(string $relatedType): ?AbstractResource => $server->hasResourceFor($relatedType) ? $server->resourceFor($relatedType) : null;
+        foreach ($this->relationshipNames($body) as $name) {
+            $relation = $this->types->relationNamed($server, $inputType, $name);
+            if ($relation === null || $relation->isReadOnlyFor($creating, $body)) {
+                continue;
+            }
+            $linkage = match (true) {
+                $relation->isToMany() => $body->hasToManyRelationship($name) ? $body->getToManyRelationship($name) : null,
+                default => $body->hasToOneRelationship($name) ? $body->getToOneRelationship($name) : null,
+            };
+            if ($linkage === null) {
+                continue;
+            }
+            $this->validator->validateRelationshipLinkage($relation, $linkage, Mode::Replace, [], $body, embeddedRelationName: $name, resolveResource: $resolveResource);
+        }
+    }
+
+    /**
+     * The names under the input document's `relationships` member.
+     *
+     * @return list<string>
+     */
+    private function relationshipNames(JsonApiRequestInterface $body): array
+    {
+        $data = $body->getResource();
+        $relationships = \is_array($data) ? $data['relationships'] ?? null : null;
+
+        return \is_array($relationships) ? \array_values(\array_filter(\array_keys($relationships), '\is_string')) : [];
     }
 
     /**

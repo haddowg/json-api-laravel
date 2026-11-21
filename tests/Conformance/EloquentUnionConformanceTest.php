@@ -64,6 +64,16 @@ final class EloquentUnionConformanceTest extends UnionConformanceTestCase
     }
 
     #[Test]
+    public function eachNumericMemberStoresItsOwnForm(): void
+    {
+        $integer = $this->createdId(['amount' => 500]);
+        $decimal = $this->createdId(['amount' => 2.5]);
+
+        self::assertSame('500', ((array) DB::table('presets')->where('id', $integer)->first())['amount'] ?? null);
+        self::assertSame('2.5', ((array) DB::table('presets')->where('id', $decimal)->first())['amount'] ?? null);
+    }
+
+    #[Test]
     public function aNullUnionIsAnSqlNull(): void
     {
         $id = $this->createdId(['value' => null, 'due' => null]);

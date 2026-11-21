@@ -157,9 +157,11 @@ final class ResourceValidator
             return; // a missing/malformed data member is core's concern, raised in hydration
         }
 
+        // An `attributes` member that is not an object carries no attribute to check, but
+        // the rest of the resource object still is.
         $incoming = $data['attributes'] ?? [];
         if (!\is_array($incoming)) {
-            return;
+            $incoming = [];
         }
 
         /** @var array<string, mixed> $incoming */

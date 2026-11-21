@@ -105,6 +105,62 @@ abstract class UnionConformanceTestCase extends Orchestra
         }
     }
 
+    /**
+     * @return iterable<string, array{int|float, string}>
+     */
+    public static function numberForms(): iterable
+    {
+        yield 'an integer' => [500, '500'];
+        yield 'a whole decimal' => [500.0, '500.0'];
+        yield 'a decimal' => [2.5, '2.5'];
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    #[\PHPUnit\Framework\Attributes\DataProvider('numberForms')]
+    public function aNumberKeepsItsFormWithBothNumericMembers(int|float $sent, string $wire): void
+    {
+        $created = $this->createKeepingFractions(['amount' => $sent]);
+        $created->assertStatus(201);
+        self::assertStringContainsString('"amount":' . $wire . ',', (string) $created->getContent());
+
+        $id = $created->json('data.id');
+        self::assertIsString($id);
+        $read = $this->getJson('/api/presets/' . $id, ['Accept' => self::MEDIA_TYPE]);
+        $read->assertStatus(200);
+        self::assertStringContainsString('"amount":' . $wire . ',', (string) $read->getContent());
+        self::assertSame($sent, $read->json('data.attributes.amount'));
+    }
+
+    /**
+     * @return iterable<string, array{int|float, int}>
+     */
+    public static function boundedNumbers(): iterable
+    {
+        yield 'an integer at the integer minimum' => [100, 201];
+        yield 'a large integer' => [500, 201];
+        yield 'a decimal under the decimal maximum' => [2.5, 201];
+        yield 'a whole decimal at the decimal maximum' => [10.0, 201];
+        yield 'a small whole decimal' => [5.0, 201];
+        yield 'an integer under the integer minimum' => [99, 422];
+        yield 'an integer only the decimal maximum would take' => [5, 422];
+        yield 'a whole decimal only the integer minimum would take' => [500.0, 422];
+        yield 'a decimal over the decimal maximum' => [10.5, 422];
+    }
+
+    #[Test]
+    #[Group('spec:crud')]
+    #[\PHPUnit\Framework\Attributes\DataProvider('boundedNumbers')]
+    public function eachNumericMembersRulesApplyOnlyToItsOwnForm(int|float $sent, int $status): void
+    {
+        $response = $this->createKeepingFractions(['reading' => $sent]);
+
+        $response->assertStatus($status);
+        if ($status === 422) {
+            self::assertSame(['/data/attributes/reading'], $this->pointersOf($response));
+        }
+    }
+
     #[Test]
     #[Group('spec:crud')]
     public function anUpdateStoresAnotherMember(): void
@@ -309,6 +365,13 @@ abstract class UnionConformanceTestCase extends Orchestra
             'minItems' => 1,
             'items' => ['type' => 'string'],
         ], $this->arrayAt($attributes, 'label'));
+        self::assertSame(['type' => ['string', 'number', 'boolean', 'null']], $this->arrayAt($attributes, 'amount'));
+        self::assertSame([
+            'oneOf' => [
+                ['anyOf' => [['type' => 'integer', 'minimum' => 100], ['type' => 'number', 'maximum' => 10.0]]],
+                ['type' => 'null'],
+            ],
+        ], $this->arrayAt($attributes, 'reading'));
     }
 
     /**
@@ -336,6 +399,27 @@ abstract class UnionConformanceTestCase extends Orchestra
         return $this->writeJsonApi('POST', '/api/presets', [
             'data' => ['type' => 'presets', 'attributes' => ['label' => 'Preset', ...$attributes]],
         ]);
+    }
+
+    /**
+     * Creates a preset with a body that keeps a whole float's fraction, so `5.0` reaches
+     * the server as `5.0`.
+     *
+     * @param array<string, mixed> $attributes
+     *
+     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     */
+    private function createKeepingFractions(array $attributes): TestResponse
+    {
+        $content = \json_encode(
+            ['data' => ['type' => 'presets', 'attributes' => ['label' => 'Preset', ...$attributes]]],
+            \JSON_THROW_ON_ERROR | \JSON_PRESERVE_ZERO_FRACTION,
+        );
+
+        return $this->call('POST', '/api/presets', server: [
+            'HTTP_ACCEPT' => self::MEDIA_TYPE,
+            'CONTENT_TYPE' => self::MEDIA_TYPE,
+        ], content: $content);
     }
 
     /**

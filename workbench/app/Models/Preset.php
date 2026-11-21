@@ -14,6 +14,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property int                       $id
  * @property mixed                     $value
  * @property mixed                     $label
+ * @property mixed                     $amount
+ * @property mixed                     $reading
  * @property mixed                     $mode
  * @property mixed                     $due
  * @property mixed                     $at
@@ -36,6 +38,8 @@ final class Preset extends Model
     protected $casts = [
         'value' => AsJsonValue::class,
         'label' => AsJsonValue::class,
+        'amount' => AsJsonValue::class,
+        'reading' => AsJsonValue::class,
         'mode' => AsJsonValue::class,
         'due' => AsJsonValue::class,
         'at' => AsJsonValue::class,

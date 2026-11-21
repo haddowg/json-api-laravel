@@ -88,7 +88,11 @@ Every hook receives a `HookContext` carrying the operation's request, server nam
 the same context the events expose, so a hook can branch on the request (e.g. an authed-only
 side effect). It is a readonly value object with public properties, not getters:
 `$context->request`, `$context->serverName`, `$context->type`, and for the relationship
-hooks `$context->relation`, `$context->linkage` and `$context->mode`.
+hooks `$context->relation`, `$context->linkage` and `$context->mode`. `$context->request`,
+like an event's `request`, is the request as the client sent it, a whole number sent as
+`5.0` included. The typed, normalised values are on the hydrated model, in the values a
+field's `fillUsing()` or `deserializeUsing()` hook receives, and in an action's
+`requestMeta()`.
 
 `$context->writtenMeta()`, and `writtenMeta()` on the write events a listener receives, return
 the typed `meta` the write sent: `->document` for its top-level `meta` and `->resource` for its

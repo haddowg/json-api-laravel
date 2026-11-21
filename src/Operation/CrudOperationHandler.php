@@ -3226,7 +3226,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 }
                 foreach ($relation->writablePivotFields($creating) as $field) {
                     if (\array_key_exists($field->name(), $pivot)) {
-                        Accessor::set($row, $field->column() ?? $field->name(), $pivot[$field->name()]);
+                        Accessor::set($row, $field->column() ?? $field->name(), $field->castWireValue($pivot[$field->name()]));
                     }
                 }
 
