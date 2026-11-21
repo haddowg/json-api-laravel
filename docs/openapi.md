@@ -15,8 +15,9 @@ A relation's related and relationship paths are keyed by its URI field name (see
 [routing](routing.md#relation-segments)), and a write-only relation carries `writeOnly: true`
 in the create and update bodies. A `belongsToMany` with pivot fields gets a response pivot
 schema (`<Type><Rel>Pivot`) and a request one (`<Type><Rel>WritePivot`), and a relation whose
-[`identifierMeta()`](relationships.md#identifier-meta) declares its `fields:` gets a
-`<Type><Rel>IdentifierMeta` schema typing each response linkage identifier's `meta`. A
+[`identifierMeta()`](relationships.md#identifier-meta) declares its `fields:` gets a closed
+`<Type><Rel>IdentifierMeta` schema typing each response linkage identifier's `meta`, which on a
+`belongsToMany` lists `pivot` among its own properties. A
 backed-enum field (`status->enum(AlbumStatus::class)`) projects a reusable
 `#/components/schemas/AlbumStatus` with described cases. Each reference to it carries the
 enum's backing type, `string` or `integer`, beside a single-entry `allOf` that holds it. A
@@ -136,6 +137,106 @@ the atomic batch checks each result that renders a document. Either throws
 member or a value of the wrong JSON type. Production checks nothing. A collection member
 named `page` or `total`, a member declared twice, or an action's members declared both on
 its response and by its handler fails the boot, and `jsonapi:optimize` reports it too.
+
+## Typed request and resource object meta {#typed-request-and-resource-object-meta}
+
+A resource's `requestDocumentMeta()` declares the top-level `meta` each write may send, and its
+`resourceMeta()` the `meta` of its resource objects, read and written (see
+[core's typed request meta](https://github.com/haddowg/json-api/blob/main/docs/links-and-meta.md#typed-request-meta)).
+The workbench's albums say where a create came from, required inside an atomic batch, render
+their release year, and take a note for the editors that nothing stores:
+
+```php
+use haddowg\JsonApi\Resource\MetaContext;
+use haddowg\JsonApi\Resource\RequestMetaContext;
+
+public function requestDocumentMeta(RequestMetaContext $context): iterable
+{
+    if (!$context->is(OperationType::Create)) {
+        return [];
+    }
+    $source = Str::make('source')->in(['web', 'import', 'api'])->example('web');
+
+    return [$context->isAtomic() ? $source->required() : $source];
+}
+
+public function resourceMeta(MetaContext $context): iterable
+{
+    return [
+        Integer::make('releaseYear')->readOnly()->nullable()->example(1969)
+            ->extractUsing(static fn (Album $album): ?int => $album->released_at === null ? null : (int) $album->released_at->format('Y')),
+        Str::make('editorNote')->writeOnly()->maxLength(500)->example('Remastered edition'),
+    ];
+}
+```
+
+`POST /albums` then takes an `AlbumsCreateRequestDocument`, the shared create request narrowed
+to that `meta` and marked `x-request-meta`, and `AlbumsResource` points its `meta` at
+`AlbumsResourceMeta`, marked `x-resource-meta`, with `AlbumsCreateResourceMeta` and
+`AlbumsUpdateResourceMeta` typing the requests' `data.meta`. An atomic `add` of an album is an
+`AlbumsAtomicAddOperation` of its own, carrying the atomic declaration's `meta`. A type composed
+without a resource implements core's `DeclaresRequestDocumentMetaInterface` on its
+[standalone hydrator](capability-composition.md) and `DeclaresResourceMetaInterface` on its
+serializer.
+
+The CRUD handler validates every write's meta before it hydrates, with the same
+`illuminate/validation` rules an attribute gets: a member the declaration does not name is a
+`422 VALIDATION_FAILED` at `/meta/<member>` or `/data/meta/<member>`, and so is a value its
+constraints, its JSON type or its strict date format refuse, each number first put in its
+member's type. A delete may send a meta-only body, which is checked against the type's `Delete`
+declaration. Inside an [atomic batch](atomic-operations.md) each operation's `meta` is checked
+against what its type declares for an atomic operation, at
+`/atomic:operations/<n>/meta/<member>`, and the batch's own `meta` stays free-form. An operation
+addressed by `href` takes the declaration of the type and write its `href` resolves to, as one
+addressed by `ref` does. A type declaring nothing keeps `meta` open in both directions.
+
+The typed values reach the write: `writtenMeta()` on the create, update, save, delete and
+relationship events, `HookContext::writtenMeta()` in a resource's
+[lifecycle hooks](lifecycle-hooks.md#hookcontext), and `ActionContext::requestMeta()` and
+`writtenMeta()` in an [action](actions.md#declaring-request-meta). A write whose type declares
+no request meta for it reads an empty top-level `meta` through these, as an action declaring none
+does, and one whose type declares no `resourceMeta()` for it reads an empty `data.meta`. The raw
+`meta` and `data.meta` stay on the request. `data.meta` members declaring
+`fillUsing()` are applied to the model as it hydrates; the others stay on the written meta.
+
+A relationship write answers a meta-only `200` when its type's `documentMeta()` declares
+members for the write's case, `OperationType::UpdateRelationship`, `AddRelationship` or
+`RemoveRelationship`, which covers that mutation on every relationship of the type. Its second
+parameter, `?string $relation = null`, receives the name of the relation written, so an
+override can declare one relationship alone; the other relationships then answer their
+linkage. Its hooks receive the parent, and it is documented as
+`<Type><Rel><Kind>RelationshipDocument` on that relationship's operation. A create's
+or update's `202` job document carries what `documentMeta()` declares for `CreateAccepted` or
+`UpdateAccepted`, and an action's `202` what its handler's `documentMeta(202)` declares; the
+persister's or the action's own `meta` wins.
+
+Every declared `meta` object, pivot fields and `identifierMeta()` members included, is closed: a
+write sending an undeclared `meta.pivot` member is a `422`. One `AdditionalProperties::make()`
+entry in a declaration opens it, its `of()` typing the extra members, its `extractUsing()`
+returning extra members to render and its `fillUsing()` taking the written ones. On a pivot the
+Eloquent persister hands that hook a new instance of the relation's pivot model, and writes the
+columns the hook sets onto the join row.
+
+With `app.debug` on, the controller and the atomic batch check every rendered resource object's
+`meta`, and every linkage identifier's pivot and identifier meta, against the declarations, and
+throw `ResourceMetaMismatch`, rendered as a `500`, for a missing required member, an undeclared
+member of a closed object or a value of the wrong JSON type. A declared member always wins
+over an `AdditionalProperties` entry's member of the same name; in debug the controller marks
+the request with core's `RenderedMeta::checking()`, so rendering refuses that clash, naming the
+member, with `ResourceMetaMismatch`, or `DocumentMetaMismatch` for a document's top-level
+`meta`. Production checks nothing.
+
+The standalone JSON Schema of each type, `GET /schemas.json` and `jsonapi:jsonschema:export`,
+types the same `meta` inline: the resource object's `meta` as `<Type>ResourceMeta`, and each
+relation's linkage identifiers' `meta` with its declared identifier meta and pivot fields. A
+type or relation declaring none keeps an open object.
+
+`getMeta()` is deprecated, for removal in the next major. A resource returning
+`[AdditionalProperties::make()->extractUsing(fn ($model, $request) => /* what getMeta() returned */)]`
+from `resourceMeta()` renders the same `meta` and documents the object as open. A resource that
+overrides `getMeta()` while declaring `resourceMeta()` fails the boot, and so does a member
+declared twice, a second `AdditionalProperties` entry, or request meta on an action taking a
+raw body; `jsonapi:optimize` reports each of them too.
 
 ## Vendor extensions (`x-`) {#vendor-extensions}
 

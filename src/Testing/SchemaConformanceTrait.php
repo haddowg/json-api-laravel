@@ -50,7 +50,8 @@ use PHPUnit\Framework\Assert;
  * {@see SparseFieldsetSchema}: that type's resources require only the members in its
  * fieldset, in primary data and in `included` alike. A type the request does not name
  * keeps its full `required` set, and a member that is in the fieldset but missing from
- * the body still fails. The fieldsets come from the request behind a {@see TestResponse};
+ * the body still fails. A selected key, `<attribute>.<key>`, keeps the attribute required
+ * and narrows its schema to the selected keys. The fieldsets come from the request behind a {@see TestResponse};
  * pass `$fieldsets` to supply (or override) them, which a raw body string needs.
  *
  * When opis is

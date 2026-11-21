@@ -381,6 +381,58 @@ Blocking one relation of a type the caller can list. With no `TaskPolicy`, `GET 
 user's tasks for anyone, but the same `ProjectPolicy::viewTasks()` refuses a user who can't read.
 That user sees only the project's `tasks` links, and `GET /projects/1/tasks` answers `403`.
 
+## Filters that reach through relations
+
+A filter that walks a relation, such as `WhereThrough::make('taskTitle', 'tasks.title')`,
+answers yes or no about the rows at the other end, so it follows the same rules as the data it
+reaches. They hold for `WhereThrough`, `WhereThroughIn`, `WhereHas`, `WhereDoesntHave`,
+`WhereMorph` and every child of a group, on a collection, a related or relationship endpoint, a
+`relatedQuery` and a collection action's filters.
+
+- A row the related type's scope hides never matches, at any hop. A `whereHas` applies the
+  related model's global scopes itself, and in memory each hop's rows are narrowed to those the
+  related type's scoping provider admits.
+- When the caller may not read a hop at all, a filter the client asked for answers `403`
+  `ACCESS_DENIED`. A filter default the client didn't ask for is never refused; it matches no
+  row through that hop instead.
+
+A hop is readable unless one of these refuses the caller:
+
+- a read permission the relation declares, a `security(read:)` ability or a `view{Relation}`
+  method. It replaces the related type's checks, as it does at the relation's endpoints. One
+  filter answers for every parent at once, so an ability that takes the parent model refuses
+  the filter for everyone; give it the user alone when it doesn't depend on the parent;
+- otherwise the related type's `viewAny`, the check `GET /{type}` runs;
+- and its `view`, when the method or ability takes the user alone. A `view` that reads the row
+  can't answer for every row, so the type's scope decides which rows match, as it does on the
+  type's own collection.
+
+A path segment names the relation stored under it. When several relations share a storage
+member, the one named after the segment applies.
+
+A `WhereMorph` reaches through its polymorphic relation to the one type the request names in
+`filter[subject][type]`. That type's checks decide the filter, so naming a type the caller may
+not read answers `403` while naming another of the relation's types still filters, and a target
+that type's scope hides never matches. On Eloquent the filter adds an `EXISTS` over the target
+model's query, with its global scopes, when the model has any. In memory the targets are kept to
+the ids the type's scoping provider admits.
+
+The OpenAPI document offers `ACCESS_DENIED` on every operation whose filters, or whose
+`relatedQuery` filters, reach through a relation some caller can be refused.
+
+### Filters and sorts declared with `->through()`
+
+A filter declared with [`->through()`](https://github.com/haddowg/json-api/blob/main/docs/filters.md#reaching-through-relations-with-through),
+and an id filter keyed by a relation, follow the rules above for every relation of their path,
+and an existence filter at the end of one for the relation it tests too. A sort declared with
+`->through()` follows them as well: a row a scope hides sorts as a missing relation does, a sort
+the client asks for through a relation the caller may not read answers the same `403`, and a
+default order reads `null` through such a relation instead, on offset and cursor pages alike.
+The path names relations by their API names, so the permission of the relation it names
+applies. A `pivot` segment is read under the permission of the relation whose pivot rows it
+reaches, and a relation the pivot model holds under its reached type's rules. The OpenAPI document offers `ACCESS_DENIED` on the operations whose sorts reach
+through such a hop, as it does for filters.
+
 ## Custom actions
 
 A custom action declares its own ability on the attribute (not on the type):

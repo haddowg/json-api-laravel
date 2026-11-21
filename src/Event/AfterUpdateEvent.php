@@ -16,6 +16,8 @@ use haddowg\JsonApi\Response\DataResponse;
  */
 final class AfterUpdateEvent
 {
+    use ReadsWrittenMeta;
+
     private ?DataResponse $response = null;
 
     public function __construct(

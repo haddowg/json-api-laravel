@@ -21,6 +21,8 @@ use haddowg\JsonApi\Response\IdentifierResponse;
  */
 final class AfterRelationshipMutateEvent
 {
+    use ReadsWrittenMeta;
+
     private ?IdentifierResponse $response = null;
 
     /**

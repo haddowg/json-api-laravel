@@ -58,6 +58,7 @@ final class TmCardResource extends AbstractResource
             ],
             // Delete: the title of the card it removed.
             OperationType::Delete => [Str::make('removed')->required()->example('Plan')->extractUsing(static fn(object $card): string => self::string($card, 'title'))],
+            default => [],
         };
     }
 

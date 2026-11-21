@@ -26,6 +26,8 @@ use Workbench\App\MusicCatalog\Model\AlbumStatus;
  * @property \Illuminate\Support\Carbon|null $available_from
  * @property \Illuminate\Support\Carbon|null $available_until
  * @property array<string, mixed>|null       $release_info
+ * @property array<string, string>|null      $credits
+ * @property list<array<string, mixed>>|null $editions
  */
 final class Album extends Model
 {
@@ -59,6 +61,8 @@ final class Album extends Model
         'available_from' => 'date',
         'available_until' => 'date',
         'release_info' => 'array',
+        'credits' => 'array',
+        'editions' => 'array',
     ];
 
     /**

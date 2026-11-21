@@ -125,6 +125,11 @@ closed object still refuses an undeclared member with a `400` `ATTRIBUTE_MEMBER_
 The undeclared members are stored beside the declared children in the object's `json`
 column.
 
+An object can also let a request select its keys one at a time with `nestedFieldset()`, as
+`fields[type]=<attribute>.<key>`, which a table showing a few keys per row uses, and a nested
+object declaring it too takes `<attribute>.<key>.<key>`. See
+[selecting keys of an object attribute](resources.md#nested-fieldsets).
+
 ## Storage: one `json` column
 
 A composite attribute is **one value** — the natural Eloquent mapping is a single

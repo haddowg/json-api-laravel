@@ -8,6 +8,7 @@ use haddowg\JsonApi\OpenApi\Metadata\ActionMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResponse;
 use haddowg\JsonApi\OpenApi\Metadata\ActionResponses;
 use haddowg\JsonApi\Resource\DeclaresActionDocumentMetaInterface;
+use haddowg\JsonApi\Resource\DeclaresActionRequestMetaInterface;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\ActionMetadata;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\ActionMetadataProviderInterface;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\TagNameResolver;
@@ -94,6 +95,20 @@ final class ActionRegistry implements ActionMetadataProviderInterface
     }
 
     /**
+     * The handler of a resolved descriptor when it declares its request document's meta,
+     * else `null`. Only a handler whose class implements the interface is built.
+     */
+    public function requestMetaFor(ActionDescriptor $descriptor): ?DeclaresActionRequestMetaInterface
+    {
+        if (!\is_a($descriptor->handlerClass, DeclaresActionRequestMetaInterface::class, true)) {
+            return null;
+        }
+        $handler = $this->handlerFor($descriptor);
+
+        return $handler instanceof DeclaresActionRequestMetaInterface ? $handler : null;
+    }
+
+    /**
      * The action's declared responses, carrying the meta its handler declares per status.
      *
      * @return non-empty-list<ActionResponse>
@@ -137,7 +152,7 @@ final class ActionRegistry implements ActionMetadataProviderInterface
                 continue;
             }
 
-            $metadata[] = new ActionMetadata($descriptor, $this->resolveActionTags($descriptor), $this->documentMetaFor($descriptor));
+            $metadata[] = new ActionMetadata($descriptor, $this->resolveActionTags($descriptor), $this->documentMetaFor($descriptor), $this->requestMetaFor($descriptor));
         }
 
         return $metadata;

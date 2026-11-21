@@ -24,6 +24,7 @@ use haddowg\JsonApi\Resource\Sort\RelationSorts;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortFamilyInterface;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
+use haddowg\JsonApi\Resource\Through\ReachesThrough;
 use haddowg\JsonApi\Serializer\RelationFilterDefaultsValidator;
 use haddowg\JsonApi\Serializer\RelationOrderValidator;
 use haddowg\JsonApiLaravel\Action\ActionRegistry;
@@ -32,11 +33,13 @@ use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\KeysCursorSortsInterface;
+use haddowg\JsonApiLaravel\DataProvider\PivotRowRelationRouter;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
 use haddowg\JsonApiLaravel\Operation\DocumentMetaResolver;
 use haddowg\JsonApiLaravel\Operation\Operation;
+use haddowg\JsonApiLaravel\Operation\RequestMetaResolver;
 use Illuminate\Database\Eloquent\Model;
 use Psr\Log\LoggerInterface;
 
@@ -110,11 +113,18 @@ use Psr\Log\LoggerInterface;
  *  - **A filter's traversal path must resolve.** A `WhereThrough` or `WhereThroughIn`
  *    path ending on a polymorphic relation has no single id to compare
  *    ({@see FilterPathGuard}), a relation's scoped filters included.
+ *  - **A path through relations must run.** A sort declared with `->through()` must
+ *    resolve, and on a type an Eloquent model serves, a filter's or sort's path must be one
+ *    the Eloquent provider can walk ({@see ThroughPathGuard}).
  *  - **A cursor page's sorts must key it.** A collection that may page by cursor, the
  *    type's own or a to-many's related collection, orders the page by keyset, which takes
  *    a {@see SortByField} or a {@see KeysetSortInterface}, and on a provider that
  *    implements {@see KeysCursorSortsInterface} one it can order by. A sort family
  *    resolves its sorts per request, so it is checked then.
+ *  - **A type's declared meta must read.** Every request, resource object, relationship
+ *    write and `202` meta it, its relations and its actions' handlers declare is read, so a
+ *    member declared twice or two `additionalProperties` entries are reported, as is a
+ *    `getMeta()` override beside `resourceMeta()` and request meta on a raw-body action.
  *
  * Standalone-serializer types are validated too — a
  * fetch-opened standalone type without a provider is exactly the deploy-time
@@ -174,7 +184,9 @@ final class ServableResourceWarmer
                 $this->guardRelationFilterDefaults($serverName, $type, $problems);
                 $this->guardForeignKeys($serverName, $type, $descriptor->exposes(Operation::Update), $problems);
                 $this->guardFilterPaths($serverName, $type, $problems);
+                $this->guardThroughPaths($serverName, $type, $problems);
                 $this->guardDocumentMeta($serverName, $type, $problems);
+                $this->guardTypedMeta($serverName, $type, $problems);
                 $this->guardCursorSorts($serverName, $type, $problems);
                 $this->noteInMemoryLinkRows($serverName, $type);
             }
@@ -195,6 +207,7 @@ final class ServableResourceWarmer
                 $this->guardEloquentRelationMethods($serverName, $type, $problems);
                 $this->guardSortableFilterableColumns($serverName, $type, $problems);
                 $this->guardDocumentMeta($serverName, $type, $problems);
+                $this->guardTypedMeta($serverName, $type, $problems);
             }
 
             $this->guardRelatedEndpointTargets($serverName, $problems);
@@ -485,6 +498,39 @@ final class ServableResourceWarmer
     }
 
     /**
+     * Reports a misdeclared request, resource object, relationship write or `202` meta on the
+     * type, its relations or an action handler mounted on it, standalone or inside an Atomic
+     * Operations batch, in core's {@see \haddowg\JsonApi\Resource\MetaMisdeclared}
+     * wording; a resource overriding the deprecated `getMeta()` beside its `resourceMeta()`;
+     * and an action taking a raw body that declares request meta. Route registration makes
+     * the same check, but a cached route table skips it.
+     *
+     * @param list<string> $problems
+     */
+    private function guardTypedMeta(string $serverName, string $type, array &$problems): void
+    {
+        $server = $this->servers->get($serverName);
+
+        try {
+            $resource = $this->types->resourceFor($server, $type);
+            RequestMetaResolver::assertDeclared(
+                $resource ?? ($server->hasHydratorFor($type) ? $server->hydratorFor($type) : null),
+                $resource ?? ($server->hasSerializerFor($type) ? $server->serializerFor($type) : null),
+                $type,
+                RequestMetaResolver::relationsOf($resource),
+            );
+            foreach ($this->actions === null ? [] : $this->actions->forServer($serverName) as $action) {
+                $handler = $action->type === $type ? $this->actions?->requestMetaFor($action) : null;
+                if ($handler !== null) {
+                    RequestMetaResolver::assertActionDeclared($handler, $action);
+                }
+            }
+        } catch (\LogicException $e) {
+            $problems[] = $e->getMessage();
+        }
+    }
+
+    /**
      * Reports a relation whose `withoutFilterDefaults()` names a key no related type defaults,
      * or drops a default its filter can't drop, in core's {@see RelationFilterDefaultsValidator}
      * wording. Route registration makes the same check, but a cached route table skips it.
@@ -522,9 +568,29 @@ final class ServableResourceWarmer
         }
 
         try {
-            FilterPathGuard::check($server, $resource, servedBy: fn(string $served): string|false|null => $this->providers->supportsType($served) ? ($this->eloquentModelClassFor($served) ?? false) : null);
+            FilterPathGuard::check($server, $resource, servedBy: fn(string $served): string|false|null => $this->providers->supportsType($served) ? ($this->eloquentModelClassFor($served) ?? false) : null, pivotRows: new PivotRowRelationRouter($this->providers));
         } catch (\LogicException $e) {
             $problems[] = $e->getMessage();
+        }
+    }
+
+    /**
+     * Reports a filter or sort declared with `->through()` that can't run: a sort whose path
+     * can't be resolved, and on a type an Eloquent model serves, a path the Eloquent provider
+     * can't walk ({@see ThroughPathGuard}).
+     *
+     * @param list<string> $problems
+     */
+    private function guardThroughPaths(string $serverName, string $type, array &$problems): void
+    {
+        $server = $this->servers->get($serverName);
+        $resource = $this->types->resourceFor($server, $type);
+        if ($resource === null) {
+            return;
+        }
+
+        foreach ((new ThroughPathGuard($this->providers))->check($server, $serverName, $resource) as $problem) {
+            $problems[] = $problem;
         }
     }
 
@@ -848,7 +914,8 @@ final class ServableResourceWarmer
         };
 
         foreach ($resource->allSorts() as $sort) {
-            if ($sort instanceof SortByField && !$known($sort->column)) {
+            // A sort or filter reaching through relations names a column of another model.
+            if ($sort instanceof SortByField && $sort->through === null && !$known($sort->column)) {
                 $problems[] = \sprintf(
                     'The sortable "%s" on type "%s" resolves to column "%s", which is not on the Eloquent '
                     . 'model %s\'s table "%s". Rename the sort column, add the column, or drop ->sortable().',
@@ -862,7 +929,7 @@ final class ServableResourceWarmer
         }
 
         foreach ($resource->allFilters() as $filter) {
-            $column = $this->filterColumn($filter);
+            $column = $filter instanceof ReachesThrough && $filter->throughRelations() !== null ? null : $this->filterColumn($filter);
             if ($column !== null && !$known($column)) {
                 $problems[] = \sprintf(
                     'The filter "%s" on type "%s" resolves to column "%s", which is not on the Eloquent model '

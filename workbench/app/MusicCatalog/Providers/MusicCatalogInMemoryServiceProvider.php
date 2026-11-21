@@ -40,6 +40,7 @@ use Workbench\App\MusicCatalog\JsonApi\ExportJobResource;
 use Workbench\App\MusicCatalog\JsonApi\FavoriteResource;
 use Workbench\App\MusicCatalog\JsonApi\GenreResource;
 use Workbench\App\MusicCatalog\JsonApi\LibraryResource;
+use Workbench\App\MusicCatalog\JsonApi\PlaylistAdminResource;
 use Workbench\App\MusicCatalog\JsonApi\PlaylistResource;
 use Workbench\App\MusicCatalog\JsonApi\PlayResource;
 use Workbench\App\MusicCatalog\JsonApi\ProductResource;
@@ -110,6 +111,7 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
             LibraryResource::class,
             PlayResource::class,
             PlaylistResource::class,
+            PlaylistAdminResource::class,
             ProductResource::class,
             PublicProfileResource::class,
             ReissueResource::class,
@@ -268,6 +270,8 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
                 available_from: $row['available_from'],
                 available_until: $row['available_until'],
                 release_info: $row['release_info'],
+                credits: $row['credits'],
+                editions: $row['editions'],
                 artist: $artist,
             );
             $albums[(string) $row['id']] = $album;

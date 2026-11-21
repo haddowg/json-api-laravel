@@ -108,6 +108,22 @@ from their `extractUsing()` hooks and, under `app.debug`, the controller and the
 check.
 _Avoid_: response meta
 
+**Typed request meta**:
+The top-level `meta` members a type's `requestDocumentMeta()` declares for one write, or an
+action handler's for one HTTP method, which the CRUD handler and the action invoker validate as
+attributes before they hydrate and put on the request as the written meta.
+_Avoid_: request options
+
+**Declared resource meta**:
+The `meta` members a type's `resourceMeta()` declares for its resource objects, rendered from
+their `extractUsing()` hooks on a read and validated, then filled through `fillUsing()` or left
+on the written meta, on a write.
+_Avoid_: resource meta (alone, it also names what `getMeta()` returns)
+
+**Written meta**:
+The typed values of a write's top-level `meta` and `data.meta`, carried on its request, which
+the hydrator, the lifecycle events, the hook context and an action's context read.
+
 **Servability**:
 Whether every discovered type can actually be served against its data layer: its columns,
 relation methods, morph maps, provider and persister all resolve. `jsonapi:optimize` checks it.

@@ -8,6 +8,7 @@ use haddowg\JsonApi\OpenApi\EnumDescriptionMode;
 use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
 use haddowg\JsonApi\OpenApi\ProjectedTypes;
 use haddowg\JsonApi\OpenApi\SchemaProjector;
+use haddowg\JsonApi\OpenApi\StandaloneResourceObject;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\OpenApi\Metadata\MetadataSource;
@@ -28,12 +29,12 @@ use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
  *
  * **Specificity vs the OpenAPI document.** The **attributes** are projected identically
  * to the OpenAPI document (the same {@see SchemaProjector::projectResourceObject()}), so
- * they agree exactly. The **relationships**, **links** and **meta** are deliberately the
- * projector's permissive `{type: object}` placeholders: the OpenAPI document narrows
- * those by `$ref`-ing shared/per-relation components, and a self-contained document has
- * no `components` to reference. So for relationships/links/meta the OpenAPI document is
- * the fuller contract; the standalone document is authoritative for a type's attribute
- * shape.
+ * they agree exactly. Core's {@see StandaloneResourceObject::project()} also types the
+ * `meta` inline as the OpenAPI document does: the type's read resource meta, and on each
+ * relation declaring them, its linkage identifiers' identifier meta and pivot fields. A
+ * type or relation declaring none keeps an open object, and the rest of `relationships`
+ * and `links` stay open, since a self-contained document has no `components` to
+ * reference.
  *
  * A resource-less / standalone-serializer type
  * contributes a permissive resource-object schema (no field inventory, so an inline
@@ -93,7 +94,7 @@ final class JsonSchemaFactory
         $resource = $this->types->resourceFor($server, $type);
         $fields = $resource instanceof AbstractResource ? $resource->allFields() : [];
 
-        $document = $this->schemaProjector->projectResourceObject($type, $fields)->toJson();
+        $document = StandaloneResourceObject::project($this->serverMetadata($serverName), $type, $fields, $this->schemaProjector)->toJson();
         // Prepend the dialect + identity keywords so the artifact is a valid, addressable
         // 2020-12 schema document on its own (toJson never sets them — a component schema
         // lives inside an OpenAPI document, this one stands alone).

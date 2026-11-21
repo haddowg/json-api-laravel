@@ -295,6 +295,41 @@ final class EloquentMusicCatalogBehaviorTest extends Orchestra
             ->assertJsonPath('data.type', 'public-profiles');
     }
 
+    public function test_the_default_server_serves_the_owner_relation_read_only(): void
+    {
+        // A default-server client cannot name a `users` resource, so the relation takes no
+        // write there: its relationship endpoint refuses a PATCH, and an update naming it
+        // leaves the owner as it was.
+        $this->actingAs($this->owner());
+        $this->writeJsonApi('PATCH', '/api/playlists/' . Fixtures::PLAYLIST_ONE . '/relationships/owner', ['data' => ['type' => 'users', 'id' => '2']])
+            ->assertStatus(403)
+            ->assertJsonPath('errors.0.code', 'FULL_REPLACEMENT_PROHIBITED')
+            ->assertJsonPath('errors.0.source.pointer', '/data/relationships/owner');
+
+        $this->writeJsonApi('PATCH', '/api/playlists/' . Fixtures::PLAYLIST_ONE, ['data' => [
+            'type' => 'playlists',
+            'id' => Fixtures::PLAYLIST_ONE,
+            'relationships' => ['owner' => ['data' => ['type' => 'users', 'id' => '2']]],
+        ]])->assertOk();
+
+        $this->actingAs($this->admin());
+        $this->readJsonApi('/admin/playlists/' . Fixtures::PLAYLIST_ONE . '/relationships/owner')
+            ->assertOk()
+            ->assertJsonPath('data.id', '1');
+    }
+
+    public function test_the_admin_server_hands_a_playlist_to_another_user_through_owner(): void
+    {
+        // PlaylistAdminResource keeps `owner` writable where `users` is served.
+        $this->actingAs($this->admin());
+        $this->writeJsonApi('PATCH', '/admin/playlists/' . Fixtures::PLAYLIST_ONE . '/relationships/owner', ['data' => ['type' => 'users', 'id' => '2']])
+            ->assertSuccessful();
+
+        $this->readJsonApi('/admin/playlists/' . Fixtures::PLAYLIST_ONE . '/relationships/owner')
+            ->assertOk()
+            ->assertJsonPath('data.id', '2');
+    }
+
     /**
      * A valid `reissues` document, the related-only type the reissue action reads, carrying
      * the new release date.

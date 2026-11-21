@@ -34,6 +34,10 @@ final class PkTemplateResource extends AbstractResource
                     WhereHas::make('used', 'pivot.targets'),
                     WhereThrough::make('targetName', 'pivot.targets.name'),
                     WhereThroughIn::make('target', 'pivot.targets')->uuid(),
+                    // The row's own ends: named by the related and the parent type, though
+                    // two types serve the definition model.
+                    WhereThroughIn::make('rowDefinition', 'pivot.definition')->uuid(),
+                    WhereThroughIn::make('rowTemplate', 'pivot.template'),
                 )
                 ->withData()
                 ->paginate(PagePaginator::make())

@@ -622,6 +622,8 @@ OpenAPI projection so the generated document matches what the handler returns.
 | `entity()` | the resolved entity at resource scope, `null` at collection scope |
 | `input()` | the hydrated input object for a `Document` body, otherwise `null` |
 | `request()` | the PSR-7 `JsonApiRequestInterface`; a `Raw` body and uploaded files are read off it with `getBody()` / `getUploadedFiles()` |
+| `requestMeta()` | the request's top-level `meta`, validated and typed against what the handler declares for the method ([below](#declaring-request-meta)), or empty when it declares none |
+| `writtenMeta()` | the typed top-level `meta` and, for a `Document` input, the typed `data.meta`, empty when its input type declares no `resourceMeta()` for the write |
 | `requestMediaType()` | the media type the body was sent as, lowercased and without parameters, or `null` when the request declared none |
 | `responseMediaType()` | the media type negotiated from `Accept` for the response ([raw responses](#a-raw-response-csv-pdf-and-other-bodies)) |
 | `queryParameters()` | core's parsed `QueryParameters` for the request |
@@ -643,6 +645,41 @@ And the response builders:
 | `raw($body, $contentType = null, $status = 200, $headers = [])` | a non-JSON:API body ([above](#a-raw-response-csv-pdf-and-other-bodies)) |
 
 A handler may also return core's `ErrorResponse` to render a JSON:API error document.
+
+### Declaring request meta {#declaring-request-meta}
+
+A handler declares the members of its request's top-level `meta` per HTTP method by
+implementing core's `DeclaresActionRequestMetaInterface`. The method comes in an
+`ActionRequestMetaContext`, which carries no request, since the OpenAPI document reads the
+declaration with none:
+
+```php
+use haddowg\JsonApi\Resource\ActionRequestMetaContext;
+use haddowg\JsonApi\Resource\DeclaresActionRequestMetaInterface;
+use haddowg\JsonApi\Resource\Field\Boolean;
+
+#[AsJsonApiAction(type: 'notes', path: 'archive', methods: ['POST', 'GET'], responds: [new MetaResult()])]
+final class ArchiveNote implements ActionHandlerInterface, DeclaresActionRequestMetaInterface
+{
+    public function requestDocumentMeta(ActionRequestMetaContext $context): iterable
+    {
+        return $context->is('POST') ? [Boolean::make('silent')] : [];
+    }
+
+    public function handle(ActionContext $context): MetaResponse
+    {
+        $silent = $context->requestMeta()['silent'] ?? false;
+        // …
+    }
+}
+```
+
+A call sending a member the declaration does not name, or a value it refuses, is a
+`422 VALIDATION_FAILED` at `/meta/<member>`, and the action's operation offers that code in
+the OpenAPI document. A `Document` input's `data.meta` is validated and applied against its
+input type's `resourceMeta()`, as a create of that type is, or an update for a `PATCH`. An
+action taking a raw body carries no JSON:API `meta`, so declaring request meta on one fails the
+boot.
 
 ## Actions in the OpenAPI document
 

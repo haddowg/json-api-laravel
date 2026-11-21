@@ -141,14 +141,12 @@ abstract class IdentifierMetaTestCase extends Orchestra
 
         self::assertSame(GeneratorContract::BASELINE, $this->at($doc, 'info', 'x-generator', 'contract'));
         self::assertSame(['role'], \array_keys($this->arrayAt($doc, 'components', 'schemas', 'ShelvesCuratorIdentifierMeta', 'properties')));
-        self::assertSame(['slot', 'featured'], \array_keys($this->arrayAt($doc, 'components', 'schemas', 'ShelvesBooksIdentifierMeta', 'properties')));
-
-        // On the pivot relation the declared members and `pivot` are siblings in one `meta`.
+        // The declared object is closed, so on the pivot relation `pivot` is one of its own properties.
+        self::assertSame(['slot', 'featured', 'pivot'], \array_keys($this->arrayAt($doc, 'components', 'schemas', 'ShelvesBooksIdentifierMeta', 'properties')));
+        self::assertSame(['$ref' => '#/components/schemas/ShelvesBooksPivot'], $this->at($doc, 'components', 'schemas', 'ShelvesBooksIdentifierMeta', 'properties', 'pivot'));
+        self::assertFalse($this->at($doc, 'components', 'schemas', 'ShelvesBooksIdentifierMeta', 'additionalProperties'));
         self::assertSame(
-            ['allOf' => [
-                ['$ref' => '#/components/schemas/ShelvesBooksIdentifierMeta'],
-                ['type' => 'object', 'properties' => ['pivot' => ['$ref' => '#/components/schemas/ShelvesBooksPivot']]],
-            ]],
+            ['$ref' => '#/components/schemas/ShelvesBooksIdentifierMeta'],
             $this->arrayAt($doc, 'components', 'schemas', 'ShelvesBooksRelationship', 'properties', 'data', 'items', 'allOf', 1, 'properties', 'meta'),
         );
         // A write carries only the request pivot.

@@ -10,6 +10,7 @@ use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Constraint\Comparison;
 use haddowg\JsonApi\Resource\Field\Accessor;
+use haddowg\JsonApi\Resource\Field\ArrayList;
 use haddowg\JsonApi\Resource\Field\BelongsTo;
 use haddowg\JsonApi\Resource\Field\Boolean;
 use haddowg\JsonApi\Resource\Field\Date;
@@ -19,6 +20,7 @@ use haddowg\JsonApi\Resource\Field\HasMany;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Integer;
 use haddowg\JsonApi\Resource\Field\Map;
+use haddowg\JsonApi\Resource\Field\Obj;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\Contains;
 use haddowg\JsonApi\Resource\Filter\DateRange;
@@ -28,6 +30,8 @@ use haddowg\JsonApi\Resource\Filter\WhereHas;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Link\ActionLink;
 use haddowg\JsonApi\Resource\Link\DeclaredLink;
+use haddowg\JsonApi\Resource\MetaContext;
+use haddowg\JsonApi\Resource\RequestMetaContext;
 use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
@@ -95,6 +99,20 @@ final class AlbumResource extends AbstractResource
 
                 return $model;
             }),
+            // Credits keyed by role. A table with one column per role selects only
+            // those keys: `fields[albums]=title,credits.producer,credits.engineer`.
+            Obj::make('credits')->example(['producer' => 'Nigel Godrich'])->nullable()
+                ->additionalProperties(Str::make('*')->example('Nigel Godrich'))
+                ->nestedFieldset(pattern: '[a-z][a-z_]*'),
+            // Every edition of the album. A discography table showing the format and
+            // year of each selects only those keys of every item:
+            // `fields[albums]=title,editions.*.format,editions.*.year`.
+            ArrayList::make('editions')->nullable()
+                ->of(Obj::make('edition')->fields(
+                    Str::make('format')->example('CD'),
+                    Integer::make('year')->example(1997),
+                    Str::make('label')->example('Parlophone'),
+                )->nestedFieldset(pattern: 'format|year|label')),
             BelongsTo::make('artist', 'artists')
                 ->withFilters(Where::make('name', 'name')),
             HasMany::make('tracks', 'tracks')
@@ -164,6 +182,38 @@ final class AlbumResource extends AbstractResource
     {
         return [
             new SortDirective(SortByField::make('releasedAt', 'released_at'), descending: true),
+        ];
+    }
+
+    /**
+     * A create may say where the album came from; an atomic batch's create must, since a
+     * batch is an import. Nothing else carries request meta.
+     */
+    public function requestDocumentMeta(RequestMetaContext $context): iterable
+    {
+        if (!$context->is(OperationType::Create)) {
+            return [];
+        }
+        $source = Str::make('source')->in(['web', 'import', 'api'])
+            ->describedAs('Where the album was entered.')
+            ->example('web');
+
+        return [$context->isAtomic() ? $source->required() : $source];
+    }
+
+    /**
+     * Each album's resource object `meta` says the year it was released, and a write may
+     * leave a note for the catalogue's editors, which the write's hooks read and nothing
+     * stores.
+     */
+    public function resourceMeta(MetaContext $context): iterable
+    {
+        return [
+            Integer::make('releaseYear')->readOnly()->nullable()->example(1969)
+                ->describedAs('The year the album was released.')
+                ->extractUsing(static fn(AlbumModel|AlbumDomain $album): ?int => $album->released_at === null ? null : (int) $album->released_at->format('Y')),
+            Str::make('editorNote')->writeOnly()->maxLength(500)->example('Remastered edition')
+                ->describedAs('A note for the catalogue editors. It is never stored or rendered.'),
         ];
     }
 

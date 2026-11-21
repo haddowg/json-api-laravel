@@ -19,6 +19,7 @@ use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationScopeTable;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresOperationSecurity;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresReadOnlyAttributeRejection;
 use haddowg\JsonApi\OpenApi\Metadata\DeclaresStrictQueryParameters;
+use haddowg\JsonApi\OpenApi\Metadata\DeclaresThroughReadSecurity;
 use haddowg\JsonApi\OpenApi\Metadata\OperationKey;
 use haddowg\JsonApi\OpenApi\Metadata\ServerMetadataInterface;
 use haddowg\JsonApi\OpenApi\Metadata\TypeMetadataInterface;
@@ -26,6 +27,10 @@ use haddowg\JsonApi\OpenApi\SecurityRequirement;
 use haddowg\JsonApi\OpenApi\SecurityScheme;
 use haddowg\JsonApi\OpenApi\Server;
 use haddowg\JsonApi\OpenApi\Tag;
+use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
+use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Filter\RelationHop;
+use haddowg\JsonApi\Resource\Through\PivotRowRelations;
 use haddowg\JsonApi\Scope\ScopeTable;
 use haddowg\JsonApiLaravel\Scope\ScopeTables;
 
@@ -63,7 +68,7 @@ use haddowg\JsonApiLaravel\Scope\ScopeTables;
  * middleware and the Gate can refuse ({@see DeclaresOperationSecurity}), whether query
  * parameters are strict, which documents are checked, and the default include depth.
  */
-final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLinkObjects, DeclaresReadOnlyAttributeRejection, DeclaresExampleGeneration, DeclaresOperationScopeTable, DeclaresMethodNotAllowed, DeclaresOperationSecurity, DeclaresStrictQueryParameters, DeclaresDocumentValidation, DeclaresMaxIncludeDepth
+final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLinkObjects, DeclaresReadOnlyAttributeRejection, DeclaresExampleGeneration, DeclaresOperationScopeTable, DeclaresMethodNotAllowed, DeclaresOperationSecurity, DeclaresThroughReadSecurity, DeclaresStrictQueryParameters, DeclaresDocumentValidation, DeclaresMaxIncludeDepth, PivotRowRelations
 {
     /**
      * @param list<Server>                  $servers
@@ -102,7 +107,23 @@ final readonly class ServerMetadata implements ContributesErrorCodes, DeclaresLi
         private bool $strictQueryParameters = true,
         private bool $checksResourceObjectMembers = true,
         private ?int $maxIncludeDepth = null,
+        private ?\Closure $through = null,
+        private ?PivotRowRelations $pivotRows = null,
     ) {}
+
+    /**
+     * The relation the pivot rows of `$relation` hold under `$member`, as the provider serving
+     * its related type names it, so the projection resolves paths going on past a pivot row.
+     */
+    public function pivotRowRelation(PivotRelationInterface $relation, string $parentType, string $member): ?RelationInterface
+    {
+        return $this->pivotRows?->pivotRowRelation($relation, $parentType, $member);
+    }
+
+    public function canRefuseThrough(RelationHop $hop): bool
+    {
+        return $this->through !== null && ($this->through)($hop);
+    }
 
     public function canDenyAccess(?TypeMetadataInterface $type, OperationKey $operation): bool
     {

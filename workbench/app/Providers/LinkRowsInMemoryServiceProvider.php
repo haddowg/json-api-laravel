@@ -17,6 +17,7 @@ use Workbench\App\LinkRows\NoteResource;
 use Workbench\App\LinkRows\Photo;
 use Workbench\App\LinkRows\PhotoResource;
 use Workbench\App\LinkRows\Pin;
+use Workbench\App\LinkRows\TagBoardResource;
 use Workbench\App\Models\BoardItem;
 
 /**
@@ -60,5 +61,13 @@ final class LinkRowsInMemoryServiceProvider extends ServiceProvider
         JsonApi::provider(new InMemoryDataProvider('notes', $notes, identify: $identify));
         JsonApi::provider(new InMemoryDataProvider('photos', $photos, identify: $identify));
         JsonApi::persister(new InMemoryDataPersister('boards', $boardProvider->store(), static fn(): Board => new Board()));
+
+        // The same boards as `tag-boards`, whose link rows take a tag through an open pivot.
+        if (config('link_rows.tags') === true) {
+            JsonApi::register([TagBoardResource::class]);
+            $tagBoards = new InMemoryDataProvider('tag-boards', $boards, identify: $identify, coordinator: $coordinator);
+            JsonApi::provider($tagBoards);
+            JsonApi::persister(new InMemoryDataPersister('tag-boards', $tagBoards->store(), static fn(): Board => new Board()));
+        }
     }
 }

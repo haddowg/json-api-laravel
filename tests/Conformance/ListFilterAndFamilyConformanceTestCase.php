@@ -383,6 +383,19 @@ abstract class ListFilterAndFamilyConformanceTestCase extends Orchestra
         $this->assertValueInvalid($this->request('/api/books/-actions/count?filter[attr.pages]=lots'), 'attr.pages');
     }
 
+    #[Test]
+    #[Group('actions')]
+    public function aCollectionActionComparesTheListASetFiltersDeserializerReturns(): void
+    {
+        self::assertSame(['2', '4', '6'], $this->actionIds('?filter[kind]=speculative'));
+        self::assertSame(['1', '2', '3', '4', '5', '6'], $this->actionIds('?filter[kind][]=speculative&filter[kind][]=literary'));
+        self::assertSame(['1', '3', '5'], $this->actionIds('?filter[notKind]=speculative'));
+        self::assertSame([], $this->actionIds('?filter[kind]=none'));
+        self::assertSame(['1', '2', '3', '4', '5', '6'], $this->actionIds('?filter[notKind]=none'));
+        // The constraint checks the requested kind, not the genres it stands for.
+        $this->assertValueInvalid($this->request('/api/books/-actions/count?filter[kind]=scifi'), 'kind');
+    }
+
     // --- OpenAPI ---------------------------------------------------------------
 
     #[Test]

@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Action;
 
 use haddowg\JsonApi\Operation\QueryParameters;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\WrittenMeta;
 use haddowg\JsonApi\Response\AcceptedResponse;
 use haddowg\JsonApi\Response\DataResponse;
 use haddowg\JsonApi\Response\MetaResponse;
@@ -148,6 +149,28 @@ final class ActionContext
      * action this exposes the raw body and the uploaded files (via the PSR-7
      * `getBody()`/`getUploadedFiles()` it extends).
      */
+    /**
+     * The typed top-level `meta` the call sent, validated against what the handler declares
+     * for the method through
+     * {@see \haddowg\JsonApi\Resource\DeclaresActionRequestMetaInterface::requestDocumentMeta()}.
+     * Empty when it declares nothing.
+     *
+     * @return array<string, mixed>
+     */
+    public function requestMeta(): array
+    {
+        return WrittenMeta::of($this->request)->document;
+    }
+
+    /**
+     * The typed `meta` the call sent: its top-level `meta`, and for a document input its
+     * resource object's `data.meta`, validated against the input type's `resourceMeta()`.
+     */
+    public function writtenMeta(): WrittenMeta
+    {
+        return WrittenMeta::of($this->request);
+    }
+
     public function request(): JsonApiRequestInterface
     {
         return $this->request;

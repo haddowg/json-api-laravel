@@ -29,6 +29,7 @@ use haddowg\JsonApi\Operation\UpdateResourceOperation;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\AbstractRelationValue;
 use haddowg\JsonApi\Resource\Field\ForeignKey;
+use haddowg\JsonApi\Resource\RenderedMeta;
 use haddowg\JsonApi\Response\AbstractResponse;
 use haddowg\JsonApi\Response\ErrorResponse;
 use haddowg\JsonApi\Response\MetaResponse;
@@ -43,6 +44,7 @@ use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\Http\JsonApiController;
 use haddowg\JsonApiLaravel\Operation\CrudOperationHandler;
 use haddowg\JsonApiLaravel\Operation\DocumentMetaResolver;
+use haddowg\JsonApiLaravel\Operation\RequestMetaResolver;
 use haddowg\JsonApiLaravel\Operation\SingletonIdResolver;
 use haddowg\JsonApiLaravel\Operation\TargetResolver;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
@@ -217,7 +219,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
 
         // (c)/(d) build the matching core CRUD operation VO off a synthetic per-op request
         // and dispatch it through the handler IN-PROCESS (handle(), never Server::dispatch).
-        $operation = $this->buildOperation($op->opCode, $target, $data, $op->index);
+        $operation = $this->buildOperation($op->opCode, $target, $data, $op->index, $op->meta);
         $response = $this->handler->handle($operation);
 
         // A sub-operation that resolved to a 404/400 returns an ErrorResponse rather than
@@ -482,7 +484,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
      * Builds the core CRUD operation VO for the descriptor's code and resolved target,
      * carrying a synthetic per-operation request whose parsed body is `{data: <data>}`.
      */
-    private function buildOperation(AtomicOperationCode $opCode, Target $target, mixed $data, int $index): JsonApiOperationInterface
+    private function buildOperation(AtomicOperationCode $opCode, Target $target, mixed $data, int $index, mixed $meta = null): JsonApiOperationInterface
     {
         $query = new QueryParameters([], [], [], [], []);
 
@@ -496,7 +498,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
         };
 
         if ($target->hasRelationship()) {
-            $body = $this->subRequest($target, $method, $data, $index);
+            $body = $this->subRequest($target, $method, $data, $index, $meta);
             $context = new OperationContext($this->server, $body);
 
             return match ($opCode) {
@@ -513,7 +515,7 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
             throw new ResourceIdConflict($bodyId, $target->id);
         }
 
-        $body = $this->subRequest($target, $method, $data, $index);
+        $body = $this->subRequest($target, $method, $data, $index, $meta);
         $context = new OperationContext($this->server, $body);
 
         return match ($opCode) {
@@ -526,18 +528,21 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
     /**
      * A synthetic per-operation request derived from the batch request: the same
      * headers/attributes with the method + URI rewritten to the sub-operation's verb/path
-     * and a parsed body of `{data: <data>}`. Its raw body is still the whole batch, so it
-     * carries its own operation's object-decoded attributes for value validation.
+     * and a parsed body of `{data: <data>}`, with the operation's own `meta` as its top-level
+     * `meta`, validated against what its target declares for an atomic operation. Its raw
+     * body is still the whole batch, so it carries its own operation's object-decoded
+     * attributes for value validation.
      */
-    private function subRequest(Target $target, string $method, mixed $data, int $index): JsonApiRequestInterface
+    private function subRequest(Target $target, string $method, mixed $data, int $index, mixed $meta = null): JsonApiRequestInterface
     {
         $uri = $this->request->getUri()->withPath($this->pathFor($target));
 
         $request = $this->request
             ->withMethod($method)
             ->withUri($uri, preserveHost: true)
-            ->withParsedBody(['data' => $data])
-            ->withAttribute(ObjectAttributes::REQUEST_ATTRIBUTE, ObjectAttributes::inDocument($this->objectOperation($index)));
+            ->withParsedBody($meta === null ? ['data' => $data] : ['data' => $data, 'meta' => $meta])
+            ->withAttribute(ObjectAttributes::REQUEST_ATTRIBUTE, ObjectAttributes::inDocument($this->objectOperation($index)))
+            ->withAttribute(RequestMetaResolver::ATOMIC_ATTRIBUTE, true);
         \assert($request instanceof JsonApiRequestInterface);
 
         return $request;
@@ -844,6 +849,18 @@ final class AtomicLoopBackend implements AtomicLoopBackendInterface
             $document = $declared->isEmpty() ? null : \json_decode($body, true, 512, \JSON_THROW_ON_ERROR);
             if (\is_array($document)) {
                 $declared->assertSatisfiedBy(\is_array($document['meta'] ?? null) ? $document['meta'] : []);
+            }
+        }
+        // Each rendered resource object's meta, and each linkage identifier's, is checked
+        // against what its type and relation declare.
+        if ($this->documentMeta !== null) {
+            $rendered = \json_decode($body, true, 512, \JSON_THROW_ON_ERROR);
+            if (\is_array($rendered)) {
+                $server = $this->server;
+                RenderedMeta::assertConforms(
+                    $rendered,
+                    static fn(string $type): ?object => $server->hasSerializerFor($type) ? $server->serializerFor($type) : null,
+                );
             }
         }
 

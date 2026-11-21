@@ -21,6 +21,8 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
  */
 final class BeforeRelationshipMutateEvent
 {
+    use ReadsWrittenMeta;
+
     /**
      * @param ToOneRelationship|ToManyRelationship $linkage the parsed linkage
      */

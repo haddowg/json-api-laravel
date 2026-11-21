@@ -16,6 +16,7 @@ use haddowg\JsonApi\Pagination\PaginatorInterface;
 use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Filter\RelationHop;
 use haddowg\JsonApi\Serializer\DeclaresDocumentMetaInterface;
 use haddowg\JsonApi\Serializer\IncludeControlsInterface;
 use haddowg\JsonApi\Server\Server;
@@ -28,6 +29,7 @@ use haddowg\JsonApiLaravel\DataPersister\Eloquent\EloquentDataPersister;
 use haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister;
 use haddowg\JsonApiLaravel\DataPersister\WritesForeignKeysInterface;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\PivotRowRelationRouter;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
@@ -194,6 +196,8 @@ final class MetadataSource
             security: $this->securityFor(static fn(): string => $serverName, $types),
             strictQueryParameters: $server->strictQueryParameters(),
             maxIncludeDepth: $server->maxIncludeDepth(),
+            through: $this->throughFor(static fn(): string => $serverName),
+            pivotRows: $this->providers !== null ? new PivotRowRelationRouter($this->providers) : null,
         );
     }
 
@@ -217,6 +221,21 @@ final class MetadataSource
         return static fn(?TypeMetadataInterface $type, OperationKey $operation, bool $access): bool => $access
             ? $facts->canDenyAccess($serverOf($type?->type()), $types, $type, $operation)
             : $facts->canRequireAuthentication($serverOf($type?->type()), $types, $type, $operation);
+    }
+
+    /**
+     * Answers {@see ServerMetadata::canRefuseThrough()} from the Gate of the server `$serverOf`
+     * names for the type declaring a hop's relation.
+     *
+     * @param \Closure(?string): string $serverOf
+     *
+     * @return (\Closure(RelationHop): bool)|null
+     */
+    private function throughFor(\Closure $serverOf): ?\Closure
+    {
+        $facts = $this->securityFacts;
+
+        return $facts === null ? null : static fn(RelationHop $hop): bool => $facts->canRefuseThrough($serverOf($hop->parentType), $hop);
     }
 
     /**
@@ -306,6 +325,8 @@ final class MetadataSource
             security: $this->securityFor(static fn(?string $type): string => $serverOfType[$type ?? ''] ?? ServerRegistry::DEFAULT_SERVER, $types),
             strictQueryParameters: $strict,
             maxIncludeDepth: $maxIncludeDepth,
+            through: $this->throughFor(static fn(?string $type): string => $serverOfType[$type ?? ''] ?? ServerRegistry::DEFAULT_SERVER),
+            pivotRows: $this->providers !== null ? new PivotRowRelationRouter($this->providers) : null,
         );
     }
 
@@ -421,6 +442,8 @@ final class MetadataSource
             maxIncludeDepth: self::includeControls($server, $type)?->maxIncludeDepth(),
             singleton: $descriptor->singleton,
             documentMeta: self::documentMetaDeclarer($server->hasSerializerFor($type) ? $server->serializerFor($type) : null),
+            requestMeta: $server->hasHydratorFor($type) ? $server->hydratorFor($type) : null,
+            resourceMeta: $server->hasSerializerFor($type) ? $server->serializerFor($type) : null,
         );
     }
 
@@ -522,6 +545,8 @@ final class MetadataSource
             maxIncludeDepth: self::includeControls($server, $type)?->maxIncludeDepth(),
             singleton: $descriptor->singleton,
             documentMeta: self::documentMetaDeclarer($resource ?? ($server->hasSerializerFor($type) ? $server->serializerFor($type) : null)),
+            requestMeta: $resource ?? ($server->hasHydratorFor($type) ? $server->hydratorFor($type) : null),
+            resourceMeta: $resource ?? ($server->hasSerializerFor($type) ? $server->serializerFor($type) : null),
         );
     }
 
@@ -619,7 +644,7 @@ final class MetadataSource
         }
 
         $descriptions = [];
-        foreach (OperationType::cases() as $operation) {
+        foreach (OperationType::resourceOperations() as $operation) {
             $value = $resource->describeOperation($operation);
             if ($value !== null) {
                 $descriptions[$operation->value] = $value;

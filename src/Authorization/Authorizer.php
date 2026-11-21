@@ -189,6 +189,34 @@ final class Authorizer
     }
 
     /**
+     * Whether the check `$ability` runs on `$type` decides without the row it is asked about:
+     * the policy method or Gate ability that answers it takes the user alone. The dedicated
+     * `policy:`, then the model's Gate policy for `$subject`, then a defined ability are
+     * consulted in the order {@see authorize()} uses. An ability nothing defines decides
+     * without a row, since the answer can't depend on one. A callable that takes a second
+     * parameter, or one that can't be inspected, reads the row.
+     */
+    public function decidesWithoutRow(string $type, string $ability, ?object $subject, ?string $server = null): bool
+    {
+        $policy = $this->configFor($server, $type)?->policy;
+        if ($policy === null && $subject !== null) {
+            /** @var mixed $policy */
+            $policy = $this->gate->getPolicyFor($subject);
+        }
+        if ((\is_object($policy) || \is_string($policy)) && \method_exists($policy, $ability)) {
+            return (new \ReflectionMethod($policy, $ability))->getNumberOfParameters() <= 1;
+        }
+
+        if (!$this->gate->has($ability)) {
+            return true;
+        }
+
+        $callback = $this->gate instanceof \Illuminate\Auth\Access\Gate ? ($this->gate->abilities()[$ability] ?? null) : null;
+
+        return $callback instanceof \Closure && (new \ReflectionFunction($callback))->getNumberOfParameters() <= 1;
+    }
+
+    /**
      * Whether the current user passes {@see authorize()} for `$operation` on `$type`.
      */
     public function allows(string $type, Operation $operation, ?object $subject, ?string $server = null): bool
