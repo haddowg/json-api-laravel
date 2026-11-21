@@ -12,6 +12,7 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\RelationAuthorizerInterface;
 use haddowg\JsonApi\Schema\Error\ErrorMessageResolverInterface;
 use haddowg\JsonApi\Schema\Profile\CountableProfile;
+use haddowg\JsonApi\Schema\Profile\NestedFieldsetsProfile;
 use haddowg\JsonApi\Schema\Profile\ProfileInterface;
 use haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile;
 use haddowg\JsonApi\Serializer\RelationshipCountInterface;
@@ -48,7 +49,7 @@ use Psr\Http\Message\StreamFactoryInterface;
 final class ServerFactory
 {
     /**
-     * The JSON:API profiles registered by default: the three built-ins in
+     * The JSON:API profiles registered by default: the four built-ins in
      * the canonical order the OpenAPI `jsonapi.profile` enum advertises them. The order is
      * significant — it is the byte-order the `jsonapi.profile` enum
      * is generated in — and MUST match the Symfony bundle's default for cross-adapter
@@ -60,6 +61,7 @@ final class ServerFactory
         CursorPaginationProfile::class,
         CountableProfile::class,
         RelationshipQueriesProfile::class,
+        NestedFieldsetsProfile::class,
     ];
 
     private ?Server $server = null;
@@ -130,8 +132,9 @@ final class ServerFactory
         private readonly array $hydratorOverrides = [],
         // The JSON:API profiles this server registers, in registration order,
         // data-driven from `jsonapi.profiles` (default {@see self::DEFAULT_PROFILES} — the
-        // three built-ins in canonical order). Registration makes the server recognize a
-        // profile (advertises its URI when negotiated, parses its opt-in query family only
+        // four built-ins in canonical order). Registration makes the server recognize a
+        // profile (advertises its URI when negotiated, or for Nested Fieldsets when a request
+        // narrows an attribute, parses its opt-in query family only
         // under negotiation) and gates the profile's OpenAPI output.
         private readonly array $profiles = [],
         // The error-message resolver: localizes/overrides every error's
@@ -194,7 +197,7 @@ final class ServerFactory
             ->withContainer($this->resolver);
 
         // Register the server's JSON:API profiles, data-driven from `jsonapi.profiles`
-        // (default {@see self::DEFAULT_PROFILES} — the three built-ins in
+        // (default {@see self::DEFAULT_PROFILES} — the four built-ins in
         // canonical order). Registration order is the order the OpenAPI `jsonapi.profile`
         // enum advertises them, so it is stable across framework adapters;
         // a profile's opt-in query family is parsed only when a client negotiates its URI.

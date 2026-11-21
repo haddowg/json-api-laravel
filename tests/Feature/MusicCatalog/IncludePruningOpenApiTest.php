@@ -50,6 +50,29 @@ final class IncludePruningOpenApiTest extends Orchestra
         $this->assertContains('tracks', $enum);
     }
 
+    #[Test]
+    #[Group('openapi')]
+    public function it_documents_the_playlist_owner_write_only_on_the_admin_server(): void
+    {
+        // A default-server client cannot name a `users` resource, so `owner` is read-only
+        // there and every write of it leaves the document. PlaylistAdminResource keeps it
+        // writable on the admin server.
+        $factory = $this->resolve(DocumentFactory::class);
+        $default = $factory->forServer('default')->toArray();
+        $admin = $factory->forServer('admin')->toArray();
+
+        $this->assertArrayHasKey('get', $this->arrayAt($default, 'paths', '/playlists/{id}/relationships/owner'));
+        $this->assertArrayNotHasKey('patch', $this->arrayAt($default, 'paths', '/playlists/{id}/relationships/owner'));
+        $this->assertArrayHasKey('patch', $this->arrayAt($admin, 'paths', '/playlists/{id}/relationships/owner'));
+
+        foreach (['PlaylistsCreateRequest', 'PlaylistsUpdateRequest'] as $request) {
+            $relationships = $this->arrayAt($default, 'components', 'schemas', $request, 'properties', 'data', 'properties', 'relationships', 'properties');
+            $this->assertArrayNotHasKey('owner', $relationships, $request);
+            $this->assertArrayHasKey('publicOwner', $relationships, $request);
+            $this->assertArrayHasKey('owner', $this->arrayAt($admin, 'components', 'schemas', $request, 'properties', 'data', 'properties', 'relationships', 'properties'), $request);
+        }
+    }
+
     /**
      * @param \Illuminate\Foundation\Application $app
      *

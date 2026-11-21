@@ -974,7 +974,7 @@ final class JsonApiServiceProvider extends ServiceProvider
             $strict = config('jsonapi.strict_query_parameters', true);
 
             // The server-registered profiles (`jsonapi.profiles`, class-strings), in
-            // registration order — the full recognized set (default the three
+            // registration order — the full recognized set (default the four
             // built-ins in canonical order via ServerFactory::DEFAULT_PROFILES when the
             // key is absent from a not-yet-republished config). Instantiated once, shared
             // by every server (profiles are stateless VOs).

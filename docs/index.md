@@ -109,6 +109,11 @@ Eloquent `Album` model, with no controller and no handler. The step-by-step buil
 - **Relationships** — related + relationship read and mutation endpoints, compound
   `?include` via an SPI batcher, `?withCount`, pivots, and the Relationship Queries profile.
   See [relationships](relationships.md).
+- **Nested fieldsets** — `fields[albums]=title,credits.producer` selects single keys of an
+  object attribute declaring `nestedFieldset()`, for a table with one column per key, and
+  `editions.*.format` selects a key of every item of a list; the
+  response advertises the Nested Fieldsets profile, which clients never send. See
+  [resources](resources.md#nested-fieldsets).
 - **Custom actions & atomic operations** — non-CRUD `-actions/{name}` endpoints that can
   take and answer with non-JSON:API bodies (a CSV import, a PDF, a download URL), and the
   Atomic Operations extension. See [actions](actions.md) and
