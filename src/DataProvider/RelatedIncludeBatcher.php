@@ -304,7 +304,7 @@ final class RelatedIncludeBatcher
                 if ($windowedTargets === null) {
                     $rendering = match (true) {
                         $included => $entities,
-                        !$request->isIncludedField($type, $relation->name()) => [],
+                        !self::rendersField($request, $type, $relation) => [],
                         default => \array_values(\array_filter($entities, fn(object $entity): bool => $this->rendersData($server, $entity, $relation))),
                     };
                     $windowedTargets = $rendering === [] ? null : $this->loadFirstPages($server, $type, $rendering, $relation, $request, $basePath === '', $linkages);
@@ -331,7 +331,7 @@ final class RelatedIncludeBatcher
             // every member's row, one read per type, when it is included. One with a paginator
             // renders its first page.
             if ($this->members !== null && IdentifiedMorphMembers::identifies($relation)) {
-                if (!$included && !$request->isIncludedField($type, $relation->name())) {
+                if (!$included && !self::rendersField($request, $type, $relation)) {
                     continue;
                 }
 
@@ -384,8 +384,9 @@ final class RelatedIncludeBatcher
                 continue;
             }
 
-            // A relation the sparse fieldset leaves out renders no linkage to load.
-            if (!$request->isIncludedField($type, $relation->name())) {
+            // A relation the sparse fieldset leaves out renders no linkage to load, unless it
+            // is declared notSparseField().
+            if (!self::rendersField($request, $type, $relation)) {
                 continue;
             }
 
@@ -1150,5 +1151,15 @@ final class RelatedIncludeBatcher
         }
 
         return \iterator_to_array($entities, false);
+    }
+
+    /**
+     * Whether `fields[type]` renders the relation: it names it, or the relation is declared
+     * `notSparseField()` and the fieldset isn't the empty one that renders no fields.
+     */
+    private static function rendersField(JsonApiRequestInterface $request, string $type, RelationInterface $relation): bool
+    {
+        return $request->isIncludedField($type, $relation->name())
+            || (!$relation->isSparseField() && !\in_array('', $request->getIncludedFields($type), true));
     }
 }

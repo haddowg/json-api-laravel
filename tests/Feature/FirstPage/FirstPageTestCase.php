@@ -128,6 +128,24 @@ abstract class FirstPageTestCase extends Orchestra
         self::assertSame(self::BASE_URI . '/fp-boards/1/relationships/cards?sort=-title&withCount=_self_&page%5Bnumber%5D=2&page%5Bsize%5D=2', $this->links($cards)['next'] ?? null);
     }
 
+    /**
+     * `featured` is declared `notSparseField()`, so a fieldset leaving it out still
+     * renders it, cut to its first page as it is without one.
+     */
+    #[Test]
+    public function aNonSparseToManyRendersItsFirstPageWhenTheFieldsetLeavesItOut(): void
+    {
+        $document = $this->fetch('/fp-boards/1?fields[fp-boards]=name');
+        $data = $document['data'] ?? null;
+        self::assertIsArray($data);
+        self::assertIsArray($data['relationships'] ?? null);
+        self::assertSame(['featured'], \array_keys($data['relationships']));
+
+        $featured = $this->relationship($data, 'featured');
+        self::assertSame(['1', '2'], $this->linkageIds($featured));
+        self::assertSame(self::BASE_URI . '/fp-boards/1/relationships/featured?page%5Bnumber%5D=2&page%5Bsize%5D=2', $this->links($featured)['next'] ?? null);
+    }
+
     #[Test]
     public function aWithDataToManyRendersItsFirstPageWithoutBeingIncluded(): void
     {

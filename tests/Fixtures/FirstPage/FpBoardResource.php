@@ -31,7 +31,7 @@ final class FpBoardResource extends AbstractResource
             Id::make(),
             Str::make('name'),
             HasMany::make('cards', 'fp-cards')->paginate(PagePaginator::make()->withDefaultPerPage(2))->countable(),
-            HasMany::make('featured', 'fp-cards')->storedAs('cards')->paginate(PagePaginator::make()->withDefaultPerPage(2))->withData(),
+            HasMany::make('featured', 'fp-cards')->storedAs('cards')->paginate(PagePaginator::make()->withDefaultPerPage(2))->withData()->notSparseField(),
             BelongsToMany::make('labels', 'fp-labels')->paginate(PagePaginator::make()->withDefaultPerPage(2)),
             BelongsToMany::make('cursorLabels', 'fp-labels')->storedAs('labels')->paginate(CursorPaginator::make()->withDefaultSize(2)),
             HasMany::make('newestCards', 'fp-cards')->paginate(PagePaginator::make()->withDefaultPerPage(2)),
