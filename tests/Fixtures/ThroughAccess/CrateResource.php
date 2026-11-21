@@ -13,9 +13,12 @@ use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApi\Resource\Filter\WhereAny;
 use haddowg\JsonApi\Resource\Filter\WhereHas;
+use haddowg\JsonApi\Resource\Filter\WhereIdIn;
 use haddowg\JsonApi\Resource\Filter\WhereMorph;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
+use haddowg\JsonApi\Resource\Sort\SortByField;
+use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 
 /**
@@ -30,7 +33,7 @@ final class CrateResource extends AbstractResource
     {
         return [
             Id::make(),
-            Str::make('name'),
+            Str::make('name')->sortable(),
             HasMany::make('parcels', 'parcels'),
             // Shares the `parcels` storage member but only admins may read it; a filter path's
             // `parcels` segment names the relation above.
@@ -64,6 +67,27 @@ final class CrateResource extends AbstractResource
             WhereMorph::make('about', 'subject'),
             WhereMorph::make('stash'),
             WhereAny::make('nameOrAbout', Where::make('name'), WhereMorph::make('about', 'subject')),
+            // The same reads declared with `->through()`, and an id filter keyed by a relation.
+            Where::make('throughParcelLabel', 'label')->through('parcels'),
+            Where::make('throughVaultCode', 'code')->through('vault'),
+            Where::make('throughLedgerCode', 'code')->through('ledger'),
+            Where::make('throughAuditorCode', 'code')->through('auditor'),
+            WhereIdIn::make('vault'),
         ];
+    }
+
+    public function sorts(): array
+    {
+        return [
+            SortByField::make('byLedgerCode', 'code')->through('ledger'),
+        ];
+    }
+
+    /**
+     * By ledger code, which only admins may read, so everyone else's crates order by name.
+     */
+    public function defaultSort(): array
+    {
+        return [new SortDirective(SortByField::make('byLedgerCode', 'code')->through('ledger'), false), new SortDirective(SortByField::make('name', 'name'), false)];
     }
 }

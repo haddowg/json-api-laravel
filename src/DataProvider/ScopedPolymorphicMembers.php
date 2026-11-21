@@ -157,7 +157,7 @@ final class ScopedPolymorphicMembers
     public function window(CollectionCriteria $criteria, array $members): CollectionResult
     {
         /** @var list<object> $filtered */
-        $filtered = (new CriteriaApplier())->apply($criteria, $members, new ScopedArrayFilterHandler(new ArrayFilterHandler()), new ArraySortHandler());
+        $filtered = (new CriteriaApplier())->apply($criteria, $members, new ScopedArrayFilterHandler(new ArrayFilterHandler()), new ScopedArraySortHandler(new ArraySortHandler()));
 
         return (new WindowExecutor())->run(
             $criteria->window,

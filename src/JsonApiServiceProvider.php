@@ -270,8 +270,9 @@ final class JsonApiServiceProvider extends ServiceProvider
 
             // Checks every to-many read order a server's resources declare against the sorts
             // each relation accepts, checks the keys each withoutFilterDefaults() names, and
-            // resolves every declared filter's traversal path, so a typo'd default or a
-            // polymorphic filter leaf fails the boot. The resources resolve lazily through a
+            // resolves every declared filter's traversal path and every sort declared with
+            // `->through()`, so a typo'd default, a polymorphic filter leaf or a sort through a
+            // to-many fails the boot. The resources resolve lazily through a
             // bare core server, not the configured one, keeping registration cheap; one that
             // cannot be built here is left to the optimize check.
             $relationOrderGuard = static function (string $server) use ($app): void {
@@ -305,6 +306,13 @@ final class JsonApiServiceProvider extends ServiceProvider
                         return $persisters instanceof DataPersisterRegistry ? $persisters : null;
                     },
                 );
+                // Built only when a path goes on past a pivot row.
+                $pivotRows = new \haddowg\JsonApiLaravel\DataProvider\PivotRowRelationRouter(static function () use ($app): DataProviderRegistry {
+                    $providers = $app->make(DataProviderRegistry::class);
+                    \assert($providers instanceof DataProviderRegistry);
+
+                    return $providers;
+                });
                 foreach ($types as $type) {
                     try {
                         $resource = $registry->resourceFor($type);
@@ -314,7 +322,8 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $guard->check($registry, $type, $resource);
                     $foreignKeys->check($registry, $type, $resource, unkeyed: false);
                     (new \haddowg\JsonApi\Serializer\RelationFilterDefaultsValidator($registry))->validate($type, $resource);
-                    \haddowg\JsonApiLaravel\Server\FilterPathGuard::check($registry, $resource);
+                    \haddowg\JsonApiLaravel\Server\FilterPathGuard::check($registry, $resource, pivotRows: $pivotRows);
+                    \haddowg\JsonApiLaravel\Server\ThroughPathGuard::assertSortsResolve($registry, $server, $resource, $pivotRows);
                     DocumentMetaResolver::assertDeclared($resource, $type, DocumentMetaResolver::deleteResponses($discovery, $server, $type));
                     RequestMetaResolver::assertDeclared($resource, $resource, $type, RequestMetaResolver::relationsOf($resource));
                 }
@@ -965,7 +974,7 @@ final class JsonApiServiceProvider extends ServiceProvider
             $strict = config('jsonapi.strict_query_parameters', true);
 
             // The server-registered profiles (`jsonapi.profiles`, class-strings), in
-            // registration order — the full recognized set (default the three
+            // registration order — the full recognized set (default the four
             // built-ins in canonical order via ServerFactory::DEFAULT_PROFILES when the
             // key is absent from a not-yet-republished config). Instantiated once, shared
             // by every server (profiles are stateless VOs).

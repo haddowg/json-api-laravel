@@ -10,6 +10,7 @@ use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\FilterHandlerInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\Range;
+use haddowg\JsonApi\Resource\Filter\RelationHop;
 use haddowg\JsonApi\Resource\Filter\ThroughPath;
 use haddowg\JsonApi\Resource\Filter\TraversesPath;
 use haddowg\JsonApi\Resource\Filter\UnsupportedFilter;
@@ -29,6 +30,7 @@ use haddowg\JsonApi\Resource\Filter\WhereSet;
 use haddowg\JsonApi\Resource\Filter\WhereSetMatch;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
+use haddowg\JsonApi\Resource\Through\FiltersThrough;
 use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\ScopesFilterHopsInterface;
@@ -40,6 +42,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo as EloquentBelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo as EloquentMorphTo;
+use Illuminate\Database\Eloquent\Relations\MorphToMany as EloquentMorphToMany;
 use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 
@@ -78,6 +81,10 @@ use Illuminate\Database\Query\Builder as QueryBuilder;
  *   `whereHas` whose leaf closure applies the comparison, or the `IN` list, on the
  *   final relation. A path resolved to a relationship leaf compares the related
  *   model's key with the decoded id.
+ * - Any filter declared with `->through()` is one nested `whereHas` per relation of
+ *   its path, so the related model's global scopes apply at every hop, and the
+ *   filter's own arm runs on the innermost query with the leaf core resolved. A
+ *   relation that holds nothing gives the `EXISTS` no row, so it never matches.
  *
  * Columns come from the server-side resource declaration, never the client, and
  * are validated as identifier paths and qualified against the model's table before
@@ -117,6 +124,12 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      */
     private bool $rows = false;
 
+    /**
+     * Whether a bare column names a column of the join table `$pivot` joins, for the leaf of a
+     * `->through()` path that ends on the pivot row of the relation it runs under.
+     */
+    private bool $onPivotRow = false;
+
     private readonly NaiveDateTimeStorage $dates;
 
     /**
@@ -138,6 +151,12 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      * row through. Each `whereHas` hop applies the related model's global scopes itself.
      */
     private ?FilterPaths $paths = null;
+
+    /**
+     * Whether the filter being applied is the leaf of a `->through()` path whose ids core has
+     * decoded through the reached type's encoder already.
+     */
+    private bool $decodedLeaf = false;
 
     /**
      * @param iterable<EloquentFilterArmInterface<Model>>                                  $arms       author arms for custom filter types, consulted in order
@@ -203,6 +222,12 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             ));
         }
 
+        if ($filter instanceof FiltersThrough && $filter->throughRelations() !== null) {
+            $this->through($query, $filter, $value);
+
+            return $query;
+        }
+
         // A relationship filter reaching through a relation the caller may not read matches
         // as if every row there were hidden: an EXISTS through it is false.
         if ($this->paths !== null && ($filter instanceof TraversesPath || $filter instanceof WhereHas || $filter instanceof WhereDoesntHave || $filter instanceof WhereMorph) && $this->paths->refusesAnyOf($filter)) {
@@ -249,6 +274,176 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     }
 
     /**
+     * A filter reaching through relations ({@see FiltersThrough}): one `whereHas` per relation
+     * of its resolved path, each applying the related model's global scopes, with the filter's
+     * own arm run on the innermost query against the leaf. A relation the filter may match no
+     * row through admits none. An existence filter at the end of the path tests the relation
+     * the reached row holds, as one more `whereHas` or `whereDoesntHave`.
+     *
+     * A path starting with `pivot` reads the pivot row the relation's query joined, so it runs
+     * only on a pivot relation's query: ending there, the leaf compares the join table's
+     * column, and going on, an `EXISTS` walks the pivot model's relations from that row. A
+     * `pivot` anywhere else is {@see wherePivotRows()}.
+     *
+     * @param Builder<Model> $query
+     */
+    private function through(Builder $query, FiltersThrough $filter, mixed $value): void
+    {
+        $leaf = $filter->atLeaf();
+        $path = $filter->resolvedThrough();
+        \assert($path !== null);
+        $leafValue = $filter->leafValue($value);
+        $leafRelation = $path->leafRelation();
+
+        $handler = clone $this;
+        $handler->pivot = null;
+        $handler->rows = false;
+        $handler->onPivotRow = false;
+        $handler->paths = null;
+        $handler->type = $path->leafType();
+        $handler->named = [$path->leafType()];
+        $handler->decodedLeaf = $path->leafId()?->encoder() !== null;
+
+        $exists = $leafRelation !== null && ($leaf instanceof WhereHas || $leaf instanceof WhereDoesntHave);
+        $scope = fn(Builder $related) => $leafRelation !== null && $this->paths?->refuses($leafRelation) === true ? $related->whereRaw('1 = 0') : $related;
+        $applyLeaf = static function (Builder $reached) use ($handler, $leaf, $leafValue, $exists, $scope): void {
+            if ($exists) {
+                \assert($leaf instanceof WhereHas || $leaf instanceof WhereDoesntHave);
+                $leaf instanceof WhereDoesntHave
+                    ? $reached->whereDoesntHave($leaf->relationship, $scope)
+                    : $reached->whereHas($leaf->relationship, $scope);
+
+                return;
+            }
+
+            $handler->apply($leaf, $reached, $leafValue);
+        };
+
+        $hops = $path->hops;
+        if (!$path->startsWithPivot()) {
+            $this->whereHasAlong($query, $hops, $applyLeaf);
+
+            return;
+        }
+
+        if ($this->pivot === null) {
+            throw new \LogicException(\sprintf('Filter "%s" reaches through "%s", which starts at the pivot row of the relation it runs under, but it runs on a query that joins no pivot row.', $filter->key(), $path->path));
+        }
+        $under = \array_shift($hops);
+        if ($this->paths?->refuses($under->relation) === true) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $row = $this->pivot->newPivot();
+        if ($hops === [] && !$exists) {
+            $handler->pivot = $this->pivot;
+            $handler->onPivotRow = true;
+            $handler->apply($leaf, $query, $leafValue);
+
+            return;
+        }
+
+        // From the joined row: the pivot model's relation, correlated to the join table the
+        // query already holds, as Eloquent builds a `whereHas` from the pivot model.
+        $first = $hops === [] ? $leafRelation : \array_shift($hops)->relation;
+        \assert($first !== null);
+        $method = $first->column() ?? $first->name();
+        $relation = \method_exists($row, $method) ? $row->{$method}() : null;
+        if (!$relation instanceof EloquentRelation) {
+            throw new \LogicException(\sprintf('Filter "%s" reaches through "%s", but "%s" is not a relation of %s.', $filter->key(), $path->path, $method, $row::class));
+        }
+        /** @var Builder<Model> $rowQuery */
+        $rowQuery = $row->newQueryWithoutRelationships();
+        /** @var Builder<Model> $related */
+        $related = $relation->getRelationExistenceQuery($relation->getRelated()->newQueryWithoutRelationships(), $rowQuery);
+
+        if ($exists && $first === $leafRelation) {
+            $scope($related);
+            $query->addWhereExistsQuery($related->toBase(), 'and', $leaf instanceof WhereDoesntHave);
+
+            return;
+        }
+        if ($this->paths?->refuses($first) === true) {
+            $related->whereRaw('1 = 0');
+        } elseif ($hops === []) {
+            $applyLeaf($related);
+        } else {
+            $this->whereHasAlong($related, $hops, $applyLeaf);
+        }
+
+        $query->addWhereExistsQuery($related->toBase());
+    }
+
+    /**
+     * A `whereHas` over the first of `$hops` whose query nests the rest, with `$leaf` applied
+     * to the innermost. A `pivot` hop goes on from the pivot rows instead
+     * ({@see wherePivotRows()}).
+     *
+     * @param Builder<Model>          $query
+     * @param list<RelationHop>       $hops
+     * @param \Closure(Builder<Model>): void $leaf
+     */
+    private function whereHasAlong(Builder $query, array $hops, \Closure $leaf): void
+    {
+        $hop = \array_shift($hops);
+        \assert($hop !== null);
+
+        if ($hop->pivot) {
+            $this->wherePivotRows($query, $hop, $hops, $leaf);
+
+            return;
+        }
+
+        $query->whereHas($hop->storage(), function (Builder $related) use ($hop, $hops, $leaf): void {
+            if ($this->paths?->refuses($hop->relation) === true) {
+                $related->whereRaw('1 = 0');
+
+                return;
+            }
+
+            $hops === [] ? $leaf($related) : $this->whereHasAlong($related, $hops, $leaf);
+        });
+    }
+
+    /**
+     * A `pivot` hop in the middle of a path: an `EXISTS` over the pivot rows of the
+     * `belongsToMany` the hop names, each linking the current row to a member that the
+     * related model's global scopes admit, so a link to a hidden member never matches. The
+     * rest of the path goes on from the pivot row, through the pivot model's relations.
+     *
+     * @param Builder<Model>          $query
+     * @param list<RelationHop>       $hops  the hops after this one
+     * @param \Closure(Builder<Model>): void $leaf
+     */
+    private function wherePivotRows(Builder $query, RelationHop $hop, array $hops, \Closure $leaf): void
+    {
+        $model = $query->getModel();
+        $method = $hop->storage();
+        $relation = \method_exists($model, $method) ? $model->{$method}() : null;
+        if (!$relation instanceof EloquentBelongsToMany || $relation instanceof EloquentMorphToMany) {
+            throw new \LogicException(\sprintf('The path "%s" reaches the pivot rows of "%s", which is not a belongsToMany of %s.', $hop->path, $method, $model::class));
+        }
+        if ($this->paths?->refuses($hop->relation) === true) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        /** @var Builder<Model> $rows */
+        $rows = $relation->newPivot()->newQueryWithoutRelationships();
+        $rows->whereColumn($relation->getQualifiedForeignPivotKeyName(), '=', $model->qualifyColumn($relation->getParentKeyName()));
+
+        $related = $relation->getRelated();
+        $members = $related->newQuery()->whereColumn($related->qualifyColumn($relation->getRelatedKeyName()), '=', $relation->getQualifiedRelatedPivotKeyName());
+        $rows->addWhereExistsQuery($members->toBase());
+
+        $hops === [] ? $leaf($rows) : $this->whereHasAlong($rows, $hops, $leaf);
+        $query->addWhereExistsQuery($rows->toBase());
+    }
+
+    /**
      * Delegates a custom {@see FilterInterface} to the first registered
      * {@see EloquentFilterArmInterface} that supports it; {@see UnsupportedFilter}
      * when none does.
@@ -274,7 +469,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     private function where(Where $filter, Builder $query, mixed $value): void
     {
         $expected = $filter->deserialize !== null ? ($filter->deserialize)($value) : $value;
-        if ($this->isKeyOf($query->getModel(), $filter->column)) {
+        if (!$this->decodedLeaf && $this->isKeyOf($query->getModel(), $filter->column)) {
             $expected = $this->storageKey($query->getModel(), $expected, $filter, $filter->column, $this->type);
         }
 
@@ -694,7 +889,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     private function idMembers(Builder $query, WhereIdIn|WhereIdNotIn $filter, mixed $value): array
     {
         $members = $this->members($filter, $value);
-        if (!$this->isKeyOf($query->getModel(), $filter->column)) {
+        if ($this->decodedLeaf || !$this->isKeyOf($query->getModel(), $filter->column)) {
             return $members;
         }
 
@@ -838,6 +1033,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     private function modelOf(Builder $query, string $column): array
     {
         $column = $this->rowColumn($column);
+        if ($this->pivot !== null && $this->onPivotRow) {
+            return [$this->pivot->newPivot(), $column];
+        }
         if ($this->pivot !== null && \str_starts_with($column, RelationCriteriaFactory::PIVOT_PREFIX)) {
             $pivotClass = $this->pivot->getPivotClass();
 
@@ -966,13 +1164,16 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
 
     /**
      * A set filter's members: a declared list reads them through its {@see \haddowg\JsonApi\Resource\Filter\ListValue},
-     * so an array-only list keeps a delimiter inside a member; any other set filter splits leniently.
+     * so an array-only list keeps a delimiter inside a member; any other set filter splits leniently. A
+     * `WhereIn` or `WhereNotIn` then maps them through its `deserializeUsing()`.
      *
      * @return list<mixed>
      */
     private function members(WhereIn|WhereNotIn|WhereIdIn|WhereIdNotIn $filter, mixed $value): array
     {
-        return $filter->list?->members($value) ?? $this->toList($value, $filter->delimiter);
+        $members = $filter->list?->members($value) ?? $this->toList($value, $filter->delimiter);
+
+        return $filter instanceof WhereIn || $filter instanceof WhereNotIn ? $filter->comparedValues($members) : $members;
     }
 
     /**
@@ -1012,6 +1213,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         }
 
         $column = $this->rowColumn($column);
+        if ($this->pivot !== null && $this->onPivotRow) {
+            return $this->pivot->getTable() . '.' . $column;
+        }
         if ($this->pivot !== null && \str_starts_with($column, RelationCriteriaFactory::PIVOT_PREFIX)) {
             return $this->pivot->getTable() . '.' . \substr($column, \strlen(RelationCriteriaFactory::PIVOT_PREFIX));
         }

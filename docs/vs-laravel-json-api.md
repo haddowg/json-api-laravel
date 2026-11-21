@@ -329,11 +329,12 @@ is worth knowing when you go looking for it.
 
 ### Relationship-path traversal filters (dotted-path EXISTS semi-join)
 
-**This suite** ships `WhereThrough`, which walks a dotted relationship path
-(`filter[author.publisher.country]=…`) as an EXISTS-ANY **semi-join** — never a
-fetch-join, so no duplicated parent rows. `WhereHas`/`WhereDoesntHave` are its
-single-hop special case. The Eloquent Adapter compiles it to a correlated `EXISTS`
-subquery.
+**This suite** lets any filter reach through a path of relations with `->through()`
+(`Where::make('country')->through('author.publisher')`) as an EXISTS-ANY **semi-join** — never a
+fetch-join, so no duplicated parent rows — and a `SortByField` order by a field through to-one
+relations. The Eloquent Adapter compiles a filter to nested correlated `EXISTS` subqueries and a
+sort to a correlated subselect. The older `WhereThrough` dotted path is deprecated in its
+favour.
 
 **LaravelJsonApi**'s filter docs document single-level relationship access only ("When
 accessing a resource type via a relationship, you can use any of the filters that exist

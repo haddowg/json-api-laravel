@@ -9,10 +9,13 @@ use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortHandlerInterface;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
 use haddowg\JsonApi\Resource\Sort\UnsupportedSort;
+use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
+use haddowg\JsonApiLaravel\DataProvider\ScopesFilterHopsInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
+use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
 
 /**
  * Executes a requested sort order against an Eloquent query {@see Builder}: the
@@ -23,9 +26,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMan
  * {@see UnsupportedSort} unless a registered {@see EloquentSortArmInterface} handles
  * it — the Eloquent half of the framework's extensible-handler seam.
  *
+ * A {@see SortByField} declared with `->through()` orders by a correlated subselect per to-one
+ * relation of its path, each built from the relation's own existence query over the related
+ * model, so its global scopes apply, and the innermost selecting the leaf column. A relation
+ * that holds nothing, a row a scope hides, and a relation a default order may not read through
+ * all leave the subselect empty, so the row sorts as a null column does. On a cursor page the
+ * level selects the subselect and the cursor reads its boundary value from the query.
+ *
  * @implements SortHandlerInterface<Builder<Model>>
  */
-final class EloquentSortHandler implements SortHandlerInterface
+final class EloquentSortHandler implements SortHandlerInterface, ScopesFilterHopsInterface
 {
     /**
      * Data-layer-specific remediation appended to the core {@see UnsupportedSort}
@@ -53,6 +63,12 @@ final class EloquentSortHandler implements SortHandlerInterface
      * an identified `MorphToMany` queries.
      */
     private bool $rows = false;
+
+    /**
+     * The paths the sorts being applied run with, which name the relations a default order
+     * reads `null` through.
+     */
+    private ?FilterPaths $paths = null;
 
     /**
      * @param iterable<EloquentSortArmInterface<Model>> $arms author arms for custom sort types, consulted in order
@@ -88,6 +104,14 @@ final class EloquentSortHandler implements SortHandlerInterface
         return $handler;
     }
 
+    public function forPaths(FilterPaths $paths): static
+    {
+        $handler = clone $this;
+        $handler->paths = $paths;
+
+        return $handler;
+    }
+
     public function apply(array $sorts, mixed $query): mixed
     {
         if (!$query instanceof Builder) {
@@ -101,6 +125,12 @@ final class EloquentSortHandler implements SortHandlerInterface
 
         foreach ($sorts as $directive) {
             $sort = $directive->sort;
+            if ($sort instanceof SortByField && $sort->through !== null) {
+                $query->orderBy($this->throughValue($sort, $query), $directive->descending ? 'desc' : 'asc');
+
+                continue;
+            }
+
             if ($sort instanceof SortByField) {
                 $query->orderBy($this->qualify($query, $sort->column), $directive->descending ? 'desc' : 'asc');
 
@@ -161,6 +191,18 @@ final class EloquentSortHandler implements SortHandlerInterface
      */
     public function keysetExpression(KeysetSortInterface $sort, Builder $query): EloquentKeysetExpression
     {
+        if ($sort instanceof SortByField && $sort->through !== null) {
+            $value = $this->throughValue($sort, $query);
+            if (\is_string($value)) {
+                return EloquentKeysetExpression::make($query->getQuery()->getGrammar()->wrap($value))->valueFromQuery();
+            }
+            $value = $value->toBase();
+
+            // The boundary row's value is the one the scoped subselect reached, so the cursor
+            // reads it from the query rather than walking the model's relations.
+            return EloquentKeysetExpression::make($value->toSql(), $value->getBindings())->valueFromQuery();
+        }
+
         foreach ($this->arms as $arm) {
             if ($arm->supports($sort)) {
                 if (!$arm instanceof EloquentKeysetSortArmInterface) {
@@ -172,6 +214,85 @@ final class EloquentSortHandler implements SortHandlerInterface
         }
 
         throw new UnsupportedSort($sort, self::KEYSET_ARM_HINT);
+    }
+
+    /**
+     * The correlated subselect reading `$sort`'s leaf through each to-one relation of its
+     * resolved path off `$query`'s model: one existence query per relation, from the related
+     * model's own query so its global scopes apply, the innermost selecting the leaf column
+     * and each outer one selecting the next, one row each.
+     *
+     * A path starting with `pivot` reads the pivot row the relation's query joined, so it
+     * runs only on a pivot relation's query, whichever alias the query is asked on: ending
+     * there, it orders by the join table's column, and going on, the first subselect is the
+     * pivot model's relation correlated to that row. A `pivot` anywhere else follows a
+     * to-many, which core refuses for a sort.
+     *
+     * @param Builder<Model> $query
+     *
+     * @return Builder<Model>|string the subselect, or the join table's qualified column
+     */
+    private function throughValue(SortByField $sort, Builder $query): Builder|string
+    {
+        $leaf = $sort->atLeaf();
+        $path = $sort->resolvedThrough();
+        \assert($path !== null);
+
+        $parent = $query;
+        $model = $query->getModel();
+        $hops = $path->hops;
+        if ($path->startsWithPivot()) {
+            if ($this->pivot === null) {
+                throw new \LogicException(\sprintf('Sort "%s" reaches through "%s", which starts at the pivot row of the relation it runs under, but it runs on a query that joins no pivot row.', $sort->key(), $path->path));
+            }
+            $under = \array_shift($hops);
+            $model = $this->pivot->newPivot();
+            /** @var Builder<Model> $parent */
+            $parent = $model->newQueryWithoutRelationships();
+            if ($this->paths?->refuses($under->relation) === true) {
+                // Reads null, as a relation the caller may not read through does.
+                return $parent->selectRaw('NULL')->whereRaw('1 = 0')->limit(1);
+            }
+            if ($hops === []) {
+                return $this->pivot->getTable() . '.' . $leaf->column;
+            }
+        }
+
+        $subqueries = [];
+        foreach ($hops as $hop) {
+            if ($hop->pivot) {
+                throw new \LogicException(\sprintf('Sort "%s" reaches through "%s", whose pivot row a sort can read only at the start of its path.', $sort->key(), $path->path));
+            }
+            $method = $hop->storage();
+            $relation = \method_exists($model, $method) ? $model->{$method}() : null;
+            if (!$relation instanceof EloquentRelation) {
+                throw new \LogicException(\sprintf('Sort "%s" reaches through "%s", but "%s" is not a relation of %s.', $sort->key(), $path->path, $method, $model::class));
+            }
+
+            /** @var Builder<Model> $related */
+            $related = $relation->getRelated()->newQuery();
+            /** @var Builder<Model> $subquery */
+            $subquery = $relation->getRelationExistenceQuery($related, $parent);
+            if ($this->paths?->refuses($hop->relation) === true) {
+                $subquery->whereRaw('1 = 0');
+            }
+
+            $subqueries[] = $subquery;
+            $parent = $subquery;
+            $model = $subquery->getModel();
+        }
+
+        $value = null;
+        foreach (\array_reverse($subqueries) as $subquery) {
+            $subquery->getQuery()->select([]);
+            $value === null
+                ? $subquery->select($subquery->getModel()->qualifyColumn($leaf->column))
+                : $subquery->selectSub($value, 'jsonapi_through');
+            $value = $subquery->limit(1);
+        }
+        \assert($value !== null);
+
+        return $value;
     }
 
     /**

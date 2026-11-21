@@ -227,6 +227,39 @@ abstract class ThroughAccessTestCase extends Orchestra
     }
 
     #[Test]
+    public function aFilterDeclaredWithThroughMatchesOnlyRowsTheCallerMayRead(): void
+    {
+        self::assertSame([], $this->crateIds('ada', 'filter[throughParcelLabel]=banana'));
+        self::assertSame(['1'], $this->crateIds('grace', 'filter[throughParcelLabel]=banana'));
+        self::assertSame(['1'], $this->crateIds('admin', 'filter[throughVaultCode]=v1'));
+        self::assertSame(['1'], $this->crateIds('admin', 'filter[throughLedgerCode]=l1'));
+        self::assertSame(['1'], $this->crateIds('admin', 'filter[vault]=1'));
+    }
+
+    #[Test]
+    public function aFilterDeclaredWithThroughIsForbiddenThroughAHopTheCallerMayNotRead(): void
+    {
+        $this->assertForbidden('ada', '/api/crates?filter[throughVaultCode]=v1');
+        $this->assertForbidden('ada', '/api/crates?filter[throughLedgerCode]=l1');
+        $this->assertForbidden('ada', '/api/crates?filter[vault]=1');
+        $this->assertForbidden('admin', '/api/crates?filter[throughAuditorCode]=l1');
+    }
+
+    #[Test]
+    public function aSortThroughARelationTheCallerMayNotReadIsForbidden(): void
+    {
+        $this->assertForbidden('ada', '/api/crates?sort=byLedgerCode');
+        self::assertSame(['2', '3', '1'], $this->orderedCrateIds('admin', 'sort=byLedgerCode,name'));
+    }
+
+    #[Test]
+    public function aDefaultOrderReadsNullThroughAHopTheCallerMayNotRead(): void
+    {
+        self::assertSame(['2', '3', '1'], $this->orderedCrateIds('admin', ''));
+        self::assertSame(['1', '2', '3'], $this->orderedCrateIds('ada', ''));
+    }
+
+    #[Test]
     public function theDocumentOffersTheRefusalOnlyWhereAHopCanRefuse(): void
     {
         $facts = $this->app?->make(OperationSecurityFacts::class);
@@ -273,6 +306,19 @@ abstract class ThroughAccessTestCase extends Orchestra
     private function crateIds(string $user, string $query): array
     {
         return $this->ids($this->document($user, '/api/crates' . ($query === '' ? '' : '?' . $query))->json('data'));
+    }
+
+    /**
+     * The crates in the order the collection serves them.
+     *
+     * @return list<string>
+     */
+    private function orderedCrateIds(string $user, string $query): array
+    {
+        $data = $this->document($user, '/api/crates' . ($query === '' ? '' : '?' . $query))->json('data');
+        self::assertIsArray($data);
+
+        return \array_values(\array_map(static fn(mixed $resource): string => \is_array($resource) && \is_string($resource['id'] ?? null) ? $resource['id'] : '', $data));
     }
 
     /**

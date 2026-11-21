@@ -55,7 +55,10 @@ Route names carry the server: `jsonapi.admin.albums.show`. OpenAPI projects one 
 server by default (`/docs.json`, `/admin/docs.json`) — see [openapi](openapi.md) and
 [routing](routing.md). The same type may render differently per server (an admin server can
 expose more fields via a distinct resource) — see
-[capability-composition](capability-composition.md).
+[capability-composition](capability-composition.md). The workbench's music catalog serves
+`playlists` this way: its `PlaylistAdminResource` extends the default server's
+`PlaylistResource` to make `owner` writable on the admin server, where `users` is
+registered, while the default server serves it read-only.
 
 ### Authorization, headers and tags per server
 
@@ -224,6 +227,13 @@ another type, such as the `artists` returned by `/api/albums/1/artist`. An empty
 their full `required` list, so `?include=artist&fields[albums]=title,artist` still checks every
 attribute of the included artist. A member that is in the fieldset but missing from the body
 still fails.
+
+A [selected key](resources.md#nested-fieldsets), such as
+`fields[albums]=credits.producer`, keeps `credits` required and narrows its schema the way the
+response is narrowed: the object requires none of its keys and admits only the selected ones.
+Listing `credits` whole as well keeps its schema whole. A nested path such as
+`address.geo.lat` narrows `address` to `geo` and `geo` to `lat` the same way, and a path
+through a list, `editions.*.format`, narrows the list's `items` to `format`.
 
 The helpers read the fieldsets from the request behind the `TestResponse`, so a sparse request
 needs no extra argument:

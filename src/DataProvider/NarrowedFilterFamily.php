@@ -14,7 +14,8 @@ use haddowg\JsonApi\Resource\Filter\ListValue;
  * A filter family that answers only the keys whose resolved filter `$admits` accepts, so a
  * path that drops some exact filters drops the same filters when a family resolves them.
  * {@see RelationCriteriaFactory} wraps a relation's families in one to leave out the
- * `pivot.`-columned filters a provider cannot reach.
+ * `pivot.`-columned filters a provider cannot reach, and in one whose `$admits` throws to
+ * refuse a `pivot.` path no single registered type can gate.
  *
  * @internal
  */

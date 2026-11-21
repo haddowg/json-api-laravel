@@ -19,6 +19,7 @@ use haddowg\JsonApi\Resource\Filter\HasDefaultValue;
 use haddowg\JsonApi\Resource\Filter\RelationFilters;
 use haddowg\JsonApi\Resource\Filter\TargetsColumn;
 use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
+use haddowg\JsonApi\Resource\Filter\WhereGroup;
 use haddowg\JsonApi\Resource\Filter\WhereHas;
 use haddowg\JsonApi\Resource\Filter\WhereNotNull;
 use haddowg\JsonApi\Resource\Filter\WhereNull;
@@ -30,6 +31,8 @@ use haddowg\JsonApi\Resource\Sort\SortByField;
 use haddowg\JsonApi\Resource\Sort\SortDirective;
 use haddowg\JsonApi\Resource\Sort\SortInterface;
 use haddowg\JsonApi\Resource\Sort\SortMatcher;
+use haddowg\JsonApi\Resource\Through\ReachesThrough;
+use haddowg\JsonApi\Resource\Through\RelationPath;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\OpenApi\PivotFields;
 
@@ -54,6 +57,9 @@ use haddowg\JsonApiLaravel\OpenApi\PivotFields;
  * filter is dropped, including one a filter family resolves, so the key is an unrecognised
  * `400` rather than a query against a column the provider cannot reach. The Eloquent
  * handlers resolve the `pivot.` prefix to the relation's join table, whichever key matched.
+ * A filter or sort declared with a `->through()` path starting with `pivot` reads the same
+ * joined row, so it is kept and dropped with them, a relation's default order through it
+ * included.
  */
 final class RelationCriteriaFactory
 {
@@ -68,6 +74,15 @@ final class RelationCriteriaFactory
     public function __construct(
         private readonly ?DataProviderRegistry $providers = null,
     ) {}
+
+    /**
+     * The relations a pivot row holds, as the providers serving each pivot relation's related
+     * type name them.
+     */
+    public function pivotRows(): ?PivotRowRelationRouter
+    {
+        return $this->providers !== null ? new PivotRowRelationRouter($this->providers) : null;
+    }
 
     /**
      * The per-relation paginator for a related to-many collection: the relation's own
@@ -133,7 +148,7 @@ final class RelationCriteriaFactory
         ?SerializerResolverInterface $server = null,
         ?string $parentType = null,
     ): CollectionCriteria {
-        $relationFilters = $includePivotFields ? $relation->allFilters() : self::withoutPivotFilters($relation->allFilters());
+        $relationFilters = $includePivotFields ? $this->guardedFamilies($relation, $parentType) : self::withoutPivotFilters($relation->allFilters());
         $sorts = $this->sortsFor($relatedResource, $relation, $includePivotFields || ($queriesPivotColumns ?? false));
         [$defaultSort, $resolved] = $this->defaultSortFor($relatedResource, $relation, $sorts, $request);
 
@@ -146,7 +161,7 @@ final class RelationCriteriaFactory
             wantsCount: $wantsCount,
             request: $request,
             defaultSortResolved: $resolved,
-            paths: $server !== null ? FilterPaths::of($server, $relatedResource, $parentType, $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->admission($server) : null, $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->morphAdmission($server) : null) : null,
+            paths: $server !== null ? FilterPaths::of($server, $relatedResource, $parentType, $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->admission($server) : null, $relation, $this->pivotRows(), $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->morphAdmission($server) : null) : null,
         );
     }
 
@@ -177,7 +192,7 @@ final class RelationCriteriaFactory
             defaultSort: $defaultSort,
             request: $request,
             defaultSortResolved: $resolved,
-            paths: $server !== null ? FilterPaths::of($server, $relatedResource, $parentType, $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->admission($server) : null, $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->morphAdmission($server) : null) : null,
+            paths: $server !== null ? FilterPaths::of($server, $relatedResource, $parentType, $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->admission($server) : null, $relation, $this->pivotRows(), $server instanceof Server && $this->providers !== null ? (new ScopedPolymorphicMembers($this->providers))->morphAdmission($server) : null) : null,
         );
     }
 
@@ -288,6 +303,8 @@ final class RelationCriteriaFactory
         $relationSorts = $relation->sorts();
         if ($includePivotSorts) {
             $relationSorts = SortMatcher::merge($relationSorts, self::pivotSorts($relation));
+        } else {
+            $relationSorts = \array_values(\array_filter($relationSorts, static fn(SortInterface $sort): bool => !self::readsPivotRow($sort)));
         }
 
         return SortMatcher::merge($relatedResource?->allSorts() ?? [], $relationSorts);
@@ -321,7 +338,7 @@ final class RelationCriteriaFactory
             $matched = SortMatcher::match($sorts, $key, $request);
             if ($matched !== null) {
                 $directives[] = new SortDirective($matched, $directive->descending);
-            } elseif (!\in_array($key, $pivotKeys, true)) {
+            } elseif (!\in_array($key, $pivotKeys, true) && !self::readsPivotRow($directive->sort)) {
                 $directives[] = $directive;
             }
         }
@@ -368,12 +385,91 @@ final class RelationCriteriaFactory
     }
 
     /**
+     * The relation's filters, each family wrapped so a filter it resolves is refused when its
+     * `pivot.`-prefixed path goes on from the pivot row to a model no single registered type
+     * serves. Route registration and `jsonapi:optimize` refuse such a declared filter, but a
+     * family resolves its filters per request, so the fault surfaces then, as a `500`, rather
+     * than walking those rows without any type's scope or read rules.
+     *
+     * @return list<FilterInterface>
+     */
+    private function guardedFamilies(RelationInterface $relation, ?string $parentType): array
+    {
+        $filters = [];
+        foreach ($relation->allFilters() as $filter) {
+            $filters[] = $filter instanceof FilterFamilyInterface
+                ? new NarrowedFilterFamily($filter, function (FilterInterface $resolved) use ($filter, $relation, $parentType): bool {
+                    $this->guardFamilyPivotPath($filter, $relation, $parentType, $resolved);
+
+                    return true;
+                })
+                : $filter;
+        }
+
+        return $filters;
+    }
+
+    /**
+     * @throws \LogicException naming the family, the filter and its path
+     */
+    private function guardFamilyPivotPath(FilterFamilyInterface $family, RelationInterface $relation, ?string $parentType, FilterInterface $filter): void
+    {
+        if ($filter instanceof WhereGroup) {
+            foreach ($filter->children as $child) {
+                $this->guardFamilyPivotPath($family, $relation, $parentType, $child);
+            }
+
+            return;
+        }
+
+        $pivotRows = $this->pivotRows();
+        $path = match (true) {
+            $filter instanceof WhereHas, $filter instanceof WhereDoesntHave => $filter->relationship,
+            $filter instanceof WhereThrough, $filter instanceof WhereThroughIn => $filter->path,
+            default => '',
+        };
+        if ($pivotRows === null || $parentType === null || !$relation instanceof PivotRelationInterface || !\str_starts_with($path, self::PIVOT_PREFIX)) {
+            return;
+        }
+
+        try {
+            $pivotRows->pivotRowRelation($relation, $parentType, \explode('.', $path)[1]);
+        } catch (\LogicException $e) {
+            throw new \LogicException(\sprintf(
+                'The filter family "%s" of relation "%s" on type "%s" resolved the filter "%s" to the path "%s", which goes on from the pivot row to a model no single registered type serves, so no type\'s read rules can apply to the rows it reaches. %s This is a declaration fault route registration refuses on a declared filter: register exactly one resource type for that model, or resolve the family to a path that does not reach it.',
+                $family->key(),
+                $relation->name(),
+                $parentType,
+                $filter->key(),
+                $path,
+                $e->getMessage(),
+            ), 0, $e);
+        }
+    }
+
+    /**
+     * Whether a filter or sort reaches through a path starting at `pivot`, the pivot row of
+     * the relation it runs under, which only a provider's pivot query joins.
+     */
+    public static function readsPivotRow(FilterInterface|SortInterface $item): bool
+    {
+        $through = $item instanceof ReachesThrough ? $item->throughRelations() : null;
+
+        return $through !== null && \explode('.', $through)[0] === RelationPath::PIVOT;
+    }
+
+    /**
      * Whether a filter starts from the pivot row: a `pivot.`-prefixed column, or the
-     * `pivot.`-prefixed relationship of an existence filter or path of a traversal. Any
-     * other filter, a custom one or a group, never targets the pivot.
+     * `pivot.`-prefixed relationship of an existence filter or path of a traversal, or a
+     * `->through()` path starting with `pivot`. Any other filter, a custom one or a group,
+     * never targets the pivot.
      */
     private static function targetsPivot(FilterInterface $filter): bool
     {
+        if (self::readsPivotRow($filter)) {
+            return true;
+        }
+
         $column = match (true) {
             $filter instanceof TargetsColumn => $filter->targetColumn(),
             $filter instanceof WhereNull, $filter instanceof WhereNotNull => $filter->column,

@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Tests\Feature\ThroughAccess;
 
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\ThroughPathResolver;
+use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApi\Resource\Filter\WhereThrough;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentFilterHandler;
 use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
@@ -107,6 +108,27 @@ final class EloquentThroughAccessTest extends ThroughAccessTestCase
         $inventories = ['crates' => (new CrateResource())->allFields(), 'vaults' => (new VaultResource())->allFields()];
         $paths = new FilterPaths(new ThroughPathResolver(static fn(string $type): ?array => $inventories[$type] ?? null), $inventories['crates'], 'crates');
         $filter = $paths->resolve(WhereThrough::make('vaultCode', 'vault.code')->build());
+        $vault = $paths->hopAt('vault')?->relation;
+        self::assertInstanceOf(RelationInterface::class, $vault);
+        $handler = new EloquentFilterHandler();
+
+        $ids = function (FilterPaths $scoped) use ($handler, $filter): array {
+            $query = $this->newQuery();
+            $handler->forPaths($scoped)->apply($filter, $query, 'v1');
+
+            return \array_map(static fn(mixed $id): int => \is_numeric($id) ? (int) $id : 0, $query->pluck('id')->all());
+        };
+
+        self::assertSame([], $ids($paths->scoped([$vault])));
+        self::assertSame([1], $ids($paths->scoped()));
+    }
+
+    #[Test]
+    public function aThroughFilterAdmitsNoRowThroughARefusedRelation(): void
+    {
+        $inventories = ['crates' => (new CrateResource())->allFields(), 'vaults' => (new VaultResource())->allFields()];
+        $paths = new FilterPaths(new ThroughPathResolver(static fn(string $type): ?array => $inventories[$type] ?? null), $inventories['crates'], 'crates');
+        $filter = $paths->resolve(Where::make('vaultCode', 'code')->through('vault')->build());
         $vault = $paths->hopAt('vault')?->relation;
         self::assertInstanceOf(RelationInterface::class, $vault);
         $handler = new EloquentFilterHandler();
