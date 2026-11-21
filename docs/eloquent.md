@@ -224,7 +224,7 @@ an [arm](#custom-filters-and-sorts-the-arm-seam) on each provider, as any custom
 The OpenAPI `filter` parameter lists each family under `x-filter-families`, and a list filter
 gets its own `filter[<key>][]` parameter.
 
-### Filters reaching through relations: `->through()`
+### Filters reaching through relations: `->through()` {#filters-reaching-through-relations-through}
 
 A filter declared with [`->through()`](https://github.com/haddowg/json-api/blob/main/docs/filters.md#reaching-through-relations-with-through)
 reads a field of the type its path of relations reaches. The provider nests one `whereHas` per
