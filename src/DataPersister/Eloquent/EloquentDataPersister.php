@@ -11,6 +11,7 @@ use haddowg\JsonApi\Exception\RemovalProhibited;
 use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
+use haddowg\JsonApi\Resource\Field\AbstractFieldValue;
 use haddowg\JsonApi\Resource\Field\BelongsToMany as PivotRelation;
 use haddowg\JsonApi\Resource\Field\Date;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
@@ -1126,7 +1127,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             /** @var mixed $raw */
             $raw = $pivot[$field->name()];
             /** @var mixed $value */
-            $value = $field->castWireValue($raw);
+            $value = $field instanceof AbstractFieldValue ? $field->castWireValueFor($raw, $creating) : $field->castWireValue($raw);
 
             // A union is stored in its stored form, so a date member writes its string. A
             // pivot column is otherwise written as Y-m-d H:i:s whatever offset the value

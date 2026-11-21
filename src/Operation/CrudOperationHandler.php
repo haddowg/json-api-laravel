@@ -47,6 +47,7 @@ use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Request\RelatedQuery;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\DocumentMeta;
+use haddowg\JsonApi\Resource\Field\AbstractFieldValue;
 use haddowg\JsonApi\Resource\Field\AcceptsDefaultOutputTimezoneInterface;
 use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Resource\Field\BelongsTo;
@@ -3011,13 +3012,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         foreach ($resource->allFields() as $field) {
             $column = $field instanceof Union ? $field->column() : null;
-            if ($column === null || !$field instanceof Union || $field->relatedVia() !== null || $field->hydratesThroughHook()
+            if ($column === null || !$field instanceof Union || $field->relatedVia() !== null || $field->hydratesThroughHookFor($creating)
                 || !\array_key_exists($field->name(), $attributes) || $field->isReadOnlyFor($creating, $body)) {
                 continue;
             }
 
             try {
-                $entity->setAttribute($column, $field->toStoredForm($field->castWireValue($attributes[$field->name()])));
+                $entity->setAttribute($column, $field->toStoredForm($field->castWireValueFor($attributes[$field->name()], $creating)));
             } catch (AttributeValueInvalid) {
                 // hydration refused it already
             }
@@ -3226,7 +3227,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 }
                 foreach ($relation->writablePivotFields($creating) as $field) {
                     if (\array_key_exists($field->name(), $pivot)) {
-                        Accessor::set($row, $field->column() ?? $field->name(), $field->castWireValue($pivot[$field->name()]));
+                        Accessor::set($row, $field->column() ?? $field->name(), $field instanceof AbstractFieldValue ? $field->castWireValueFor($pivot[$field->name()], $creating) : $field->castWireValue($pivot[$field->name()]));
                     }
                 }
 
