@@ -11,6 +11,7 @@ use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApi\Resource\Filter\WhereIdIn;
+use haddowg\JsonApi\Resource\Filter\WhereIdNotIn;
 use haddowg\JsonApi\Resource\Filter\WhereSet;
 use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 use haddowg\JsonApiLaravel\Eloquent\BinaryUuidEncoder;
@@ -41,6 +42,8 @@ final class PkDefinitionResource extends AbstractResource
             Where::make('idIs', 'id'),
             WhereThroughIn::make('template', 'usages.template'),
             WhereThroughIn::make('usedBy', 'templates'),
+            WhereIdIn::make('templates'),
+            WhereIdNotIn::make('notTemplate')->through('templates'),
         ];
     }
 }
