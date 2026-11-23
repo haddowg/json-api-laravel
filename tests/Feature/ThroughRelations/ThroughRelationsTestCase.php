@@ -88,6 +88,25 @@ abstract class ThroughRelationsTestCase extends Orchestra
     }
 
     #[Test]
+    public function eachFailingRangeBoundThroughAPathIsOneError(): void
+    {
+        $cases = [
+            'filter[campaignDates][min]=2026-13-45' => 1,
+            'filter[campaignDates][min]=2026-02-30' => 1,
+            'filter[campaignDates][min]=banana' => 1,
+            'filter[campaignDates][min]=banana&filter[campaignDates][max]=2026-02-30' => 2,
+            'filter[budget][min]=banana' => 1,
+        ];
+
+        foreach ($cases as $query => $count) {
+            $response = $this->fetch('/api/thrLeads?' . $query);
+            self::assertSame(400, $response->getStatusCode(), $query . ': ' . $response->getContent());
+            $response->assertJsonCount($count, 'errors');
+            $response->assertJsonPath('errors.0.code', 'FILTER_VALUE_INVALID');
+        }
+    }
+
+    #[Test]
     public function aRangeThroughAPathRefusesAValueThatIsNotAnObjectOfItsBounds(): void
     {
         $this->assertBadValue('filter[campaignDates]=2026-03-01', 'filter[campaignDates]');
