@@ -345,3 +345,30 @@ job — set the locale with Laravel's usual `App::setLocale()` (or a locale midd
 request renders in its language. Because the resolver is applied uniformly to every error, the
 validator's `422` `VALIDATION_FAILED` title localizes through the very same group. With no
 `jsonapi-errors` lines the seam is inert and errors render in English exactly as before.
+
+### Date messages
+
+A value that is not the date it should be, whether a temporal attribute on a write or a date
+filter's bound or value, has one message per kind of date, such as `This value is not a date
+like 2026-10-01.` Its `source` says which value it was. Each kind has its own line below the
+error's code, nested beside the code's `detail`, and its `{example}` placeholder holds the
+field's or filter's declared example, or a fixed one:
+
+```php
+// lang/fr/jsonapi-errors.php
+return [
+    'ATTRIBUTE_VALUE_INVALID' => [
+        'date_time' => ['detail' => "Cette valeur n'est pas une date-heure RFC 3339 avec décalage, comme {example}."],
+        'date' => ['detail' => "Cette valeur n'est pas une date comme {example}."],
+        'time' => ['detail' => "Cette valeur n'est pas une heure comme {example}."],
+        'formatted_date_time' => ['detail' => "Cette valeur n'est pas une date-heure comme {example}."],
+    ],
+    'FILTER_VALUE_INVALID' => [
+        'date' => ['detail' => "Cette valeur n'est pas une date comme {example}."],
+    ],
+];
+```
+
+A date attribute the validator refuses is a `422` under `VALIDATION_FAILED` and still uses
+the `ATTRIBUTE_VALUE_INVALID` lines, so one translation covers it wherever it is caught. A
+missing kind falls back to the code's own `detail` and then to the English default.

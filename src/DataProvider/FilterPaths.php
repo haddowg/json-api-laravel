@@ -79,6 +79,16 @@ final readonly class FilterPaths
     }
 
     /**
+     * The inventory of the type the filters run against.
+     *
+     * @return list<FieldInterface>
+     */
+    public function fields(): array
+    {
+        return $this->fields;
+    }
+
+    /**
      * A copy for the filter about to run, through whose `$refused` relations it matches no row.
      *
      * @param list<RelationInterface> $refused

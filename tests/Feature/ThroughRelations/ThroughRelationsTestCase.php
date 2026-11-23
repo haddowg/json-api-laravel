@@ -68,6 +68,31 @@ abstract class ThroughRelationsTestCase extends Orchestra
     }
 
     #[Test]
+    public function aBadDateThroughAPathIsRefusedWithTheDateMessage(): void
+    {
+        $cases = [
+            'filter[campaignDates][min]=2026-03-01T00:00:00Z' => 'campaignDates',
+            'filter[campaignDates][max]=2026-02-30' => 'campaignDates',
+            'filter[campaignDates][min]=spring' => 'campaignDates',
+            'filter[campaignStart]=2026-03-02T00:00:00Z' => 'campaignStart',
+            'filter[campaignStarts]=2026-03-02,2026-02-30' => 'campaignStarts',
+        ];
+
+        foreach ($cases as $query => $key) {
+            $response = $this->fetch('/api/thrLeads?' . $query);
+            self::assertSame(400, $response->getStatusCode(), (string) $response->getContent());
+            $response->assertJsonCount(1, 'errors');
+            $response->assertJsonPath('errors.0.code', 'FILTER_VALUE_INVALID');
+            $response->assertJsonPath('errors.0.detail', 'This value is not a date like 2026-10-01.');
+            $response->assertJsonPath('errors.0.source.parameter', 'filter[' . $key . ']');
+        }
+
+        // A related date compares as a date on every data layer.
+        self::assertSame(['1', '4'], $this->leadIds('filter[campaignStart]=2026-03-02'));
+        self::assertSame(['1', '2', '4'], $this->leadIds('filter[campaignStarts]=2026-03-02,2026-06-15'));
+    }
+
+    #[Test]
     public function aMalformedRangeThroughAPathIsOneErrorWithTheRangesOwnMessage(): void
     {
         $malformed = [

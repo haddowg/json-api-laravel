@@ -111,6 +111,19 @@ final class EloquentThroughPivotTest extends Orchestra
     }
 
     #[Test]
+    public function aBadBoundThroughAPivotIsRefusedWithTheDateMessage(): void
+    {
+        foreach (['/api/tpAlbums?filter[addedAt][min]=yesterday', '/api/tpTracks/1/playlists?filter[addedAt][min]=yesterday'] as $uri) {
+            $response = $this->send('admin', $uri);
+            self::assertSame(400, $response->getStatusCode(), (string) $response->getContent());
+            $response->assertJsonCount(1, 'errors');
+            $response->assertJsonPath('errors.0.code', 'FILTER_VALUE_INVALID');
+            $response->assertJsonPath('errors.0.detail', 'This value is not an RFC 3339 date-time with an offset, such as 2026-10-01T00:00:00Z.');
+            $response->assertJsonPath('errors.0.source.parameter', 'filter[addedAt]');
+        }
+    }
+
+    #[Test]
     public function aLeadingPivotWorksInARelatedQuery(): void
     {
         $document = $this->document('/api/tpTracks/1?include=playlists&relatedQuery[playlists][filter][addedBy]=kim', self::QUERIES);

@@ -22,6 +22,10 @@ use Illuminate\Contracts\Validation\ValidationRule;
  * the bridge admits precisely the values core will accept. An absent, empty or non-string
  * value is skipped: presence is the required/`NotNull` rule's concern, and a non-string is
  * left to any typed rule. This rule speaks only to temporal validity.
+ *
+ * Its message is core's {@see DateTime::dateMessage()}, the one the cast and a date filter
+ * report too. The resource validator recognises it, so the error carries its translation
+ * key and example.
  */
 final class ParsableDate implements ValidationRule
 {
@@ -34,7 +38,7 @@ final class ParsableDate implements ValidationRule
         }
 
         if ($this->field->tryParseWire($value) === null) {
-            $fail('validation.date')->translate();
+            $fail($this->field->dateMessage()->message());
         }
     }
 }
