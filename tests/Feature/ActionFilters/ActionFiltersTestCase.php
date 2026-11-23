@@ -97,6 +97,17 @@ abstract class ActionFiltersTestCase extends Orchestra
     }
 
     #[Test]
+    public function aRangeValueThatIsNotAnObjectOfItsBoundsIs400(): void
+    {
+        foreach (['filter[weightRange]=2', 'filter[weightRange][from]=2', 'filter[weightRange][min]=2&filter[weightRange][upTo]=6', 'filter[weightRange][max][]=6'] as $query) {
+            foreach ([$this->getJsonApi('/api/gadgets?' . $query), $this->getJsonApi('/api/gadgets/-actions/count?' . $query), $this->postAction('/api/gadgets/-actions/paint?' . $query)] as $response) {
+                $this->assertFilterError($response, 'FILTER_VALUE_INVALID');
+                self::assertSame('filter[weightRange]', $response->json('errors.0.source.parameter'), $query);
+            }
+        }
+    }
+
+    #[Test]
     public function aCallerWhoCannotListTheTypeIs403(): void
     {
         $this->actingAs(new User(['id' => 2, 'name' => 'Bea', 'can_read' => false, 'can_write' => true, 'is_admin' => false]));

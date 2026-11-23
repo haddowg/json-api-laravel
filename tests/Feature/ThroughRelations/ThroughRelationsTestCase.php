@@ -68,6 +68,19 @@ abstract class ThroughRelationsTestCase extends Orchestra
     }
 
     #[Test]
+    public function aRangeThroughAPathRefusesAValueThatIsNotAnObjectOfItsBounds(): void
+    {
+        $this->assertBadValue('filter[campaignDates]=2026-03-01', 'filter[campaignDates]');
+        $this->assertBadValue('filter[campaignDates][after]=2026-03-01', 'filter[campaignDates]');
+        $this->assertBadValue('filter[budget]=200', 'filter[budget]');
+        $this->assertBadValue('filter[budget][min]=200&filter[budget][over]=100', 'filter[budget]');
+        $this->assertBadValue('filter[budget][max][]=200', 'filter[budget]');
+
+        $this->fetch('/api/thrCampaigns/' . self::SPRING . '/leads?filter[budget]=200')->assertStatus(400)->assertJsonPath('errors.0.source.parameter', 'filter[budget]');
+        $this->get('/api/thrCampaigns/' . self::SPRING . '?include=leads&relatedQuery[leads][filter][budget]=200', ['Accept' => self::QUERIES])->assertStatus(400)->assertJsonPath('errors.0.source.parameter', 'filter[budget]');
+    }
+
+    #[Test]
     public function anIdFilterThroughAPathComparesTheReachedIdWithItsFormatAndEncoder(): void
     {
         self::assertSame(['1', '4'], $this->leadIds('filter[campaign]=' . self::SPRING));
