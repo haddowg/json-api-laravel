@@ -96,7 +96,7 @@ final class FilterValueValidator
 
             $messages = [];
             if ($filter instanceof Range) {
-                $messages = $this->boundMessages($filter, $value, $rules);
+                $messages = $this->boundMessages($filter, $key, $value, $rules);
             } elseif ($rules !== []) {
                 foreach ($members ?? $this->members($filter, $value) as $member) {
                     $validator = $this->validatorFactory->make(['value' => $member], ['value' => $rules]);
@@ -237,10 +237,10 @@ final class FilterValueValidator
 
     /**
      * The present, non-blank bounds of a {@see Range} value — the nested `{min?, max?}`
-     * array. A blank (`''`) or absent bound is open-ended, treated as absent and never
-     * validated; a non-array value is a no-op in both handlers.
+     * array — keyed by bound name. A blank (`''`) or absent bound is open-ended, treated
+     * as absent and never validated; a non-array value is a no-op in both handlers.
      *
-     * @return list<mixed>
+     * @return array<string, mixed>
      */
     private function rangeMembers(mixed $value): array
     {
@@ -260,40 +260,40 @@ final class FilterValueValidator
                 continue;
             }
 
-            $members[] = $bound;
+            $members[$key] = $bound;
         }
 
         return $members;
     }
 
     /**
-     * One message per failing bound of a {@see Range}: the first rule that rejects the
-     * bound, or for a {@see DateRange} whose bound passes them, a date that does not
-     * exist. The shape Pattern is lenient on the calendar (it admits `1997-13-99`), so a
-     * bound is also run through the filter's own date deserializer, the coercion the
-     * handlers apply.
+     * One message per failing bound of a {@see Range}: for a {@see DateRange}, core's
+     * message for a bound that is not the date the range takes, checked first because its
+     * shape Pattern is lenient on the calendar and says nothing a client can act on;
+     * otherwise the first rule that rejects the bound.
      *
      * @param list<mixed> $rules
      *
      * @return list<string>
      */
-    private function boundMessages(Range $filter, mixed $value, array $rules): array
+    private function boundMessages(Range $filter, string $key, mixed $value, array $rules): array
     {
-        $deserialize = $filter instanceof DateRange ? $filter->deserialize : null;
-
         $messages = [];
-        foreach ($this->rangeMembers($value) as $bound) {
-            if ($rules !== []) {
-                $errors = $this->validatorFactory->make(['value' => $bound], ['value' => $rules])->errors();
-                if ($errors->isNotEmpty()) {
-                    $messages[] = (string) $errors->first('value');
+        foreach ($this->rangeMembers($value) as $name => $bound) {
+            if ($filter instanceof DateRange) {
+                $invalid = $filter->invalidBound($bound, $name, \sprintf('filter[%s][%s]', $key, $name));
+                if ($invalid !== null) {
+                    $messages[] = $invalid;
 
                     continue;
                 }
             }
 
-            if ($deserialize !== null && !$deserialize($bound) instanceof \DateTimeInterface) {
-                $messages[] = 'This value is not a valid date.';
+            if ($rules !== []) {
+                $errors = $this->validatorFactory->make(['value' => $bound], ['value' => $rules])->errors();
+                if ($errors->isNotEmpty()) {
+                    $messages[] = (string) $errors->first('value');
+                }
             }
         }
 

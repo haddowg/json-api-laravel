@@ -935,7 +935,7 @@ final class ResourceValidator
     private function pivotError(string $detail, string $field, ?int $index, ?string $embeddedRelationName): Error
     {
         return ValidationFailed::describe()->toError(
-            detail: $detail,
+            detail: ParsableDate::named($detail, $field),
             source: ErrorSource::fromPointer($this->linkageMetaPointer($embeddedRelationName, $field, $index)),
         );
     }
@@ -1820,18 +1820,17 @@ final class ResourceValidator
 
     private function errorAt(string $detail, string $pointer): Error
     {
+        $attributes = $this->pointers->forAttribute('') . '/';
+
         return ValidationFailed::describe()->toError(
-            detail: $detail,
+            detail: ParsableDate::named($detail, \str_starts_with($pointer, $attributes) ? \substr($pointer, \strlen($attributes)) : self::lastSegment($pointer)),
             source: ErrorSource::fromPointer($pointer),
         );
     }
 
     private function error(string $detail, string $key): Error
     {
-        return ValidationFailed::describe()->toError(
-            detail: $detail,
-            source: ErrorSource::fromPointer($this->pointers->forAttribute($key)),
-        );
+        return $this->errorAt($detail, $this->pointers->forAttribute($key));
     }
 
     /**

@@ -38,6 +38,13 @@ attribute value is, a `422` `VALIDATION_FAILED`. A field whose format no keyword
 exactly what that format writes, so a `Time` with its `H:i:s` default takes `09:42:00` and
 refuses `09:42`. A date bound is not checked against a value that rule refuses.
 
+That error's `detail` is core's message for the field's kind of date, not a translated
+Laravel one, so it reads the same here, in the Symfony bundle and on a date filter bound. It
+names the attribute by its path below `/data/attributes`, so a nested date reads
+`window/from`, and shows the field's declared `->example()`, or a fixed one: `publishedAt is
+not an RFC 3339 date-time with an offset, such as 2026-10-01T00:00:00Z.`, `dueOn is not a date
+like 2026-10-01.` or `opensAt is not a time like 09:42:00Z.`
+
 ## The constraint → rule map
 
 Core's constraint VOs translate to the natural Laravel rule:
@@ -235,6 +242,9 @@ relation that is read-only for the caller.
 Filter values are validated too: a `filter[releasedAt][min]=banana` is a clean `400`, not a
 database error. Declared filters carry their expected type (`->integer()`, `->boolean()`,
 date-aware filters), and a value that fails coercion is rejected before it reaches the query.
+Each bad `DateRange` bound is one error with core's date message, naming the bound's
+parameter: `filter[releasedAt][min] is not an RFC 3339 date-time with an offset, such as
+2026-10-01T00:00:00Z.`
 A [list filter](eloquent.md#list-filters) validates each member on its own, and rejects a value
 that isn't a list it accepts. A [filter family](eloquent.md#filter-families) key is validated by
 the rules of the filter it resolves to.

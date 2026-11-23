@@ -68,6 +68,25 @@ abstract class ThroughRelationsTestCase extends Orchestra
     }
 
     #[Test]
+    public function aBadBoundThroughAPathToADateNamesItsParameterInTheDateMessage(): void
+    {
+        $cases = [
+            'filter[campaignDates][min]=2026-03-01T00:00:00Z' => 'filter[campaignDates][min] is not a date like 2026-10-01.',
+            'filter[campaignDates][max]=2026-02-30' => 'filter[campaignDates][max] is not a date like 2026-10-01.',
+            'filter[campaignDates][min]=spring' => 'filter[campaignDates][min] is not a date like 2026-10-01.',
+        ];
+
+        foreach ($cases as $query => $detail) {
+            $response = $this->fetch('/api/thrLeads?' . $query);
+            self::assertSame(400, $response->getStatusCode(), (string) $response->getContent());
+            $response->assertJsonCount(1, 'errors');
+            $response->assertJsonPath('errors.0.code', 'FILTER_VALUE_INVALID');
+            $response->assertJsonPath('errors.0.detail', $detail);
+            $response->assertJsonPath('errors.0.source.parameter', 'filter[campaignDates]');
+        }
+    }
+
+    #[Test]
     public function aMalformedRangeThroughAPathIsOneErrorWithTheRangesOwnMessage(): void
     {
         $malformed = [

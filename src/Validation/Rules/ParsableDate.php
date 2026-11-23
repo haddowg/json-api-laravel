@@ -22,10 +22,30 @@ use Illuminate\Contracts\Validation\ValidationRule;
  * the bridge admits precisely the values core will accept. An absent, empty or non-string
  * value is skipped: presence is the required/`NotNull` rule's concern, and a non-string is
  * left to any typed rule. This rule speaks only to temporal validity.
+ *
+ * Its message is core's {@see DateTime::dateMessage()}, the one the cast and a date range
+ * bound report too. The rule runs under whatever key the validator gives the value, which
+ * is a placeholder for a union member or an open object's member, so the message carries
+ * {@see SUBJECT} and the {@see \haddowg\JsonApiLaravel\Validation\ResourceValidator}
+ * names the attribute through {@see named()} once it knows the error's pointer.
  */
 final class ParsableDate implements ValidationRule
 {
+    /**
+     * Stands for the attribute in the message until the error's pointer is known.
+     */
+    public const string SUBJECT = '{date-subject}';
+
     public function __construct(private readonly DateTime $field) {}
+
+    /**
+     * `$detail` with the attribute it is about named as `$subject`: the pointer below
+     * `/data/attributes`, such as `window/from`. Any other detail is returned unchanged.
+     */
+    public static function named(string $detail, string $subject): string
+    {
+        return \str_replace(self::SUBJECT, $subject, $detail);
+    }
 
     public function validate(string $attribute, mixed $value, \Closure $fail): void
     {
@@ -34,7 +54,7 @@ final class ParsableDate implements ValidationRule
         }
 
         if ($this->field->tryParseWire($value) === null) {
-            $fail('validation.date')->translate();
+            $fail($this->field->dateMessage()->for(self::SUBJECT));
         }
     }
 }
