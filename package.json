@@ -7,6 +7,6 @@
     "check:specs-pin": "node bin/check-specs-pin"
   },
   "devDependencies": {
-    "@haddowg/json-api-symfony-specs": "2.22.1"
+    "@haddowg/json-api-symfony-specs": "2.23.0"
   }
 }
