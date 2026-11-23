@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.23.0](https://github.com/haddowg/json-api-laravel/compare/v2.22.2...v2.23.0) (2026-11-23)
+
+
+### Features
+
+* report every bad date with core's translatable message for its kind ([#327](https://github.com/haddowg/json-api-laravel/issues/327)) ([b4c48f7](https://github.com/haddowg/json-api-laravel/commit/b4c48f7d70f105905c17c40a6d6326d012c92974))
+
 ## [2.22.2](https://github.com/haddowg/json-api-laravel/compare/v2.22.1...v2.22.2) (2026-11-23)
 
 
