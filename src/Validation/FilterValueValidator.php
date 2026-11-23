@@ -66,13 +66,18 @@ final class FilterValueValidator
      * @param ?JsonApiRequestInterface $request   the request a filter family resolves a key against
      * @param ?FilterPaths             $paths     resolves a matched filter's traversal path against the filtered type's fields
      *
-     * @throws FilterValueInvalid when a client-supplied value violates its filter's constraints, or a list filter's value is not a list it accepts
+     * @throws FilterValueInvalid when a client-supplied value violates its filter's constraints, a list filter's value is not a list it accepts, or a range's value is not an object of single-valued bounds
      */
     public function validate(array $requested, array $filters, ?JsonApiRequestInterface $request = null, ?FilterPaths $paths = null): void
     {
         foreach ($this->matched($requested, $filters, $request) as [$key, $filter]) {
-            $filter = $paths?->resolve($filter) ?? $filter;
             $value = $requested[$key];
+            // Core's directives() makes the same check later; running it first keeps a
+            // malformed range value from reaching the per-bound rules below.
+            if ($filter instanceof Range) {
+                $filter->bounds($value);
+            }
+            $filter = $paths?->resolve($filter) ?? $filter;
 
             if ($filter instanceof WhereMorph && $filter->resolvedTarget() !== null) {
                 $this->validateMorph($filter, $value);

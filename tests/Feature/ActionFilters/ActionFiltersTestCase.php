@@ -99,9 +99,17 @@ abstract class ActionFiltersTestCase extends Orchestra
     #[Test]
     public function aRangeValueThatIsNotAnObjectOfItsBoundsIs400(): void
     {
-        foreach (['filter[weightRange]=2', 'filter[weightRange][from]=2', 'filter[weightRange][min]=2&filter[weightRange][upTo]=6', 'filter[weightRange][max][]=6'] as $query) {
+        $malformed = [
+            'filter[weightRange]=2' => 'Send the bounds as filter[weightRange][min]=<value>, filter[weightRange][max]=<value> or both.',
+            'filter[weightRange][from]=2' => 'filter[weightRange] takes only the members min and max.',
+            'filter[weightRange][min]=2&filter[weightRange][upTo]=6' => 'filter[weightRange] takes only the members min and max.',
+            'filter[weightRange][max][]=6' => 'filter[weightRange][max] takes a single value.',
+        ];
+        foreach ($malformed as $query => $detail) {
             foreach ([$this->getJsonApi('/api/gadgets?' . $query), $this->getJsonApi('/api/gadgets/-actions/count?' . $query), $this->postAction('/api/gadgets/-actions/paint?' . $query)] as $response) {
                 $this->assertFilterError($response, 'FILTER_VALUE_INVALID');
+                $response->assertJsonCount(1, 'errors');
+                self::assertSame($detail, $response->json('errors.0.detail'), $query);
                 self::assertSame('filter[weightRange]', $response->json('errors.0.source.parameter'), $query);
             }
         }

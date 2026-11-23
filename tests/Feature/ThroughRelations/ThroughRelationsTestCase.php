@@ -68,6 +68,26 @@ abstract class ThroughRelationsTestCase extends Orchestra
     }
 
     #[Test]
+    public function aMalformedRangeThroughAPathIsOneErrorWithTheRangesOwnMessage(): void
+    {
+        $malformed = [
+            'filter[campaignDates][min][]=2026-03-01' => ['campaignDates', 'filter[campaignDates][min] takes a single value.'],
+            'filter[campaignDates]=2026-03-01' => ['campaignDates', 'Send the bounds as filter[campaignDates][min]=<value>, filter[campaignDates][max]=<value> or both.'],
+            'filter[campaignDates][after]=2026-03-01' => ['campaignDates', 'filter[campaignDates] takes only the members min and max.'],
+            'filter[budget][max][]=200' => ['budget', 'filter[budget][max] takes a single value.'],
+        ];
+
+        foreach ($malformed as $query => [$key, $detail]) {
+            $response = $this->fetch('/api/thrLeads?' . $query);
+            self::assertSame(400, $response->getStatusCode(), (string) $response->getContent());
+            $response->assertJsonCount(1, 'errors');
+            $response->assertJsonPath('errors.0.code', 'FILTER_VALUE_INVALID');
+            $response->assertJsonPath('errors.0.detail', $detail);
+            $response->assertJsonPath('errors.0.source.parameter', 'filter[' . $key . ']');
+        }
+    }
+
+    #[Test]
     public function aRangeThroughAPathRefusesAValueThatIsNotAnObjectOfItsBounds(): void
     {
         $this->assertBadValue('filter[campaignDates]=2026-03-01', 'filter[campaignDates]');
