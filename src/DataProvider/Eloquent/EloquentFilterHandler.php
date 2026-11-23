@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\DataProvider\Eloquent;
 
 use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
+use haddowg\JsonApi\Resource\Filter\DateOperand;
 use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\FilterHandlerInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
@@ -1005,10 +1006,17 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     {
         $qualified = $this->qualify($query, $column);
 
+        // A date filter's time of day compares the column's time, whatever day it holds.
+        if ($value instanceof DateOperand && $value->kind === 'time') {
+            $query->whereTime($qualified, $operator, $value->format('H:i:s'));
+
+            return;
+        }
+
         if ($value instanceof \DateTimeInterface) {
             [$model, $attribute] = $this->modelOf($query, $column);
 
-            if ($this->dates->isDateOnly($model, $attribute)) {
+            if ($this->dates->isDateOnly($model, $attribute) || ($value instanceof DateOperand && $value->kind === 'date')) {
                 $query->whereDate($qualified, $operator, $value->format('Y-m-d'));
 
                 return;
@@ -1149,6 +1157,20 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             if (!$negate) {
                 $query->whereRaw('1 = 0');
             }
+
+            return;
+        }
+
+        // A date filter's members each compare as the date they are, as one value does.
+        if (\array_filter($values, static fn(mixed $value): bool => $value instanceof DateOperand) !== []) {
+            $any = function (Builder $group) use ($column, $values): void {
+                foreach ($values as $value) {
+                    $group->orWhere(function (Builder $one) use ($column, $value): void {
+                        $this->compare($one, $column, '=', $value);
+                    });
+                }
+            };
+            $negate ? $query->whereNot($any) : $query->where($any);
 
             return;
         }

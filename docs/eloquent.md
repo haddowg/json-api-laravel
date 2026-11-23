@@ -433,6 +433,13 @@ compares the same calendar day. A column with a
 custom cast class, or with no cast, is left alone, since its type is unknown. Cursor keys are not
 converted either, because a cursor already carries the stored wall-clock time.
 
+A `Where` comparing with an equality or ordering operator, a `WhereIn` and a `WhereNotIn` over
+a `DateTime`, `Date` or `Time` field, on the type or reached with `->through()`, read each value
+as that field's date unless they declare a deserializer of their own. A date-time compares as an
+instant, converted as above, a date compares its calendar day with `whereDate()` and a time its
+time of day with `whereTime()`, each member of a list on its own. The in-memory provider compares
+the same day, time of day or instant, so both stores match the same rows.
+
 ### Server-composed filter groups and `->fixed()`
 
 `WhereAll` (AND) and `WhereAny` (OR) are core's [server-composed filter

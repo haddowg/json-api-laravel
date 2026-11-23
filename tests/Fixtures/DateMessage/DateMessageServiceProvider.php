@@ -17,7 +17,8 @@ use Illuminate\Support\ServiceProvider;
 
 /**
  * The date message suite, on Eloquent or the in-memory witness by `date_message.store`.
- * Booking 1 starts at 09:00Z on 1 October 2026.
+ * Booking 1 starts at 09:00Z on 1 October 2026, is due on 24 December and breaks at 12:30.
+ * Booking 2 starts at 15:00Z on 2 October, is due on 31 December and breaks at 14:00.
  */
 final class DateMessageServiceProvider extends ServiceProvider
 {
@@ -33,7 +34,10 @@ final class DateMessageServiceProvider extends ServiceProvider
             };
             $provider = new InMemoryDataProvider(
                 'dmBookings',
-                ['1' => new DmBookingRecord('1', new \DateTimeImmutable('2026-10-01T09:00:00Z'), day: new \DateTimeImmutable('2026-10-01'))],
+                [
+                    '1' => new DmBookingRecord('1', new \DateTimeImmutable('2026-10-01T09:00:00Z'), day: new \DateTimeImmutable('2026-10-01'), dueOn: new \DateTimeImmutable('2026-12-24'), breakAt: new \DateTimeImmutable('12:30:00')),
+                    '2' => new DmBookingRecord('2', new \DateTimeImmutable('2026-10-02T15:00:00Z'), day: new \DateTimeImmutable('2026-10-02'), dueOn: new \DateTimeImmutable('2026-12-31'), breakAt: new \DateTimeImmutable('14:00:00')),
+                ],
                 identify: $identify,
                 assignId: static function (object $row, string $id): void {
                     Accessor::set($row, 'id', $id);
@@ -65,6 +69,9 @@ final class DateMessageServiceProvider extends ServiceProvider
             $table->string('until')->nullable();
             $table->json('marks')->nullable();
         });
-        DB::table('dm_bookings')->insert(['id' => 1, 'startsAt' => '2026-10-01 09:00:00', 'day' => '2026-10-01']);
+        DB::table('dm_bookings')->insert([
+            ['id' => 1, 'startsAt' => '2026-10-01 09:00:00', 'day' => '2026-10-01', 'dueOn' => '2026-12-24', 'breakAt' => '12:30:00'],
+            ['id' => 2, 'startsAt' => '2026-10-02 15:00:00', 'day' => '2026-10-02', 'dueOn' => '2026-12-31', 'breakAt' => '14:00:00'],
+        ]);
     }
 }

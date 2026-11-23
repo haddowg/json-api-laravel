@@ -186,19 +186,39 @@ abstract class DateMessageTestCase extends Orchestra
         }
     }
 
-    #[Test]
-    public function goodDateFilterValuesStillFilter(): void
+    /**
+     * Each good date filter and the bookings it matches, the same on both data layers,
+     * which compare the values as dates.
+     *
+     * @return array<string, list<string>>
+     */
+    private static function goodFilters(): array
     {
-        foreach ([
-            'filter[startsRange][min]=2026-09-30T00:00:00Z&filter[dayRange][max]=2026-10-01',
-            'filter[startsAt]=2026-10-01T09:00:00Z',
-            'filter[startsAfter]=2026-09-30T00:00:00Z',
-            'filter[days]=2026-10-01,2026-10-02',
-            'filter[breakAt]=12:30:00',
-        ] as $query) {
+        return [
+            'filter[startsRange][min]=2026-10-01T12:00:00Z' => ['2'],
+            'filter[dayRange][max]=2026-10-01' => ['1'],
+            'filter[startsAt]=2026-10-01T09:00:00Z' => ['1'],
+            'filter[startsAt]=2026-10-01T11:00:00%2B02:00' => ['1'],
+            'filter[startsAfter]=2026-10-01T12:00:00Z' => ['2'],
+            'filter[startsAfter]=2026-09-30T00:00:00Z' => ['1', '2'],
+            'filter[days]=2026-10-02' => ['2'],
+            'filter[days]=2026-10-01,2026-10-02' => ['1', '2'],
+            'filter[notDueOn]=2026-12-24' => ['2'],
+            'filter[breakAt]=12:30:00' => ['1'],
+        ];
+    }
+
+    #[Test]
+    public function goodDateFilterValuesMatchTheSameRowsOnEveryDataLayer(): void
+    {
+        foreach (self::goodFilters() as $query => $ids) {
             $response = $this->sendJsonApiRequest('GET', '/api/dmBookings?' . $query, null, []);
 
             self::assertSame(200, $response->getStatusCode(), $query . ': ' . $response->getContent());
+            $found = $response->json('data.*.id');
+            self::assertIsArray($found, $query);
+            \sort($found);
+            self::assertSame($ids, $found, $query);
         }
     }
 

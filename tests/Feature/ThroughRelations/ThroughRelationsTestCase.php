@@ -87,7 +87,9 @@ abstract class ThroughRelationsTestCase extends Orchestra
             $response->assertJsonPath('errors.0.source.parameter', 'filter[' . $key . ']');
         }
 
-        $this->fetch('/api/thrLeads?filter[campaignStart]=2026-03-02&filter[campaignStarts]=2026-03-02,2026-06-15')->assertOk();
+        // A related date compares as a date on every data layer.
+        self::assertSame(['1', '4'], $this->leadIds('filter[campaignStart]=2026-03-02'));
+        self::assertSame(['1', '2', '4'], $this->leadIds('filter[campaignStarts]=2026-03-02,2026-06-15'));
     }
 
     #[Test]
