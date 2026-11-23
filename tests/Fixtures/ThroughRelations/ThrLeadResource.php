@@ -68,6 +68,8 @@ final class ThrLeadResource extends AbstractResource
         return [
             Contains::make('campaignName', 'name')->through('owningCampaign'),
             DateRange::make('campaignDates', 'startsOn')->through('owningCampaign'),
+            Where::make('campaignStart', 'startsOn')->through('owningCampaign'),
+            WhereIn::make('campaignStarts', 'startsOn')->through('owningCampaign'),
             Range::make('budget')->through('owningCampaign'),
             Where::make('advertiserName', 'name')->through('owningCampaign.advertiser'),
             WhereIdIn::make('campaign')->through('owningCampaign'),

@@ -38,12 +38,13 @@ attribute value is, a `422` `VALIDATION_FAILED`. A field whose format no keyword
 exactly what that format writes, so a `Time` with its `H:i:s` default takes `09:42:00` and
 refuses `09:42`. A date bound is not checked against a value that rule refuses.
 
-That error's `detail` is core's message for the field's kind of date, not a translated
-Laravel one, so it reads the same here, in the Symfony bundle and on a date filter bound. It
-names the attribute by its path below `/data/attributes`, so a nested date reads
-`window/from`, and shows the field's declared `->example()`, or a fixed one: `publishedAt is
-not an RFC 3339 date-time with an offset, such as 2026-10-01T00:00:00Z.`, `dueOn is not a date
-like 2026-10-01.` or `opensAt is not a time like 09:42:00Z.`
+That error's `detail` is core's message for the field's kind of date, the same in the
+Symfony bundle and on a date filter, and its `source.pointer` says which attribute it was:
+`This value is not an RFC 3339 date-time with an offset, such as 2026-10-01T00:00:00Z.`,
+`This value is not a date like 2026-10-01.` or `This value is not a time like 09:42:00Z.`,
+showing the field's declared `->example()` or a fixed one. It does not come from Laravel's
+`validation` lines; translate it under its own key in the `jsonapi-errors` group, see
+[date messages](errors.md#date-messages).
 
 ## The constraint → rule map
 
@@ -242,9 +243,12 @@ relation that is read-only for the caller.
 Filter values are validated too: a `filter[releasedAt][min]=banana` is a clean `400`, not a
 database error. Declared filters carry their expected type (`->integer()`, `->boolean()`,
 date-aware filters), and a value that fails coercion is rejected before it reaches the query.
-Each bad `DateRange` bound is one error with core's date message, naming the bound's
-parameter: `filter[releasedAt][min] is not an RFC 3339 date-time with an offset, such as
-2026-10-01T00:00:00Z.`
+Each bad `DateRange` bound is one error with core's date message, such as `This value is not
+an RFC 3339 date-time with an offset, such as 2026-10-01T00:00:00Z.` A `Where` comparing with
+an equality or ordering operator, a `WhereIn` and a `WhereNotIn` over a `DateTime`, `Date` or
+`Time` field, of the type or reached with `->through()`, read each value or member as that
+field's date when they declare no rules of their own, so a malformed one is a `400` with the
+same message, one error per value.
 A [list filter](eloquent.md#list-filters) validates each member on its own, and rejects a value
 that isn't a list it accepts. A [filter family](eloquent.md#filter-families) key is validated by
 the rules of the filter it resolves to.

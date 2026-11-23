@@ -68,22 +68,26 @@ abstract class ThroughRelationsTestCase extends Orchestra
     }
 
     #[Test]
-    public function aBadBoundThroughAPathToADateNamesItsParameterInTheDateMessage(): void
+    public function aBadDateThroughAPathIsRefusedWithTheDateMessage(): void
     {
         $cases = [
-            'filter[campaignDates][min]=2026-03-01T00:00:00Z' => 'filter[campaignDates][min] is not a date like 2026-10-01.',
-            'filter[campaignDates][max]=2026-02-30' => 'filter[campaignDates][max] is not a date like 2026-10-01.',
-            'filter[campaignDates][min]=spring' => 'filter[campaignDates][min] is not a date like 2026-10-01.',
+            'filter[campaignDates][min]=2026-03-01T00:00:00Z' => 'campaignDates',
+            'filter[campaignDates][max]=2026-02-30' => 'campaignDates',
+            'filter[campaignDates][min]=spring' => 'campaignDates',
+            'filter[campaignStart]=2026-03-02T00:00:00Z' => 'campaignStart',
+            'filter[campaignStarts]=2026-03-02,2026-02-30' => 'campaignStarts',
         ];
 
-        foreach ($cases as $query => $detail) {
+        foreach ($cases as $query => $key) {
             $response = $this->fetch('/api/thrLeads?' . $query);
             self::assertSame(400, $response->getStatusCode(), (string) $response->getContent());
             $response->assertJsonCount(1, 'errors');
             $response->assertJsonPath('errors.0.code', 'FILTER_VALUE_INVALID');
-            $response->assertJsonPath('errors.0.detail', $detail);
-            $response->assertJsonPath('errors.0.source.parameter', 'filter[campaignDates]');
+            $response->assertJsonPath('errors.0.detail', 'This value is not a date like 2026-10-01.');
+            $response->assertJsonPath('errors.0.source.parameter', 'filter[' . $key . ']');
         }
+
+        $this->fetch('/api/thrLeads?filter[campaignStart]=2026-03-02&filter[campaignStarts]=2026-03-02,2026-06-15')->assertOk();
     }
 
     #[Test]

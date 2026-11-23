@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Server;
 
+use haddowg\JsonApi\Schema\Error\ErrorDetailVariantResolverInterface;
 use haddowg\JsonApi\Schema\Error\ErrorMessageResolverInterface;
 use Illuminate\Contracts\Translation\Translator;
 
@@ -30,8 +31,14 @@ use Illuminate\Contracts\Translation\Translator;
  * not Laravel `:name` replacements (none are passed to the translator, which therefore
  * leaves the tokens intact). The locale is the app's current locale, so
  * `Accept-Language`/`setLocale` negotiation stays the framework's job.
+ *
+ * A date message is keyed below its code by kind and fills an `{example}` token:
+ *
+ *     'ATTRIBUTE_VALUE_INVALID' => [
+ *         'date' => ['detail' => "Ce n'est pas une date comme {example}."],
+ *     ],
  */
-final readonly class TranslatorErrorMessageResolver implements ErrorMessageResolverInterface
+final readonly class TranslatorErrorMessageResolver implements ErrorDetailVariantResolverInterface
 {
     public const GROUP = 'jsonapi-errors';
 
@@ -45,6 +52,16 @@ final readonly class TranslatorErrorMessageResolver implements ErrorMessageResol
     public function detail(string $code): ?string
     {
         return $this->resolve($code . '.detail');
+    }
+
+    /**
+     * A more specific detail, such as a date message's, under `<CODE>.<variant>.detail`:
+     * `ATTRIBUTE_VALUE_INVALID.date_time.detail` for the variant
+     * `ATTRIBUTE_VALUE_INVALID.date_time`, so it nests beside the code's own `detail`.
+     */
+    public function detailVariant(string $variant): ?string
+    {
+        return $this->resolve($variant . '.detail');
     }
 
     private function resolve(string $item): ?string

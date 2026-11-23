@@ -22,6 +22,7 @@ use haddowg\JsonApi\Resource\Constraint\Nullable;
 use haddowg\JsonApi\Resource\Constraint\Required;
 use haddowg\JsonApi\Resource\Constraint\Shape;
 use haddowg\JsonApi\Resource\Constraint\When;
+use haddowg\JsonApi\Resource\DateMessage;
 use haddowg\JsonApi\Resource\DateTimeParser;
 use haddowg\JsonApi\Resource\Field\ArrayList;
 use haddowg\JsonApi\Resource\Field\DateTime;
@@ -472,16 +473,7 @@ final class ResourceValidator
             return $error;
         }
 
-        return new Error(
-            id: $error->id,
-            status: $error->status,
-            code: $error->code,
-            title: $error->title,
-            detail: $error->detail,
-            source: ErrorSource::fromPointer($to . \substr($pointer, \strlen($from))),
-            links: $error->links,
-            meta: $error->meta,
-        );
+        return $error->withSource(ErrorSource::fromPointer($to . \substr($pointer, \strlen($from))));
     }
 
     /**
@@ -934,10 +926,7 @@ final class ResourceValidator
      */
     private function pivotError(string $detail, string $field, ?int $index, ?string $embeddedRelationName): Error
     {
-        return ValidationFailed::describe()->toError(
-            detail: ParsableDate::named($detail, $field),
-            source: ErrorSource::fromPointer($this->linkageMetaPointer($embeddedRelationName, $field, $index)),
-        );
+        return $this->errorAt($detail, $this->linkageMetaPointer($embeddedRelationName, $field, $index));
     }
 
     /**
@@ -1820,11 +1809,14 @@ final class ResourceValidator
 
     private function errorAt(string $detail, string $pointer): Error
     {
-        $attributes = $this->pointers->forAttribute('') . '/';
+        // A date's message keeps its translation key and example.
+        $date = DateMessage::recognise($detail);
 
         return ValidationFailed::describe()->toError(
-            detail: ParsableDate::named($detail, \str_starts_with($pointer, $attributes) ? \substr($pointer, \strlen($attributes)) : self::lastSegment($pointer)),
+            detail: $detail,
+            context: $date?->context() ?? [],
             source: ErrorSource::fromPointer($pointer),
+            detailVariant: $date?->detailVariant(AttributeValueInvalid::describe()->code) ?? '',
         );
     }
 

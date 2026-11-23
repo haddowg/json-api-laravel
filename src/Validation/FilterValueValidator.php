@@ -6,7 +6,9 @@ namespace haddowg\JsonApiLaravel\Validation;
 
 use haddowg\JsonApi\Exception\FilterValueInvalid;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\DateMessage;
 use haddowg\JsonApi\Resource\Filter\AcceptsList;
+use haddowg\JsonApi\Resource\Filter\DateFilterValue;
 use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\FilterFamilyInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
@@ -94,9 +96,20 @@ final class FilterValueValidator
                 ? \array_values(\array_filter($list->values($key, $value), static fn(mixed $member): bool => $member !== null))
                 : null;
 
+            // A comparison or list filter over a date field reads each value as that date,
+            // so a malformed one is refused with the field's message, one per value.
+            $date = DateFilterValue::fieldFor($filter, $paths?->fields() ?? []);
+
             $messages = [];
             if ($filter instanceof Range) {
-                $messages = $this->boundMessages($filter, $key, $value, $rules);
+                $messages = $this->boundMessages($filter, $value, $rules);
+            } elseif ($date !== null) {
+                foreach ($members ?? $this->members($filter, $value) as $member) {
+                    $invalid = $member === '' ? null : DateFilterValue::invalid($date, $member);
+                    if ($invalid !== null) {
+                        $messages[] = $invalid;
+                    }
+                }
             } elseif ($rules !== []) {
                 foreach ($members ?? $this->members($filter, $value) as $member) {
                     $validator = $this->validatorFactory->make(['value' => $member], ['value' => $rules]);
@@ -274,14 +287,14 @@ final class FilterValueValidator
      *
      * @param list<mixed> $rules
      *
-     * @return list<string>
+     * @return list<string|DateMessage>
      */
-    private function boundMessages(Range $filter, string $key, mixed $value, array $rules): array
+    private function boundMessages(Range $filter, mixed $value, array $rules): array
     {
         $messages = [];
         foreach ($this->rangeMembers($value) as $name => $bound) {
             if ($filter instanceof DateRange) {
-                $invalid = $filter->invalidBound($bound, $name, \sprintf('filter[%s][%s]', $key, $name));
+                $invalid = $filter->invalidBound($bound, $name);
                 if ($invalid !== null) {
                     $messages[] = $invalid;
 
