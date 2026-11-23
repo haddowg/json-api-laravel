@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.22.2](https://github.com/haddowg/json-api-laravel/compare/v2.22.1...v2.22.2) (2026-11-23)
+
+
+### Bug Fixes
+
+* answer a malformed range filter value with the range's own single error ([#326](https://github.com/haddowg/json-api-laravel/issues/326)) ([d71f288](https://github.com/haddowg/json-api-laravel/commit/d71f28889bdf113900d55d9e7041409affa9bdaf))
+
 ## [2.22.1](https://github.com/haddowg/json-api-laravel/compare/v2.22.0...v2.22.1) (2026-11-23)
 
 
