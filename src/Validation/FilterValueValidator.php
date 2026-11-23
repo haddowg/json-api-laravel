@@ -66,13 +66,18 @@ final class FilterValueValidator
      * @param ?JsonApiRequestInterface $request   the request a filter family resolves a key against
      * @param ?FilterPaths             $paths     resolves a matched filter's traversal path against the filtered type's fields
      *
-     * @throws FilterValueInvalid when a client-supplied value violates its filter's constraints, or a list filter's value is not a list it accepts
+     * @throws FilterValueInvalid when a client-supplied value violates its filter's constraints, a list filter's value is not a list it accepts, or a range's value is not an object of single-valued bounds
      */
     public function validate(array $requested, array $filters, ?JsonApiRequestInterface $request = null, ?FilterPaths $paths = null): void
     {
         foreach ($this->matched($requested, $filters, $request) as [$key, $filter]) {
-            $filter = $paths?->resolve($filter) ?? $filter;
             $value = $requested[$key];
+            // Core's directives() makes the same check later; running it first keeps a
+            // malformed range value from reaching the per-bound rules below.
+            if ($filter instanceof Range) {
+                $filter->bounds($value);
+            }
+            $filter = $paths?->resolve($filter) ?? $filter;
 
             if ($filter instanceof WhereMorph && $filter->resolvedTarget() !== null) {
                 $this->validateMorph($filter, $value);
@@ -90,7 +95,9 @@ final class FilterValueValidator
                 : null;
 
             $messages = [];
-            if ($rules !== []) {
+            if ($filter instanceof Range) {
+                $messages = $this->boundMessages($filter, $value, $rules);
+            } elseif ($rules !== []) {
                 foreach ($members ?? $this->members($filter, $value) as $member) {
                     $validator = $this->validatorFactory->make(['value' => $member], ['value' => $rules]);
                     foreach ($validator->errors()->all() as $message) {
@@ -98,12 +105,6 @@ final class FilterValueValidator
                     }
                 }
             }
-
-            // A DateRange's shape Pattern is deliberately lenient on the calendar (it
-            // admits `1997-13-99`), so a present bound is additionally checked for
-            // temporal validity — an unparseable date is a clean 400 here rather than a
-            // silent, provider-divergent non-match in the data layer.
-            $messages = [...$messages, ...$this->dateRangeMessages($filter, $value)];
 
             if ($messages !== []) {
                 throw new FilterValueInvalid($key, $messages);
@@ -214,17 +215,12 @@ final class FilterValueValidator
      * The scalar members of a filter value to validate individually: a single scalar is a
      * one-element list; an `IN`-style set is each array element, or — for a delimited
      * string — each split-and-trimmed token (mirroring the handlers, so a per-member rule
-     * validates the exact tokens the provider queries against); a structured Range/DateRange
-     * validates each present bound. A `null` member is skipped.
+     * validates the exact tokens the provider queries against). A `null` member is skipped.
      *
      * @return list<mixed>
      */
     private function members(FilterInterface $filter, mixed $value): array
     {
-        if ($filter instanceof Range) {
-            return $this->rangeMembers($value);
-        }
-
         if (\is_array($value)) {
             return \array_values(\array_filter($value, static fn(mixed $member): bool => $member !== null));
         }
@@ -271,28 +267,32 @@ final class FilterValueValidator
     }
 
     /**
-     * Temporal-validity messages for a {@see DateRange}'s present bounds. Its shape
-     * Pattern is lenient on the calendar (a regex cannot reject `1997-13-99`), so each
-     * present bound is additionally run through the filter's own date deserializer; a
-     * bound that does not coerce to a `\DateTimeInterface` yields one message. A
-     * non-`DateRange` filter contributes nothing.
+     * One message per failing bound of a {@see Range}: the first rule that rejects the
+     * bound, or for a {@see DateRange} whose bound passes them, a date that does not
+     * exist. The shape Pattern is lenient on the calendar (it admits `1997-13-99`), so a
+     * bound is also run through the filter's own date deserializer, the coercion the
+     * handlers apply.
+     *
+     * @param list<mixed> $rules
      *
      * @return list<string>
      */
-    private function dateRangeMessages(FilterInterface $filter, mixed $value): array
+    private function boundMessages(Range $filter, mixed $value, array $rules): array
     {
-        if (!$filter instanceof DateRange) {
-            return [];
-        }
-
-        $deserialize = $filter->deserialize;
-        if ($deserialize === null) {
-            return [];
-        }
+        $deserialize = $filter instanceof DateRange ? $filter->deserialize : null;
 
         $messages = [];
         foreach ($this->rangeMembers($value) as $bound) {
-            if (!$deserialize($bound) instanceof \DateTimeInterface) {
+            if ($rules !== []) {
+                $errors = $this->validatorFactory->make(['value' => $bound], ['value' => $rules])->errors();
+                if ($errors->isNotEmpty()) {
+                    $messages[] = (string) $errors->first('value');
+
+                    continue;
+                }
+            }
+
+            if ($deserialize !== null && !$deserialize($bound) instanceof \DateTimeInterface) {
                 $messages[] = 'This value is not a valid date.';
             }
         }
