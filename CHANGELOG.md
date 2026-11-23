@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.22.1](https://github.com/haddowg/json-api-laravel/compare/v2.22.0...v2.22.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* refuse a range filter value that is not an object of its bounds ([#324](https://github.com/haddowg/json-api-laravel/issues/324)) ([7b92033](https://github.com/haddowg/json-api-laravel/commit/7b92033a6cae9bd2e8faa41f596a8bb15244bbc6))
+
 ## [2.22.0](https://github.com/haddowg/json-api-laravel/compare/v2.21.1...v2.22.0) (2026-11-21)
 
 
