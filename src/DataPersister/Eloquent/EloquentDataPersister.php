@@ -32,6 +32,7 @@ use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\WritesForeignKeysInterface;
 use haddowg\JsonApiLaravel\DataPersister\WritesLinkRowsInterface;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\StoredKey;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\NaiveDateTimeStorage;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use Illuminate\Container\Container;
@@ -691,7 +692,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
                 if ($owner instanceof BelongsTo) {
                     $owner->associate($parent);
                 } else {
-                    $row->setAttribute($fields->owner, $parent->getKey());
+                    $row->setAttribute($fields->owner, StoredKey::keyOf($parent));
                 }
                 $this->fillLinkRow($row, $relation, $values);
                 $row = $write->fillAdditional($relation, $row);
@@ -808,7 +809,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
                 continue;
             }
 
-            $ownerKey = $member->getAttribute($eloquentRelation->getForeignKeyName());
+            $ownerKey = StoredKey::on($member, $eloquentRelation->getForeignKeyName());
 
             $ownerClass = $parent::class;
             if ($eloquentRelation instanceof MorphOneOrMany) {
@@ -818,7 +819,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
 
             // A row with no key, or a key no row answers to, has no parent: it is reported
             // with a null owner, so the handler checks the row alone.
-            $ownerKey = \is_scalar($ownerKey) && \is_string($ownerClass) && \is_a($ownerClass, Model::class, true) ? (string) $ownerKey : null;
+            $ownerKey = \is_string($ownerClass) && \is_a($ownerClass, Model::class, true) ? StoredKey::comparable($ownerKey) : null;
             if ($ownerKey !== null) {
                 \assert(\is_string($ownerClass));
                 $ownerKeys[$ownerClass][$ownerKey] = $ownerKey;
@@ -832,9 +833,9 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             $localKey = $eloquentRelation->getLocalKeyName();
             // Unscoped, so an owner hidden by a global scope is still found and checked.
             foreach ($ownerClass::query()->withoutGlobalScopes()->whereIn($localKey, \array_values($keys))->get() as $owner) {
-                $value = $owner->getAttribute($localKey);
-                if (\is_scalar($value)) {
-                    $ownersByClass[$ownerClass][(string) $value] = $owner;
+                $value = StoredKey::comparable(StoredKey::on($owner, $localKey));
+                if ($value !== null) {
+                    $ownersByClass[$ownerClass][$value] = $owner;
                 }
             }
         }
@@ -867,9 +868,10 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
      */
     private function isMemberOf(HasOneOrMany $eloquentRelation, Model $member): bool
     {
-        $parentKey = $eloquentRelation->getParentKey();
-        $foreignKey = $member->getAttribute($eloquentRelation->getForeignKeyName());
-        if ($parentKey === null || $foreignKey === null || !\is_scalar($parentKey) || !\is_scalar($foreignKey) || (string) $parentKey !== (string) $foreignKey) {
+        // Both keys as stored, read past any cast.
+        $parentKey = StoredKey::comparable(StoredKey::on($eloquentRelation->getParent(), $eloquentRelation->getLocalKeyName()));
+        $foreignKey = StoredKey::comparable(StoredKey::on($member, $eloquentRelation->getForeignKeyName()));
+        if ($parentKey === null || $parentKey !== $foreignKey) {
             return false;
         }
 
@@ -909,9 +911,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             if ($identifier->id === null) {
                 continue;
             }
-            /** @var mixed $storageId */
-            $storageId = $this->decodeLinkageId($this->relatedType($relation, $identifier), $identifier->id);
-            $ids[] = $storageId;
+            $ids[] = $this->storedLinkageKey($this->relatedType($relation, $identifier), $identifier->id);
         }
 
         // The join is written by raw id, past any global scope on the related model, so the ids
@@ -943,7 +943,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         // keys — the decoded linkage ids compare against it directly.
         $attached = [];
         foreach ($eloquentRelation->allRelatedIds() as $existing) {
-            $attached[\is_scalar($existing) ? (string) $existing : ''] = true;
+            $attached[StoredKey::comparable($existing) ?? ''] = true;
         }
 
         $payload = [];
@@ -951,8 +951,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             if ($identifier->id === null) {
                 continue;
             }
-            /** @var mixed $storageId */
-            $storageId = $this->decodeLinkageId($this->relatedType($relation, $identifier), $identifier->id);
+            $storageId = $this->storedLinkageKey($this->relatedType($relation, $identifier), $identifier->id);
             if (!\is_scalar($storageId)) {
                 continue;
             }
@@ -992,10 +991,10 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         $relatedKey = $eloquentRelation->getRelatedPivotKeyName();
         $current = [];
         foreach ($eloquentRelation->newPivotQuery()->get([$relatedKey, $position]) as $row) {
-            $key = $row->{$relatedKey} ?? null;
+            $key = StoredKey::comparable($row->{$relatedKey} ?? null);
             $at = $row->{$position} ?? null;
-            if (\is_scalar($key)) {
-                $current[(string) $key] = \is_numeric($at) ? (int) $at : 0;
+            if ($key !== null) {
+                $current[$key] = \is_numeric($at) ? (int) $at : 0;
             }
         }
 
@@ -1018,8 +1017,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             if ($identifier->id === null) {
                 continue;
             }
-            /** @var mixed $storageId */
-            $storageId = $this->decodeLinkageId($this->relatedType($relation, $identifier), $identifier->id);
+            $storageId = $this->storedLinkageKey($this->relatedType($relation, $identifier), $identifier->id);
             if (!\is_scalar($storageId)) {
                 continue;
             }
@@ -1052,9 +1050,11 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         }
 
         $keyColumn = $related->qualifyColumn($eloquentRelation->getRelatedKeyName());
-        $visible = $this->stringKeys($related->newQuery()->whereIn($keyColumn, $ids)->pluck($keyColumn)->all());
+        // Read past the key's cast, so the stored keys compare with the incoming ones.
+        $visible = $this->stringKeys($related->newQuery()->whereIn($keyColumn, $ids)->toBase()->pluck($keyColumn)->all());
         foreach ($ids as $id) {
-            if (!\is_scalar($id) || !\in_array((string) $id, $visible, true)) {
+            $id = StoredKey::comparable($id);
+            if ($id === null || !\in_array($id, $visible, true)) {
                 throw new ResourceNotFound();
             }
         }
@@ -1063,7 +1063,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             return [];
         }
 
-        $attachedVisible = $this->stringKeys($eloquentRelation->pluck($keyColumn)->all());
+        $attachedVisible = $this->stringKeys($eloquentRelation->toBase()->pluck($keyColumn)->all());
 
         return \array_values(\array_diff($this->stringKeys($eloquentRelation->allRelatedIds()->all()), $attachedVisible));
     }
@@ -1077,8 +1077,9 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
     {
         $strings = [];
         foreach ($keys as $key) {
-            if (\is_scalar($key)) {
-                $strings[] = (string) $key;
+            $key = StoredKey::comparable($key);
+            if ($key !== null) {
+                $strings[] = $key;
             }
         }
 
@@ -1218,7 +1219,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             return null;
         }
 
-        $found = $class::query()->find($this->decodeLinkageId($relatedType, $identifier->id));
+        $found = $class::query()->find($this->storedLinkageKey($relatedType, $identifier->id));
 
         return $found instanceof Model ? $found : null;
     }
@@ -1241,8 +1242,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
                 continue;
             }
 
-            /** @var mixed $key */
-            $key = $this->decodeLinkageId($relatedType, $identifier->id);
+            $key = $this->storedLinkageKey($relatedType, $identifier->id);
             if (\is_int($key) || \is_string($key)) {
                 $keysByType[$relatedType][(string) $key] = $key;
             }
@@ -1265,8 +1265,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
                 continue;
             }
 
-            /** @var mixed $key */
-            $key = $this->decodeLinkageId($relatedType, $identifier->id);
+            $key = $this->storedLinkageKey($relatedType, $identifier->id);
             $model = \is_int($key) || \is_string($key) ? ($byKey[$relatedType][(string) $key] ?? null) : null;
             if ($model !== null) {
                 $found[$index] = $model;
@@ -1383,6 +1382,22 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         return $id;
     }
 
+    /**
+     * A linkage member's wire id as the related model stores its key: decoded, then set through
+     * the key's value-object cast when it declares one.
+     */
+    private function storedLinkageKey(string $relatedType, string $id): mixed
+    {
+        $decoded = $this->decodeLinkageId($relatedType, $id);
+        $class = $this->modelByType[$relatedType] ?? null;
+        if ($class === null) {
+            return $decoded;
+        }
+        $model = new $class();
+
+        return StoredKey::of($model, $model->getKeyName(), $decoded);
+    }
+
     private function hasIntegerKey(string $type): bool
     {
         $class = $this->modelByType[$type] ?? null;
@@ -1416,13 +1431,12 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
     }
 
     /**
-     * A model's primary key as a string, for set membership on the incoming/current members.
+     * A model's primary key as stored, as a string, for set membership on the incoming and
+     * current members.
      */
     private function key(Model $model): string
     {
-        $key = $model->getKey();
-
-        return \is_scalar($key) ? (string) $key : '';
+        return StoredKey::comparable(StoredKey::keyOf($model)) ?? '';
     }
 
     private function connection(): ConnectionInterface

@@ -39,8 +39,6 @@ use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\ScopesFilterHopsInterface;
 use haddowg\JsonApiLaravel\DataProvider\TargetsTypeInterface;
 use haddowg\JsonApiLaravel\Eloquent\BinaryUuidEncoder;
-use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
-use Illuminate\Contracts\Database\Eloquent\CastsInboundAttributes;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo as EloquentBelongsTo;
@@ -797,7 +795,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      */
     private function sqlComparison(MorphColumnsOf $morph, Model $targetModel, string $key, ?IdEncoderInterface $encoder): ?array
     {
-        if ($this->castsKey($targetModel, $key)) {
+        if (StoredKey::castsValueObject($targetModel, $key)) {
             return null;
         }
 
@@ -841,7 +839,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
                 continue;
             }
             $wire = $target->wireId($type, $value);
-            $decoded = $encoder !== null ? $encoder->decode($wire) : $this->castKey($targetModel, $wire);
+            $decoded = $encoder !== null ? $encoder->decode($wire) : StoredKey::of($targetModel, $key, $wire);
             if (\is_string($decoded) || \is_int($decoded)) {
                 $byKey[(string) $decoded][] = $value;
             }
@@ -861,17 +859,6 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         return $admitted;
     }
 
-    /**
-     * Whether `$model` stores `$key` through a value-object cast, so the database holds a
-     * value other than the one a stored morph id is compared as.
-     */
-    private function castsKey(Model $model, string $key): bool
-    {
-        $cast = $model->getCasts()[$key] ?? null;
-        $class = \is_string($cast) ? \explode(':', $cast, 2)[0] : null;
-
-        return $class !== null && \class_exists($class) && (\is_a($class, CastsAttributes::class, true) || \is_a($class, CastsInboundAttributes::class, true));
-    }
 
     /**
      * The distinct ids of a type among the stored type values the morph columns hold,
@@ -1147,32 +1134,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             throw new \LogicException(AmbiguousModelEncoder::forFilter($this->type ?? '', $filter->key(), $path, $e->model, $e->candidates), 0, $e);
         }
 
-        return $encoder !== null ? $encoder->decode($value) ?? $value : $this->castKey($model, $value);
+        return $encoder !== null ? $encoder->decode($value) ?? $value : StoredKey::of($model, $model->getKeyName(), $value);
     }
 
-    /**
-     * `$value` as `$model` stores its key, when the key declares a value-object cast, a
-     * class implementing `CastsAttributes` or `CastsInboundAttributes` such as a binary UUID
-     * cast. A primitive cast, an enum, an encrypted or a JSON cast leaves the value as sent,
-     * since setting it would store nothing a client's value could match.
-     */
-    private function castKey(Model $model, string $value): mixed
-    {
-        $cast = $model->getCasts()[$model->getKeyName()] ?? null;
-        $class = \is_string($cast) ? \explode(':', $cast, 2)[0] : null;
-        if ($class === null || !\class_exists($class) || !(\is_a($class, CastsAttributes::class, true) || \is_a($class, CastsInboundAttributes::class, true))) {
-            return $value;
-        }
-
-        try {
-            $stored = $model->newInstance();
-            $stored->setAttribute($model->getKeyName(), $value);
-
-            return $stored->getAttributes()[$model->getKeyName()] ?? $value;
-        } catch (\Throwable) {
-            return $value;
-        }
-    }
 
     /**
      * Adds one comparison predicate to `$query`. The three wildcard-`LIKE`
