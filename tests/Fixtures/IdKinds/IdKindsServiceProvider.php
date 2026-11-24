@@ -45,7 +45,7 @@ final class IdKindsServiceProvider extends ServiceProvider
 
     public function register(): void
     {
-        JsonApi::register([IkWriterResource::class, IkBookResource::class, IkLabelResource::class]);
+        JsonApi::register([IkWriterResource::class, IkBookResource::class, IkLabelResource::class, IkRepointAction::class]);
 
         if (config('id_kinds.store') === 'memory') {
             $this->registerInMemory();

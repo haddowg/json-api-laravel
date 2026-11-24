@@ -162,14 +162,29 @@ final class ForeignKeyWrites
             }
 
             $from = Accessor::get($row, $plan['foreignKey']->column);
-            if (!\is_object($from) && $from !== null) {
+            $ownerType = $type;
+            if (\is_object($from) && $plan['foreignKey']->toOne !== null) {
+                // A to-one such as a morphTo may hold a row of another type: authorize as that.
+                $ownerType = $this->typeOf($server, $plan['foreignKey']->toOne, $from);
+            } elseif ($from !== null) {
+                // A field holds a key, a value object included.
                 $from = $this->parentByKey($server, $type, $from);
             }
 
-            $moves[] = ['memberType' => $relatedType, 'member' => $row, 'ownerType' => \is_object($from) ? $type : null, 'owner' => \is_object($from) ? $from : null];
+            $moves[] = ['memberType' => $relatedType, 'member' => $row, 'ownerType' => \is_object($from) ? $ownerType : null, 'owner' => \is_object($from) && $ownerType !== null ? $from : null];
         }
 
         return $moves;
+    }
+
+    /**
+     * The type `$toOne` serves `$owner` as, or `null` when it serves none.
+     */
+    private function typeOf(Server $server, ?RelationInterface $toOne, object $owner): ?string
+    {
+        $type = $toOne?->resolveSerializer($owner, $server)?->getType($owner);
+
+        return $type !== null && $type !== '' ? $type : null;
     }
 
     /**

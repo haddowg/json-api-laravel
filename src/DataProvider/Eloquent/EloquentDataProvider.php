@@ -1706,10 +1706,14 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         }
         $traits = \class_uses_recursive($class);
 
+        $model = new $class();
+
         return match (true) {
             isset($traits[HasUuids::class]) => Str::isUuid($id) ? $id : null,
             isset($traits[HasUlids::class]) => Str::isUlid($id) ? $id : null,
-            default => $id,
+            // An integer key is named by its canonical form only, as the persister reads it.
+            \in_array($model->getKeyType(), ['int', 'integer'], true) => (string) (int) $id === $id ? $id : null,
+            default => StoredKey::of($model, $model->getKeyName(), $id),
         };
     }
 

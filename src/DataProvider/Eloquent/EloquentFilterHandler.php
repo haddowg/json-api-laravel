@@ -40,9 +40,11 @@ use haddowg\JsonApi\Resource\Through\FiltersThrough;
 use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\ScopesFilterHopsInterface;
+use haddowg\JsonApiLaravel\DataProvider\StoredIds;
 use haddowg\JsonApiLaravel\DataProvider\TargetsTypeInterface;
 use haddowg\JsonApiLaravel\Eloquent\BinaryUuidEncoder;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo as EloquentBelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
@@ -837,7 +839,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         if ($target === null) {
             return;
         }
-        $admitted = $this->comparableIds($morph, $this->admittedStoredIds($targetModel, $key, $target, $type, $forms ?? $this->storedMorphIds($morph)));
+        $admitted = $this->comparableIds($morph, StoredIds::eitherCase($this->admittedStoredIds($targetModel, $key, $target, $type, $forms ?? $this->storedMorphIds($morph))));
         if ($admitted === []) {
             $query->whereRaw('1 = 0');
 
@@ -907,7 +909,8 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         if ($encoder instanceof BinaryUuidEncoder) {
             $text = $family !== 'text' ? null : BinaryUuidText::sql($targetModel->getConnection(), $grammar->wrap($column));
 
-            return $text === null ? null : ($driver === 'pgsql' ? [$text] : [$text, $column]);
+            // The text is lowercase, so its uppercase form matches a UUID stored in capitals.
+            return $text === null ? null : ($driver === 'pgsql' ? [$text, 'UPPER(' . $text . ')'] : [$text, 'UPPER(' . $text . ')', $column]);
         }
         if ($encoder !== null) {
             return null;
@@ -922,7 +925,13 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             return self::columnFamily($targetModel, $key, $targetModel->getTable()) === 'uuid' ? [$column] : null;
         }
 
-        return [$driver === 'pgsql' && !$keyInt ? \sprintf('CAST(%s AS TEXT)', $grammar->wrap($column)) : $column];
+        $read = $driver === 'pgsql' && !$keyInt ? \sprintf('CAST(%s AS TEXT)', $grammar->wrap($column)) : $column;
+        // A HasUuids key is lowercase, so a UUID stored in capitals matches its uppercase form.
+        if (isset(\class_uses_recursive($targetModel)[HasUuids::class])) {
+            return [$read, \sprintf('UPPER(%s)', $read === $column ? $grammar->wrap($column) : $read)];
+        }
+
+        return [$read];
     }
 
     /**
@@ -944,9 +953,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
                 continue;
             }
             $wire = $target->wireId($type, $value);
-            $decoded = $encoder !== null ? $encoder->decode($wire) : StoredKey::of($targetModel, $key, $wire);
+            $decoded = $encoder !== null ? $encoder->decode($wire) : StoredKey::of($targetModel, $key, StoredIds::canonical($wire));
             if (\is_string($decoded) || \is_int($decoded)) {
-                $byKey[(string) $decoded][] = $value;
+                $byKey[StoredIds::canonical($decoded)][] = $value;
             }
         }
         if ($byKey === []) {
@@ -957,7 +966,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         $keys = \array_map(static fn(int|string $decoded): string => (string) $decoded, \array_keys($byKey));
         foreach ($targetModel->newQuery()->whereIn($targetModel->qualifyColumn($key), $keys)->toBase()->pluck($targetModel->qualifyColumn($key)) as $found) {
             if (\is_string($found) || \is_int($found)) {
-                \array_push($admitted, ...$byKey[(string) $found] ?? []);
+                \array_push($admitted, ...$byKey[StoredIds::canonical($found)] ?? []);
             }
         }
 
@@ -1059,7 +1068,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             return;
         }
 
-        $ids = $this->comparableIds($morph, $ids);
+        $ids = $this->comparableIds($morph, StoredIds::eitherCase($ids));
         if ($ids === []) {
             $query->whereRaw('1 = 0');
 
@@ -1350,7 +1359,45 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             }
         }
 
+        // A value the column can't hold compares as no stored value does, where PostgreSQL
+        // would refuse it.
+        if ($this->storable($query, $column, [$value]) === []) {
+            \in_array($operator, ['!=', '<>'], true) ? $query->whereNotNull($qualified) : $query->whereRaw('1 = 0');
+
+            return;
+        }
+
         $query->where($qualified, $operator, $value);
+    }
+
+    /**
+     * The values among `$values` that `$column` can hold. On PostgreSQL an integer or uuid
+     * column refuses a string of another kind rather than matching nothing, so such a string
+     * is left out; other values and other databases keep every value.
+     *
+     * @param Builder<Model> $query
+     * @param list<mixed>    $values
+     *
+     * @return list<mixed>
+     */
+    private function storable(Builder $query, string $column, array $values): array
+    {
+        [$model, $attribute] = $this->modelOf($query, $column);
+        $table = $this->pivot !== null && ($this->onPivotRow || \str_starts_with($this->rowColumn($column), RelationCriteriaFactory::PIVOT_PREFIX)) ? $this->pivot->getTable() : $model->getTable();
+        $dot = \strrpos($attribute, '.');
+        if ($dot !== false) {
+            $table = \substr($attribute, 0, $dot);
+            $attribute = \substr($attribute, $dot + 1);
+        }
+        if ($model->getConnection()->getDriverName() !== 'pgsql') {
+            return $values;
+        }
+
+        return match (self::columnFamily($model, $attribute, $table)) {
+            'int' => \array_values(\array_filter($values, static fn(mixed $value): bool => !\is_string($value) || \preg_match('/^-?\d+$/', $value) === 1)),
+            'uuid' => \array_values(\array_filter($values, static fn(mixed $value): bool => !\is_string($value) || Str::isUuid($value))),
+            default => $values,
+        };
     }
 
     /**
@@ -1499,6 +1546,14 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         }
 
         $qualified = $this->qualify($query, $column);
+        $values = $this->storable($query, $column, \array_values($values));
+        if ($values === []) {
+            if (!$negate) {
+                $query->whereRaw('1 = 0');
+            }
+
+            return;
+        }
 
         if ($negate) {
             $query->whereNotIn($qualified, $values);

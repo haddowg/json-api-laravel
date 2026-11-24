@@ -126,13 +126,13 @@ abstract class EloquentIdKindsConformanceTestCase extends IdKindsConformanceTest
                 'subject_type' => $row['subject'][0] ?? null,
                 'subject_id' => $row['subject'] !== null ? IdKinds::stored($row['subject'][1]) : null,
                 'origin_type' => $row['origin'][0] ?? null,
-                'origin_id' => $row['origin'] !== null ? IdKinds::wire($row['origin'][1]) : null,
+                'origin_id' => $row['origin'] !== null ? $this->storedReference($row['id'], IdKinds::wire($row['origin'][1])) : null,
             ]);
             foreach ($row['labels'] as $label) {
                 DB::table('ik_book_label')->insert(['book_id' => IdKinds::stored($row['id']), 'label_id' => IdKinds::stored($label)]);
             }
             foreach ($row['pins'] as [$type, $ref]) {
-                DB::table('ik_pins')->insert(['book_id' => IdKinds::stored($row['id']), 'pin_type' => $type, 'pin_id' => IdKinds::wire($ref)]);
+                DB::table('ik_pins')->insert(['book_id' => IdKinds::stored($row['id']), 'pin_type' => $type, 'pin_id' => $this->storedReference($row['id'], IdKinds::wire($ref))]);
             }
         }
 
@@ -142,5 +142,14 @@ abstract class EloquentIdKindsConformanceTestCase extends IdKindsConformanceTest
                 DB::statement(\sprintf("SELECT setval(pg_get_serial_sequence('%1\$s', 'id'), (SELECT MAX(id) FROM %1\$s))", $table));
             }
         }
+    }
+
+    /**
+     * A wire id as a text column holding references keeps it: the references of book `b2` and
+     * `b1` hold a UUID in capitals, which must still name the lowercase row.
+     */
+    private function storedReference(string $book, string $wire): string
+    {
+        return \in_array($book, ['b1', 'b2'], true) && \preg_match('/^[0-9a-f]{8}-/', $wire) === 1 ? \strtoupper($wire) : $wire;
     }
 }

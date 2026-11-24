@@ -6,6 +6,8 @@ namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Tests\Fixtures\MorphOwners\MorphOwnersServiceProvider;
+use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
 use PHPUnit\Framework\Attributes\Group;
@@ -94,6 +96,22 @@ abstract class MorphOwnersConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    #[Group('spec:updating-relationships')]
+    public function movingARowAuthorizesTheOwnerItLeavesAsItsOwnType(): void
+    {
+        // Note 1 is written by video 1, which shares its id with post 1. Only post updates are
+        // unchecked, so authorizing the video as a post would let the move through.
+        Gate::define('update', static fn(?Authenticatable $user, mixed $subject = null): bool => false);
+
+        $this->write('POST', '/api/moPosts/2/relationships/authoredNotes', ['data' => [['type' => 'moNotes', 'id' => '1']]])->assertStatus(403);
+        $this->read('/api/moNotes/1/author')->assertJsonPath('data.type', 'moVideos')->assertJsonPath('data.id', '1');
+
+        Gate::define('update', static fn(?Authenticatable $user, mixed $subject = null): bool => \is_object($subject) && \str_ends_with($subject::class, 'Video') || \is_object($subject) && \str_ends_with($subject::class, 'VideoRecord'));
+        $this->write('POST', '/api/moPosts/2/relationships/authoredNotes', ['data' => [['type' => 'moNotes', 'id' => '1']]])->assertSuccessful();
+        self::assertSame(['1', '3'], $this->ids('/api/moPosts/2/authoredNotes'));
+    }
+
+    #[Test]
     public function aNativeMorphManyReadsOnlyTheRowsOfItsType(): void
     {
         self::assertSame(['1'], $this->ids('/api/moVideos/1/authoredNotes'));
@@ -111,12 +129,6 @@ abstract class MorphOwnersConformanceTestCase extends Orchestra
     #[Group('spec:fetching-filtering')]
     public function filtersThroughTheRelationMatchOnlyItsType(): void
     {
-        // Core's array filter handler reads a relation off the parent, which holds none read
-        // through a foreign key, so the witness can't filter through one.
-        if ($this->store() === 'memory') {
-            self::markTestSkipped('The in-memory witness filters only through relations its rows hold.');
-        }
-
         self::assertSame(['1'], $this->ids('/api/moPosts?filter[annotated]=true'));
         self::assertSame(['2'], $this->ids('/api/moPosts?filter[unannotated]=true'));
         self::assertSame(['1'], $this->ids('/api/moPosts?filter[notes]=1'));

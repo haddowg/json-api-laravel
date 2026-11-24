@@ -22,9 +22,14 @@ final class MorphOwnersGuardServiceProvider extends ServiceProvider
 
     public static bool $modelledPosts = true;
 
+    /**
+     * @var class-string
+     */
+    public static string $notes = MoNoteResource::class;
+
     public function register(): void
     {
-        JsonApi::register([self::$subject, MoVideoResource::class, MoNoteResource::class])->ignoreRoutes();
+        JsonApi::register([self::$subject, MoVideoResource::class, self::$notes])->ignoreRoutes();
         $models = ['moVideos' => MoVideo::class, 'moNotes' => MoNote::class];
         if (self::$modelledPosts) {
             $models['moPosts'] = MoPost::class;

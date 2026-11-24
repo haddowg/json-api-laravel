@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Server;
 
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\AbstractFieldValue;
+use haddowg\JsonApi\Resource\Field\AbstractRelationValue;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\FieldState;
 use haddowg\JsonApi\Resource\Field\ForeignKey;
@@ -114,6 +115,18 @@ final class ForeignKeyGuard
         $model = new $class();
         \assert($model instanceof Model);
         $belongsTo = EloquentDataProvider::belongsToOf($model, $foreignKey->column);
+        // A MorphMany or MorphOne reads a MorphTo with no declared columns through Eloquent's own
+        // morphTo, whose type column keeps the rows of other types out.
+        if ($belongsTo !== null && !$belongsTo instanceof MorphTo && $relation instanceof AbstractRelationValue && $relation->foreignKeyIsMorph()) {
+            throw new \LogicException(\sprintf(
+                'Relation "%s" on resource type "%s" is a MorphMany or MorphOne, but the MorphTo "%s" is neither identified by columns nor an Eloquent morphTo of %s, which declares it as a %s. Declare it with identifiedByColumns() or make the method a morphTo.',
+                $relation->name(),
+                $type,
+                $foreignKey->column,
+                $class,
+                $belongsTo::class,
+            ));
+        }
         // A native morphTo stores the parent's morph class, which only a model serving it has.
         if ($belongsTo instanceof MorphTo && !self::servedByModel($providers, $type)) {
             throw new \LogicException(\sprintf(

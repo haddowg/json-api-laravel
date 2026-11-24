@@ -41,6 +41,7 @@ final readonly class FilterPaths
      * @param list<RelationInterface>                                                             $refused   the relations through which the filter being applied matches no row
      * @param RelationHop|null                                                                    $under     the relation the filters run under on its reads, whose pivot row a path starting with `pivot` reaches
      * @param (\Closure(RelationInterface, string, string, list<mixed>): list<mixed>)|null        $morphAdmission the storage keys of a type, reached through a polymorphic relation declared on the given type, that the type's provider admits
+     * @param (\Closure(mixed, string, ?RelationInterface): (iterable<mixed>|null))|null           $relationReader the rows a relation read through a foreign key holds for a row, `null` for any other relation
      */
     public function __construct(
         private ThroughPathResolver $resolver,
@@ -52,6 +53,7 @@ final readonly class FilterPaths
         private array $refused = [],
         public ?RelationHop $under = null,
         private ?\Closure $morphAdmission = null,
+        private ?\Closure $relationReader = null,
     ) {}
 
     /**
@@ -61,12 +63,14 @@ final readonly class FilterPaths
      * type's provider admits. `$relation`, declared on `$parentType`, is the relation the
      * filters run under on its reads, and `$pivotRows` names the relations a pivot row holds.
      * `$morphAdmission` narrows the targets a `WhereMorph` reaches to the storage keys the
-     * requested type's provider admits.
+     * requested type's provider admits. `$relationReader` reads the rows of a relation read
+     * through a foreign key, which an in-memory walk can't read off the row.
      *
      * @param (\Closure(RelationInterface, string, list<object>): list<object>)|null $admission
      * @param (\Closure(RelationInterface, string, string, list<mixed>): list<mixed>)|null $morphAdmission
+     * @param (\Closure(mixed, string, ?RelationInterface): (iterable<mixed>|null))|null $relationReader
      */
-    public static function of(SerializerResolverInterface $server, ?AbstractResource $resource, ?string $parentType = null, ?\Closure $admission = null, ?RelationInterface $relation = null, ?PivotRowRelations $pivotRows = null, ?\Closure $morphAdmission = null): ?self
+    public static function of(SerializerResolverInterface $server, ?AbstractResource $resource, ?string $parentType = null, ?\Closure $admission = null, ?RelationInterface $relation = null, ?PivotRowRelations $pivotRows = null, ?\Closure $morphAdmission = null, ?\Closure $relationReader = null): ?self
     {
         if ($resource === null) {
             return null;
@@ -75,7 +79,18 @@ final readonly class FilterPaths
         $type = $resource::$type !== '' ? $resource::$type : null;
         $under = $relation !== null && $parentType !== null ? new RelationHop($relation, $parentType, $relation->column() ?? $relation->name()) : null;
 
-        return new self(ThroughPathResolver::forResolver($server, $pivotRows), $resource->allFields(), $type, self::namedTypes($resource->allFields(), $type, $parentType), ThroughReadAccess::forResolver($server, $pivotRows), $admission, under: $under, morphAdmission: $morphAdmission);
+        return new self(ThroughPathResolver::forResolver($server, $pivotRows), $resource->allFields(), $type, self::namedTypes($resource->allFields(), $type, $parentType), ThroughReadAccess::forResolver($server, $pivotRows), $admission, under: $under, morphAdmission: $morphAdmission, relationReader: $relationReader);
+    }
+
+    /**
+     * Reads the rows of a relation read through a foreign key, for core's in-memory handler,
+     * or `null` when there is no reader.
+     *
+     * @return (\Closure(mixed, string, ?RelationInterface): (iterable<mixed>|null))|null
+     */
+    public function relationReader(): ?\Closure
+    {
+        return $this->relationReader;
     }
 
     /**
@@ -95,7 +110,7 @@ final readonly class FilterPaths
      */
     public function scoped(array $refused = []): self
     {
-        return new self($this->resolver, $this->fields, $this->type, $this->named, $this->access, $this->admission, $refused, $this->under, $this->morphAdmission);
+        return new self($this->resolver, $this->fields, $this->type, $this->named, $this->access, $this->admission, $refused, $this->under, $this->morphAdmission, $this->relationReader);
     }
 
     /**

@@ -91,6 +91,25 @@ final class ForeignKeyReads
     }
 
     /**
+     * Reads the rows a relation read through a foreign key holds for a row, as core's in-memory
+     * filter handler walks a hop, and `null` for any other relation, which the handler reads off
+     * the row.
+     *
+     * @return \Closure(mixed, string, ?RelationInterface): (list<object>|null)
+     */
+    public function relationReader(Server $server, JsonApiRequestInterface $request): \Closure
+    {
+        return function (mixed $row, string $walked, ?RelationInterface $relation) use ($server, $request): ?array {
+            if ($relation === null || !\is_object($row) || !$this->reads($relation)) {
+                return null;
+            }
+            $parentType = $this->parentTypeOf($server, $relation);
+
+            return $parentType === null ? null : $this->members($server, $parentType, $row, $relation, $request);
+        };
+    }
+
+    /**
      * Each parent's count of `$relation`'s rows surviving `$criteria`'s filters, keyed by
      * parent wire id, `0` for a parent with none.
      *

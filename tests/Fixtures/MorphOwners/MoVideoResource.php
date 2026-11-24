@@ -6,8 +6,8 @@ namespace haddowg\JsonApiLaravel\Tests\Fixtures\MorphOwners;
 
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\HasMany;
-use haddowg\JsonApi\Resource\Field\HasOne;
 use haddowg\JsonApi\Resource\Field\Id;
+use haddowg\JsonApi\Resource\Field\MorphOne;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\WhereHas;
 use haddowg\JsonApi\Resource\Filter\WhereIdIn;
@@ -24,7 +24,7 @@ final class MoVideoResource extends AbstractResource
         return [
             Id::make()->numeric(),
             Str::make('title'),
-            HasOne::make('note', 'moNotes', 'owner')->nullable(),
+            MorphOne::make('note', 'moNotes', 'owner')->nullable(),
             HasMany::make('authoredNotes', 'moNotes')->countable(),
         ];
     }

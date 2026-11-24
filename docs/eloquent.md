@@ -173,6 +173,11 @@ constraints and `enum()` apply to the values a client sends. An empty returned l
 nothing for `WhereIn` and excludes nothing for `WhereNotIn`, as an empty requested list does.
 See [Mapping a requested list](https://github.com/haddowg/json-api/blob/main/docs/filters.md#mapping-a-requested-list-deserializeusing).
 
+On PostgreSQL, which refuses to compare an integer or uuid column with a string of another
+kind, a filter value such a column can't hold matches no row: an equality or `IN` member drops
+out, and an inequality keeps every row with a value. The column's type is read from the schema
+once per column. Other databases compare such a value and find no row anyway.
+
 ### Filter families
 
 Some filter keys are data, the filter twin of a [sort family](#sort-families). Core's
@@ -303,7 +308,9 @@ the related endpoint does.
 
 `WhereThrough` and `WhereThroughIn` are deprecated in favour of
 [`->through()`](#filters-reaching-through-relations-through) and are removed in the next major
-version. They keep the behaviour described here until then. A path that starts at the
+version. They keep the behaviour described here until then, and they don't reach through a
+relation [read through a foreign key](relationships.md#relations-read-through-a-foreign-key),
+which `->through()` does. A path that starts at the
 [pivot row](relationships.md#pivot-belongstomany-data) moves to a leading `pivot` segment, see
 [paths through a pivot row](#paths-through-a-pivot-row).
 
@@ -414,7 +421,9 @@ in one query, and the ids found are bound in lists of 2000 joined with `OR`, so 
 stays under the database's parameter limit. On PostgreSQL the id column's own type decides what it
 compares with, read from the schema once per column: an integer column binds only integer
 ids, and a native uuid column binds only UUIDs and compares with a uuid key directly, while a
-key of any other type is admitted and bound.
+key of any other type is admitted and bound. A UUID the column holds in capitals matches the
+lowercase key, and renders as its lowercase wire id in a related read, so a reference written by
+another system in either case still names its target.
 
 The id column may hold the target's storage key or its wire id. They differ only when the
 target's type declares an id encoder, and a text column that holds the ids of several kinds of

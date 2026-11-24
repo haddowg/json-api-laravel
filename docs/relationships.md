@@ -554,43 +554,53 @@ refuses it on such a type.
 
 ### A foreign key through a polymorphic owner
 
-When the related rows point back through a `MorphTo` declared with
-[`identifiedByColumns()`](https://github.com/haddowg/json-api/blob/main/docs/relations.md#a-foreign-key-through-a-polymorphic-relation),
-name the `MorphTo` as the foreign key of a `HasMany` or `HasOne` on each type it can hold:
+When the related rows point back through a `MorphTo`, declare the inverse on each type it can
+hold with core's [`MorphMany` or `MorphOne`](https://github.com/haddowg/json-api/blob/main/docs/relations.md#a-foreign-key-through-a-polymorphic-relation),
+naming that `MorphTo`:
 
 ```php
 // NoteResource
 MorphTo::make('owner', ['posts', 'videos'])
     ->identifiedByColumns(type: 'owner_type', id: 'owner_id', typeMap: ['post' => 'posts', 'video' => 'videos']),
+MorphTo::make('author', ['posts', 'videos']),
 
 // PostResource
-HasMany::make('notes', 'notes', 'owner'),
+MorphMany::make('notes', 'notes', 'owner'),
+MorphMany::make('authoredNotes', 'notes', 'author'),
 
 // VideoResource
-HasOne::make('note', 'notes', 'owner'),
+MorphOne::make('note', 'notes', 'owner'),
 ```
 
-A post's notes are the notes whose `owner_type` holds a value naming `posts` and whose
-`owner_id` holds one of the posts' ids, so a video's note never reads as the post's with the
-same id. Every read the foreign key decides scopes on both columns: the related and relationship
-endpoints, includes, `withCount`, offset and cursor pages, a `relatedQuery`, and the `WhereHas`,
-`WhereDoesntHave` and `->through()` filters that reach through the relation. The id column may
-hold a parent's storage key or its wire id, and the reads match either. A write sets
-`owner_type` to the first value naming the parent's type and `owner_id` to its key, and clears
-both on a row that leaves.
+They build the same `HasMany` and `HasOne` as naming the `MorphTo` as a third argument, and route
+registration and `jsonapi:optimize` refuse one whose member isn't a `MorphTo`. On Eloquent the
+`MorphTo` may be identified either way:
+
+| The `MorphTo` | What its `MorphMany` or `MorphOne` reads |
+|---|---|
+| `identifiedByColumns(type: 'owner_type', id: 'owner_id')` | the rows whose `owner_type` holds a value naming the parent's type and whose `owner_id` holds its key |
+| no columns, over the note model's `morphTo()` method | the rows whose morph type column holds the parent model's morph class and whose morph id column holds its key |
+| no columns, over a method that isn't a `morphTo()` | refused at route registration and `jsonapi:optimize` |
+
+A post's notes never include a video's note with the same id. Every read the foreign key decides
+scopes on both columns: the related and relationship endpoints, includes, `withCount`, offset and
+cursor pages, a `relatedQuery`, and the `WhereHas`, `WhereDoesntHave` and `->through()` filters
+that reach through the relation. An `identifiedByColumns()` id column may hold a parent's storage
+key or its wire id, a UUID in either letter case, and the reads match any of them. A write sets
+the type column to the first value naming the parent's type, or the parent's morph class, and the
+id column to its key, and clears both on a row that leaves.
 
 Naming the id column's field instead, `HasMany::make('notes', 'notes', 'ownerId')`, fails route
 registration and `jsonapi:optimize`, since that column holds the ids of posts and videos alike.
-
-A `MorphTo` with no declared columns reads Eloquent's own `morphTo` relation. Named as a foreign
-key, it scopes on that relation's type column, which holds the parent model's morph class, so
-the parent's type must be served by an Eloquent model, or route registration and
-`jsonapi:optimize` refuse it. A `HasMany` with no foreign key over a `morphMany` relation method
-needs none of this, as Eloquent scopes its type column itself.
+An Eloquent `morphTo` stores the parent model's morph class, so the parent's type must be served
+by an Eloquent model, or route registration and `jsonapi:optimize` refuse it. A `HasMany` with no
+foreign key over the parent model's own `morphMany()` method needs none of this, since Eloquent
+scopes its type column itself.
 
 A filter that reaches through a relation read through a foreign key is one correlated `EXISTS`
 comparing the foreign key column with the outer row's key as each stores it, so a polymorphic id
-column holding wire ids of a type whose id encoder changes them doesn't match there.
+column holding wire ids of a type whose id encoder changes them doesn't match there. The
+in-memory provider walks the same relation through the related type's provider.
 
 ### Writing through a foreign key
 

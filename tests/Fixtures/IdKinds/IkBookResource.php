@@ -19,6 +19,7 @@ use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApi\Resource\Filter\WhereDoesntHave;
 use haddowg\JsonApi\Resource\Filter\WhereHas;
 use haddowg\JsonApi\Resource\Filter\WhereIdIn;
+use haddowg\JsonApi\Resource\Filter\WhereIn;
 use haddowg\JsonApi\Resource\Filter\WhereMorph;
 
 /**
@@ -64,6 +65,8 @@ final class IkBookResource extends AbstractResource
             WhereMorph::make('origin'),
             WhereMorph::make('pinned', 'pins'),
             Contains::make('title'),
+            Where::make('writerKey', 'writer_id'),
+            WhereIn::make('writerKeys', 'writer_id'),
         ];
     }
 

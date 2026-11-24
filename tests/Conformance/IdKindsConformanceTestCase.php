@@ -199,6 +199,23 @@ abstract class IdKindsConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:fetching-filtering')]
+    public function aMalformedKeyMatchesNothing(): void
+    {
+        // A filter whose value its id format refuses is a 400; any other matches no row,
+        // where PostgreSQL would refuse to compare it with an integer or uuid column.
+        foreach (['id', 'writer', 'labels', 'writerKey', 'writerKeys'] as $filter) {
+            $response = $this->get('/api/ikBooks?filter[' . $filter . ']=not%20a%20key', ['Accept' => self::MEDIA_TYPE]);
+            self::assertContains($response->getStatusCode(), [200, 400], $filter . ': ' . $response->getContent());
+            if ($response->getStatusCode() === 200) {
+                self::assertSame([], $response->json('data'), $filter);
+            }
+        }
+        $linkage = $this->write('PATCH', $this->path('ikBooks', 'b3', 'relationships/writer'), ['data' => ['type' => 'ikWriters', 'id' => 'not a key']]);
+        self::assertContains($linkage->getStatusCode(), [400, 404, 422], (string) $linkage->getContent());
+    }
+
+    #[Test]
+    #[Group('spec:fetching-filtering')]
     public function aMorphFilterMatchesTheTargetsTheScopeAdmits(): void
     {
         // Only Eloquent compares a native morphTo, which declares no columns.
@@ -299,6 +316,20 @@ abstract class IdKindsConformanceTestCase extends Orchestra
             self::assertIsString($minted);
             $this->read('/api/ikWriters/' . $minted)->assertJsonPath('data.attributes.name', 'Dora');
         }
+    }
+
+    #[Test]
+    #[Group('ext:actions')]
+    public function anActionReadsItsResourceAndInputLinkageByKey(): void
+    {
+        $body = ['data' => ['type' => 'ikBooks', 'id' => $this->w('b1'), 'relationships' => ['writer' => ['data' => ['type' => 'ikWriters', 'id' => $this->w('w2')]]]]];
+        $this->write('PATCH', $this->path('ikBooks', 'b1', '-actions/repoint'), $body)->assertOk()
+            ->assertJsonPath('data.id', $this->w('b1'))
+            ->assertJsonPath('data.relationships.writer.data.id', $this->w('w2'));
+
+        $missing = ['data' => ['type' => 'ikBooks', 'id' => $this->w('b1'), 'relationships' => ['writer' => ['data' => ['type' => 'ikWriters', 'id' => $this->w('w9')]]]]];
+        $this->write('PATCH', $this->path('ikBooks', 'b1', '-actions/repoint'), $missing)->assertNotFound();
+        $this->write('PATCH', $this->path('ikBooks', 'w9', '-actions/repoint'), $body)->assertNotFound();
     }
 
     private function w(string $ref): string

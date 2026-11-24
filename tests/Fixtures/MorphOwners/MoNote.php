@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Tests\Fixtures\MorphOwners;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
@@ -34,6 +35,16 @@ final class MoNote extends Model
     public function author(): MorphTo
     {
         return $this->morphTo('author');
+    }
+
+    /**
+     * A plain `belongsTo`, which a `MorphMany` may not name.
+     *
+     * @return BelongsTo<MoPost, $this>
+     */
+    public function editor(): BelongsTo
+    {
+        return $this->belongsTo(MoPost::class, 'author_id');
     }
 
     protected static function booted(): void

@@ -7,6 +7,9 @@ namespace haddowg\JsonApiLaravel\Tests\Feature;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Routing\RouteRegistrar;
 use haddowg\JsonApiLaravel\Tests\Fixtures\MorphOwners\MoBareIdPostResource;
+use haddowg\JsonApiLaravel\Tests\Fixtures\MorphOwners\MoEditedPostResource;
+use haddowg\JsonApiLaravel\Tests\Fixtures\MorphOwners\MoEditorNoteResource;
+use haddowg\JsonApiLaravel\Tests\Fixtures\MorphOwners\MoNoteResource;
 use haddowg\JsonApiLaravel\Tests\Fixtures\MorphOwners\MorphOwnersGuardServiceProvider;
 use haddowg\JsonApiLaravel\Tests\Fixtures\MorphOwners\MoUnmodelledPostResource;
 use Illuminate\Routing\Router;
@@ -26,6 +29,7 @@ final class MorphOwnersBootGuardTest extends Orchestra
     {
         MorphOwnersGuardServiceProvider::$subject = MoBareIdPostResource::class;
         MorphOwnersGuardServiceProvider::$modelledPosts = true;
+        MorphOwnersGuardServiceProvider::$notes = MoNoteResource::class;
         parent::tearDown();
     }
 
@@ -54,6 +58,18 @@ final class MorphOwnersBootGuardTest extends Orchestra
         self::assertInstanceOf($class, $resolved);
 
         return $resolved;
+    }
+
+    #[Test]
+    public function aMorphManyNamingAMorphToOverAPlainBelongsToFailsRouteRegistration(): void
+    {
+        MorphOwnersGuardServiceProvider::$subject = MoEditedPostResource::class;
+        MorphOwnersGuardServiceProvider::$notes = MoEditorNoteResource::class;
+        $this->refreshApplication();
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('is a MorphMany or MorphOne, but the MorphTo "editor" is neither identified by columns nor an Eloquent morphTo of');
+        $this->resolve(RouteRegistrar::class)->registerServer($this->resolve(Router::class));
     }
 
     #[Test]
