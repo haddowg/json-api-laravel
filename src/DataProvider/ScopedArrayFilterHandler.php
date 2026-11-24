@@ -42,9 +42,16 @@ final class ScopedArrayFilterHandler implements FilterHandlerInterface, ScopesFi
 
     public function forPaths(FilterPaths $paths): static
     {
-        return new static($this->handler
+        $handler = $this->handler
             ->withRowAdmission($paths->rowAdmission())
-            ->withMorphAdmission(static fn(RelationInterface $relation, string $type, array $keys): array => $paths->admitMorph($relation, $type, $keys)));
+            ->withMorphAdmission(static fn(RelationInterface $relation, string $type, array $keys): array => $paths->admitMorph($relation, $type, $keys));
+        $read = $paths->relationReader();
+        if ($read === null) {
+            return new static($handler);
+        }
+
+        // A filter keyed by relation name passes no relation, so the walked path names it.
+        return new static($handler->withRelationReader(static fn(mixed $row, string $walked, ?RelationInterface $relation): ?iterable => $read($row, $walked, $relation ?? $paths->hopAt($walked)?->relation)));
     }
 
     private static function reachesPivot(FilterInterface $filter): bool

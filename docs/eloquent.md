@@ -173,6 +173,11 @@ constraints and `enum()` apply to the values a client sends. An empty returned l
 nothing for `WhereIn` and excludes nothing for `WhereNotIn`, as an empty requested list does.
 See [Mapping a requested list](https://github.com/haddowg/json-api/blob/main/docs/filters.md#mapping-a-requested-list-deserializeusing).
 
+On PostgreSQL, which refuses to compare an integer or uuid column with a string of another
+kind, a filter value such a column can't hold matches no row: an equality or `IN` member drops
+out, and an inequality keeps every row with a value. The column's type is read from the schema
+once per column. Other databases compare such a value and find no row anyway.
+
 ### Filter families
 
 Some filter keys are data, the filter twin of a [sort family](#sort-families). Core's
@@ -303,7 +308,9 @@ the related endpoint does.
 
 `WhereThrough` and `WhereThroughIn` are deprecated in favour of
 [`->through()`](#filters-reaching-through-relations-through) and are removed in the next major
-version. They keep the behaviour described here until then. A path that starts at the
+version. They keep the behaviour described here until then, and they don't reach through a
+relation [read through a foreign key](relationships.md#relations-read-through-a-foreign-key),
+which `->through()` does. A path that starts at the
 [pivot row](relationships.md#pivot-belongstomany-data) moves to a leading `pivot` segment, see
 [paths through a pivot row](#paths-through-a-pivot-row).
 
@@ -411,7 +418,14 @@ can't compare, a key behind another cast, an encoded id, or a database with none
 expressions. The requested ids, or with none the distinct ids of that type the column holds,
 are decoded through the encoder or set through the key's cast and looked up under the scopes
 in one query, and the ids found are bound in lists of 2000 joined with `OR`, so a long list
-stays under the database's parameter limit.
+stays under the database's parameter limit. On PostgreSQL the id column's own type decides what it
+compares with, read from the schema once per column: an integer column binds only integer
+ids, and a native uuid column binds only UUIDs and compares with a uuid key directly, while a
+key of any other type is admitted and bound. A UUID the column holds in capitals matches the
+lowercase key, and renders as its lowercase wire id in a related read, so a reference written by
+another system in either case still names its target. Each id binds in lower and upper case
+rather than wrapping the column in `LOWER()`, so the column's index stays usable, and a UUID
+stored in mixed case isn't matched.
 
 The id column may hold the target's storage key or its wire id. They differ only when the
 target's type declares an id encoder, and a text column that holds the ids of several kinds of
@@ -779,9 +793,26 @@ The wire then carries the canonical UUID, and the package decodes it back to the
 bytes too, so Eloquent's relations match them as they are. To mint the key, override
 `newUniqueId()` to return `Str::orderedUuid()->getBytes()`.
 
+On PostgreSQL use a native `uuid` column with a string UUID key instead. Laravel binds a string
+as text, which a `bytea` column refuses when it holds bytes that aren't valid UTF-8, and PDO reads
+a `bytea` value back as a stream, so Eloquent can neither save nor match a 16-byte key there.
+
 Don't cast a key column with `AsBinary::uuid()`. Eloquent binds the cast string, not the
 bytes, when it queries by key or loads a relation, so `find()`, eager loading and pivot writes
 miss every row.
+
+## Keys behind casts
+
+A key or foreign key column may sit behind a value-object cast, a class implementing
+`CastsAttributes` or `CastsInboundAttributes`, so the model reads an object while the database
+holds what the cast's `set()` returns. The provider and persister bind and compare the stored
+value, never the object or its string: fetching by id, admitting ids, foreign-key reads and
+counts, to-many windows and cursor pages, link rows, linkage writes, pivot writes and the
+unique-row rule. A wire id with no id encoder is set through the key's cast before it is bound.
+A cast to an object whose string is the stored text, such as a value object over a text key,
+works everywhere, Eloquent's own relations included. A cast that stores something else, such
+as a UUID object over 16 bytes, works on a field named as a foreign key, which the package reads
+itself, but not on a key Eloquent's own relations load, for the reason above.
 
 ## Sorting, sparse fieldsets, pagination
 

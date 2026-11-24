@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\DataProvider\Eloquent;
 
+use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
+use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\DateOperand;
 use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\FilterHandlerInterface;
@@ -37,11 +40,11 @@ use haddowg\JsonApi\Resource\Through\FiltersThrough;
 use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\ScopesFilterHopsInterface;
+use haddowg\JsonApiLaravel\DataProvider\StoredIds;
 use haddowg\JsonApiLaravel\DataProvider\TargetsTypeInterface;
 use haddowg\JsonApiLaravel\Eloquent\BinaryUuidEncoder;
-use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
-use Illuminate\Contracts\Database\Eloquent\CastsInboundAttributes;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo as EloquentBelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
@@ -49,6 +52,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo as EloquentMorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany as EloquentMorphToMany;
 use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Str;
 
 /**
  * Executes core's filter value objects against an Eloquent query {@see Builder},
@@ -162,6 +166,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      */
     private static int $morphIdChunk = 2000;
 
+
     /**
      * Whether the filter being applied is the leaf of a `->through()` path whose ids core has
      * decoded through the reached type's encoder already.
@@ -171,8 +176,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     /**
      * @param iterable<EloquentFilterArmInterface<Model>>                                  $arms       author arms for custom filter types, consulted in order
      * @param ModelEncoders|null                                                     $encoders   picks the id encoder a compared key decodes with
+     * @param (\Closure(string): ?AbstractResource)|null                             $resourceOf the resource serving a type, which says whether a relation reads through a foreign key
      */
-    public function __construct(iterable $arms = [], private readonly ?ModelEncoders $encoders = null)
+    public function __construct(iterable $arms = [], private readonly ?ModelEncoders $encoders = null, private readonly ?\Closure $resourceOf = null)
     {
         $this->arms = \is_array($arms) ? \array_values($arms) : \iterator_to_array($arms, false);
         $this->dates = new NaiveDateTimeStorage();
@@ -269,8 +275,8 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             $filter instanceof WhereMorph => $this->whereMorph($query, $filter, $value),
             $filter instanceof WhereThrough => $this->whereThrough($query, $filter, $value),
             $filter instanceof WhereThroughIn => $this->whereThroughIn($query, $filter, $value),
-            $filter instanceof WhereHas => $query->whereHas($filter->relationship),
-            $filter instanceof WhereDoesntHave => $query->whereDoesntHave($filter->relationship),
+            $filter instanceof WhereHas => $this->exists($query, $this->type, $filter->relationship, false),
+            $filter instanceof WhereDoesntHave => $this->exists($query, $this->type, $filter->relationship, true),
             // Range (and DateRange, which extends it): two push-down where predicates.
             $filter instanceof Range => $this->range($query, $filter, $value),
             // A self-applying filter carries its own Eloquent query fragment (a named
@@ -319,9 +325,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         $applyLeaf = static function (Builder $reached) use ($handler, $leaf, $leafValue, $exists, $scope): void {
             if ($exists) {
                 \assert($leaf instanceof WhereHas || $leaf instanceof WhereDoesntHave);
-                $leaf instanceof WhereDoesntHave
-                    ? $reached->whereDoesntHave($leaf->relationship, $scope)
-                    : $reached->whereHas($leaf->relationship, $scope);
+                $handler->exists($reached, $handler->type, $leaf->relationship, $leaf instanceof WhereDoesntHave, $scope);
 
                 return;
             }
@@ -406,7 +410,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             return;
         }
 
-        $query->whereHas($hop->storage(), function (Builder $related) use ($hop, $hops, $leaf): void {
+        $inner = function (Builder $related) use ($hop, $hops, $leaf): void {
             if ($this->paths?->refuses($hop->relation) === true) {
                 $related->whereRaw('1 = 0');
 
@@ -414,7 +418,87 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             }
 
             $hops === [] ? $leaf($related) : $this->whereHasAlong($related, $hops, $leaf);
-        });
+        };
+        if (!$this->foreignKeyExists($query, $hop->relation, $hop->parentType, $inner, false)) {
+            $query->whereHas($hop->storage(), $inner);
+        }
+    }
+
+    /**
+     * A `whereHas`, or with `$not` a `whereDoesntHave`, over the relation of `$type` stored as
+     * `$relationship`, through its foreign key when it declares one.
+     *
+     * @param Builder<Model>                       $query
+     * @param (\Closure(Builder<Model>): mixed)|null $inner
+     */
+    private function exists(Builder $query, ?string $type, string $relationship, bool $not, ?\Closure $inner = null): void
+    {
+        $relation = null;
+        foreach (($type !== null && $this->resourceOf !== null ? ($this->resourceOf)($type)?->allFields() : null) ?? [] as $field) {
+            if ($field instanceof RelationInterface && ($field->column() ?? $field->name()) === $relationship) {
+                $relation = $field;
+
+                break;
+            }
+        }
+        if ($relation !== null && $type !== null && $this->foreignKeyExists($query, $relation, $type, $inner, $not)) {
+            return;
+        }
+
+        $not ? $query->whereDoesntHave($relationship, $inner) : $query->whereHas($relationship, $inner);
+    }
+
+    /**
+     * An `EXISTS`, or with `$not` a `NOT EXISTS`, over the rows of a relation of `$parentType`
+     * read through a foreign key, under the related model's global scopes: each row whose
+     * foreign key column holds the outer row's key and, for a `MorphTo` identified by columns,
+     * whose type column names `$parentType`, so a row of another type with the same id never
+     * matches. `$inner` narrows the rows further. False when the relation declares no foreign
+     * key the handler can read.
+     *
+     * @param Builder<Model>                       $query
+     * @param (\Closure(Builder<Model>): mixed)|null $inner
+     */
+    private function foreignKeyExists(Builder $query, RelationInterface $relation, string $parentType, ?\Closure $inner, bool $not): bool
+    {
+        $name = ForeignKey::nameOf($relation);
+        $relatedType = $relation->relatedTypes()[0] ?? null;
+        if ($name === null || $relatedType === null || \count($relation->relatedTypes()) !== 1 || $this->resourceOf === null) {
+            return false;
+        }
+        $resource = ($this->resourceOf)($relatedType);
+        $class = $this->encoders?->modelFor($relatedType);
+        $foreignKey = $resource !== null ? ForeignKey::in($name, $resource) : null;
+        if ($foreignKey === null || $class === null) {
+            return false;
+        }
+
+        $related = new $class();
+        $morph = $foreignKey->morphColumns();
+        $belongsTo = $morph === null && $foreignKey->isRelation() ? EloquentDataProvider::belongsToOf($related, $foreignKey->column) : null;
+        $attribute = match (true) {
+            $morph !== null => $morph->id,
+            $foreignKey->isRelation() => $belongsTo?->getForeignKeyName(),
+            default => $foreignKey->column,
+        };
+        if ($attribute === null) {
+            return false;
+        }
+
+        /** @var Builder<Model> $rows */
+        $rows = $related->newQuery();
+        $rows->whereColumn($related->qualifyColumn($attribute), '=', $query->getModel()->getQualifiedKeyName());
+        if ($morph !== null) {
+            $rows->whereIn($related->qualifyColumn($morph->type), $morph->storedValues($parentType));
+        } elseif ($belongsTo instanceof EloquentMorphTo) {
+            $rows->where($related->qualifyColumn($belongsTo->getMorphType()), $query->getModel()->getMorphClass());
+        }
+        if ($inner !== null) {
+            $inner($rows);
+        }
+        $query->addWhereExistsQuery($rows->toBase(), 'and', $not);
+
+        return true;
     }
 
     /**
@@ -749,7 +833,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         if ($target === null) {
             return;
         }
-        $admitted = $this->comparableIds($morph, $this->admittedStoredIds($targetModel, $key, $target, $type, $forms ?? $this->storedMorphIds($morph)));
+        $admitted = $this->comparableIds($morph, StoredIds::eitherCase($this->admittedStoredIds($targetModel, $key, $target, $type, $forms ?? $this->storedMorphIds($morph))));
         if ($admitted === []) {
             $query->whereRaw('1 = 0');
 
@@ -768,6 +852,17 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
                 $match->orWhereIn($morph->idColumn, $chunk);
             }
         });
+    }
+
+    /**
+     * Forgets the id column types read from the schema, for a test that recreates a table with
+     * other types.
+     *
+     * @internal
+     */
+    public static function forgetColumnTypes(): void
+    {
+        StoredKey::forgetColumnTypes();
     }
 
     /**
@@ -797,29 +892,40 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      */
     private function sqlComparison(MorphColumnsOf $morph, Model $targetModel, string $key, ?IdEncoderInterface $encoder): ?array
     {
-        if ($this->castsKey($targetModel, $key)) {
+        if (StoredKey::castsValueObject($targetModel, $key)) {
             return null;
         }
 
         $column = $targetModel->qualifyColumn($key);
         $grammar = $targetModel->getConnection()->getQueryGrammar();
         $driver = $targetModel->getConnection()->getDriverName();
-        $storedInt = \in_array($morph->model->getCasts()[$morph->idAttribute] ?? null, ['int', 'integer'], true);
+        $family = StoredKey::columnFamily($morph->model, $morph->idAttribute, $morph->table());
         if ($encoder instanceof BinaryUuidEncoder) {
-            $text = $storedInt ? null : BinaryUuidText::sql($targetModel->getConnection(), $grammar->wrap($column));
+            $text = $family !== 'text' ? null : BinaryUuidText::sql($targetModel->getConnection(), $grammar->wrap($column));
 
-            return $text === null ? null : ($driver === 'pgsql' ? [$text] : [$text, $column]);
+            // The text is lowercase, so its uppercase form matches a UUID stored in capitals.
+            return $text === null ? null : ($driver === 'pgsql' ? [$text, 'UPPER(' . $text . ')'] : [$text, 'UPPER(' . $text . ')', $column]);
         }
         if ($encoder !== null) {
             return null;
         }
 
         $keyInt = $targetModel->getKeyType() === 'int';
-        if ($storedInt !== $keyInt) {
+        if (($family === 'int') !== $keyInt) {
             return null;
         }
+        // A native uuid column compares only with another.
+        if ($family === 'uuid') {
+            return StoredKey::columnFamily($targetModel, $key, $targetModel->getTable()) === 'uuid' ? [$column] : null;
+        }
 
-        return [$driver === 'pgsql' && !$keyInt ? \sprintf('CAST(%s AS TEXT)', $grammar->wrap($column)) : $column];
+        $read = $driver === 'pgsql' && !$keyInt ? \sprintf('CAST(%s AS TEXT)', $grammar->wrap($column)) : $column;
+        // A HasUuids key is lowercase, so a UUID stored in capitals matches its uppercase form.
+        if (isset(\class_uses_recursive($targetModel)[HasUuids::class])) {
+            return [$read, \sprintf('UPPER(%s)', $read === $column ? $grammar->wrap($column) : $read)];
+        }
+
+        return [$read];
     }
 
     /**
@@ -841,9 +947,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
                 continue;
             }
             $wire = $target->wireId($type, $value);
-            $decoded = $encoder !== null ? $encoder->decode($wire) : $this->castKey($targetModel, $wire);
+            $decoded = $encoder !== null ? $encoder->decode($wire) : StoredKey::of($targetModel, $key, StoredIds::canonical($wire));
             if (\is_string($decoded) || \is_int($decoded)) {
-                $byKey[(string) $decoded][] = $value;
+                $byKey[StoredIds::canonical($decoded)][] = $value;
             }
         }
         if ($byKey === []) {
@@ -854,24 +960,13 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         $keys = \array_map(static fn(int|string $decoded): string => (string) $decoded, \array_keys($byKey));
         foreach ($targetModel->newQuery()->whereIn($targetModel->qualifyColumn($key), $keys)->toBase()->pluck($targetModel->qualifyColumn($key)) as $found) {
             if (\is_string($found) || \is_int($found)) {
-                \array_push($admitted, ...$byKey[(string) $found] ?? []);
+                \array_push($admitted, ...$byKey[StoredIds::canonical($found)] ?? []);
             }
         }
 
         return $admitted;
     }
 
-    /**
-     * Whether `$model` stores `$key` through a value-object cast, so the database holds a
-     * value other than the one a stored morph id is compared as.
-     */
-    private function castsKey(Model $model, string $key): bool
-    {
-        $cast = $model->getCasts()[$key] ?? null;
-        $class = \is_string($cast) ? \explode(':', $cast, 2)[0] : null;
-
-        return $class !== null && \class_exists($class) && (\is_a($class, CastsAttributes::class, true) || \is_a($class, CastsInboundAttributes::class, true));
-    }
 
     /**
      * The distinct ids of a type among the stored type values the morph columns hold,
@@ -906,13 +1001,13 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      */
     private function comparableIds(MorphColumnsOf $morph, array $values): array
     {
-        $cast = $morph->model->getCasts()[$morph->idAttribute] ?? null;
-        if (!\in_array($cast, ['int', 'integer'], true)) {
-            return \array_values($values);
-        }
-
-        return \array_values(\array_filter($values, static fn(mixed $value): bool => \is_int($value) || (\is_string($value) && \preg_match('/^-?\d+$/', $value) === 1)));
+        return match (StoredKey::columnFamily($morph->model, $morph->idAttribute, $morph->table())) {
+            'int' => \array_values(\array_filter($values, static fn(mixed $value): bool => \is_int($value) || (\is_string($value) && \preg_match('/^-?\d+$/', $value) === 1))),
+            'uuid' => \array_values(\array_filter($values, static fn(mixed $value): bool => \is_string($value) && Str::isUuid($value))),
+            default => \array_values($values),
+        };
     }
+
 
     /**
      * The type column among the stored type values and, when the request names ids, the id
@@ -934,7 +1029,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             return;
         }
 
-        $ids = $this->comparableIds($morph, $ids);
+        $ids = $this->comparableIds($morph, StoredIds::eitherCase($ids));
         if ($ids === []) {
             $query->whereRaw('1 = 0');
 
@@ -1147,32 +1242,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             throw new \LogicException(AmbiguousModelEncoder::forFilter($this->type ?? '', $filter->key(), $path, $e->model, $e->candidates), 0, $e);
         }
 
-        return $encoder !== null ? $encoder->decode($value) ?? $value : $this->castKey($model, $value);
+        return $encoder !== null ? $encoder->decode($value) ?? $value : StoredKey::of($model, $model->getKeyName(), $value);
     }
 
-    /**
-     * `$value` as `$model` stores its key, when the key declares a value-object cast, a
-     * class implementing `CastsAttributes` or `CastsInboundAttributes` such as a binary UUID
-     * cast. A primitive cast, an enum, an encrypted or a JSON cast leaves the value as sent,
-     * since setting it would store nothing a client's value could match.
-     */
-    private function castKey(Model $model, string $value): mixed
-    {
-        $cast = $model->getCasts()[$model->getKeyName()] ?? null;
-        $class = \is_string($cast) ? \explode(':', $cast, 2)[0] : null;
-        if ($class === null || !\class_exists($class) || !(\is_a($class, CastsAttributes::class, true) || \is_a($class, CastsInboundAttributes::class, true))) {
-            return $value;
-        }
-
-        try {
-            $stored = $model->newInstance();
-            $stored->setAttribute($model->getKeyName(), $value);
-
-            return $stored->getAttributes()[$model->getKeyName()] ?? $value;
-        } catch (\Throwable) {
-            return $value;
-        }
-    }
 
     /**
      * Adds one comparison predicate to `$query`. The three wildcard-`LIKE`
@@ -1248,7 +1320,45 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             }
         }
 
+        // A value the column can't hold compares as no stored value does, where PostgreSQL
+        // would refuse it.
+        if ($this->storable($query, $column, [$value]) === []) {
+            \in_array($operator, ['!=', '<>'], true) ? $query->whereNotNull($qualified) : $query->whereRaw('1 = 0');
+
+            return;
+        }
+
         $query->where($qualified, $operator, $value);
+    }
+
+    /**
+     * The values among `$values` that `$column` can hold. On PostgreSQL an integer or uuid
+     * column refuses a string of another kind rather than matching nothing, so such a string
+     * is left out; other values and other databases keep every value.
+     *
+     * @param Builder<Model> $query
+     * @param list<mixed>    $values
+     *
+     * @return list<mixed>
+     */
+    private function storable(Builder $query, string $column, array $values): array
+    {
+        [$model, $attribute] = $this->modelOf($query, $column);
+        $table = $this->pivot !== null && ($this->onPivotRow || \str_starts_with($this->rowColumn($column), RelationCriteriaFactory::PIVOT_PREFIX)) ? $this->pivot->getTable() : $model->getTable();
+        $dot = \strrpos($attribute, '.');
+        if ($dot !== false) {
+            $table = \substr($attribute, 0, $dot);
+            $attribute = \substr($attribute, $dot + 1);
+        }
+        if ($model->getConnection()->getDriverName() !== 'pgsql') {
+            return $values;
+        }
+
+        return match (StoredKey::columnFamily($model, $attribute, $table)) {
+            'int' => \array_values(\array_filter($values, static fn(mixed $value): bool => !\is_string($value) || \preg_match('/^-?\d+$/', $value) === 1)),
+            'uuid' => \array_values(\array_filter($values, static fn(mixed $value): bool => !\is_string($value) || Str::isUuid($value))),
+            default => $values,
+        };
     }
 
     /**
@@ -1397,6 +1507,14 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         }
 
         $qualified = $this->qualify($query, $column);
+        $values = $this->storable($query, $column, \array_values($values));
+        if ($values === []) {
+            if (!$negate) {
+                $query->whereRaw('1 = 0');
+            }
+
+            return;
+        }
 
         if ($negate) {
             $query->whereNotIn($qualified, $values);

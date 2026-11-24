@@ -10,7 +10,6 @@ use haddowg\JsonApi\Exception\ResourceNotFound;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
-use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\Id;
@@ -23,6 +22,7 @@ use haddowg\JsonApiLaravel\DataPersister\WritesForeignKeysInterface;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\FetchesManyInterface;
 use haddowg\JsonApiLaravel\DataProvider\ForeignKeyReads;
+use haddowg\JsonApiLaravel\DataProvider\StoredIds;
 
 /**
  * Writes a relation declared with a foreign key on its related rows, never the parent: the
@@ -56,7 +56,7 @@ final class ForeignKeyWrites
      * a remove the linked members, leave it. A leaving row whose foreign key storage requires
      * refuses the write with the `403` of the mutation that drops it.
      *
-     * @return array{writer: WritesForeignKeysInterface, foreignKey: ForeignKey, parentKey: mixed, attach: list<object>, detach: list<object>}
+     * @return array{writer: WritesForeignKeysInterface, foreignKey: ForeignKey, parentType: string, parentKey: mixed, attach: list<object>, detach: list<object>}
      *
      * @throws ResourceNotFound                            when a linked row isn't served by the related type's provider
      * @throws RemovalProhibited|FullReplacementProhibited when a leaving row's foreign key can't be cleared
@@ -102,6 +102,7 @@ final class ForeignKeyWrites
         return [
             'writer' => $writer,
             'foreignKey' => $foreignKey,
+            'parentType' => $type,
             'parentKey' => ForeignKey::parentKey($server->serializerFor($type), $parent),
             'attach' => $attach,
             'detach' => $detach,
@@ -109,12 +110,25 @@ final class ForeignKeyWrites
     }
 
     /**
-     * Applies `$plan` to the related rows.
+     * Applies `$plan` to the related rows. A foreign key naming a `MorphTo` identified by
+     * columns also has its type field set to the value naming the parent's type on each joining
+     * row, and cleared on each leaving one, before the writer sets the id field.
      *
-     * @param array{writer: WritesForeignKeysInterface, foreignKey: ForeignKey, parentKey: mixed, attach: list<object>, detach: list<object>} $plan
+     * @param array{writer: WritesForeignKeysInterface, foreignKey: ForeignKey, parentType: string, parentKey: mixed, attach: list<object>, detach: list<object>} $plan
      */
     public function apply(RelationInterface $relation, object $parent, array $plan): void
     {
+        $morph = $plan['foreignKey']->morphColumns();
+        if ($morph !== null) {
+            $stored = $morph->storedValueFor($plan['parentType']);
+            foreach ($plan['attach'] as $row) {
+                Accessor::set($row, $morph->type, $stored);
+            }
+            foreach ($plan['detach'] as $row) {
+                Accessor::set($row, $morph->type, null);
+            }
+        }
+
         $plan['writer']->writeForeignKey($relation->relatedTypes()[0] ?? '', $plan['foreignKey'], $parent, $plan['parentKey'], $plan['attach'], $plan['detach']);
     }
 
@@ -122,24 +136,55 @@ final class ForeignKeyWrites
      * Each row `$plan` attaches, with the parent of `$type` it leaves, or none: a to-one
      * foreign key's target, or the row of `$type` a field's key names.
      *
-     * @param array{writer: WritesForeignKeysInterface, foreignKey: ForeignKey, parentKey: mixed, attach: list<object>, detach: list<object>} $plan
+     * @param array{writer: WritesForeignKeysInterface, foreignKey: ForeignKey, parentType: string, parentKey: mixed, attach: list<object>, detach: list<object>} $plan
      *
      * @return list<array{memberType: string, member: object, ownerType: ?string, owner: ?object}>
      */
     public function moves(Server $server, string $type, RelationInterface $relation, array $plan): array
     {
         $relatedType = $relation->relatedTypes()[0] ?? '';
+        $morph = $plan['foreignKey']->morphColumns();
         $moves = [];
         foreach ($plan['attach'] as $row) {
+            // A polymorphic foreign key names its owner's type and id, either form of the id.
+            if ($morph !== null) {
+                try {
+                    $pair = $morph->pair($row);
+                } catch (\LogicException) {
+                    $pair = null;
+                }
+                $owner = $pair !== null && $this->providers->supportsType($pair[0])
+                    ? $this->providers->forType($pair[0])->fetchOne($pair[0], StoredIds::wireId($server, $pair[0], $pair[1]))
+                    : null;
+                $moves[] = ['memberType' => $relatedType, 'member' => $row, 'ownerType' => $owner !== null ? $pair[0] ?? null : null, 'owner' => $owner];
+
+                continue;
+            }
+
             $from = Accessor::get($row, $plan['foreignKey']->column);
-            if (!\is_object($from) && $from !== null) {
+            $ownerType = $type;
+            if (\is_object($from) && $plan['foreignKey']->toOne !== null) {
+                // A to-one such as a morphTo may hold a row of another type: authorize as that.
+                $ownerType = $this->typeOf($server, $plan['foreignKey']->toOne, $from);
+            } elseif ($from !== null) {
+                // A field holds a key, a value object included.
                 $from = $this->parentByKey($server, $type, $from);
             }
 
-            $moves[] = ['memberType' => $relatedType, 'member' => $row, 'ownerType' => \is_object($from) ? $type : null, 'owner' => \is_object($from) ? $from : null];
+            $moves[] = ['memberType' => $relatedType, 'member' => $row, 'ownerType' => \is_object($from) ? $ownerType : null, 'owner' => \is_object($from) && $ownerType !== null ? $from : null];
         }
 
         return $moves;
+    }
+
+    /**
+     * The type `$toOne` serves `$owner` as, or `null` when it serves none.
+     */
+    private function typeOf(Server $server, ?RelationInterface $toOne, object $owner): ?string
+    {
+        $type = $toOne?->resolveSerializer($owner, $server)?->getType($owner);
+
+        return $type !== null && $type !== '' ? $type : null;
     }
 
     /**
@@ -250,27 +295,14 @@ final class ForeignKeyWrites
     }
 
     /**
-     * The parent of `$type` stored under `$key`: its wire id is the key encoded through the
-     * type's id encoder, if any.
+     * The parent of `$type` stored under `$key`, the storage key or the wire id.
      */
     private function parentByKey(Server $server, string $type, mixed $key): ?object
     {
-        if ((!\is_scalar($key) && !$key instanceof \Stringable) || !$this->providers->supportsType($type)) {
+        if ((!\is_int($key) && !\is_string($key) && !$key instanceof \Stringable) || !$this->providers->supportsType($type)) {
             return null;
         }
 
-        $wireId = (string) $key;
-        $resource = $server->hasResourceFor($type) ? $server->resourceFor($type) : null;
-        if ($resource instanceof AbstractResource) {
-            foreach ($resource->allFields() as $field) {
-                if ($field instanceof Id && $field->encoder() !== null) {
-                    $wireId = $field->encoder()->encode($key);
-
-                    break;
-                }
-            }
-        }
-
-        return $this->providers->forType($type)->fetchOne($type, $wireId);
+        return $this->providers->forType($type)->fetchOne($type, StoredIds::wireId($server, $type, $key));
     }
 }

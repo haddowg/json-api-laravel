@@ -153,12 +153,16 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
 
     public function writeForeignKey(string $relatedType, ForeignKey $foreignKey, object $parent, mixed $parentKey, array $attach, array $detach): void
     {
+        // A polymorphic foreign key keeps the parent in its type and id fields; the type is set
+        // already, so the id takes the parent's key.
+        $morph = $foreignKey->morphColumns();
+        $column = $morph !== null ? $morph->id : $foreignKey->column;
         foreach ($detach as $row) {
-            Accessor::set($row, $foreignKey->column, null);
+            Accessor::set($row, $column, null);
             $this->store->save($row);
         }
         foreach ($attach as $row) {
-            Accessor::set($row, $foreignKey->column, $foreignKey->isRelation() ? $parent : $parentKey);
+            Accessor::set($row, $column, $foreignKey->isRelation() && $morph === null ? $parent : $parentKey);
             $this->store->save($row);
         }
     }

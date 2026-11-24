@@ -28,7 +28,10 @@ interface WritesForeignKeysInterface
     /**
      * Points each row in `$attach` at `$parent` and clears the foreign key on each row in
      * `$detach`, saving each. A field takes `$parentKey`, the parent's id as storage holds
-     * it, and a to-one relation takes `$parent` itself.
+     * it, and a to-one relation takes `$parent` itself. A `MorphTo` identified by columns
+     * keeps the parent in two fields: its type field is set before this is called, so the id
+     * field, `$foreignKey->morphColumns()->id`, takes `$parentKey`, and both are cleared on a
+     * leaving row.
      *
      * @param list<object> $attach the rows joining the parent
      * @param list<object> $detach the rows leaving it

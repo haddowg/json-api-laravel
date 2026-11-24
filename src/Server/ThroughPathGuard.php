@@ -8,6 +8,7 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\DefaultSortedRelationInterface;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
+use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
@@ -185,6 +186,23 @@ final class ThroughPathGuard
             }
 
             $row = null;
+            // A relation read through a foreign key is no relation of the model: a filter reaches
+            // it as an EXISTS over the related model, while a sort has no join to read it by.
+            if (ForeignKey::nameOf($hop->relation) !== null) {
+                if ($sort) {
+                    return \sprintf('"%s" is read through the foreign key "%s", which an Eloquent sort cannot join to read a row by.', $hop->relation->name(), (string) ForeignKey::nameOf($hop->relation));
+                }
+                $relatedType = $hop->relatedType();
+                $relatedModel = $this->modelFor($relatedType);
+                if ($relatedModel === null) {
+                    return \sprintf('the relation "%s" reaches the type "%s", which no Eloquent model serves.', $hop->relation->name(), $relatedType);
+                }
+                $parentType = $relatedType;
+                $model = new $relatedModel();
+
+                continue;
+            }
+
             $method = $hop->storage();
             $relation = \method_exists($model, $method) ? $model->{$method}() : null;
             if (!$relation instanceof Relation) {
@@ -207,6 +225,9 @@ final class ThroughPathGuard
         }
 
         $leafRelation = $path->leafRelation();
+        if ($leafRelation !== null && ForeignKey::nameOf($leafRelation) !== null) {
+            return $sort ? \sprintf('"%s" is read through a foreign key, which an Eloquent sort cannot join to read a row by.', $leafRelation->name()) : null;
+        }
         if ($leafRelation !== null) {
             $method = $leafRelation->column() ?? $leafRelation->name();
 

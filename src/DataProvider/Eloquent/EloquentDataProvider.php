@@ -19,6 +19,7 @@ use haddowg\JsonApi\Pagination\CursorCodec;
 use haddowg\JsonApi\Pagination\CursorWindow;
 use haddowg\JsonApi\Pagination\OffsetWindow;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\BelongsToMany as PivotRelation;
 use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
@@ -62,6 +63,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMan
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Database\Query\Expression;
 use Illuminate\Support\Str;
 
 /**
@@ -174,7 +176,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         $this->idEncodersResolved = $idEncoders !== null;
         $this->applier = new CriteriaApplier();
         $this->windowExecutor = new WindowExecutor();
-        $this->filterHandler = new EloquentFilterHandler($filterArms, new ModelEncoders($modelByType, fn(string $type): ?IdEncoderInterface => $this->encoderFor($type)));
+        $this->filterHandler = new EloquentFilterHandler($filterArms, new ModelEncoders($modelByType, fn(string $type): ?IdEncoderInterface => $this->encoderFor($type)), $this->resourceFor(...));
         $this->sortHandler = new EloquentSortHandler($sortArms);
         $this->arrayFilterHandler = new ScopedArrayFilterHandler(new ArrayFilterHandler());
         $this->arraySortHandler = new ScopedArraySortHandler(new ArraySortHandler());
@@ -262,10 +264,13 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         }
 
         $query = $this->newQuery($type);
+        $model = $query->getModel();
         $admitted = [];
-        foreach ($query->whereKey(\array_map('strval', \array_keys($byKey)))->pluck($query->getModel()->getKeyName()) as $key) {
-            if (\is_int($key) || \is_string($key)) {
-                \array_push($admitted, ...($byKey[(string) $key] ?? []));
+        // The stored keys, read past the key's cast, compare with the decoded ids.
+        foreach ($query->whereKey(\array_map('strval', \array_keys($byKey)))->toBase()->pluck($model->qualifyColumn($model->getKeyName())) as $key) {
+            $compared = StoredKey::comparable($key);
+            if ($compared !== null) {
+                \array_push($admitted, ...($byKey[$compared] ?? []));
             }
         }
 
@@ -961,7 +966,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
         $method = $this->relationMethod($relation);
         $countAttribute = $method . '_count';
-        $keys = \array_map(static fn(Model $model): mixed => $model->getKey(), $models);
+        $keys = \array_map(StoredKey::keyOf(...), $models);
 
         // Push the relation's relatedQuery filters into the correlated COUNT subquery via
         // the shared applier — the subquery Builder is filtered exactly as the related
@@ -1018,7 +1023,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
         $query = $this->applier->apply(
             $this->filtersOnly($criteria),
-            $related->newQuery()->whereKey($related->getKey()),
+            $related->newQuery()->whereKey(StoredKey::keyOf($related)),
             $this->filterHandler,
             $this->sortHandler,
         );
@@ -1072,7 +1077,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             $wireId = $this->wireId($model, $encoder);
 
             if ($target instanceof Model) {
-                $targetKey = $this->wireId($target);
+                $targetKey = StoredKey::comparable(StoredKey::keyOf($target)) ?? '';
                 $parentTargetKey[$wireId] = $targetKey;
                 $targets[$targetKey] = $target;
             } else {
@@ -1091,7 +1096,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
                 $this->sortHandler,
             );
             foreach ($probe->get() as $row) {
-                $matchingKeys[$this->wireId($row)] = true;
+                $matchingKeys[StoredKey::comparable(StoredKey::keyOf($row)) ?? ''] = true;
             }
         }
 
@@ -1137,16 +1142,21 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             return new RelatedBatch([]);
         }
 
-        [$column, $attribute] = $this->foreignKeyColumn($relatedType, $foreignKey);
+        $scope = $this->foreignKeyScope($relatedType, $foreignKey, $parents);
         $window = $criteria->window;
 
+        // A parent whose forms an id encoder makes differ has no one expression to partition
+        // its rows by, so each such page is read on its own.
         if ($window instanceof CursorWindow) {
-            return $window->after === null && $window->before === null
-                ? $this->foreignKeyCursorWindow($relatedType, $column, $attribute, $parents, $criteria, $window)
-                : $this->foreignKeyPages($relatedType, $column, $parents, $criteria, $window);
+            return $window->after === null && $window->before === null && !$scope->split
+                ? $this->foreignKeyCursorWindow($relatedType, $scope, $criteria, $window)
+                : $this->foreignKeyPages($relatedType, $scope, $parents, $criteria, $window);
+        }
+        if ($window instanceof OffsetWindow && $scope->split) {
+            return $this->foreignKeyOffsetPages($relatedType, $relation, $foreignKey, $scope, $parents, $criteria, $window, $request);
         }
 
-        $builder = $this->foreignKeyQuery($relatedType, $column, $parents);
+        $builder = $this->foreignKeyQuery($relatedType, $scope);
         $builder = $this->applier->apply($criteria, $builder, $this->filterHandler, $this->sortHandler);
 
         if ($window instanceof OffsetWindow) {
@@ -1157,11 +1167,11 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             }
 
             $countable = $criteria->wantsCount;
-            $builder->getQuery()->groupLimit($countable ? $window->limit : $window->limit + 1, $column);
+            $builder->getQuery()->groupLimit($countable ? $window->limit : $window->limit + 1, $scope->partition($builder->getQuery()->getGrammar()));
             $totals = $countable ? $this->countByForeignKey($relatedType, $relation, $foreignKey, $parents, $criteria, $request) : [];
 
             $results = [];
-            foreach ($this->partitionByForeignKey($builder->get()->all(), $attribute, $parents) as $wireId => $items) {
+            foreach ($this->partitionByForeignKey($builder->get()->all(), $scope) as $wireId => $items) {
                 $hasMore = !$countable && \count($items) > $window->limit;
                 $results[$wireId] = new CollectionResult(
                     \array_slice($items, 0, $window->limit),
@@ -1175,7 +1185,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         }
 
         $results = [];
-        foreach ($this->partitionByForeignKey($builder->get()->all(), $attribute, $parents) as $wireId => $items) {
+        foreach ($this->partitionByForeignKey($builder->get()->all(), $scope) as $wireId => $items) {
             $results[$wireId] = $this->windowExecutor->run(
                 null,
                 countable: $criteria->wantsCount,
@@ -1207,20 +1217,22 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             return $counts;
         }
 
-        [$column] = $this->foreignKeyColumn($relatedType, $foreignKey);
-        $builder = $this->applier->apply($this->filtersOnly($criteria), $this->foreignKeyQuery($relatedType, $column, $parents), $this->filterHandler, $this->sortHandler);
+        $scope = $this->foreignKeyScope($relatedType, $foreignKey, $parents);
+        $builder = $this->applier->apply($this->filtersOnly($criteria), $this->foreignKeyQuery($relatedType, $scope), $this->filterHandler, $this->sortHandler);
 
-        $rows = $builder->toBase()
-            ->select([$column . ' as jsonapi_parent'])
+        $base = $builder->toBase();
+        $partition = $scope->partition($base->getGrammar());
+        $rows = $base
+            ->select([$partition instanceof Expression ? new Expression($partition->getValue($base->getGrammar()) . ' as jsonapi_parent') : $partition . ' as jsonapi_parent'])
             ->selectRaw('count(*) as jsonapi_count')
-            ->groupBy($column)
+            ->groupBy($partition)
             ->get();
 
         foreach ($rows as $row) {
             $row = (array) $row;
-            $wireId = $parents->wireIdOf($row['jsonapi_parent'] ?? null);
+            $wireId = $scope->parentOfStored($row['jsonapi_parent'] ?? null);
             if ($wireId !== null) {
-                $counts[$wireId] = \is_numeric($row['jsonapi_count'] ?? null) ? (int) $row['jsonapi_count'] : 0;
+                $counts[$wireId] += \is_numeric($row['jsonapi_count'] ?? null) ? (int) $row['jsonapi_count'] : 0;
             }
         }
 
@@ -1232,9 +1244,9 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * resolved keyset columns and probed one row past the page, each partition minted as its
      * related endpoint mints its first page.
      */
-    private function foreignKeyCursorWindow(string $relatedType, string $column, string $attribute, ForeignKeyParents $parents, CollectionCriteria $criteria, CursorWindow $window): RelatedBatch
+    private function foreignKeyCursorWindow(string $relatedType, ForeignKeyScope $scope, CollectionCriteria $criteria, CursorWindow $window): RelatedBatch
     {
-        $builder = $this->foreignKeyQuery($relatedType, $column, $parents);
+        $builder = $this->foreignKeyQuery($relatedType, $scope);
         $related = $builder->getModel();
         [$columns, $paths] = $this->applier->keysetColumns($criteria, $this->keysetResolver->resolve(
             $criteria->queryParameters->sort,
@@ -1247,12 +1259,12 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         $this->applier->apply($this->filtersOnly($criteria), $builder, $this->filterHandler, $this->sortHandler);
         $keyset = new EloquentKeyset($related, $paths !== null ? $this->sortHandler->forPaths($paths) : $this->sortHandler);
         $keyset->orderBy($builder, $columns);
-        $builder->getQuery()->groupLimit($window->limit + 1, $column);
+        $builder->getQuery()->groupLimit($window->limit + 1, $scope->partition($builder->getQuery()->getGrammar()));
 
         $readValue = static fn(object $row, string $keysetColumn): string|int|float|bool|null => CursorTokenMinter::coerce(self::keysetValue($row, $keysetColumn, null));
 
         $results = [];
-        foreach ($this->partitionByForeignKey($builder->get()->all(), $attribute, $parents) as $wireId => $items) {
+        foreach ($this->partitionByForeignKey($builder->get()->all(), $scope) as $wireId => $items) {
             $hasSurplus = \count($items) > $window->limit;
             $results[$wireId] = $this->mintSelected(
                 $keyset,
@@ -1267,61 +1279,68 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     }
 
     /**
-     * Each parent's cursor page read on its own, as one keyset query scoped by the foreign
-     * key: the fallback for a page bounded by `page[after]` or `page[before]`.
+     * Each parent's offset page read on its own, for a polymorphic foreign key whose stored forms
+     * an id encoder makes differ, so no one expression partitions a parent's rows.
      */
-    private function foreignKeyPages(string $relatedType, string $column, ForeignKeyParents $parents, CollectionCriteria $criteria, CursorWindow $window): RelatedBatch
+    private function foreignKeyOffsetPages(string $relatedType, RelationInterface $relation, ForeignKey $foreignKey, ForeignKeyScope $scope, ForeignKeyParents $parents, CollectionCriteria $criteria, OffsetWindow $window, JsonApiRequestInterface $request): RelatedBatch
     {
+        $countable = $criteria->wantsCount;
+        $totals = $countable ? $this->countByForeignKey($relatedType, $relation, $foreignKey, $parents, $criteria, $request) : [];
         $results = [];
         foreach ($parents->wireIds() as $wireId) {
-            $results[$wireId] = $this->runCursor($this->foreignKeyQuery($relatedType, $column, $parents->only($wireId)), $criteria, $window);
+            $builder = $this->applier->apply($criteria, $this->foreignKeyQuery($relatedType, $scope->only($wireId)), $this->filterHandler, $this->sortHandler);
+            $related = $builder->getModel();
+            $builder->orderBy($related->qualifyColumn($related->getKeyName()), 'asc')->offset($window->offset)->limit($countable ? $window->limit : $window->limit + 1);
+            $items = \array_values($builder->get()->all());
+            $results[$wireId] = new CollectionResult(
+                \array_slice($items, 0, $window->limit),
+                total: $countable ? ($totals[$wireId] ?? 0) : null,
+                windowed: true,
+                hasMore: !$countable && \count($items) > $window->limit,
+            );
         }
 
         return new RelatedBatch($results);
     }
 
     /**
-     * A query of the related model, with its global scopes, narrowed to the rows whose foreign
-     * key `$column` holds one of the parents' keys.
-     *
-     * @return Builder<Model>
+     * Each parent's cursor page read on its own, as one keyset query scoped by the foreign
+     * key: the fallback for a page bounded by `page[after]` or `page[before]`, or for a
+     * polymorphic foreign key whose stored forms an id encoder makes differ.
      */
-    private function foreignKeyQuery(string $relatedType, string $column, ForeignKeyParents $parents): Builder
+    private function foreignKeyPages(string $relatedType, ForeignKeyScope $scope, ForeignKeyParents $parents, CollectionCriteria $criteria, CursorWindow $window): RelatedBatch
     {
-        $builder = $this->newQuery($relatedType);
-        $builder->select($builder->getModel()->qualifyColumn('*'));
-        $keys = \array_values(\array_filter($parents->keys, static fn(mixed $key): bool => \is_scalar($key) || $key instanceof \Stringable));
+        $results = [];
+        foreach ($parents->wireIds() as $wireId) {
+            $results[$wireId] = $this->runCursor($this->foreignKeyQuery($relatedType, $scope->only($wireId)), $criteria, $window);
+        }
 
-        return $keys === [] ? $builder->whereRaw('1 = 0') : $builder->whereIn($column, $keys);
+        return new RelatedBatch($results);
     }
 
     /**
-     * The qualified column the foreign key is stored in on the related model, and the attribute
-     * a row holds it under: a field's own column, or the foreign key of a to-one's `BelongsTo`.
+     * A query of the related model, with its global scopes, narrowed to the rows `$scope` holds.
      *
-     * @return array{0: string, 1: string}
+     * @return Builder<Model>
+     */
+    private function foreignKeyQuery(string $relatedType, ForeignKeyScope $scope): Builder
+    {
+        $builder = $this->newQuery($relatedType);
+        $builder->select($builder->getModel()->qualifyColumn('*'));
+
+        return $scope->apply($builder);
+    }
+
+    /**
+     * How the rows of `$relatedType` hold the parents' keys through `$foreignKey`.
      *
      * @throws \LogicException when a to-one foreign key names no `BelongsTo` of the related model
      */
-    private function foreignKeyColumn(string $relatedType, ForeignKey $foreignKey): array
+    private function foreignKeyScope(string $relatedType, ForeignKey $foreignKey, ForeignKeyParents $parents): ForeignKeyScope
     {
-        $model = $this->newQuery($relatedType)->getModel();
-        if (!$foreignKey->isRelation()) {
-            return [$model->qualifyColumn($foreignKey->column), $foreignKey->column];
-        }
+        $parentClass = $this->modelByType[$parents->type] ?? null;
 
-        $belongsTo = self::belongsToOf($model, $foreignKey->column);
-        if ($belongsTo === null) {
-            throw new \LogicException(\sprintf(
-                'The foreign key "%s" of type "%s" is a to-one relation, but %s has no BelongsTo method "%s" to read it through.',
-                $foreignKey->name,
-                $relatedType,
-                $model::class,
-                $foreignKey->column,
-            ));
-        }
-
-        return [$belongsTo->getQualifiedForeignKeyName(), $belongsTo->getForeignKeyName()];
+        return ForeignKeyScope::of($this->newQuery($relatedType)->getModel(), $relatedType, $foreignKey, $parents, $this->encoderFor($parents->type), $parentClass !== null ? (new $parentClass())->getMorphClass() : null);
     }
 
     /**
@@ -1348,14 +1367,14 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      *
      * @return array<string, list<object>>
      */
-    private function partitionByForeignKey(array $rows, string $attribute, ForeignKeyParents $parents): array
+    private function partitionByForeignKey(array $rows, ForeignKeyScope $scope): array
     {
         $partitions = [];
         foreach ($rows as $row) {
             if (!$row instanceof Model) {
                 continue;
             }
-            $wireId = $parents->wireIdOf($row->getAttribute($attribute));
+            $wireId = $scope->parentOf($row);
             if ($wireId !== null) {
                 $partitions[$wireId][] = $row;
             }
@@ -1449,18 +1468,18 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
         $found = [];
         foreach ($read as $keyRow) {
-            $owner = $keyRow->getAttribute('owner_key');
+            $owner = StoredKey::comparable($keyRow->getAttribute('owner_key'));
             $value = $keyRow->getAttribute('type_value');
             $id = $keyRow->getAttribute('id_value');
             $type = \is_string($value) || \is_int($value) ? $fields->memberType($value) : null;
-            if (\is_scalar($owner) && $type !== null && (\is_int($id) || (\is_string($id) && $id !== ''))) {
-                $found[(string) $owner][$type][(string) $id] ??= $id;
+            if ($owner !== null && $type !== null && (\is_int($id) || (\is_string($id) && $id !== ''))) {
+                $found[$owner][$type][(string) $id] ??= $id;
             }
         }
 
         foreach ($models as $position => $parent) {
-            $key = $ownerKey($parent);
-            $held = \is_scalar($key) ? $found[(string) $key] ?? [] : [];
+            $key = StoredKey::comparable($ownerKey($parent));
+            $held = $key !== null ? $found[$key] ?? [] : [];
             foreach ($types as $type) {
                 if (isset($held[$type])) {
                     $keys[$position][$type] = \array_values($held[$type]);
@@ -1502,19 +1521,20 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             $column = $row->qualifyColumn($owner->getForeignKeyName());
             $builder->where($row->qualifyColumn($owner->getMorphType()), $parents[0]->getMorphClass());
 
-            return [$builder->whereIn($column, \array_map(static fn(Model $parent): mixed => $parent->getKey(), $parents)), $column, static fn(Model $parent): mixed => $parent->getKey()];
+            return [$builder->whereIn($column, \array_map(StoredKey::keyOf(...), $parents)), $column, StoredKey::keyOf(...)];
         }
+        // The owner's key as stored, read past its cast, is what the row's column holds.
         if ($owner instanceof BelongsTo) {
             $column = $row->qualifyColumn($owner->getForeignKeyName());
             $ownerKey = $owner->getOwnerKeyName();
-            $read = static fn(Model $parent): mixed => $parent->getAttribute($ownerKey);
+            $read = static fn(Model $parent): mixed => StoredKey::on($parent, $ownerKey);
 
             return [$builder->whereIn($column, \array_map($read, $parents)), $column, $read];
         }
 
         $column = $row->qualifyColumn($fields->owner);
 
-        return [$builder->whereIn($column, \array_map(static fn(Model $parent): mixed => $parent->getKey(), $parents)), $column, static fn(Model $parent): mixed => $parent->getKey()];
+        return [$builder->whereIn($column, \array_map(StoredKey::keyOf(...), $parents)), $column, StoredKey::keyOf(...)];
     }
 
     public function fetchRelationshipPivot(string $type, object $parent, RelationInterface $relation): array
@@ -1690,7 +1710,8 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             return $encoder->encode($key);
         }
 
-        return \is_scalar($key) ? (string) $key : '';
+        // A key behind a value-object cast is its string form, as the Id field renders it.
+        return StoredKey::comparable($key) ?? '';
     }
 
     /**
@@ -1719,11 +1740,26 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         }
         $traits = \class_uses_recursive($class);
 
+        $model = new $class();
+
         return match (true) {
             isset($traits[HasUuids::class]) => Str::isUuid($id) ? $id : null,
             isset($traits[HasUlids::class]) => Str::isUlid($id) ? $id : null,
-            default => $id,
+            // An integer key is named by its canonical form only, as the persister reads it.
+            \in_array($model->getKeyType(), ['int', 'integer'], true) => (string) (int) $id === $id ? $id : null,
+            default => StoredKey::of($model, $model->getKeyName(), $id),
         };
+    }
+
+    /**
+     * The resource serving `$type`, or `null` outside a container or for a type no resource
+     * declares.
+     */
+    private function resourceFor(string $type): ?AbstractResource
+    {
+        $this->encoderFor($type);
+
+        return $this->idEncoders?->resourceFor($type);
     }
 
     private function encoderFor(string $type): ?IdEncoderInterface

@@ -9,6 +9,7 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\StoredKey;
 use haddowg\JsonApiLaravel\Validation\Constraint\UniqueEntity;
 use Illuminate\Contracts\Validation\DataAwareRule;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -109,7 +110,7 @@ final class StoredRowsUnique implements ValidationRule, DataAwareRule
         }
 
         if ($this->current instanceof Model && $this->current instanceof $model && $this->current->exists) {
-            $query->whereKeyNot($this->current->getKey());
+            $query->whereKeyNot(StoredKey::keyOf($this->current));
         }
 
         // The type's own rows count only when its scoping provider returns them.

@@ -22,7 +22,6 @@ use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
-use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\MetaContext;
@@ -51,6 +50,7 @@ use haddowg\JsonApiLaravel\DataProvider\ForeignKeyReads;
 use haddowg\JsonApiLaravel\DataProvider\PivotRowRelationRouter;
 use haddowg\JsonApiLaravel\DataProvider\ScopedPolymorphicMembers;
 use haddowg\JsonApiLaravel\DataProvider\ScopedRelationshipWrites;
+use haddowg\JsonApiLaravel\DataProvider\StoredIds;
 use haddowg\JsonApiLaravel\Event\AfterActionEvent;
 use haddowg\JsonApiLaravel\Event\BeforeActionEvent;
 use haddowg\JsonApiLaravel\Operation\ForeignKeyWrites;
@@ -588,7 +588,7 @@ final readonly class ActionInvoker
     {
         if ($relation instanceof MorphToMany && $relation->storesIdentifiers()) {
             return \array_map(
-                static fn(array $pair): array => [$pair[0], self::wireId($server, $pair[0], $pair[1])],
+                static fn(array $pair): array => [$pair[0], StoredIds::wireId($server, $pair[0], $pair[1])],
                 $relation->storedIdentifierList($current, $body),
             );
         }
@@ -600,7 +600,8 @@ final readonly class ActionInvoker
             } elseif (\is_object($member) && ($serializer = $relation->resolveSerializer($member, $server)) !== null) {
                 $members[] = [$serializer->getType($member), $serializer->getId($member)];
             } elseif (\is_string($member) || \is_int($member)) {
-                $members[] = [$relation->relatedTypes()[0] ?? '', (string) $member];
+                $relatedType = $relation->relatedTypes()[0] ?? '';
+                $members[] = [$relatedType, StoredIds::wireId($server, $relatedType, $member)];
             }
         }
 
@@ -641,19 +642,6 @@ final readonly class ActionInvoker
         );
     }
 
-    private static function wireId(Server $server, string $type, string|int $key): string
-    {
-        $serializer = $server->hasSerializerFor($type) ? $server->serializerFor($type) : null;
-        if ($serializer instanceof AbstractResource) {
-            foreach ($serializer->allFields() as $field) {
-                if ($field instanceof Id) {
-                    return StoredIdForms::wireId($field->encoder(), $key);
-                }
-            }
-        }
-
-        return (string) $key;
-    }
 
     private function related(string $type, string $id): object
     {

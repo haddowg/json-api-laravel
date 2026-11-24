@@ -120,6 +120,7 @@ use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\RelationshipWindowBatcher;
 use haddowg\JsonApiLaravel\DataProvider\ScopedPolymorphicMembers;
 use haddowg\JsonApiLaravel\DataProvider\ScopedRelationshipWrites;
+use haddowg\JsonApiLaravel\DataProvider\StoredIds;
 use haddowg\JsonApiLaravel\Discovery\Discovery;
 use haddowg\JsonApiLaravel\Event\AfterCreateEvent;
 use haddowg\JsonApiLaravel\Event\AfterDeleteEvent;
@@ -651,7 +652,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $resource = $server->hasResourceFor($type) ? $server->resourceFor($type) : null;
 
         $filters = $resource?->allFilters() ?? [];
-        $paths = FilterPaths::of($server, $resource, admission: $this->polymorphicMembers()->admission($server), pivotRows: new PivotRowRelationRouter($this->providers), morphAdmission: $this->polymorphicMembers()->morphAdmission($server));
+        $paths = FilterPaths::of($server, $resource, admission: $this->polymorphicMembers()->admission($server), pivotRows: new PivotRowRelationRouter($this->providers), morphAdmission: $this->polymorphicMembers()->morphAdmission($server), relationReader: $request !== null ? $this->foreignKeys()->relationReader($server, $request) : null);
 
         // The always-on filter-value gate: a client-supplied
         // `filter[<key>]` value is validated against the filter's declared value
@@ -2609,7 +2610,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
             } elseif (\is_object($member) && ($serializer = $relation->resolveSerializer($member, $server)) !== null) {
                 $members[] = [$serializer->getType($member), $serializer->getId($member)];
             } elseif (\is_string($member) || \is_int($member)) {
-                $members[] = [$relation->relatedTypes()[0] ?? '', (string) $member];
+                $relatedType = $relation->relatedTypes()[0] ?? '';
+                $members[] = [$relatedType, StoredIds::wireId($server, $relatedType, $member)];
             }
         }
 

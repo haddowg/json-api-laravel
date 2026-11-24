@@ -552,6 +552,64 @@ The refusal names the foreign key, `extractUsing()` and `writeOnly()`. A `belong
 stored pivot fields reads its pivot rows through the parent's model, so `jsonapi:optimize`
 refuses it on such a type.
 
+### A foreign key through a polymorphic owner
+
+When the related rows point back through a `MorphTo`, declare the inverse on each type it can
+hold with core's [`MorphMany` or `MorphOne`](https://github.com/haddowg/json-api/blob/main/docs/relations.md#a-foreign-key-through-a-polymorphic-relation),
+naming that `MorphTo`:
+
+```php
+// NoteResource
+MorphTo::make('owner', ['posts', 'videos'])
+    ->identifiedByColumns(type: 'owner_type', id: 'owner_id', typeMap: ['post' => 'posts', 'video' => 'videos']),
+MorphTo::make('author', ['posts', 'videos']),
+
+// PostResource
+MorphMany::make('notes', 'notes', 'owner'),
+MorphMany::make('authoredNotes', 'notes', 'author'),
+
+// VideoResource
+MorphOne::make('note', 'notes', 'owner'),
+```
+
+They build the same `HasMany` and `HasOne` as naming the `MorphTo` as a third argument, and route
+registration and `jsonapi:optimize` refuse one whose member isn't a `MorphTo`. On Eloquent the
+`MorphTo` may be identified either way:
+
+| The `MorphTo` | What its `MorphMany` or `MorphOne` reads |
+|---|---|
+| `identifiedByColumns(type: 'owner_type', id: 'owner_id')` | the rows whose `owner_type` holds a value naming the parent's type and whose `owner_id` holds its key |
+| no columns, over the note model's `morphTo()` method | the rows whose morph type column holds the parent model's morph class and whose morph id column holds its key |
+| no columns, over a method that isn't a `morphTo()` | refused at route registration and `jsonapi:optimize` |
+
+A post's notes never include a video's note with the same id. Every read the foreign key decides
+scopes on both columns: the related and relationship endpoints, includes, `withCount`, offset and
+cursor pages, a `relatedQuery`, and the `WhereHas`, `WhereDoesntHave` and `->through()` filters
+that reach through the relation. An `identifiedByColumns()` id column may hold a parent's storage
+key or its wire id, a UUID in either letter case, and the reads match any of them. A write sets
+the type column to the first value naming the parent's type, or the parent's morph class, and the
+id column to its key, and clears both on a row that leaves. A UUID stored in mixed case isn't
+matched.
+
+The included first pages and the counts of a whole page of parents stay one query. When a
+parent's forms differ only in letter case, the window partitions and the count groups by the id
+column in lower case. When an id encoder makes them differ beyond case, such as a prefixed wire id
+beside the integer key it encodes, each parent's page is read on its own.
+
+Naming the id column's field instead, `HasMany::make('notes', 'notes', 'ownerId')`, fails route
+registration and `jsonapi:optimize`, since that column holds the ids of posts and videos alike.
+An Eloquent `morphTo` stores the parent model's morph class, so the parent's type must be served
+by an Eloquent model, or route registration and `jsonapi:optimize` refuse it. A `HasMany` with no
+foreign key over the parent model's own `morphMany()` method needs none of this, since Eloquent
+scopes its type column itself.
+
+A filter that reaches through a relation read through a foreign key is one correlated `EXISTS`
+comparing the foreign key column with the outer row's key as each stores it, so a polymorphic id
+column holding wire ids of a type whose id encoder changes them doesn't match there. The
+in-memory provider walks the same relation through the related type's provider. A `->through()`
+sort has no join to read such a relation by on Eloquent, so `jsonapi:optimize` refuses a sort
+reaching through one there. The in-memory provider sorts through it as it filters.
+
 ### Writing through a foreign key
 
 A relationship write of a relation declared with a foreign key never reaches the parent type's
@@ -856,7 +914,9 @@ MorphToMany::make('items', ['notes', 'photos'])
 
 `through()` names the row model, `owner` the `belongsTo` or `morphTo` on it that points at the
 parent, or an attribute holding the parent's key, and `type` and `id` the attributes holding
-each member's stored type and key. `storedAs()` names the parent's relation core reads the rows
+each member's stored type and key. A `belongsTo` or an attribute identifies exactly one owning
+type, so the rows of one table can't be shared by several owner types that way. A link table
+several owner types share needs Eloquent's own `morphToMany` or `morphedByMany` instead. `storedAs()` names the parent's relation core reads the rows
 from in memory.
 
 Each identifier renders its readable fields as `meta.pivot`, in the relationship document, in
