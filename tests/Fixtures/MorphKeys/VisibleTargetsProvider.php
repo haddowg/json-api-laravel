@@ -18,7 +18,7 @@ use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
 final class VisibleTargetsProvider extends AbstractDataProvider
 {
     /**
-     * @param array<string, MkTargetRecord> $visible
+     * @param array<string, MkTargetRecord|MkCodeRecord> $visible
      */
     public function __construct(private readonly string $type, private readonly array $visible) {}
 

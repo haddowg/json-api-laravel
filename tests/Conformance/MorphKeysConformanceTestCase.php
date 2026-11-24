@@ -64,6 +64,15 @@ abstract class MorphKeysConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:fetching-filtering')]
+    public function aMorphToMatchesAStringKeyTheScopeAdmits(): void
+    {
+        self::assertSame(['10'], $this->noteIds('filter[subject][type]=mkCodes'));
+        self::assertSame(['10'], $this->noteIds('filter[subject][type]=mkCodes&filter[subject][id]=alpha'));
+        self::assertSame([], $this->noteIds('filter[subject][type]=mkCodes&filter[subject][id]=beta'));
+    }
+
+    #[Test]
+    #[Group('spec:fetching-filtering')]
     public function anUnscopedTypeMatchesEitherFormToo(): void
     {
         self::assertSame(['7', '8'], $this->noteIds('filter[subject][type]=mkTokens'));
@@ -106,7 +115,7 @@ abstract class MorphKeysConformanceTestCase extends Orchestra
         \sort($linkage);
 
         // A hidden target renders as data: null, as for any guarded to-one.
-        self::assertSame(['1:mkCounters:1', '3:mkBadges:b-1', '4:mkBadges:b-2', '7:mkTokens:t-1', '8:mkTokens:t-2'], $linkage);
+        self::assertSame(['10:mkCodes:alpha', '1:mkCounters:1', '3:mkBadges:b-1', '4:mkBadges:b-2', '7:mkTokens:t-1', '8:mkTokens:t-2'], $linkage);
     }
 
     #[Test]
@@ -128,7 +137,7 @@ abstract class MorphKeysConformanceTestCase extends Orchestra
     public function theIncludeAgreesWithTheFilter(): void
     {
         self::assertSame(['mkBadges:b-1', 'mkBadges:b-2'], $this->included('/api/mkNotes?include=subject&filter[subject][type]=mkBadges'));
-        self::assertSame(['mkBadges:b-1', 'mkBadges:b-2', 'mkCounters:1', 'mkTokens:t-1', 'mkTokens:t-2'], $this->included('/api/mkNotes?include=subject'));
+        self::assertSame(['mkBadges:b-1', 'mkBadges:b-2', 'mkCodes:alpha', 'mkCounters:1', 'mkTokens:t-1', 'mkTokens:t-2'], $this->included('/api/mkNotes?include=subject'));
     }
 
     /**

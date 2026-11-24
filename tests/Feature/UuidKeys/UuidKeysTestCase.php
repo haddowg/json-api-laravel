@@ -133,6 +133,22 @@ abstract class UuidKeysTestCase extends Orchestra
     }
 
     #[Test]
+    public function aScopedUuidKeyComparesInOneStatement(): void
+    {
+        $this->seedNotes();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->read('/api/notes?filter[subject][type]=labels');
+        DB::disableQueryLog();
+        $statements = \array_map(static fn(array $entry): string => \strtolower($entry['query']), DB::getQueryLog());
+
+        self::assertSame([], \array_values(\array_filter($statements, static fn(string $sql): bool => \str_contains($sql, 'select distinct') && \str_contains($sql, '"uk_notes"'))), "no stored ids are read first:\n" . \implode("\n", $statements));
+        $compared = \array_filter($statements, static fn(string $sql): bool => \str_contains($sql, 'from "uk_notes"') && \str_contains($sql, 'from "uk_labels"'));
+        self::assertCount(1, $compared, "one statement compares the keys in SQL:\n" . \implode("\n", $statements));
+        self::assertSame($this->storage() === 'binary', \str_contains((string) \reset($compared), 'hex('), 'a binary key is read as its canonical text');
+    }
+
+    #[Test]
     public function aMorphTargetReadsAgreeWithTheFilter(): void
     {
         $this->seedNotes();

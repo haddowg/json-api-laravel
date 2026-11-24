@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\DataProvider\Eloquent;
 
+use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Filter\DateOperand;
@@ -37,6 +38,7 @@ use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\ScopesFilterHopsInterface;
 use haddowg\JsonApiLaravel\DataProvider\TargetsTypeInterface;
+use haddowg\JsonApiLaravel\Eloquent\BinaryUuidEncoder;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Database\Eloquent\CastsInboundAttributes;
 use Illuminate\Database\Eloquent\Builder;
@@ -47,6 +49,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo as EloquentMorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany as EloquentMorphToMany;
 use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Database\Query\Expression;
 
 /**
  * Executes core's filter value objects against an Eloquent query {@see Builder},
@@ -153,6 +156,12 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      * row through. Each `whereHas` hop applies the related model's global scopes itself.
      */
     private ?FilterPaths $paths = null;
+
+    /**
+     * How many admitted morph ids bind in one `IN` list, well under SQLite's 32766 and
+     * PostgreSQL's 65535 parameters per statement.
+     */
+    private static int $morphIdChunk = 2000;
 
     /**
      * Whether the filter being applied is the leaf of a `->through()` path whose ids core has
@@ -713,10 +722,15 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
 
         $key = $ownerKey ?? $targetModel->getKeyName();
         $encoder = ($target?->ids[$type] ?? null)?->encoder();
-        if ($target === null || ($forms === null && $encoder === null && !$this->castsKey($targetModel, $key) && $this->sameFamily($morph, $targetModel))) {
+        $comparison = $target === null ? [$targetModel->qualifyColumn($key)] : ($forms === null ? $this->sqlComparison($morph, $targetModel, $key, $encoder) : null);
+        if ($comparison !== null) {
             // A membership IN rather than a correlated EXISTS: the target may share the filtered
             // model's table, and its scopes qualify columns with the table name.
-            $query->whereIn($morph->idColumn, $targetModel->newQuery()->select($targetModel->qualifyColumn($key))->toBase());
+            $query->where(static function (Builder|QueryBuilder $match) use ($morph, $targetModel, $comparison): void {
+                foreach ($comparison as $select) {
+                    $match->orWhereIn($morph->idColumn, $targetModel->newQuery()->selectRaw($select instanceof Expression ? (string) $select->getValue($targetModel->getConnection()->getQueryGrammar()) : $targetModel->getConnection()->getQueryGrammar()->wrap($select))->toBase());
+                }
+            });
 
             return;
         }
@@ -728,7 +742,70 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             return;
         }
 
-        $query->whereIn($morph->idColumn, $admitted);
+        // Bound in chunks, so a long list stays under the database's parameter limit.
+        $chunks = \array_chunk($admitted, self::$morphIdChunk);
+        if (\count($chunks) === 1) {
+            $query->whereIn($morph->idColumn, $chunks[0]);
+
+            return;
+        }
+        $query->where(static function (Builder|QueryBuilder $match) use ($morph, $chunks): void {
+            foreach ($chunks as $chunk) {
+                $match->orWhereIn($morph->idColumn, $chunk);
+            }
+        });
+    }
+
+    /**
+     * Sets how many admitted ids bind in one `IN` list, for a test to force several.
+     *
+     * @internal
+     */
+    public static function chunkMorphIdsBy(int $size): void
+    {
+        self::$morphIdChunk = \max(1, $size);
+    }
+
+    /**
+     * What a stored morph id compares with in one SQL statement, each a target key
+     * column or an expression over it the morph column matches any of, or null when it
+     * can't compare in SQL, so the stored ids are admitted and bound instead.
+     *
+     * A key with neither an encoder nor a value-object cast compares as it is when both
+     * columns are of one family, both integers or both text. On PostgreSQL a text key is
+     * read as text, which a native uuid column needs. A binary UUID key behind
+     * {@see BinaryUuidEncoder} is read as its canonical lowercase text, and on a database
+     * whose text column can hold raw bytes it is also compared as stored, so a column
+     * holding the storage key still matches. Any other pair, such as text against an
+     * integer, which PostgreSQL has no comparison for, can't.
+     *
+     * @return non-empty-list<string|Expression>|null
+     */
+    private function sqlComparison(MorphColumnsOf $morph, Model $targetModel, string $key, ?IdEncoderInterface $encoder): ?array
+    {
+        if ($this->castsKey($targetModel, $key)) {
+            return null;
+        }
+
+        $column = $targetModel->qualifyColumn($key);
+        $grammar = $targetModel->getConnection()->getQueryGrammar();
+        $driver = $targetModel->getConnection()->getDriverName();
+        $storedInt = \in_array($morph->model->getCasts()[$morph->idAttribute] ?? null, ['int', 'integer'], true);
+        if ($encoder instanceof BinaryUuidEncoder) {
+            $text = $storedInt ? null : BinaryUuidText::sql($targetModel->getConnection(), $grammar->wrap($column));
+
+            return $text === null ? null : ($driver === 'pgsql' ? [new Expression($text)] : [new Expression($text), $column]);
+        }
+        if ($encoder !== null) {
+            return null;
+        }
+
+        $keyInt = $targetModel->getKeyType() === 'int';
+        if ($storedInt !== $keyInt) {
+            return null;
+        }
+
+        return [$driver === 'pgsql' && !$keyInt ? new Expression(\sprintf('CAST(%s AS TEXT)', $grammar->wrap($column))) : $column];
     }
 
     /**
@@ -768,25 +845,6 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         }
 
         return $admitted;
-    }
-
-    /**
-     * Whether the morph id column and the target's key are both integers or both text, so
-     * they compare in SQL on every database: PostgreSQL compares a text column with neither
-     * an integer nor a native uuid. The morph column is text unless its model casts it to an
-     * integer. The target key's family is its model's key type, and a key the model mints
-     * as a UUID or ULID may be a native uuid column, so it counts as neither.
-     */
-    private function sameFamily(MorphColumnsOf $morph, Model $targetModel): bool
-    {
-        $stored = \in_array($morph->model->getCasts()[$morph->idAttribute] ?? null, ['int', 'integer'], true) ? 'int' : 'string';
-        $key = match (true) {
-            $targetModel->getKeyType() === 'int' => 'int',
-            $targetModel->usesUniqueIds() => null,
-            default => 'string',
-        };
-
-        return $stored === $key;
     }
 
     /**

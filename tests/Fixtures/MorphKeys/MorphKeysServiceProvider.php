@@ -12,7 +12,7 @@ use Illuminate\Support\ServiceProvider;
 
 /**
  * Wires notes over the store named by `morph_keys.store`, `eloquent` or `memory`, both
- * seeded from the same rows. Counters 2, and badges 3 and 4, are hidden. Each stored id is
+ * seeded from the same rows. Counters 2, badges 3 and 4, and code beta are hidden. Each stored id is
  * the target's storage key or its wire id:
  *
  * | note | subject       | pins          |
@@ -26,6 +26,8 @@ use Illuminate\Support\ServiceProvider;
  * | 7    | mkTokens 1    | mkTokens t-2  |
  * | 8    | mkTokens t-2  |               |
  * | 9    |               |               |
+ * | 10   | mkCodes alpha |               |
+ * | 11   | mkCodes beta  |               |
  *
  * @internal
  */
@@ -46,6 +48,8 @@ final class MorphKeysServiceProvider extends ServiceProvider
             ['id' => 7, 'subject_type' => 'mkTokens', 'subject_id' => '1', 'pins' => [['mkTokens', 't-2']]],
             ['id' => 8, 'subject_type' => 'mkTokens', 'subject_id' => 't-2', 'pins' => []],
             ['id' => 9, 'subject_type' => null, 'subject_id' => null, 'pins' => []],
+            ['id' => 10, 'subject_type' => 'mkCodes', 'subject_id' => 'alpha', 'pins' => []],
+            ['id' => 11, 'subject_type' => 'mkCodes', 'subject_id' => 'beta', 'pins' => []],
         ];
     }
 
@@ -63,9 +67,19 @@ final class MorphKeysServiceProvider extends ServiceProvider
         ];
     }
 
+    /**
+     * The codes as `[id, name, hidden]`.
+     *
+     * @return list<array{string, string, bool}>
+     */
+    public static function codes(): array
+    {
+        return [['alpha', 'Alpha', false], ['beta', 'Beta', true]];
+    }
+
     public function register(): void
     {
-        JsonApi::register([MkNoteResource::class, MkCounterResource::class, MkBadgeResource::class, MkTokenResource::class]);
+        JsonApi::register([MkNoteResource::class, MkCounterResource::class, MkBadgeResource::class, MkTokenResource::class, MkCodeResource::class]);
 
         if (config('morph_keys.store') !== 'memory') {
             JsonApi::provider(new EloquentDataProvider([
@@ -73,6 +87,7 @@ final class MorphKeysServiceProvider extends ServiceProvider
                 'mkCounters' => MkCounter::class,
                 'mkBadges' => MkBadge::class,
                 'mkTokens' => MkToken::class,
+                'mkCodes' => MkCode::class,
             ]), priority: -128);
 
             return;
@@ -104,5 +119,13 @@ final class MorphKeysServiceProvider extends ServiceProvider
                 ? new InMemoryDataProvider($type, $visible, identify: static fn(object $row): string => $row instanceof MkTargetRecord ? $target['prefix'] . $row->id : '')
                 : new VisibleTargetsProvider($type, $visible));
         }
+
+        $codes = [];
+        foreach (self::codes() as [$id, $name, $hidden]) {
+            if (!$hidden) {
+                $codes[$id] = new MkCodeRecord($id, $name);
+            }
+        }
+        JsonApi::provider(new VisibleTargetsProvider('mkCodes', $codes));
     }
 }
