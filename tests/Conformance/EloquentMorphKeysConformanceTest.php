@@ -9,6 +9,8 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\CoversNothing;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\Test;
 
 /**
  * {@see MorphKeysConformanceTestCase} against the reference Eloquent provider over in-memory
@@ -19,6 +21,22 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 #[CoversNothing]
 final class EloquentMorphKeysConformanceTest extends MorphKeysConformanceTestCase
 {
+    #[Test]
+    #[Group('spec:fetching-filtering')]
+    public function aTextColumnAgainstAnIntegerKeyAdmitsTheStoredIdsInsteadOfASubquery(): void
+    {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->request('/api/mkNotes?filter[subject][type]=mkCounters')->assertOk();
+        DB::disableQueryLog();
+
+        $statements = \array_map(static fn(array $entry): string => \strtolower($entry['query']), DB::getQueryLog());
+        $distinct = \array_filter($statements, static fn(string $sql): bool => \str_starts_with($sql, 'select distinct') && \str_contains($sql, '"mk_notes"'));
+        self::assertCount(1, $distinct, "the distinct stored ids are read once:\n" . \implode("\n", $statements));
+        $compared = \array_filter($statements, static fn(string $sql): bool => \str_contains($sql, 'from "mk_notes"') && \str_contains($sql, 'from "mk_counters"'));
+        self::assertSame([], $compared, "no statement compares the text column with the integer keys in SQL:\n" . \implode("\n", $statements));
+    }
+
     protected function store(): string
     {
         return 'eloquent';

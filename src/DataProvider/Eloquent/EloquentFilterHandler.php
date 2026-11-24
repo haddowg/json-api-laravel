@@ -693,8 +693,8 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      * The stored ids are admitted as a related read finds them, through the type's id
      * encoder or the target key's cast: the requested ids when the request names some,
      * otherwise the distinct ids of that type the column holds. Only a key with no
-     * value-object cast and no encoder, which the column holds as the table does, is
-     * compared with a subquery of the admitted keys instead.
+     * value-object cast and no encoder, of the same family as the morph column, both
+     * integers or both text, is compared with a subquery of the admitted keys instead.
      *
      * @param Builder<Model>|QueryBuilder $query
      * @param list<mixed>|null            $forms the requested ids in both stored forms, `null` when the request names none
@@ -713,7 +713,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
 
         $key = $ownerKey ?? $targetModel->getKeyName();
         $encoder = ($target?->ids[$type] ?? null)?->encoder();
-        if ($target === null || ($forms === null && $encoder === null && !$this->castsKey($targetModel, $key))) {
+        if ($target === null || ($forms === null && $encoder === null && !$this->castsKey($targetModel, $key) && $this->sameFamily($morph, $targetModel))) {
             // A membership IN rather than a correlated EXISTS: the target may share the filtered
             // model's table, and its scopes qualify columns with the table name.
             $query->whereIn($morph->idColumn, $targetModel->newQuery()->select($targetModel->qualifyColumn($key))->toBase());
@@ -768,6 +768,19 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         }
 
         return $admitted;
+    }
+
+    /**
+     * Whether the morph id column and the target's key are both integers or both text, so
+     * they compare in SQL on every database: PostgreSQL has no comparison between a text
+     * column and an integer one. The morph column is text unless its model casts it to an
+     * integer, and the target key's family is its model's key type.
+     */
+    private function sameFamily(MorphColumnsOf $morph, Model $targetModel): bool
+    {
+        $stored = \in_array($morph->model->getCasts()[$morph->idAttribute] ?? null, ['int', 'integer'], true) ? 'int' : 'string';
+
+        return $stored === ($targetModel->getKeyType() === 'int' ? 'int' : 'string');
     }
 
     /**
