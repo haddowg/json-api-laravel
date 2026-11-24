@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.24.0](https://github.com/haddowg/json-api-laravel/compare/v2.23.1...v2.24.0) (2026-11-24)
+
+
+### Features
+
+* list a related read's collection gates as additional gates in the catalogue ([#335](https://github.com/haddowg/json-api-laravel/issues/335)) ([c4bfb9e](https://github.com/haddowg/json-api-laravel/commit/c4bfb9e879a89ffdb2db6e0bdd07b9131b38413c))
+* support a HasMany, HasOne, MorphMany or MorphOne whose foreign key names a MorphTo identified by columns or a native morphTo, checking the type column too ([decd5e3](https://github.com/haddowg/json-api-laravel/commit/decd5e31b35d46283685f89e89a9084c7e423a1f))
+
+
+### Bug Fixes
+
+* convert keys between their wire, PHP and stored forms on every Eloquent path ([decd5e3](https://github.com/haddowg/json-api-laravel/commit/decd5e31b35d46283685f89e89a9084c7e423a1f))
+* judge a to-many related read in the catalogue by every gate its endpoint applies ([#333](https://github.com/haddowg/json-api-laravel/issues/333)) ([9ae74c7](https://github.com/haddowg/json-api-laravel/commit/9ae74c7f8602b64dc55d3530358e6bf47fe88a02))
+* match a polymorphic id whatever form it is stored in and however its target keeps its key ([#336](https://github.com/haddowg/json-api-laravel/issues/336)) ([d4f4270](https://github.com/haddowg/json-api-laravel/commit/d4f4270e6e18b2ad9657a87c5ce17736f1f13317))
+* match nothing instead of failing on PostgreSQL when a filter value can't be an integer or uuid ([decd5e3](https://github.com/haddowg/json-api-laravel/commit/decd5e31b35d46283685f89e89a9084c7e423a1f))
+* no longer resolve a non-canonical integer id such as 01 on a read, matching writes ([decd5e3](https://github.com/haddowg/json-api-laravel/commit/decd5e31b35d46283685f89e89a9084c7e423a1f))
+* refuse at warm-up a foreign key naming the bare id or type field of a polymorphic relation, which existing applications must change to name the MorphTo ([decd5e3](https://github.com/haddowg/json-api-laravel/commit/decd5e31b35d46283685f89e89a9084c7e423a1f))
+* render a uuid-shaped stored polymorphic id in lower case and match it stored in either case ([decd5e3](https://github.com/haddowg/json-api-laravel/commit/decd5e31b35d46283685f89e89a9084c7e423a1f))
+* stop a foreign key naming a native morphTo from reading rows of another type that share an id ([decd5e3](https://github.com/haddowg/json-api-laravel/commit/decd5e31b35d46283685f89e89a9084c7e423a1f))
+* treat a malformed UUID or ULID as a missing row instead of sending it to the database ([#337](https://github.com/haddowg/json-api-laravel/issues/337)) ([51b115a](https://github.com/haddowg/json-api-laravel/commit/51b115a2e5ad923cf5947b1191f0e9e9eb9bebf1))
+
 ## [2.23.1](https://github.com/haddowg/json-api-laravel/compare/v2.23.0...v2.23.1) (2026-11-24)
 
 
