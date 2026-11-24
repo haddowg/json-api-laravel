@@ -398,9 +398,11 @@ rows owned by the outer row, through the owner's `belongsTo` or `morphTo` on the
 When the model serving the requested type has global scopes, either form also requires the
 target to exist under them, so a target they hide never matches; see
 [filters that reach through relations](authorization.md#filters-that-reach-through-relations).
-A key with no value-object cast and no id encoder is kept to a subquery of the scoped keys.
-Any other key, such as a binary UUID behind a cast or an encoded id, is admitted the way a
-related read finds its target: the requested ids, or with none the distinct ids of that type
+A key with no value-object cast and no id encoder, of the same family as the morph column,
+both integers or both text, is kept to a subquery of the scoped keys. Any other key is admitted
+the way a related read finds its target: an integer key under a text column, which PostgreSQL
+can't compare, a key the model mints as a UUID, which may be a native uuid column, a binary UUID
+behind a cast, or an encoded id. The requested ids, or with none the distinct ids of that type
 the column holds, are decoded through the encoder or set through the key's cast and looked up
 under the scopes in one query, and only the ids found are bound.
 

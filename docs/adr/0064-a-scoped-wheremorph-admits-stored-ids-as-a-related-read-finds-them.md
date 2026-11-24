@@ -4,4 +4,4 @@ A stored polymorphic id may be the target's storage key or its wire id, while th
 may sit behind a cast such as a binary UUID, so comparing the column with the scoped keys in SQL
 matches nothing. The filter decodes the requested ids, or the distinct ids the column holds,
 through the type's encoder or the key's cast and looks them up under the global scopes, and keeps
-the subquery only for a key with neither.
+the subquery only for a key with neither whose column family matches the morph column.

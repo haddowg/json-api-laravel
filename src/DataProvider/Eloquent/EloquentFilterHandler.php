@@ -772,15 +772,21 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
 
     /**
      * Whether the morph id column and the target's key are both integers or both text, so
-     * they compare in SQL on every database: PostgreSQL has no comparison between a text
-     * column and an integer one. The morph column is text unless its model casts it to an
-     * integer, and the target key's family is its model's key type.
+     * they compare in SQL on every database: PostgreSQL compares a text column with neither
+     * an integer nor a native uuid. The morph column is text unless its model casts it to an
+     * integer. The target key's family is its model's key type, and a key the model mints
+     * as a UUID or ULID may be a native uuid column, so it counts as neither.
      */
     private function sameFamily(MorphColumnsOf $morph, Model $targetModel): bool
     {
         $stored = \in_array($morph->model->getCasts()[$morph->idAttribute] ?? null, ['int', 'integer'], true) ? 'int' : 'string';
+        $key = match (true) {
+            $targetModel->getKeyType() === 'int' => 'int',
+            $targetModel->usesUniqueIds() => null,
+            default => 'string',
+        };
 
-        return $stored === ($targetModel->getKeyType() === 'int' ? 'int' : 'string');
+        return $stored === $key;
     }
 
     /**
