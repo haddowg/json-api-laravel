@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
+use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use haddowg\JsonApiLaravel\Tests\Fixtures\MorphOwners\MorphOwnersServiceProvider;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\CoversNothing;
+use PHPUnit\Framework\Attributes\Test;
 
 #[CoversNothing]
 final class EloquentMorphOwnersConformanceTest extends MorphOwnersConformanceTestCase
@@ -16,6 +18,19 @@ final class EloquentMorphOwnersConformanceTest extends MorphOwnersConformanceTes
     protected function store(): string
     {
         return 'eloquent';
+    }
+
+    #[Test]
+    public function optimizeRefusesASortThroughAForeignKeyAndPassesTheFiltersThroughOne(): void
+    {
+        $app = $this->app;
+        self::assertNotNull($app);
+        $warmer = $app->make(ServableResourceWarmer::class);
+        self::assertInstanceOf(ServableResourceWarmer::class, $warmer);
+        $problems = \implode("\n", $warmer->warm());
+
+        self::assertStringContainsString('declares the sort "noteBody" reaching through "note", which the Eloquent provider cannot run: "note" is read through the foreign key "owner"', $problems);
+        self::assertStringNotContainsString('the filter', $problems);
     }
 
     /**

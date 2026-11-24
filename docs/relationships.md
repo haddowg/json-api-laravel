@@ -606,7 +606,9 @@ scopes its type column itself.
 A filter that reaches through a relation read through a foreign key is one correlated `EXISTS`
 comparing the foreign key column with the outer row's key as each stores it, so a polymorphic id
 column holding wire ids of a type whose id encoder changes them doesn't match there. The
-in-memory provider walks the same relation through the related type's provider.
+in-memory provider walks the same relation through the related type's provider. A `->through()`
+sort has no join to read such a relation by on Eloquent, so `jsonapi:optimize` refuses a sort
+reaching through one there. The in-memory provider sorts through it as it filters.
 
 ### Writing through a foreign key
 

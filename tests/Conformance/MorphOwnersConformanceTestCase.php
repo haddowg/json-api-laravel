@@ -126,6 +126,19 @@ abstract class MorphOwnersConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    #[Group('spec:fetching-sorting')]
+    public function aSortThroughAMorphOneReadsTheRowOfItsType(): void
+    {
+        // jsonapi:optimize refuses it on Eloquent, which has no join to sort by.
+        if ($this->store() === 'eloquent') {
+            self::markTestSkipped('An Eloquent sort cannot reach through a foreign key.');
+        }
+
+        self::assertSame(['1', '2'], \array_column((array) $this->read('/api/moVideos?sort=noteBody')->json('data'), 'id'));
+        self::assertSame(['2', '1'], \array_column((array) $this->read('/api/moVideos?sort=-noteBody')->json('data'), 'id'));
+    }
+
+    #[Test]
     #[Group('spec:fetching-filtering')]
     public function filtersThroughTheRelationMatchOnlyItsType(): void
     {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\DataProvider;
 
+use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortHandler;
 use haddowg\JsonApi\Resource\Sort\SortHandlerInterface;
 
@@ -28,6 +29,10 @@ final class ScopedArraySortHandler implements SortHandlerInterface, ScopesFilter
 
     public function forPaths(FilterPaths $paths): static
     {
-        return new static($this->handler->withRowAdmission($paths->rowAdmission()));
+        $handler = $this->handler->withRowAdmission($paths->rowAdmission());
+        $read = $paths->relationReader();
+
+        // A hop read through a foreign key reads its rows as the filters do.
+        return new static($read !== null ? $handler->withRelationReader(static fn(mixed $row, string $walked, ?RelationInterface $relation): ?iterable => $read($row, $walked, $relation ?? $paths->hopAt($walked)?->relation)) : $handler);
     }
 }

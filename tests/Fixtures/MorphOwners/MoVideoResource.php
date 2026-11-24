@@ -11,6 +11,7 @@ use haddowg\JsonApi\Resource\Field\MorphOne;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\WhereHas;
 use haddowg\JsonApi\Resource\Filter\WhereIdIn;
+use haddowg\JsonApi\Resource\Sort\SortByField;
 
 /**
  * A video's one note, read through the notes' polymorphic owner.
@@ -36,6 +37,11 @@ final class MoVideoResource extends AbstractResource
             WhereIdIn::make('note')->through('note')->acceptsList(),
             WhereHas::make('authored', 'authoredNotes'),
         ];
+    }
+
+    public function sorts(): array
+    {
+        return [SortByField::make('noteBody', 'body')->through('note')];
     }
 
     public function getType(mixed $object): string
