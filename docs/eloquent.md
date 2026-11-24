@@ -411,7 +411,10 @@ can't compare, a key behind another cast, an encoded id, or a database with none
 expressions. The requested ids, or with none the distinct ids of that type the column holds,
 are decoded through the encoder or set through the key's cast and looked up under the scopes
 in one query, and the ids found are bound in lists of 2000 joined with `OR`, so a long list
-stays under the database's parameter limit.
+stays under the database's parameter limit. On PostgreSQL the id column's own type decides what it
+compares with, read from the schema once per column: an integer column binds only integer
+ids, and a native uuid column binds only UUIDs and compares with a uuid key directly, while a
+key of any other type is admitted and bound.
 
 The id column may hold the target's storage key or its wire id. They differ only when the
 target's type declares an id encoder, and a text column that holds the ids of several kinds of
