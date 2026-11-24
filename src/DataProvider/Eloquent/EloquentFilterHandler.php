@@ -50,6 +50,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo as EloquentMorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany as EloquentMorphToMany;
 use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Str;
 
 /**
  * Executes core's filter value objects against an Eloquent query {@see Builder},
@@ -162,6 +163,13 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      * PostgreSQL's 65535 parameters per statement.
      */
     private static int $morphIdChunk = 2000;
+
+    /**
+     * Each id column's comparison family on PostgreSQL, keyed by connection, table and column.
+     *
+     * @var array<string, 'int'|'uuid'|'text'>
+     */
+    private static array $columnFamilies = [];
 
     /**
      * Whether the filter being applied is the leaf of a `->through()` path whose ids core has
@@ -851,6 +859,17 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     }
 
     /**
+     * Forgets the id column types read from the schema, for a test that recreates a table with
+     * other types.
+     *
+     * @internal
+     */
+    public static function forgetColumnTypes(): void
+    {
+        self::$columnFamilies = [];
+    }
+
+    /**
      * Sets how many admitted ids bind in one `IN` list, for a test to force several.
      *
      * @internal
@@ -884,9 +903,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         $column = $targetModel->qualifyColumn($key);
         $grammar = $targetModel->getConnection()->getQueryGrammar();
         $driver = $targetModel->getConnection()->getDriverName();
-        $storedInt = \in_array($morph->model->getCasts()[$morph->idAttribute] ?? null, ['int', 'integer'], true);
+        $family = self::columnFamily($morph->model, $morph->idAttribute, $morph->table());
         if ($encoder instanceof BinaryUuidEncoder) {
-            $text = $storedInt ? null : BinaryUuidText::sql($targetModel->getConnection(), $grammar->wrap($column));
+            $text = $family !== 'text' ? null : BinaryUuidText::sql($targetModel->getConnection(), $grammar->wrap($column));
 
             return $text === null ? null : ($driver === 'pgsql' ? [$text] : [$text, $column]);
         }
@@ -895,8 +914,12 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         }
 
         $keyInt = $targetModel->getKeyType() === 'int';
-        if ($storedInt !== $keyInt) {
+        if (($family === 'int') !== $keyInt) {
             return null;
+        }
+        // A native uuid column compares only with another.
+        if ($family === 'uuid') {
+            return self::columnFamily($targetModel, $key, $targetModel->getTable()) === 'uuid' ? [$column] : null;
         }
 
         return [$driver === 'pgsql' && !$keyInt ? \sprintf('CAST(%s AS TEXT)', $grammar->wrap($column)) : $column];
@@ -975,12 +998,45 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      */
     private function comparableIds(MorphColumnsOf $morph, array $values): array
     {
-        $cast = $morph->model->getCasts()[$morph->idAttribute] ?? null;
-        if (!\in_array($cast, ['int', 'integer'], true)) {
-            return \array_values($values);
+        return match (self::columnFamily($morph->model, $morph->idAttribute, $morph->table())) {
+            'int' => \array_values(\array_filter($values, static fn(mixed $value): bool => \is_int($value) || (\is_string($value) && \preg_match('/^-?\d+$/', $value) === 1))),
+            'uuid' => \array_values(\array_filter($values, static fn(mixed $value): bool => \is_string($value) && Str::isUuid($value))),
+            default => \array_values($values),
+        };
+    }
+
+    /**
+     * What a column holding ids compares as: `int` for an attribute cast to an integer, and on
+     * PostgreSQL, which compares a column only with values of its own kind, `int` or `uuid` for
+     * a column of that type, read from the schema once per column. Anything else is `text`.
+     *
+     * @return 'int'|'uuid'|'text'
+     */
+    private static function columnFamily(Model $model, string $attribute, string $table): string
+    {
+        if (\in_array($model->getCasts()[$attribute] ?? null, ['int', 'integer'], true)) {
+            return 'int';
+        }
+        $connection = $model->getConnection();
+        if ($connection->getDriverName() !== 'pgsql') {
+            return 'text';
         }
 
-        return \array_values(\array_filter($values, static fn(mixed $value): bool => \is_int($value) || (\is_string($value) && \preg_match('/^-?\d+$/', $value) === 1)));
+        $cacheKey = $connection->getName() . "\0" . $table . "\0" . $attribute;
+        if (!isset(self::$columnFamilies[$cacheKey])) {
+            try {
+                $type = \strtolower($connection->getSchemaBuilder()->getColumnType($table, $attribute));
+            } catch (\Throwable) {
+                $type = '';
+            }
+            self::$columnFamilies[$cacheKey] = match (true) {
+                \in_array($type, ['int2', 'int4', 'int8', 'smallint', 'integer', 'bigint'], true) => 'int',
+                $type === 'uuid' => 'uuid',
+                default => 'text',
+            };
+        }
+
+        return self::$columnFamilies[$cacheKey];
     }
 
     /**

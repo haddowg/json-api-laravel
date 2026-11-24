@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentFilterHandler;
 use haddowg\JsonApiLaravel\Tests\Fixtures\IdKinds\IdKinds;
 use haddowg\JsonApiLaravel\Tests\Fixtures\IdKinds\IdKindsServiceProvider;
 use Illuminate\Database\Schema\Blueprint;
@@ -50,6 +51,11 @@ abstract class EloquentIdKindsConformanceTestCase extends IdKindsConformanceTest
 
     protected function defineDatabaseMigrations(): void
     {
+        // Laravel binds a string as text, which PostgreSQL refuses for a bytea column.
+        if (IdKinds::kind() === 'binary' && \getenv('JSONAPI_TEST_DB') === 'pgsql') {
+            self::markTestSkipped('Binary keys bind as text, which a PostgreSQL bytea column refuses.');
+        }
+        EloquentFilterHandler::forgetColumnTypes();
         foreach (['ik_pins', 'ik_book_label', 'ik_books', 'ik_labels', 'ik_writers'] as $table) {
             Schema::dropIfExists($table);
         }
@@ -127,6 +133,13 @@ abstract class EloquentIdKindsConformanceTestCase extends IdKindsConformanceTest
             }
             foreach ($row['pins'] as [$type, $ref]) {
                 DB::table('ik_pins')->insert(['book_id' => IdKinds::stored($row['id']), 'pin_type' => $type, 'pin_id' => IdKinds::wire($ref)]);
+            }
+        }
+
+        // The seeded integer keys leave PostgreSQL's sequences behind them.
+        if (IdKinds::integerKeys() && DB::connection()->getDriverName() === 'pgsql') {
+            foreach (['ik_writers', 'ik_books', 'ik_labels'] as $table) {
+                DB::statement(\sprintf("SELECT setval(pg_get_serial_sequence('%1\$s', 'id'), (SELECT MAX(id) FROM %1\$s))", $table));
             }
         }
     }
