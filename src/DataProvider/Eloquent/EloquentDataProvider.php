@@ -54,12 +54,15 @@ use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Str;
 
 /**
  * The reference Eloquent read provider: the storage twin of the
@@ -213,15 +216,9 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // Decode the wire id to its storage key when the type declares an encoder.
         // An undecodable id is a 404: no row holds that key, so short-circuit without
         // querying (the SPI stays wire-id — only this reference impl decodes; ADR 0008).
-        $encoder = $this->encoderFor($type);
-        if ($encoder !== null) {
-            /** @var mixed $key */
-            $key = $encoder->decode($id);
-            if ($key === null) {
-                return null;
-            }
-        } else {
-            $key = $id;
+        $key = $this->storageKey($type, $id);
+        if ($key === null) {
+            return null;
         }
 
         return $this->newQuery($type)->whereKey($key)->first();
@@ -236,11 +233,9 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      */
     public function fetchMany(string $type, array $ids): array
     {
-        $encoder = $this->encoderFor($type);
         $keys = [];
         foreach ($ids as $id) {
-            /** @var mixed $key */
-            $key = $encoder !== null ? $encoder->decode($id) : $id;
+            $key = $this->storageKey($type, $id);
             if ($key !== null) {
                 $keys[] = $key;
             }
@@ -254,11 +249,9 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      */
     public function admitIds(string $type, array $ids): array
     {
-        $encoder = $this->encoderFor($type);
         $byKey = [];
         foreach ($ids as $id) {
-            /** @var mixed $key */
-            $key = $encoder !== null ? $encoder->decode($id) : $id;
+            $key = $this->storageKey($type, $id);
             if (\is_int($key) || \is_string($key)) {
                 $byKey[(string) $key][] = $id;
             }
@@ -288,15 +281,9 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      */
     public function fetchOneWithTrashed(string $type, string $id): ?object
     {
-        $encoder = $this->encoderFor($type);
-        if ($encoder !== null) {
-            /** @var mixed $key */
-            $key = $encoder->decode($id);
-            if ($key === null) {
-                return null;
-            }
-        } else {
-            $key = $id;
+        $key = $this->storageKey($type, $id);
+        if ($key === null) {
+            return null;
         }
 
         return $this->newQueryWithTrashed($type)->whereKey($key)->first();
@@ -1713,6 +1700,32 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * reference wiring keeps working; outside a container (a bare unit test) every type
      * resolves encoder-less.
      */
+    /**
+     * The storage key a wire id of `$type` names, or null when no row can hold it: an id
+     * the type's encoder can't decode, or one that isn't a UUID or ULID for a model that mints
+     * them. A malformed id then reads as a missing row on every database, where PostgreSQL
+     * would refuse it against a native uuid column.
+     */
+    private function storageKey(string $type, string $id): mixed
+    {
+        $encoder = $this->encoderFor($type);
+        if ($encoder !== null) {
+            return $encoder->decode($id);
+        }
+
+        $class = $this->modelByType[$type] ?? null;
+        if ($class === null) {
+            return $id;
+        }
+        $traits = \class_uses_recursive($class);
+
+        return match (true) {
+            isset($traits[HasUuids::class]) => Str::isUuid($id) ? $id : null,
+            isset($traits[HasUlids::class]) => Str::isUlid($id) ? $id : null,
+            default => $id,
+        };
+    }
+
     private function encoderFor(string $type): ?IdEncoderInterface
     {
         if (!$this->idEncodersResolved) {
