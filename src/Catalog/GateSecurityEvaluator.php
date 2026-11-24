@@ -7,6 +7,7 @@ namespace haddowg\JsonApiLaravel\Catalog;
 use haddowg\JsonApi\Catalog\OperationDefinition;
 use haddowg\JsonApi\Catalog\SecurityEvaluatorInterface;
 use haddowg\JsonApi\Catalog\SecurityVerdict;
+use haddowg\JsonApi\OpenApi\Metadata\OperationKind;
 use haddowg\JsonApiLaravel\Authorization\Authorizer;
 use haddowg\JsonApiLaravel\Server\ServerRegistry;
 use Illuminate\Contracts\Auth\Access\Gate;
@@ -27,35 +28,61 @@ use Illuminate\Contracts\Auth\Access\Gate;
  * secured by something outside the package (`true`) is `Depends`, since the package cannot
  * see that check. A declared ability nothing defines is `Denied`, because the Gate denies
  * it when the operation runs.
+ *
+ * A to-many related or relationship read the parent's rule allows also needs the collection
+ * ability of every type it relates to, as its endpoint checks them: it is `Denied` when one
+ * of them denies the caller and `Depends` when one needs the resource.
  */
 final class GateSecurityEvaluator implements SecurityEvaluatorInterface
 {
     /**
-     * @param \Closure(): array<string, class-string> $models the `type → model class` map, read on first use
+     * @param \Closure(): array<string, class-string>                       $models              the `type → model class` map, read on first use
+     * @param (\Closure(string, string, string): array<string, string>)|null $relatedListAbilities the collection abilities a related read through a server's type's relation also needs, keyed by type
      */
     public function __construct(
         private readonly Authorizer $authorizer,
         private readonly Gate $gate,
         private readonly \Closure $models,
+        private readonly ?\Closure $relatedListAbilities = null,
     ) {}
 
     public function evaluate(OperationDefinition $operation, ?object $user = null): SecurityVerdict
     {
-        $ability = $operation->security;
+        $server = $operation->server !== '' ? $operation->server : ServerRegistry::DEFAULT_SERVER;
+        $verdict = $this->verdict($server, $operation->type, $operation->security, $user);
+        if ($verdict !== SecurityVerdict::Allowed || $operation->type === null || $operation->relation === null || $this->relatedListAbilities === null
+            || ($operation->kind !== OperationKind::FetchRelated && $operation->kind !== OperationKind::FetchRelationship)) {
+            return $verdict;
+        }
+
+        foreach (($this->relatedListAbilities)($server, $operation->type, $operation->relation) as $type => $ability) {
+            $list = $this->verdict($server, $type, $ability, $user);
+            if ($list === SecurityVerdict::Denied) {
+                return $list;
+            }
+            if ($list === SecurityVerdict::Depends) {
+                $verdict = $list;
+            }
+        }
+
+        return $verdict;
+    }
+
+    private function verdict(string $server, ?string $type, string|bool|null $ability, ?object $user): SecurityVerdict
+    {
         if ($ability === null || $ability === false) {
             return SecurityVerdict::Allowed;
         }
         if ($ability === true) {
             return SecurityVerdict::Depends;
         }
-        if ($operation->type === null) {
+        if ($type === null) {
             return SecurityVerdict::Depends;
         }
 
-        $server = $operation->server !== '' ? $operation->server : ServerRegistry::DEFAULT_SERVER;
-        $config = $this->authorizer->resourceAuthorization($server, $operation->type);
+        $config = $this->authorizer->resourceAuthorization($server, $type);
         $declaredPolicy = $config?->policy;
-        $model = ($this->models)()[$operation->type] ?? null;
+        $model = ($this->models)()[$type] ?? null;
         $subject = $model ?? $config?->subjectClass;
 
         $gate = $this->gate;

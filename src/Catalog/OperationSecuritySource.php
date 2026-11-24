@@ -29,7 +29,9 @@ use Illuminate\Support\Str;
  *   `false`, and `true` (secured by something outside the package) is the boolean `true`.
  * - A related or relationship read is guarded by the relation's `security(read:)` ability,
  *   else a `view{Relation}` ability the policy or the Gate defines, else the parent's
- *   `fetchOne` rule. `read: false` is public.
+ *   `fetchOne` rule. `read: false` is public. A to-many guarded by the parent's rule also
+ *   needs the collection ability of every type it relates to, which
+ *   {@see relatedListAbilities()} lists for the evaluator.
  * - A relationship mutation is guarded by the relation's `security(mutate:)` ability, else
  *   the parent's `update` rule. `mutate: false` is public.
  * - A custom action is guarded by its `ability`, or nothing.
@@ -97,12 +99,52 @@ final class OperationSecuritySource implements OperationSecuritySourceInterface
             return new OperationSecurity($read, SecurityLevel::Entity);
         }
 
-        $convention = 'view' . Str::studly($relation);
-        if ($read === null && !\in_array($convention, self::STANDARD_ABILITIES, true) && $this->defines($server, $type->type(), $convention, false)) {
+        $convention = $read === null ? $this->conventionReadAbility($server, $type->type(), $relation) : null;
+        if ($convention !== null) {
             return new OperationSecurity($convention, SecurityLevel::Entity);
         }
 
         return $this->crud($server, $type->type(), Operation::FetchOne);
+    }
+
+    /**
+     * The collection ability of each type a related or relationship read through `$relation`
+     * must also pass, keyed by type, as the handler checks them: a to-many is refused when the
+     * caller may not list a type it relates to. A to-one needs none, and neither does a
+     * relation whose own read permission, declared or by the `view{Relation}` convention,
+     * replaces them. A `true` or `false` collection rule is not enforced, so only abilities
+     * are listed.
+     *
+     * @return array<string, string>
+     */
+    public function relatedListAbilities(string $server, TypeMetadataInterface $type, string $relation): array
+    {
+        $declared = $this->relation($type, $relation);
+        if ($declared === null || !$declared->isToMany() || $declared->securityRead() !== null
+            || $this->conventionReadAbility($server, $type->type(), $relation) !== null) {
+            return [];
+        }
+
+        $abilities = [];
+        foreach ($declared->relatedTypes() as $related) {
+            $rule = $this->crud($server, $related, Operation::FetchCollection)->expression;
+            if (\is_string($rule)) {
+                $abilities[$related] = $rule;
+            }
+        }
+
+        return $abilities;
+    }
+
+    /**
+     * The `view{Relation}` ability guarding a read of `$relation`, or `null` when nothing
+     * defines it.
+     */
+    private function conventionReadAbility(string $server, string $type, string $relation): ?string
+    {
+        $convention = 'view' . Str::studly($relation);
+
+        return !\in_array($convention, self::STANDARD_ABILITIES, true) && $this->defines($server, $type, $convention, false) ? $convention : null;
     }
 
     private function relationMutate(string $server, TypeMetadataInterface $type, string $relation): OperationSecurity

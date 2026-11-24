@@ -193,5 +193,8 @@ foreach (app(OperationCatalog::class)->forServer('default') as $operation) {
 The evaluator inspects the ability through `Gate::forUser($user)->inspect()`. It answers
 `Depends` instead when the policy method or `Gate::define()` callback takes the resource as
 well as the user, or when the policy has a `before()` method, since the answer then depends on
-the resource. A public or unguarded operation is `Allowed`. `ScopeChecker` uses the same
-matcher as enforcement.
+the resource. A public or unguarded operation is `Allowed`. A to-many's related and
+relationship reads also need the collection ability of every type the relation reaches, as
+their endpoints check it, unless the relation has its own read ability: the evaluator answers
+`Denied` when one of those refuses the caller, though the operation lists only the parent's
+ability. `ScopeChecker` uses the same matcher as enforcement.

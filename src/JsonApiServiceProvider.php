@@ -1161,6 +1161,19 @@ final class JsonApiServiceProvider extends ServiceProvider
             $app->make(Authorizer::class),
             $app->make(\Illuminate\Contracts\Auth\Access\Gate::class),
             $models,
+            static function (string $server, string $type, string $relation) use ($app): array {
+                $source = $app->make(OperationSecuritySourceInterface::class);
+                if (!$source instanceof OperationSecuritySource) {
+                    return [];
+                }
+                foreach ($app->make(MetadataSource::class)->forServer($server)->types() as $metadata) {
+                    if ($metadata->type() === $type) {
+                        return $source->relatedListAbilities($server, $metadata, $relation);
+                    }
+                }
+
+                return [];
+            },
         ));
         $this->app->singleton(OperationCatalog::class, static fn(Container $app): OperationCatalog => new OperationCatalog(
             static fn(string $server): ServerMetadataInterface => $app->make(MetadataSource::class)->forServer($server),
