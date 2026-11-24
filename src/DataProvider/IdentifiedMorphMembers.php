@@ -16,6 +16,7 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Schema\Relationship\IdentifiedMember;
 use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
 use haddowg\JsonApi\Server\Server;
@@ -327,14 +328,12 @@ final class IdentifiedMorphMembers
 
         $byWireId = [];
         foreach ($keys as $key) {
-            $byWireId[$this->wireId($server, $type, $key)] = $key;
+            $byWireId[$this->wireId($server, $type, $key)][] = $key;
         }
 
         $admitted = [];
         foreach ($this->admit($server, $type, \array_map('strval', \array_keys($byWireId))) as $id) {
-            if (isset($byWireId[$id])) {
-                $admitted[] = $byWireId[$id];
-            }
+            \array_push($admitted, ...$byWireId[$id] ?? []);
         }
 
         return $admitted;
@@ -627,7 +626,7 @@ final class IdentifiedMorphMembers
     }
 
     /**
-     * A stored key as the type's serializer renders its id, through the id encoder it declares.
+     * A stored id, the storage key or the wire id, as the type's serializer renders it, through the id encoder it declares.
      */
     private function wireId(Server $server, string $type, string|int $key): string
     {
@@ -635,7 +634,7 @@ final class IdentifiedMorphMembers
         if ($serializer instanceof AbstractResource) {
             foreach ($serializer->allFields() as $field) {
                 if ($field instanceof Id) {
-                    return $field->encoder()?->encode($key) ?? (string) $key;
+                    return StoredIdForms::wireId($field->encoder(), $key);
                 }
             }
         }

@@ -18,9 +18,9 @@ final class UuidKeysServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        JsonApi::register([WriterResource::class, BookResource::class, LabelResource::class]);
+        JsonApi::register([WriterResource::class, BookResource::class, LabelResource::class, NoteResource::class]);
 
-        $models = ['writers' => Writer::class, 'books' => Book::class, 'labels' => Label::class];
+        $models = ['writers' => Writer::class, 'books' => Book::class, 'labels' => Label::class, 'notes' => Note::class];
         JsonApi::provider(new EloquentDataProvider($models), priority: -128);
         JsonApi::persister(new EloquentDataPersister($models), priority: -128);
         $this->app->singleton(RelationshipLoadStateInterface::class, EloquentRelationshipLoadState::class);

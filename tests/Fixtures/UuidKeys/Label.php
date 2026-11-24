@@ -24,6 +24,11 @@ final class Label extends Model
 
     protected $table = 'uk_labels';
 
+    protected static function booted(): void
+    {
+        static::addGlobalScope('visible', static fn($query) => $query->where('uk_labels.name', '<>', 'hidden'));
+    }
+
     /**
      * @return BelongsToMany<Book, $this>
      */

@@ -150,7 +150,7 @@ declare, and the provider translates:
 | `WhereThrough::make('artist.name')` (deprecated) | a dotted-path correlated `EXISTS` |
 | `WhereThroughIn::make('label', 'artist.label')` (deprecated) | one correlated `EXISTS` over the path with a `whereIn` at the leaf |
 | `WhereSet::make('archived', 'archived_at')` | `whereNotNull` for `true`, `whereNull` for `false`, nothing for both |
-| `WhereMorph::make('subject')` on a `MorphTo` | `whereIn` on the model's `morphTo` type column, the alias the morph map gives the requested type's model, and on its id column when ids are sent |
+| `WhereMorph::make('subject')` on a `MorphTo` | `whereIn` on the model's `morphTo` type column, the alias the morph map gives the requested type's model, and on its id column when ids are sent, each id as its storage key and its wire id |
 | `WhereMorph::make('linked', 'links')` on a `MorphToMany` | one `EXISTS` over the `through()` rows `identifiedByRows()` names, owned by the outer row |
 | `WhereAll` / `WhereAny` | a nested `where(fn ($q) => …)` combining the children with `AND` / `orWhere` |
 | `Where…->fixed($value)` | the same `where` predicate with its value pinned server-side (no arm needed) |
@@ -398,6 +398,18 @@ rows owned by the outer row, through the owner's `belongsTo` or `morphTo` on the
 When the model serving the requested type has global scopes, either form also requires the
 target to exist under them, so a target they hide never matches; see
 [filters that reach through relations](authorization.md#filters-that-reach-through-relations).
+A key with no value-object cast and no id encoder is kept to a subquery of the scoped keys.
+Any other key, such as a binary UUID behind a cast or an encoded id, is admitted the way a
+related read finds its target: the requested ids, or with none the distinct ids of that type
+the column holds, are decoded through the encoder or set through the key's cast and looked up
+under the scopes in one query, and only the ids found are bound.
+
+The id column may hold the target's storage key or its wire id. They differ only when the
+target's type declares an id encoder, and a text column that holds the ids of several kinds of
+target often keeps the wire form, while Eloquent's own `associate()` writes the storage key.
+Each requested id is compared in both forms, and the linkage, the related endpoint and the
+include read either. A link row of a `MorphToMany` works the same way. A column the model casts
+to `int` is only compared with the numeric forms.
 
 The in-memory provider compares the fields `identifiedByColumns()` or `identifiedByRows()`
 name, through core's reference handler, so a type it serves needs one of them. Route

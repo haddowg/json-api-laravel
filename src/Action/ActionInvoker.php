@@ -22,6 +22,7 @@ use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
 use haddowg\JsonApi\Resource\Filter\FilterMatcher;
 use haddowg\JsonApi\Resource\MetaContext;
@@ -646,7 +647,7 @@ final readonly class ActionInvoker
         if ($serializer instanceof AbstractResource) {
             foreach ($serializer->allFields() as $field) {
                 if ($field instanceof Id) {
-                    return $field->encoder()?->encode($key) ?? (string) $key;
+                    return StoredIdForms::wireId($field->encoder(), $key);
                 }
             }
         }

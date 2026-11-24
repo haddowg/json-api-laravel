@@ -10,6 +10,7 @@ use haddowg\JsonApi\Resource\Filter\DateOperand;
 use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\FilterHandlerInterface;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
+use haddowg\JsonApi\Resource\Filter\MorphTarget;
 use haddowg\JsonApi\Resource\Filter\Range;
 use haddowg\JsonApi\Resource\Filter\RelationHop;
 use haddowg\JsonApi\Resource\Filter\ThroughPath;
@@ -614,15 +615,19 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      * model's own `morphTo` relation of that name, its stored type the morph class of the
      * model serving the requested type, so a morph map is honoured; a relation the model
      * doesn't define falls back to the columns `identifiedByColumns()` names. Over a
-     * `MorphToMany` it is one `EXISTS` over the link rows `identifiedByRows()` names.
+     * `MorphToMany` it is one `EXISTS` over the link rows `identifiedByRows()` names. A
+     * stored id may hold the target's storage key or its wire id, so requested ids match
+     * either.
      *
      * @param Builder<Model> $query
      */
     private function whereMorph(Builder $query, WhereMorph $filter, mixed $value): void
     {
         $selection = $filter->selection($value);
-        $relation = $filter->resolvedTarget()?->relation;
+        $target = $filter->resolvedTarget();
+        $relation = $target?->relation;
         $model = $query->getModel();
+        $forms = $selection->ids !== null && $target !== null ? $target->storedForms($selection->type, $selection->ids) : $selection->ids;
 
         if ($relation instanceof MorphTo) {
             $storage = $relation->column() ?? $relation->name();
@@ -630,16 +635,18 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             if ($eloquent instanceof EloquentMorphTo) {
                 $class = $this->encoders?->modelFor($selection->type);
                 $stored = $class !== null ? [(new $class())->getMorphClass()] : [$selection->type];
-                $this->morphPredicate($query, $model->qualifyColumn($eloquent->getMorphType()), $stored, $model->qualifyColumn($eloquent->getForeignKeyName()), $selection->ids);
-                $this->scopeMorphTarget($query, $selection->type, $model->qualifyColumn($eloquent->getForeignKeyName()), $eloquent->getOwnerKeyName());
+                $morph = new MorphColumnsOf($model, $model->qualifyColumn($eloquent->getMorphType()), $stored, $eloquent->getForeignKeyName(), $model->qualifyColumn($eloquent->getForeignKeyName()));
+                $this->morphPredicate($query, $morph, $forms);
+                $this->scopeMorphTarget($query, $morph, $target, $selection->type, $forms, $eloquent->getOwnerKeyName());
 
                 return;
             }
 
             $columns = $relation->identifierColumns();
             if ($columns !== null) {
-                $this->morphPredicate($query, $this->qualify($query, $columns->type), $columns->storedValues($selection->type), $this->qualify($query, $columns->id), $selection->ids);
-                $this->scopeMorphTarget($query, $selection->type, $this->qualify($query, $columns->id), null);
+                $morph = new MorphColumnsOf($model, $this->qualify($query, $columns->type), $columns->storedValues($selection->type), $columns->id, $this->qualify($query, $columns->id));
+                $this->morphPredicate($query, $morph, $forms);
+                $this->scopeMorphTarget($query, $morph, $target, $selection->type, $forms, null);
 
                 return;
             }
@@ -651,7 +658,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             $row = new $class();
             $owner = \method_exists($row, $rows->owner) ? $row->{$rows->owner}() : null;
 
-            $query->whereExists(function (QueryBuilder $sub) use ($row, $owner, $rows, $model, $selection): void {
+            $query->whereExists(function (QueryBuilder $sub) use ($row, $owner, $rows, $model, $selection, $target, $forms): void {
                 $sub->selectRaw('1')->from($row->getTable());
                 if ($owner instanceof EloquentMorphTo) {
                     $sub->whereColumn($row->qualifyColumn($owner->getForeignKeyName()), $model->getQualifiedKeyName())
@@ -661,8 +668,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
                 } else {
                     $sub->whereColumn($row->qualifyColumn($rows->owner), $model->getQualifiedKeyName());
                 }
-                $this->morphPredicate($sub, $row->qualifyColumn($rows->type), $rows->storedValues($selection->type), $row->qualifyColumn($rows->id), $selection->ids);
-                $this->scopeMorphTarget($sub, $selection->type, $row->qualifyColumn($rows->id), null);
+                $morph = new MorphColumnsOf($row, $row->qualifyColumn($rows->type), $rows->storedValues($selection->type), $rows->id, $row->qualifyColumn($rows->id));
+                $this->morphPredicate($sub, $morph, $forms);
+                $this->scopeMorphTarget($sub, $morph, $target, $selection->type, $forms, null);
             });
 
             return;
@@ -677,49 +685,171 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     }
 
     /**
-     * Keeps the targets of `$type` a `WhereMorph` compares, by `$idColumn`, to those the
-     * model serving the type admits under its global scopes, as a related read of it does, so
-     * a hidden target never matches. A model with no global scope needs no subquery. The
-     * target is matched on `$ownerKey`, its primary key when null.
+     * Keeps the targets of `$type` a `WhereMorph` compares to those the model serving the
+     * type admits under its global scopes, as a related read of it does, so a hidden target
+     * never matches. A model with no global scope needs nothing. The target is matched on
+     * `$ownerKey`, its primary key when null.
+     *
+     * The stored ids are admitted as a related read finds them, through the type's id
+     * encoder or the target key's cast: the requested ids when the request names some,
+     * otherwise the distinct ids of that type the column holds. Only a key with no
+     * value-object cast and no encoder, which the column holds as the table does, is
+     * compared with a subquery of the admitted keys instead.
      *
      * @param Builder<Model>|QueryBuilder $query
+     * @param list<mixed>|null            $forms the requested ids in both stored forms, `null` when the request names none
      */
-    private function scopeMorphTarget(Builder|QueryBuilder $query, string $type, string $idColumn, ?string $ownerKey): void
+    private function scopeMorphTarget(Builder|QueryBuilder $query, MorphColumnsOf $morph, ?MorphTarget $target, string $type, ?array $forms, ?string $ownerKey): void
     {
         $class = $this->encoders?->modelFor($type);
         if ($class === null) {
             return;
         }
 
-        $target = new $class();
-        if ($target->getGlobalScopes() === []) {
+        $targetModel = new $class();
+        if ($targetModel->getGlobalScopes() === []) {
             return;
         }
 
-        // A membership IN rather than a correlated EXISTS: the target may share the filtered
-        // model's table, and its scopes qualify columns with the table name.
-        $query->whereIn($idColumn, $target->newQuery()->select($target->qualifyColumn($ownerKey ?? $target->getKeyName()))->toBase());
-    }
+        $key = $ownerKey ?? $targetModel->getKeyName();
+        $encoder = ($target?->ids[$type] ?? null)?->encoder();
+        if ($target === null || ($forms === null && $encoder === null && !$this->castsKey($targetModel, $key))) {
+            // A membership IN rather than a correlated EXISTS: the target may share the filtered
+            // model's table, and its scopes qualify columns with the table name.
+            $query->whereIn($morph->idColumn, $targetModel->newQuery()->select($targetModel->qualifyColumn($key))->toBase());
 
-    /**
-     * `$typeColumn` among `$stored` and, when the request names ids, `$idColumn` among them.
-     *
-     * @param Builder<Model>|QueryBuilder $query
-     * @param list<string>                                        $stored
-     * @param list<mixed>|null                                    $ids
-     */
-    private function morphPredicate(Builder|QueryBuilder $query, string $typeColumn, array $stored, string $idColumn, ?array $ids): void
-    {
-        if ($stored === [] || $ids === []) {
+            return;
+        }
+
+        $admitted = $this->comparableIds($morph, $this->admittedStoredIds($targetModel, $key, $target, $type, $forms ?? $this->storedMorphIds($morph)));
+        if ($admitted === []) {
             $query->whereRaw('1 = 0');
 
             return;
         }
 
-        $query->whereIn($typeColumn, $stored);
-        if ($ids !== null) {
-            $query->whereIn($idColumn, $ids);
+        $query->whereIn($morph->idColumn, $admitted);
+    }
+
+    /**
+     * The stored ids among `$stored`, each a storage key or a wire id of `$type`, whose
+     * target `$targetModel` admits under its global scopes: each read as its wire id, then
+     * decoded through the type's id encoder or set through the key's cast, as a related
+     * read finds the target, in one key query.
+     *
+     * @param list<mixed> $stored
+     *
+     * @return list<mixed>
+     */
+    private function admittedStoredIds(Model $targetModel, string $key, MorphTarget $target, string $type, array $stored): array
+    {
+        $encoder = ($target->ids[$type] ?? null)?->encoder();
+        $byKey = [];
+        foreach ($stored as $value) {
+            if (!\is_string($value) && !\is_int($value)) {
+                continue;
+            }
+            $wire = $target->wireId($type, $value);
+            $decoded = $encoder !== null ? $encoder->decode($wire) : $this->castKey($targetModel, $wire);
+            if (\is_string($decoded) || \is_int($decoded)) {
+                $byKey[(string) $decoded][] = $value;
+            }
         }
+        if ($byKey === []) {
+            return [];
+        }
+
+        $admitted = [];
+        $keys = \array_map(static fn(int|string $decoded): string => (string) $decoded, \array_keys($byKey));
+        foreach ($targetModel->newQuery()->whereIn($targetModel->qualifyColumn($key), $keys)->toBase()->pluck($targetModel->qualifyColumn($key)) as $found) {
+            if (\is_string($found) || \is_int($found)) {
+                \array_push($admitted, ...$byKey[(string) $found] ?? []);
+            }
+        }
+
+        return $admitted;
+    }
+
+    /**
+     * Whether `$model` stores `$key` through a value-object cast, so the database holds a
+     * value other than the one a stored morph id is compared as.
+     */
+    private function castsKey(Model $model, string $key): bool
+    {
+        $cast = $model->getCasts()[$key] ?? null;
+        $class = \is_string($cast) ? \explode(':', $cast, 2)[0] : null;
+
+        return $class !== null && \class_exists($class) && (\is_a($class, CastsAttributes::class, true) || \is_a($class, CastsInboundAttributes::class, true));
+    }
+
+    /**
+     * The distinct ids of a type among the stored type values the morph columns hold,
+     * unscoped: the targets a type-only `WhereMorph` can reach.
+     *
+     * @return list<string|int>
+     */
+    private function storedMorphIds(MorphColumnsOf $morph): array
+    {
+        if ($morph->storedTypes === []) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($morph->model->getConnection()->table($morph->table())->whereIn($morph->typeColumn, $morph->storedTypes)->distinct()->pluck($morph->idColumn) as $id) {
+            if (\is_int($id) || (\is_string($id) && $id !== '')) {
+                $ids[] = $id;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * The values among `$values` the morph id column can hold: a column the model casts to
+     * an integer keeps only integers and digit strings, so a wire id another form of the
+     * same key takes is never compared as a number it isn't.
+     *
+     * @param list<mixed> $values
+     *
+     * @return list<mixed>
+     */
+    private function comparableIds(MorphColumnsOf $morph, array $values): array
+    {
+        $cast = $morph->model->getCasts()[$morph->idAttribute] ?? null;
+        if (!\in_array($cast, ['int', 'integer'], true)) {
+            return \array_values($values);
+        }
+
+        return \array_values(\array_filter($values, static fn(mixed $value): bool => \is_int($value) || (\is_string($value) && \preg_match('/^-?\d+$/', $value) === 1)));
+    }
+
+    /**
+     * The type column among the stored type values and, when the request names ids, the id
+     * column among them.
+     *
+     * @param Builder<Model>|QueryBuilder $query
+     * @param list<mixed>|null            $ids
+     */
+    private function morphPredicate(Builder|QueryBuilder $query, MorphColumnsOf $morph, ?array $ids): void
+    {
+        if ($morph->storedTypes === [] || $ids === []) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->whereIn($morph->typeColumn, $morph->storedTypes);
+        if ($ids === null) {
+            return;
+        }
+
+        $ids = $this->comparableIds($morph, $ids);
+        if ($ids === []) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+        $query->whereIn($morph->idColumn, $ids);
     }
 
     /**
