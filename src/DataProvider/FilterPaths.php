@@ -246,9 +246,9 @@ final readonly class FilterPaths
     }
 
     /**
-     * The storage keys among `$keys`, targets of `$type` a `WhereMorph` reaches through
-     * `$relation`, that the type's provider admits: none through a refused relation, and all
-     * of them when no provider narrows them.
+     * The stored ids among `$keys`, each a storage key or a wire id, targets of `$type` a
+     * `WhereMorph` reaches through `$relation`, that the type's provider admits: none through
+     * a refused relation, and all of them when no provider narrows them.
      *
      * @param list<mixed> $keys
      *

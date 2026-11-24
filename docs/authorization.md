@@ -413,9 +413,10 @@ member, the one named after the segment applies.
 A `WhereMorph` reaches through its polymorphic relation to the one type the request names in
 `filter[subject][type]`. That type's checks decide the filter, so naming a type the caller may
 not read answers `403` while naming another of the relation's types still filters, and a target
-that type's scope hides never matches. On Eloquent the filter adds an `EXISTS` over the target
-model's query, with its global scopes, when the model has any. In memory the targets are kept to
-the ids the type's scoping provider admits.
+that type's scope hides never matches. On Eloquent the filter keeps the id column to the target
+model's keys under its global scopes, when the model has any, through a subquery or, for a key
+behind a cast or an id encoder, through the ids one lookup admits. In memory the targets are
+kept to the ids the type's scoping provider admits.
 
 The OpenAPI document offers `ACCESS_DENIED` on every operation whose filters, or whose
 `relatedQuery` filters, reach through a relation some caller can be refused.

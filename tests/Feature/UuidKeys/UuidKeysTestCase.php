@@ -8,6 +8,7 @@ use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Tests\Fixtures\UuidKeys\Book;
 use haddowg\JsonApiLaravel\Tests\Fixtures\UuidKeys\Label;
+use haddowg\JsonApiLaravel\Tests\Fixtures\UuidKeys\Note;
 use haddowg\JsonApiLaravel\Tests\Fixtures\UuidKeys\UuidKeysServiceProvider;
 use haddowg\JsonApiLaravel\Tests\Fixtures\UuidKeys\Writer;
 use Illuminate\Database\Schema\Blueprint;
@@ -36,6 +37,7 @@ abstract class UuidKeysTestCase extends Orchestra
     protected const string B3 = '1c7b2d3f-7b9a-4e66-8b7f-2a3e4d5c6b73';
     protected const string L1 = '2d8c3e4a-8cab-4f77-9c8a-3b4f5e6d7c81';
     protected const string L2 = '2d8c3e4a-8cab-4f77-9c8a-3b4f5e6d7c82';
+    protected const string L3 = '2d8c3e4a-8cab-4f77-9c8a-3b4f5e6d7c83';
 
     private const string MEDIA_TYPE = 'application/vnd.api+json';
 
@@ -99,6 +101,12 @@ abstract class UuidKeysTestCase extends Orchestra
             $key($table, 'label_id');
         });
 
+        Schema::create('uk_notes', static function (Blueprint $table): void {
+            $table->integer('id')->primary();
+            $table->string('subject_type')->nullable();
+            $table->string('subject_id')->nullable();
+        });
+
         $k = $this->storageKey(...);
         Writer::query()->create(['id' => $k(self::W1), 'name' => 'Ada']);
         Writer::query()->create(['id' => $k(self::W2), 'name' => 'Brontë']);
@@ -109,6 +117,52 @@ abstract class UuidKeysTestCase extends Orchestra
         Label::query()->create(['id' => $k(self::L2), 'name' => 'sci-fi']);
         Book::query()->findOrFail($k(self::B1))->labels()->attach([$k(self::L1), $k(self::L2)]);
         Book::query()->findOrFail($k(self::B2))->labels()->attach([$k(self::L1)]);
+    }
+
+    #[Test]
+    public function aMorphFilterMatchesUuidKeyedTargetsTheScopeAdmits(): void
+    {
+        $this->seedNotes();
+
+        self::assertSame(['1', '4', '6'], $this->sorted($this->ids($this->read('/api/notes?filter[subject][type]=labels')->json('data'))));
+        self::assertSame(['4', '6'], $this->sorted($this->ids($this->read('/api/notes?filter[subject][type]=labels&filter[subject][id]=' . self::L2)->json('data'))));
+        self::assertSame(['3'], $this->ids($this->read('/api/notes?filter[subject][type]=writers')->json('data')));
+        self::assertSame(['1'], $this->ids($this->read('/api/notes?filter[subject][type]=labels&filter[subject][id]=' . self::L1)->json('data')));
+        self::assertSame([], $this->ids($this->read('/api/notes?filter[subject][type]=labels&filter[subject][id]=' . self::L3)->json('data')));
+        self::assertSame(['3'], $this->ids($this->read('/api/notes?filter[subject][type]=writers&filter[subject][id]=' . self::W1)->json('data')));
+    }
+
+    #[Test]
+    public function aScopedUuidKeyComparesInOneStatement(): void
+    {
+        $this->seedNotes();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->read('/api/notes?filter[subject][type]=labels');
+        DB::disableQueryLog();
+        // Without identifier quotes, which differ between databases.
+        $statements = \array_map(static fn(array $entry): string => \str_replace(['"', '`'], '', \strtolower($entry['query'])), DB::getQueryLog());
+
+        self::assertSame([], \array_values(\array_filter($statements, static fn(string $sql): bool => \str_contains($sql, 'select distinct') && \str_contains($sql, 'uk_notes'))), "no stored ids are read first:\n" . \implode("\n", $statements));
+        $compared = \array_filter($statements, static fn(string $sql): bool => \str_contains($sql, 'from uk_notes') && \str_contains($sql, 'from uk_labels'));
+        self::assertCount(1, $compared, "one statement compares the keys in SQL:\n" . \implode("\n", $statements));
+        // hex() on SQLite, BIN_TO_UUID() on MySQL 8 and encode() on PostgreSQL.
+        $sql = (string) \reset($compared);
+        self::assertSame($this->storage() === 'binary', \str_contains($sql, 'hex(') || \str_contains($sql, 'bin_to_uuid(') || \str_contains($sql, 'encode('), 'a binary key is read as its canonical text');
+    }
+
+    #[Test]
+    public function aMorphTargetReadsAgreeWithTheFilter(): void
+    {
+        $this->seedNotes();
+
+        $this->read('/api/notes/1')->assertJsonPath('data.relationships.subject.data', ['type' => 'labels', 'id' => self::L1]);
+        $this->read('/api/notes/1/subject')->assertJsonPath('data.attributes.name', 'classic');
+        $this->read('/api/notes/3/subject')->assertJsonPath('data.attributes.name', 'Ada');
+        $this->read('/api/notes/2/subject')->assertJsonPath('data', null);
+        $this->read('/api/notes/6')->assertJsonPath('data.relationships.subject.data', ['type' => 'labels', 'id' => self::L2]);
+        $this->read('/api/notes/6/subject')->assertJsonPath('data.attributes.name', 'sci-fi');
+        self::assertSame([self::L1, self::L2], $this->sorted($this->ids($this->read('/api/notes?include=subject&filter[subject][type]=labels')->json('included'))));
     }
 
     #[Test]
@@ -329,6 +383,23 @@ abstract class UuidKeysTestCase extends Orchestra
     /**
      * The value the key column stores for a canonical UUID.
      */
+    /**
+     * Notes 1 and 4 are about visible labels, 2 about a label the scope hides, 3 about a
+     * writer, each id stored as its canonical string. Note 6 is about label L2 stored as
+     * its storage key, 16 bytes when keys are binary and the database is SQLite.
+     */
+    private function seedNotes(): void
+    {
+        Label::query()->create(['id' => $this->storageKey(self::L3), 'name' => 'hidden']);
+        Note::query()->create(['id' => 1, 'subject_type' => 'labels', 'subject_id' => self::L1]);
+        Note::query()->create(['id' => 2, 'subject_type' => 'labels', 'subject_id' => self::L3]);
+        Note::query()->create(['id' => 3, 'subject_type' => 'writers', 'subject_id' => self::W1]);
+        Note::query()->create(['id' => 4, 'subject_type' => 'labels', 'subject_id' => self::L2]);
+        // Only SQLite keeps raw bytes in a text column.
+        $sqlite = DB::connection()->getDriverName() === 'sqlite';
+        Note::query()->create(['id' => 6, 'subject_type' => 'labels', 'subject_id' => $sqlite ? $this->storageKey(self::L2) : self::L2]);
+    }
+
     protected function storageKey(string $uuid): string
     {
         return $this->storage() === 'binary' ? \Ramsey\Uuid\Uuid::fromString($uuid)->getBytes() : $uuid;

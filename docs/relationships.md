@@ -753,7 +753,8 @@ MorphTo::make('target', ['advertisers', 'agencies'])
 The in-memory provider then compares those attributes for a
 [`WhereMorph`](eloquent.md#whether-a-column-is-set-and-polymorphic-identifiers) filter, which on
 Eloquent reads the model's `morphTo` relation when it has one. The example's
-`favorites.favoritable` declares both.
+`favorites.favoritable` declares both. The id attribute may hold the target's storage key or its
+wire id, and the linkage, the related read, the include and the filter accept either.
 
 Whether linkage needs a query depends on whether the target's type is guarded on the server.
 A type is guarded when something other than a row's existence decides whether a read shows it:

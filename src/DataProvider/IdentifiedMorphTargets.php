@@ -9,6 +9,7 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Schema\Relationship\ToOneRelationshipLinkage;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Authorization\GuardedTypes;
@@ -191,7 +192,7 @@ final class IdentifiedMorphTargets
     }
 
     /**
-     * A stored key as the type's serializer renders its id, through the id encoder it declares.
+     * A stored id, the storage key or the wire id, as the type's serializer renders it, through the id encoder it declares.
      */
     private function wireId(Server $server, string $type, string|int $key): string
     {
@@ -199,7 +200,7 @@ final class IdentifiedMorphTargets
         if ($serializer instanceof AbstractResource) {
             foreach ($serializer->allFields() as $field) {
                 if ($field instanceof Id) {
-                    return $field->encoder()?->encode($key) ?? (string) $key;
+                    return StoredIdForms::wireId($field->encoder(), $key);
                 }
             }
         }
