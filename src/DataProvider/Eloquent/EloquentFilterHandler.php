@@ -49,7 +49,6 @@ use Illuminate\Database\Eloquent\Relations\MorphTo as EloquentMorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany as EloquentMorphToMany;
 use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
 use Illuminate\Database\Query\Builder as QueryBuilder;
-use Illuminate\Database\Query\Expression;
 
 /**
  * Executes core's filter value objects against an Eloquent query {@see Builder},
@@ -726,15 +725,30 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         if ($comparison !== null) {
             // A membership IN rather than a correlated EXISTS: the target may share the filtered
             // model's table, and its scopes qualify columns with the table name.
-            $query->where(static function (Builder|QueryBuilder $match) use ($morph, $targetModel, $comparison): void {
+            $grammar = $targetModel->getConnection()->getQueryGrammar();
+            $query->where(static function (Builder|QueryBuilder $match) use ($morph, $targetModel, $comparison, $key, $grammar): void {
                 foreach ($comparison as $select) {
-                    $match->orWhereIn($morph->idColumn, $targetModel->newQuery()->selectRaw($select instanceof Expression ? (string) $select->getValue($targetModel->getConnection()->getQueryGrammar()) : $targetModel->getConnection()->getQueryGrammar()->wrap($select))->toBase());
+                    $scoped = $targetModel->newQuery()->select($targetModel->qualifyColumn($key))->toBase();
+                    if ($select === $targetModel->qualifyColumn($key)) {
+                        $match->orWhereIn($morph->idColumn, $scoped);
+
+                        continue;
+                    }
+                    // The scoped query selects the key read through the expression instead.
+                    $column = 'select ' . $grammar->wrap($targetModel->qualifyColumn($key));
+                    $sql = $scoped->toSql();
+                    $at = \strpos($sql, $column);
+                    $sql = $at === 0 ? 'select ' . $select . \substr($sql, \strlen($column)) : $sql;
+                    $match->whereRaw(\sprintf('%s in (%s)', $grammar->wrap($morph->idColumn), $sql), $scoped->getBindings(), 'or');
                 }
             });
 
             return;
         }
 
+        if ($target === null) {
+            return;
+        }
         $admitted = $this->comparableIds($morph, $this->admittedStoredIds($targetModel, $key, $target, $type, $forms ?? $this->storedMorphIds($morph)));
         if ($admitted === []) {
             $query->whereRaw('1 = 0');
@@ -743,7 +757,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         }
 
         // Bound in chunks, so a long list stays under the database's parameter limit.
-        $chunks = \array_chunk($admitted, self::$morphIdChunk);
+        $chunks = \array_chunk($admitted, \max(1, self::$morphIdChunk));
         if (\count($chunks) === 1) {
             $query->whereIn($morph->idColumn, $chunks[0]);
 
@@ -767,9 +781,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     }
 
     /**
-     * What a stored morph id compares with in one SQL statement, each a target key
-     * column or an expression over it the morph column matches any of, or null when it
-     * can't compare in SQL, so the stored ids are admitted and bound instead.
+     * What a stored morph id compares with in one SQL statement, each the qualified target
+     * key or SQL reading it, the morph column matching any of them, or null when it can't
+     * compare in SQL, so the stored ids are admitted and bound instead.
      *
      * A key with neither an encoder nor a value-object cast compares as it is when both
      * columns are of one family, both integers or both text. On PostgreSQL a text key is
@@ -779,7 +793,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      * holding the storage key still matches. Any other pair, such as text against an
      * integer, which PostgreSQL has no comparison for, can't.
      *
-     * @return non-empty-list<string|Expression>|null
+     * @return non-empty-list<string>|null
      */
     private function sqlComparison(MorphColumnsOf $morph, Model $targetModel, string $key, ?IdEncoderInterface $encoder): ?array
     {
@@ -794,7 +808,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         if ($encoder instanceof BinaryUuidEncoder) {
             $text = $storedInt ? null : BinaryUuidText::sql($targetModel->getConnection(), $grammar->wrap($column));
 
-            return $text === null ? null : ($driver === 'pgsql' ? [new Expression($text)] : [new Expression($text), $column]);
+            return $text === null ? null : ($driver === 'pgsql' ? [$text] : [$text, $column]);
         }
         if ($encoder !== null) {
             return null;
@@ -805,7 +819,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             return null;
         }
 
-        return [$driver === 'pgsql' && !$keyInt ? new Expression(\sprintf('CAST(%s AS TEXT)', $grammar->wrap($column))) : $column];
+        return [$driver === 'pgsql' && !$keyInt ? \sprintf('CAST(%s AS TEXT)', $grammar->wrap($column)) : $column];
     }
 
     /**
