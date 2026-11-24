@@ -11,6 +11,7 @@ use haddowg\JsonApiLaravel\Tests\Fixtures\UuidKeys\Label;
 use haddowg\JsonApiLaravel\Tests\Fixtures\UuidKeys\UuidKeysServiceProvider;
 use haddowg\JsonApiLaravel\Tests\Fixtures\UuidKeys\Writer;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -200,6 +201,27 @@ abstract class UuidKeysTestCase extends Orchestra
         $rows = $provider->fetchMany('books', [self::B1, self::B3, 'not-a-uuid', self::W1]);
 
         self::assertSame([self::B1, self::B3], $this->sorted(\array_map(fn(object $row): string => $this->wireId($row), $rows)));
+    }
+
+    #[Test]
+    public function aMalformedIdNeverReachesTheDatabase(): void
+    {
+        $provider = new EloquentDataProvider(['books' => Book::class]);
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        self::assertNull($provider->fetchOne('books', 'not-a-uuid'));
+        self::assertSame([], $provider->fetchMany('books', ['not-a-uuid']));
+        self::assertSame([], $provider->admitIds('books', ['not-a-uuid']));
+        self::assertCount(1, $provider->fetchMany('books', [self::B1, 'not-a-uuid']));
+
+        DB::disableQueryLog();
+        $bindings = [];
+        foreach (DB::getQueryLog() as $entry) {
+            \array_push($bindings, ...$entry['bindings']);
+        }
+        self::assertNotContains('not-a-uuid', $bindings, 'a malformed id is a missing row, which PostgreSQL would refuse against a native uuid column');
+        self::assertCount(1, DB::getQueryLog());
     }
 
     #[Test]
