@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.23.1](https://github.com/haddowg/json-api-laravel/compare/v2.23.0...v2.23.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* refuse a write that leaves out or empties a required relationship ([#330](https://github.com/haddowg/json-api-laravel/issues/330)) ([6146014](https://github.com/haddowg/json-api-laravel/commit/61460141c66278cda4bf2fd8b16cfc8f470ef63b))
+
 ## [2.23.0](https://github.com/haddowg/json-api-laravel/compare/v2.22.2...v2.23.0) (2026-11-23)
 
 
