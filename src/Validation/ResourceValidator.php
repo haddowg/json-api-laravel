@@ -194,6 +194,12 @@ final class ResourceValidator
             },
         );
 
+        // Like a required attribute, a required relation must be sent on a create and may
+        // never be sent empty.
+        foreach ($this->relationshipPresenceErrors($resource, $data, $creating, $request) as $error) {
+            $errors[] = $error;
+        }
+
         $ownIdError = $this->ownIdError($resource, $data);
         if ($ownIdError !== null) {
             $errors[] = $ownIdError;
@@ -685,6 +691,19 @@ final class ResourceValidator
             }
         }
 
+        // Only an endpoint replace sets the whole relationship, so only it can empty it; an
+        // embedded linkage is checked by validate().
+        if ($mode === Mode::Replace && $embeddedRelationName === null) {
+            $value = $linkage instanceof ToOneRelationship ? $linkage->resourceIdentifier : $linkage->resourceIdentifiers;
+            $rules = $this->presentRelationRules($relation, false, $request, $value);
+            if ($rules !== []) {
+                $name = $relation->name();
+                foreach ($this->validatorFactory->make([$name => $value], [$name => $rules])->errors()->get($name) as $message) {
+                    $errors[] = $this->errorAt(\is_string($message) ? $message : '', '/data');
+                }
+            }
+        }
+
         if ($errors !== []) {
             throw new ValidationFailed($errors);
         }
@@ -927,6 +946,77 @@ final class ResourceValidator
     private function pivotError(string $detail, string $field, ?int $index, ?string $embeddedRelationName): Error
     {
         return $this->errorAt($detail, $this->linkageMetaPointer($embeddedRelationName, $field, $index));
+    }
+
+    /**
+     * The presence violations of the relations a write must send: one a create leaves
+     * out points at `/data/relationships/<rel>`, and a `null` to-one or empty to-many
+     * linkage sent for a required relation points at its `data`. A partial update may
+     * leave any relation out. A relation read-only for this caller is not checked.
+     *
+     * @param array<mixed> $data the write body's `data` member
+     *
+     * @return list<Error>
+     */
+    private function relationshipPresenceErrors(AbstractResource $resource, array $data, bool $creating, JsonApiRequestInterface $request): array
+    {
+        $relationships = $data['relationships'] ?? null;
+        $relationships = \is_array($relationships) ? $relationships : [];
+
+        $errors = [];
+        foreach ($resource->allFields() as $field) {
+            if (!$field instanceof RelationInterface || $field->isReadOnlyFor($creating, $request)) {
+                continue;
+            }
+
+            $name = $field->name();
+            $relationship = $relationships[$name] ?? null;
+            $sent = \is_array($relationship) && \array_key_exists('data', $relationship);
+            $linkage = $sent ? $relationship['data'] : null;
+            if (!$this->hasPresenceRule($field, Required::class, $creating, $request, $linkage)) {
+                continue;
+            }
+
+            if (!$sent) {
+                if ($creating) {
+                    foreach ($this->validatorFactory->make([], [$name => ['required']])->errors()->get($name) as $message) {
+                        $errors[] = $this->relationshipError(\is_string($message) ? $message : '', $name);
+                    }
+                }
+
+                continue;
+            }
+
+            $rules = $this->presentRelationRules($field, $creating, $request, $linkage);
+            if ($rules === []) {
+                continue;
+            }
+            foreach ($this->validatorFactory->make([$name => $linkage], [$name => $rules])->errors()->get($name) as $message) {
+                $errors[] = $this->errorAt(\is_string($message) ? $message : '', $this->pointers->forRelationship($name) . '/data');
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * The rules a sent linkage of a required relation must pass: a to-one may not be
+     * `null` and a to-many may not be empty, unless the relation is also nullable. A
+     * to-many whose own minItems() already refuses an empty set reports it once, with
+     * that bound's message.
+     *
+     * @return list<string>
+     */
+    private function presentRelationRules(RelationInterface $relation, bool $creating, ?JsonApiRequestInterface $request, mixed $linkage): array
+    {
+        if ($request === null
+            || !$this->hasPresenceRule($relation, Required::class, $creating, $request, $linkage)
+            || $this->hasPresenceRule($relation, Nullable::class, $creating, $request, $linkage)
+            || ($relation->isToMany() && self::demandsNonEmpty($relation, $creating))) {
+            return [];
+        }
+
+        return ['required'];
     }
 
     /**
