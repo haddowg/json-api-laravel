@@ -208,6 +208,34 @@ is a pre-hydration rule, so it doesn't run here either, and a constraint limited
 doesn't run. A resource whose stored data already breaks one of its entity-level
 constraints gets that `422` on every relationship write until the data is fixed.
 
+## Required relationships
+
+A relation declared `required()`, `requiredOnCreate()` or `requiredOnUpdate()` is held to the
+same rule as a required attribute, before hydration and before any write hook runs. A create
+must send it, so leaving it out of `data.relationships`, or sending no `relationships` member at
+all, is a `422` at `/data/relationships/<rel>` with the `required` rule's message. A write that
+does send it may not send it empty, on a create or on an update where it is required: a `null`
+to-one or an empty to-many is the same message at `/data/relationships/<rel>/data`. An update
+may still leave it out.
+
+```php
+BelongsTo::make('owner', 'members')->required(),
+BelongsToMany::make('watchers', 'members')->requiredOnCreate(),
+
+// POST /tasks with no `owner`                    → 422 at /data/relationships/owner
+// POST /tasks with "watchers": {"data": []}       → 422 at /data/relationships/watchers/data
+// PATCH /tasks/1 with "owner": {"data": null}     → 422 at /data/relationships/owner/data
+// PATCH /tasks/1/relationships/owner, "data": null → 422 at /data
+//   "The owner field is required."
+```
+
+A full replacement through `PATCH …/relationships/{rel}` is an update, so a relation required
+on update can't be emptied there either. Adding `nullable()` lets a required to-one be sent as
+`null`; it still has to be sent on a create. A required to-many that also declares
+`minItems(1)` reports an empty set once, with the bound's message. A relation read-only for the
+caller isn't checked. Atomic operations and custom actions taking a resource document run the
+same check, the atomic pointer carrying the operation's prefix.
+
 ## To-many member counts
 
 A to-many relation's `minItems()` and `maxItems()` bound how many members a write may set.
