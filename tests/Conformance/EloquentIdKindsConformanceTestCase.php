@@ -51,9 +51,10 @@ abstract class EloquentIdKindsConformanceTestCase extends IdKindsConformanceTest
 
     protected function defineDatabaseMigrations(): void
     {
-        // Laravel binds a string as text, which PostgreSQL refuses for a bytea column.
+        // Laravel binds a string as text, which a bytea column refuses, and PDO reads bytea back
+        // as a stream, so Eloquent can't hold a binary key on PostgreSQL at all.
         if (IdKinds::kind() === 'binary' && \getenv('JSONAPI_TEST_DB') === 'pgsql') {
-            self::markTestSkipped('Binary keys bind as text, which a PostgreSQL bytea column refuses.');
+            self::markTestSkipped('Eloquent can neither bind nor read a 16-byte key in a PostgreSQL bytea column.');
         }
         EloquentFilterHandler::forgetColumnTypes();
         foreach (['ik_pins', 'ik_book_label', 'ik_books', 'ik_labels', 'ik_writers'] as $table) {

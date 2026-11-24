@@ -791,6 +791,10 @@ The wire then carries the canonical UUID, and the package decodes it back to the
 bytes too, so Eloquent's relations match them as they are. To mint the key, override
 `newUniqueId()` to return `Str::orderedUuid()->getBytes()`.
 
+On PostgreSQL use a native `uuid` column with a string UUID key instead. Laravel binds a string
+as text, which a `bytea` column refuses when it holds bytes that aren't valid UTF-8, and PDO reads
+a `bytea` value back as a stream, so Eloquent can neither save nor match a 16-byte key there.
+
 Don't cast a key column with `AsBinary::uuid()`. Eloquent binds the cast string, not the
 bytes, when it queries by key or loads a relation, so `find()`, eager loading and pivot writes
 miss every row.
