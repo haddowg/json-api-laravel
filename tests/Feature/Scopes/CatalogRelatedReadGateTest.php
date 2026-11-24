@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature\Scopes;
 
+use haddowg\JsonApi\Catalog\AdditionalGate;
 use haddowg\JsonApi\Catalog\OperationCatalog;
 use haddowg\JsonApi\Catalog\OperationDefinition;
 use haddowg\JsonApi\Catalog\SecurityEvaluatorInterface;
+use haddowg\JsonApi\Catalog\SecurityLevel;
 use haddowg\JsonApi\Catalog\SecurityVerdict;
+use haddowg\JsonApi\OpenApi\Metadata\OperationKind;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Tests\Fixtures\CatalogGate\CatalogGateServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -71,13 +74,27 @@ final class CatalogRelatedReadGateTest extends Orchestra
         self::assertSame($status, $response->getStatusCode(), $path . ': ' . $response->getContent());
     }
 
-    public function test_a_parent_read_that_needs_the_hub_leaves_the_verdict_to_the_hub(): void
+    public function test_a_to_many_lists_each_related_collection_gate_beside_the_parent_ability(): void
     {
-        $user = $this->user(false);
+        $spokes = $this->operation('fetchRelated.hubs.spokes');
+        self::assertSame('view', $spokes->security);
+        self::assertSame(SecurityLevel::Entity, $spokes->securityLevel);
+        self::assertEquals([new AdditionalGate('spokes', OperationKind::FetchCollection, 'viewAny', SecurityLevel::Type)], $spokes->additionalGates);
 
-        self::assertSame(SecurityVerdict::Depends, $this->evaluator()->evaluate($this->operation('fetchRelated.ownedHubs.spokes'), $user));
+        self::assertEquals([new AdditionalGate('spokes', OperationKind::FetchCollection, 'viewAny', SecurityLevel::Type)], $this->operation('fetchRelationship.hubs.parts')->additionalGates);
+        self::assertSame([], $this->operation('fetchRelated.hubs.rims')->additionalGates);
+        self::assertSame('readShared', $this->operation('fetchRelationship.hubs.sharedSpokes')->security);
+        self::assertSame([], $this->operation('fetchRelationship.hubs.sharedSpokes')->additionalGates);
+        self::assertSame([], $this->operation('fetchRelated.hubs.leadSpoke')->additionalGates);
+    }
 
-        $this->actingAs($user);
+    public function test_a_refusing_gate_denies_even_when_the_parent_ability_needs_the_hub(): void
+    {
+        $spokes = $this->operation('fetchRelated.ownedHubs.spokes');
+        self::assertSame(SecurityVerdict::Denied, $this->evaluator()->evaluate($spokes, $this->user(false)));
+        self::assertSame(SecurityVerdict::Depends, $this->evaluator()->evaluate($spokes, $this->user(true)));
+
+        $this->actingAs($this->user(false));
         $response = $this->call('GET', '/api/ownedHubs/1/spokes', [], [], [], ['HTTP_ACCEPT' => 'application/vnd.api+json']);
         self::assertSame(403, $response->getStatusCode());
     }
