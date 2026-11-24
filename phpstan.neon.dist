@@ -14,6 +14,18 @@ parameters:
     tmpDir: .phpstan.cache
     treatPhpDocTypesAsCertain: false
     ignoreErrors:
+        # A polymorphic foreign key partitions a window and groups a count by its id column in
+        # lower case, an expression built from the qualified column alone. Laravel types
+        # Expression's value as literal-string and groupLimit()'s column as a string, though its
+        # grammar wraps an Expression as it is. Scoped to the two files that build and pass it.
+        -
+            message: '#^Parameter \#1 \$value of class Illuminate\\Database\\Query\\Expression constructor expects TValue of float\|int\|literal-string, .+ given\.$#'
+            paths:
+                - src/DataProvider/Eloquent/ForeignKeyScope.php
+                - src/DataProvider/Eloquent/EloquentDataProvider.php
+        -
+            message: '#^Parameter \#2 \$column of method Illuminate\\Database\\Query\\Builder::groupLimit\(\) expects string, Illuminate\\Database\\Query\\Expression<.+>\|string given\.$#'
+            path: src/DataProvider/Eloquent/EloquentDataProvider.php
         # Laravel types orderByRaw() $sql as `literal-string` to guard against SQL
         # injection. The forced NULL=largest keyset ORDER BY (`CASE WHEN col IS NULL
         # …`) has no query-builder equivalent — Laravel has no `orderByNullsLast`, and

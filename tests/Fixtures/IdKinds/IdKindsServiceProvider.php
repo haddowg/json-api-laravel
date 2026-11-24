@@ -38,7 +38,7 @@ final class IdKindsServiceProvider extends ServiceProvider
             'books' => [
                 ['id' => 'b1', 'title' => 'Dune', 'writer' => 'w1', 'featuredBy' => 'w1', 'labels' => ['l1', 'l2'], 'subject' => ['ikWriters', 'w2'], 'origin' => ['ikLabels', 'l1'], 'pins' => [['ikWriters', 'w1'], ['ikLabels', 'l2']]],
                 ['id' => 'b2', 'title' => 'Emma', 'writer' => 'w1', 'featuredBy' => null, 'labels' => ['l1', 'l3'], 'subject' => ['ikLabels', 'l1'], 'origin' => ['ikWriters', 'w2'], 'pins' => [['ikLabels', 'l3']]],
-                ['id' => 'b3', 'title' => 'Ulysses', 'writer' => 'w2', 'featuredBy' => 'w2', 'labels' => [], 'subject' => ['ikLabels', 'l3'], 'origin' => ['ikLabels', 'l3'], 'pins' => []],
+                ['id' => 'b3', 'title' => 'Ulysses', 'writer' => 'w2', 'featuredBy' => 'w2', 'labels' => [], 'subject' => ['ikLabels', 'l3'], 'origin' => ['ikWriters', 'w2'], 'pins' => []],
             ],
         ];
     }

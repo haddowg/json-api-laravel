@@ -63,6 +63,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMan
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Database\Query\Expression;
 use Illuminate\Support\Str;
 
 /**
@@ -1144,10 +1145,15 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         $scope = $this->foreignKeyScope($relatedType, $foreignKey, $parents);
         $window = $criteria->window;
 
+        // A parent whose forms an id encoder makes differ has no one expression to partition
+        // its rows by, so each such page is read on its own.
         if ($window instanceof CursorWindow) {
-            return $window->after === null && $window->before === null
+            return $window->after === null && $window->before === null && !$scope->split
                 ? $this->foreignKeyCursorWindow($relatedType, $scope, $criteria, $window)
                 : $this->foreignKeyPages($relatedType, $scope, $parents, $criteria, $window);
+        }
+        if ($window instanceof OffsetWindow && $scope->split) {
+            return $this->foreignKeyOffsetPages($relatedType, $relation, $foreignKey, $scope, $parents, $criteria, $window, $request);
         }
 
         $builder = $this->foreignKeyQuery($relatedType, $scope);
@@ -1161,7 +1167,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             }
 
             $countable = $criteria->wantsCount;
-            $builder->getQuery()->groupLimit($countable ? $window->limit : $window->limit + 1, $scope->column);
+            $builder->getQuery()->groupLimit($countable ? $window->limit : $window->limit + 1, $scope->partition($builder->getQuery()->getGrammar()));
             $totals = $countable ? $this->countByForeignKey($relatedType, $relation, $foreignKey, $parents, $criteria, $request) : [];
 
             $results = [];
@@ -1214,10 +1220,12 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         $scope = $this->foreignKeyScope($relatedType, $foreignKey, $parents);
         $builder = $this->applier->apply($this->filtersOnly($criteria), $this->foreignKeyQuery($relatedType, $scope), $this->filterHandler, $this->sortHandler);
 
-        $rows = $builder->toBase()
-            ->select([$scope->column . ' as jsonapi_parent'])
+        $base = $builder->toBase();
+        $partition = $scope->partition($base->getGrammar());
+        $rows = $base
+            ->select([$partition instanceof Expression ? new Expression($partition->getValue($base->getGrammar()) . ' as jsonapi_parent') : $partition . ' as jsonapi_parent'])
             ->selectRaw('count(*) as jsonapi_count')
-            ->groupBy($scope->column)
+            ->groupBy($partition)
             ->get();
 
         foreach ($rows as $row) {
@@ -1251,7 +1259,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         $this->applier->apply($this->filtersOnly($criteria), $builder, $this->filterHandler, $this->sortHandler);
         $keyset = new EloquentKeyset($related, $paths !== null ? $this->sortHandler->forPaths($paths) : $this->sortHandler);
         $keyset->orderBy($builder, $columns);
-        $builder->getQuery()->groupLimit($window->limit + 1, $scope->column);
+        $builder->getQuery()->groupLimit($window->limit + 1, $scope->partition($builder->getQuery()->getGrammar()));
 
         $readValue = static fn(object $row, string $keysetColumn): string|int|float|bool|null => CursorTokenMinter::coerce(self::keysetValue($row, $keysetColumn, null));
 
@@ -1271,8 +1279,34 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     }
 
     /**
+     * Each parent's offset page read on its own, for a polymorphic foreign key whose stored forms
+     * an id encoder makes differ, so no one expression partitions a parent's rows.
+     */
+    private function foreignKeyOffsetPages(string $relatedType, RelationInterface $relation, ForeignKey $foreignKey, ForeignKeyScope $scope, ForeignKeyParents $parents, CollectionCriteria $criteria, OffsetWindow $window, JsonApiRequestInterface $request): RelatedBatch
+    {
+        $countable = $criteria->wantsCount;
+        $totals = $countable ? $this->countByForeignKey($relatedType, $relation, $foreignKey, $parents, $criteria, $request) : [];
+        $results = [];
+        foreach ($parents->wireIds() as $wireId) {
+            $builder = $this->applier->apply($criteria, $this->foreignKeyQuery($relatedType, $scope->only($wireId)), $this->filterHandler, $this->sortHandler);
+            $related = $builder->getModel();
+            $builder->orderBy($related->qualifyColumn($related->getKeyName()), 'asc')->offset($window->offset)->limit($countable ? $window->limit : $window->limit + 1);
+            $items = \array_values($builder->get()->all());
+            $results[$wireId] = new CollectionResult(
+                \array_slice($items, 0, $window->limit),
+                total: $countable ? ($totals[$wireId] ?? 0) : null,
+                windowed: true,
+                hasMore: !$countable && \count($items) > $window->limit,
+            );
+        }
+
+        return new RelatedBatch($results);
+    }
+
+    /**
      * Each parent's cursor page read on its own, as one keyset query scoped by the foreign
-     * key: the fallback for a page bounded by `page[after]` or `page[before]`.
+     * key: the fallback for a page bounded by `page[after]` or `page[before]`, or for a
+     * polymorphic foreign key whose stored forms an id encoder makes differ.
      */
     private function foreignKeyPages(string $relatedType, ForeignKeyScope $scope, ForeignKeyParents $parents, CollectionCriteria $criteria, CursorWindow $window): RelatedBatch
     {

@@ -11,6 +11,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\Schema\ColumnDefinition;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\Test;
 
 /**
  * The id-kinds matrix over the reference Eloquent provider, on SQLite unless
@@ -47,6 +48,38 @@ abstract class EloquentIdKindsConformanceTestCase extends IdKindsConformanceTest
             ],
             default => ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => ''],
         });
+    }
+
+    /**
+     * A MorphMany's included first pages are one ROW_NUMBER query partitioned by the id column,
+     * in lower case when a parent's forms differ in case only, and one query per parent when an
+     * id encoder makes them differ beyond case.
+     */
+    #[Test]
+    public function aMorphManyIncludeIsOneWindowedQueryUnlessAnEncoderSplitsItsForms(): void
+    {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->get('/api/ikWriters?sort=name&include=originated&relatedQuery[originated][sort]=-title', ['Accept' => 'application/vnd.api+json; profile="https://haddowg.github.io/json-api/profiles/relationship-queries/"'])->assertOk();
+        DB::disableQueryLog();
+
+        // Without identifier quotes, which differ between databases.
+        $statements = \array_values(\array_filter(
+            \array_map(static fn(array $entry): string => \str_replace(['"', '`'], '', \strtolower($entry['query'])), DB::getQueryLog()),
+            static fn(string $sql): bool => \str_contains($sql, 'from ik_books') && \str_contains($sql, 'origin_type'),
+        ));
+        $windowed = \array_values(\array_filter($statements, static fn(string $sql): bool => \str_contains($sql, 'row_number()')));
+
+        if (\in_array(IdKinds::kind(), ['prefix', 'binary'], true)) {
+            self::assertSame([], $windowed, "an encoder's forms read each parent on its own:\n" . \implode("\n", $statements));
+            self::assertCount(3, $statements, \implode("\n", $statements));
+
+            return;
+        }
+
+        self::assertCount(1, $statements, \implode("\n", $statements));
+        self::assertCount(1, $windowed, \implode("\n", $statements));
+        self::assertSame(\in_array(IdKinds::kind(), ['uuid', 'object'], true), \str_contains($windowed[0], 'partition by lower(ik_books.origin_id)'), $windowed[0]);
     }
 
     protected function defineDatabaseMigrations(): void

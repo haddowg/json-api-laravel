@@ -11,6 +11,8 @@ use haddowg\JsonApiLaravel\DataProvider\ForeignKeyParents;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Query\Expression;
+use Illuminate\Database\Query\Grammars\Grammar;
 
 /**
  * The related rows a page of parents holds through a foreign key, as one query scope and the
@@ -33,7 +35,9 @@ final readonly class ForeignKeyScope
      * @param string|null           $typeColumn the qualified type column of a polymorphic foreign key
      * @param list<string>          $types      the stored type values naming the parents' type
      * @param list<int|string>      $keys       every stored form a parent's key takes in the column
-     * @param array<array-key, string> $parentOf   each stored form, compared as a string, to its parent's wire id
+     * @param array<array-key, string> $parentOf   each stored form, compared as {@see StoredIdForms::comparable()}, to its parent's wire id
+     * @param bool                  $folded     whether forms of one parent differ in letter case only, so rows compare and group by the column in lower case
+     * @param bool                  $split      whether an id encoder gives one parent forms that differ beyond case, so no one expression groups its rows
      */
     private function __construct(
         public string $column,
@@ -42,6 +46,8 @@ final readonly class ForeignKeyScope
         public array $types,
         public array $keys,
         public array $parentOf,
+        public bool $folded = false,
+        public bool $split = false,
     ) {}
 
     /**
@@ -75,21 +81,57 @@ final readonly class ForeignKeyScope
             $attribute = $foreignKey->column;
         }
 
+        // A polymorphic id column may hold a parent's storage key or its wire id, a UUID in
+        // either case. On PostgreSQL an integer or uuid column holds only ids of its kind.
+        $polymorphic = $typeColumn !== null;
+        $family = $polymorphic && $related->getConnection()->getDriverName() === 'pgsql' ? StoredKey::columnFamily($related, $attribute, $related->getTable()) : 'text';
         $keys = [];
         $parentOf = [];
+        $folded = false;
+        $split = false;
         foreach ($parents->keys as $wireId => $key) {
-            $forms = $morph !== null ? StoredIdForms::forms($parentEncoder, [$key]) : [$key];
-            foreach ($forms as $form) {
+            $distinct = [];
+            foreach ($polymorphic ? StoredIdForms::forms($parentEncoder, [$key]) : [$key] as $form) {
                 $stored = StoredKey::of($related, $attribute, $form);
-                $compared = StoredKey::comparable($stored);
-                if ($compared !== null && (\is_int($stored) || \is_string($stored)) && !isset($parentOf[$compared])) {
-                    $keys[] = $stored;
-                    $parentOf[$compared] = (string) $wireId;
+                if (!\is_int($stored) && !\is_string($stored) || !self::holds($family, $stored)) {
+                    continue;
                 }
+                $compared = StoredIdForms::comparable($stored);
+                $distinct[$compared] = true;
+                if (\is_string($stored) && $compared !== $stored && $family !== 'uuid') {
+                    $folded = true;
+                }
+                $keys[] = $stored;
+                $parentOf[$compared] ??= (string) $wireId;
             }
+            $split = $split || \count($distinct) > 1;
         }
 
-        return new self($related->qualifyColumn($attribute), $attribute, $typeColumn, $types, $keys, $parentOf);
+        return new self($related->qualifyColumn($attribute), $attribute, $typeColumn, $types, \array_values(\array_unique($keys, \SORT_REGULAR)), $parentOf, $folded, $split);
+    }
+
+    /**
+     * Whether a column of `$family` can hold `$value`, which PostgreSQL refuses to compare
+     * otherwise.
+     */
+    private static function holds(string $family, int|string $value): bool
+    {
+        return match ($family) {
+            'int' => \is_int($value) || \preg_match('/^-?\d+$/', $value) === 1,
+            'uuid' => \is_string($value) && StoredIdForms::isUuidLike($value),
+            default => true,
+        };
+    }
+
+    /**
+     * What a row's parent compares as in SQL, to partition a window or group a count by: the
+     * column, or the column in lower case when a parent's forms differ in case only.
+     *
+     * @return Expression<float|int|literal-string>|string
+     */
+    public function partition(Grammar $grammar): string|Expression
+    {
+        return $this->folded ? new Expression('LOWER(' . $grammar->wrap($this->column) . ')') : $this->column;
     }
 
 
@@ -129,7 +171,7 @@ final readonly class ForeignKeyScope
     {
         $compared = StoredKey::comparable($stored);
 
-        return $compared === null ? null : ($this->parentOf[$compared] ?? null);
+        return $compared === null ? null : ($this->parentOf[StoredIdForms::comparable($compared)] ?? null);
     }
 
     /**
@@ -140,13 +182,13 @@ final readonly class ForeignKeyScope
         $keys = [];
         $parentOf = [];
         foreach ($this->keys as $key) {
-            $compared = (string) $key;
+            $compared = StoredIdForms::comparable($key);
             if (($this->parentOf[$compared] ?? null) === $wireId) {
                 $keys[] = $key;
                 $parentOf[$compared] = $wireId;
             }
         }
 
-        return new self($this->column, $this->attribute, $this->typeColumn, $this->types, $keys, $parentOf);
+        return new self($this->column, $this->attribute, $this->typeColumn, $this->types, $keys, $parentOf, $this->folded, false);
     }
 }

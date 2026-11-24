@@ -423,7 +423,9 @@ compares with, read from the schema once per column: an integer column binds onl
 ids, and a native uuid column binds only UUIDs and compares with a uuid key directly, while a
 key of any other type is admitted and bound. A UUID the column holds in capitals matches the
 lowercase key, and renders as its lowercase wire id in a related read, so a reference written by
-another system in either case still names its target.
+another system in either case still names its target. Each id binds in lower and upper case
+rather than wrapping the column in `LOWER()`, so the column's index stays usable, and a UUID
+stored in mixed case isn't matched.
 
 The id column may hold the target's storage key or its wire id. They differ only when the
 target's type declares an id encoder, and a text column that holds the ids of several kinds of

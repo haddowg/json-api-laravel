@@ -73,7 +73,7 @@ abstract class IdKindsConformanceTestCase extends Orchestra
         $books->assertJsonPath('data.2.relationships.subject.data', null);
         $books->assertJsonPath('data.0.relationships.origin.data', ['type' => 'ikLabels', 'id' => $this->w('l1')]);
         $books->assertJsonPath('data.1.relationships.origin.data', ['type' => 'ikWriters', 'id' => $this->w('w2')]);
-        $books->assertJsonPath('data.2.relationships.origin.data', null);
+        $books->assertJsonPath('data.2.relationships.origin.data', ['type' => 'ikWriters', 'id' => $this->w('w2')]);
         self::assertSame($this->keys(['ikLabels', 'l1'], ['ikWriters', 'w1'], ['ikWriters', 'w2']), $this->included($books));
 
         $writers = $this->read('/api/ikWriters?include=featured&sort=name');
@@ -92,7 +92,7 @@ abstract class IdKindsConformanceTestCase extends Orchestra
         $this->read($this->path('ikBooks', 'b3', 'subject'))->assertJsonPath('data', null);
         $this->read($this->path('ikBooks', 'b1', 'origin'))->assertJsonPath('data.attributes.name', 'classic');
         $this->read($this->path('ikBooks', 'b2', 'origin'))->assertJsonPath('data.attributes.name', 'Bronte');
-        $this->read($this->path('ikBooks', 'b3', 'origin'))->assertJsonPath('data', null);
+        $this->read($this->path('ikBooks', 'b3', 'origin'))->assertJsonPath('data.attributes.name', 'Bronte');
         $this->read($this->path('ikWriters', 'w1', 'featured'))->assertJsonPath('data.id', $this->w('b1'));
         $this->read($this->path('ikWriters', 'w3', 'relationships/featured'))->assertJsonPath('data', null);
     }
@@ -132,6 +132,19 @@ abstract class IdKindsConformanceTestCase extends Orchestra
         self::assertSame($this->refs('l1', 'l2'), $this->ids($this->path('ikBooks', 'b1', 'labels')));
         self::assertSame($this->refs('l1'), $this->ids($this->path('ikBooks', 'b2', 'relationships/labels')));
         self::assertSame($this->refs('b1', 'b2'), $this->ids($this->path('ikLabels', 'l1', 'books')));
+    }
+
+    #[Test]
+    public function aMorphManyReadsTheRowsThatNameItsParentInAnyForm(): void
+    {
+        self::assertSame($this->refs('b2', 'b3'), $this->ids($this->path('ikWriters', 'w2', 'originated')));
+        self::assertSame([], $this->ids($this->path('ikWriters', 'w1', 'relationships/originated')));
+        $writers = $this->read('/api/ikWriters?sort=name&include=originated&withCount=originated', self::QUERIES);
+        self::assertSame($this->refs('b2', 'b3'), $this->sortedIds($writers->json('data.1.relationships.originated.data')));
+        $writers->assertJsonPath('data.1.relationships.originated.meta.total', 2);
+        $writers->assertJsonPath('data.0.relationships.originated.meta.total', 0);
+        $windowed = $this->read('/api/ikWriters?sort=name&include=originated&relatedQuery[originated][sort]=-title', self::QUERIES);
+        self::assertSame([$this->w('b3'), $this->w('b2')], \array_column((array) $windowed->json('data.1.relationships.originated.data'), 'id'));
     }
 
     #[Test]
@@ -227,7 +240,7 @@ abstract class IdKindsConformanceTestCase extends Orchestra
             self::assertSame([], $this->ids('/api/ikBooks?filter[subject][type]=ikWriters&filter[subject][id]=' . $this->w('w1')));
         }
         self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[origin][type]=ikLabels'));
-        self::assertSame($this->refs('b2'), $this->ids('/api/ikBooks?filter[origin][type]=ikWriters&filter[origin][id]=' . $this->w('w2')));
+        self::assertSame($this->refs('b2', 'b3'), $this->ids('/api/ikBooks?filter[origin][type]=ikWriters&filter[origin][id]=' . $this->w('w2')));
         self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[pinned][type]=ikWriters'));
         self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[pinned][type]=ikLabels'));
         self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[pinned][type]=ikLabels&filter[pinned][id]=' . $this->w('l2')));

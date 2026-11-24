@@ -588,7 +588,13 @@ cursor pages, a `relatedQuery`, and the `WhereHas`, `WhereDoesntHave` and `->thr
 that reach through the relation. An `identifiedByColumns()` id column may hold a parent's storage
 key or its wire id, a UUID in either letter case, and the reads match any of them. A write sets
 the type column to the first value naming the parent's type, or the parent's morph class, and the
-id column to its key, and clears both on a row that leaves.
+id column to its key, and clears both on a row that leaves. A UUID stored in mixed case isn't
+matched.
+
+The included first pages and the counts of a whole page of parents stay one query. When a
+parent's forms differ only in letter case, the window partitions and the count groups by the id
+column in lower case. When an id encoder makes them differ beyond case, such as a prefixed wire id
+beside the integer key it encodes, each parent's page is read on its own.
 
 Naming the id column's field instead, `HasMany::make('notes', 'notes', 'ownerId')`, fails route
 registration and `jsonapi:optimize`, since that column holds the ids of posts and videos alike.
