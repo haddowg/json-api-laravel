@@ -16,7 +16,6 @@ use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
-use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Schema\Relationship\IdentifiedMember;
 use haddowg\JsonApi\Schema\Relationship\RelationshipLinkage;
 use haddowg\JsonApi\Server\Server;
@@ -180,7 +179,7 @@ final class IdentifiedMorphMembers
         foreach ($pages as $page) {
             foreach (self::identified($page) as $member) {
                 if ($server->hasSerializerFor($member->type) && $this->providers->supportsType($member->type)) {
-                    $ids[$member->type][$this->wireId($server, $member->type, $member->id)] = true;
+                    $ids[$member->type][StoredIds::wireId($server, $member->type, $member->id)] = true;
                 }
             }
         }
@@ -199,7 +198,7 @@ final class IdentifiedMorphMembers
                     continue;
                 }
 
-                $row = $loaded[$member->type][$this->wireId($server, $member->type, $member->id)] ?? null;
+                $row = $loaded[$member->type][StoredIds::wireId($server, $member->type, $member->id)] ?? null;
                 if ($row !== null) {
                     $kept[] = $member->withTarget($row);
                 }
@@ -328,7 +327,7 @@ final class IdentifiedMorphMembers
 
         $byWireId = [];
         foreach ($keys as $key) {
-            $byWireId[$this->wireId($server, $type, $key)][] = $key;
+            $byWireId[StoredIds::wireId($server, $type, $key)][] = $key;
         }
 
         $admitted = [];
@@ -396,7 +395,7 @@ final class IdentifiedMorphMembers
     {
         $keyed = [];
         foreach ($relation->identifiedMembers($parent, $request) as $member) {
-            $keyed[$member->type . "\0" . $this->wireId($server, $member->type, $member->id)] = $member;
+            $keyed[$member->type . "\0" . StoredIds::wireId($server, $member->type, $member->id)] = $member;
         }
 
         return $keyed;
@@ -410,7 +409,7 @@ final class IdentifiedMorphMembers
     public function wirePairs(Server $server, object $parent, MorphToMany $relation, JsonApiRequestInterface $request): array
     {
         return \array_map(
-            fn(array $pair): array => [$pair[0], $this->wireId($server, $pair[0], $pair[1])],
+            fn(array $pair): array => [$pair[0], StoredIds::wireId($server, $pair[0], $pair[1])],
             $relation->storedIdentifierList($parent, $request),
         );
     }
@@ -425,13 +424,13 @@ final class IdentifiedMorphMembers
     {
         $guarded = $this->guardedTypes($relation);
         $admitted = \array_map(
-            fn(IdentifiedMember $member): string => $member->type . "\0" . $this->wireId($server, $member->type, $member->id),
+            fn(IdentifiedMember $member): string => $member->type . "\0" . StoredIds::wireId($server, $member->type, $member->id),
             $this->members($server, [$parent], $relation, $request, false)[0],
         );
 
         $hidden = [];
         foreach ($relation->storedIdentifierList($parent, $request) as [$type, $key]) {
-            $id = $this->wireId($server, $type, $key);
+            $id = StoredIds::wireId($server, $type, $key);
             if (\in_array($type, $guarded, true) && !\in_array($type . "\0" . $id, $admitted, true)) {
                 $hidden[] = [$type, $id];
             }
@@ -481,7 +480,7 @@ final class IdentifiedMorphMembers
                 continue;
             }
 
-            $ids = \array_values(\array_unique(\array_map(fn(string|int $key): string => $this->wireId($server, $type, $key), $keys)));
+            $ids = \array_values(\array_unique(\array_map(fn(string|int $key): string => StoredIds::wireId($server, $type, $key), $keys)));
             if ($rows) {
                 $loaded[$type] = $this->fetch($server, $type, $ids);
             } elseif (\in_array($type, $guarded, true)) {
@@ -500,7 +499,7 @@ final class IdentifiedMorphMembers
                     continue;
                 }
 
-                $id = $this->wireId($server, $member->type, $member->id);
+                $id = StoredIds::wireId($server, $member->type, $member->id);
                 if (isset($loaded[$member->type][$id])) {
                     $kept[] = $member->withTarget($loaded[$member->type][$id]);
                 } elseif (isset($admitted[$member->type][$id])) {
@@ -533,7 +532,7 @@ final class IdentifiedMorphMembers
         $ids = [];
         foreach ($members as $member) {
             if ($server->hasSerializerFor($member->type) && $this->providers->supportsType($member->type)) {
-                $ids[$member->type][$this->wireId($server, $member->type, $member->id)] = true;
+                $ids[$member->type][StoredIds::wireId($server, $member->type, $member->id)] = true;
             }
         }
 
@@ -544,7 +543,7 @@ final class IdentifiedMorphMembers
 
         $rows = [];
         foreach ($members as $member) {
-            $row = $loaded[$member->type][$this->wireId($server, $member->type, $member->id)] ?? null;
+            $row = $loaded[$member->type][StoredIds::wireId($server, $member->type, $member->id)] ?? null;
             if ($row !== null) {
                 $rows[] = $row;
                 $types[\spl_object_id($row)] = $member->type;
@@ -625,20 +624,4 @@ final class IdentifiedMorphMembers
         return $id;
     }
 
-    /**
-     * A stored id, the storage key or the wire id, as the type's serializer renders it, through the id encoder it declares.
-     */
-    private function wireId(Server $server, string $type, string|int $key): string
-    {
-        $serializer = $server->hasSerializerFor($type) ? $server->serializerFor($type) : null;
-        if ($serializer instanceof AbstractResource) {
-            foreach ($serializer->allFields() as $field) {
-                if ($field instanceof Id) {
-                    return StoredIdForms::wireId($field->encoder(), $key);
-                }
-            }
-        }
-
-        return (string) $key;
-    }
 }

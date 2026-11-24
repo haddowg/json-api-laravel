@@ -32,8 +32,8 @@ use haddowg\JsonApiLaravel\DataPersister\TransactionalDataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\WritesForeignKeysInterface;
 use haddowg\JsonApiLaravel\DataPersister\WritesLinkRowsInterface;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
-use haddowg\JsonApiLaravel\DataProvider\Eloquent\StoredKey;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\NaiveDateTimeStorage;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\StoredKey;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
 use Illuminate\Container\Container;
 use Illuminate\Database\ConnectionInterface;
@@ -325,10 +325,13 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
     {
         $related = $this->modelFor($relatedType);
         $column = $this->foreignKeyAttribute($related, $foreignKey);
+        $morph = $foreignKey->morphColumns();
+        $morphTo = $morph === null && $foreignKey->isRelation() ? EloquentDataProvider::belongsToOf($related, $foreignKey->column) : null;
+        $typeColumn = $morph !== null ? $morph->type : ($morphTo instanceof MorphTo ? $morphTo->getMorphType() : null);
 
         foreach ($detach as $row) {
             if ($row instanceof Model) {
-                $this->orphan($row, $column, null, new FullReplacementProhibited($foreignKey->name));
+                $this->orphan($row, $column, $typeColumn, new FullReplacementProhibited($foreignKey->name));
             }
         }
 
@@ -337,7 +340,8 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
                 continue;
             }
 
-            $belongsTo = $foreignKey->isRelation() ? EloquentDataProvider::belongsToOf($row, $foreignKey->column) : null;
+            // The type field of a polymorphic foreign key is set already; the id takes the key.
+            $belongsTo = $foreignKey->isRelation() && $morph === null ? EloquentDataProvider::belongsToOf($row, $foreignKey->column) : null;
             if ($belongsTo !== null && $parent instanceof Model) {
                 $belongsTo->associate($parent);
             } else {
@@ -355,6 +359,10 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
      */
     private function foreignKeyAttribute(Model $related, ForeignKey $foreignKey): string
     {
+        $morph = $foreignKey->morphColumns();
+        if ($morph !== null) {
+            return $morph->id;
+        }
         if (!$foreignKey->isRelation()) {
             return $foreignKey->column;
         }

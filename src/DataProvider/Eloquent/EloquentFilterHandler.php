@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\DataProvider\Eloquent;
 
+use haddowg\JsonApi\Resource\AbstractResource;
+use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
+use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\Filter\DateOperand;
 use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\FilterHandlerInterface;
@@ -169,8 +172,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
     /**
      * @param iterable<EloquentFilterArmInterface<Model>>                                  $arms       author arms for custom filter types, consulted in order
      * @param ModelEncoders|null                                                     $encoders   picks the id encoder a compared key decodes with
+     * @param (\Closure(string): ?AbstractResource)|null                             $resourceOf the resource serving a type, which says whether a relation reads through a foreign key
      */
-    public function __construct(iterable $arms = [], private readonly ?ModelEncoders $encoders = null)
+    public function __construct(iterable $arms = [], private readonly ?ModelEncoders $encoders = null, private readonly ?\Closure $resourceOf = null)
     {
         $this->arms = \is_array($arms) ? \array_values($arms) : \iterator_to_array($arms, false);
         $this->dates = new NaiveDateTimeStorage();
@@ -267,8 +271,8 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             $filter instanceof WhereMorph => $this->whereMorph($query, $filter, $value),
             $filter instanceof WhereThrough => $this->whereThrough($query, $filter, $value),
             $filter instanceof WhereThroughIn => $this->whereThroughIn($query, $filter, $value),
-            $filter instanceof WhereHas => $query->whereHas($filter->relationship),
-            $filter instanceof WhereDoesntHave => $query->whereDoesntHave($filter->relationship),
+            $filter instanceof WhereHas => $this->exists($query, $this->type, $filter->relationship, false),
+            $filter instanceof WhereDoesntHave => $this->exists($query, $this->type, $filter->relationship, true),
             // Range (and DateRange, which extends it): two push-down where predicates.
             $filter instanceof Range => $this->range($query, $filter, $value),
             // A self-applying filter carries its own Eloquent query fragment (a named
@@ -317,9 +321,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         $applyLeaf = static function (Builder $reached) use ($handler, $leaf, $leafValue, $exists, $scope): void {
             if ($exists) {
                 \assert($leaf instanceof WhereHas || $leaf instanceof WhereDoesntHave);
-                $leaf instanceof WhereDoesntHave
-                    ? $reached->whereDoesntHave($leaf->relationship, $scope)
-                    : $reached->whereHas($leaf->relationship, $scope);
+                $handler->exists($reached, $handler->type, $leaf->relationship, $leaf instanceof WhereDoesntHave, $scope);
 
                 return;
             }
@@ -404,7 +406,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             return;
         }
 
-        $query->whereHas($hop->storage(), function (Builder $related) use ($hop, $hops, $leaf): void {
+        $inner = function (Builder $related) use ($hop, $hops, $leaf): void {
             if ($this->paths?->refuses($hop->relation) === true) {
                 $related->whereRaw('1 = 0');
 
@@ -412,7 +414,87 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             }
 
             $hops === [] ? $leaf($related) : $this->whereHasAlong($related, $hops, $leaf);
-        });
+        };
+        if (!$this->foreignKeyExists($query, $hop->relation, $hop->parentType, $inner, false)) {
+            $query->whereHas($hop->storage(), $inner);
+        }
+    }
+
+    /**
+     * A `whereHas`, or with `$not` a `whereDoesntHave`, over the relation of `$type` stored as
+     * `$relationship`, through its foreign key when it declares one.
+     *
+     * @param Builder<Model>                       $query
+     * @param (\Closure(Builder<Model>): mixed)|null $inner
+     */
+    private function exists(Builder $query, ?string $type, string $relationship, bool $not, ?\Closure $inner = null): void
+    {
+        $relation = null;
+        foreach (($type !== null && $this->resourceOf !== null ? ($this->resourceOf)($type)?->allFields() : null) ?? [] as $field) {
+            if ($field instanceof RelationInterface && ($field->column() ?? $field->name()) === $relationship) {
+                $relation = $field;
+
+                break;
+            }
+        }
+        if ($relation !== null && $type !== null && $this->foreignKeyExists($query, $relation, $type, $inner, $not)) {
+            return;
+        }
+
+        $not ? $query->whereDoesntHave($relationship, $inner) : $query->whereHas($relationship, $inner);
+    }
+
+    /**
+     * An `EXISTS`, or with `$not` a `NOT EXISTS`, over the rows of a relation of `$parentType`
+     * read through a foreign key, under the related model's global scopes: each row whose
+     * foreign key column holds the outer row's key and, for a `MorphTo` identified by columns,
+     * whose type column names `$parentType`, so a row of another type with the same id never
+     * matches. `$inner` narrows the rows further. False when the relation declares no foreign
+     * key the handler can read.
+     *
+     * @param Builder<Model>                       $query
+     * @param (\Closure(Builder<Model>): mixed)|null $inner
+     */
+    private function foreignKeyExists(Builder $query, RelationInterface $relation, string $parentType, ?\Closure $inner, bool $not): bool
+    {
+        $name = ForeignKey::nameOf($relation);
+        $relatedType = $relation->relatedTypes()[0] ?? null;
+        if ($name === null || $relatedType === null || \count($relation->relatedTypes()) !== 1 || $this->resourceOf === null) {
+            return false;
+        }
+        $resource = ($this->resourceOf)($relatedType);
+        $class = $this->encoders?->modelFor($relatedType);
+        $foreignKey = $resource !== null ? ForeignKey::in($name, $resource) : null;
+        if ($foreignKey === null || $class === null) {
+            return false;
+        }
+
+        $related = new $class();
+        $morph = $foreignKey->morphColumns();
+        $belongsTo = $morph === null && $foreignKey->isRelation() ? EloquentDataProvider::belongsToOf($related, $foreignKey->column) : null;
+        $attribute = match (true) {
+            $morph !== null => $morph->id,
+            $foreignKey->isRelation() => $belongsTo?->getForeignKeyName(),
+            default => $foreignKey->column,
+        };
+        if ($attribute === null) {
+            return false;
+        }
+
+        /** @var Builder<Model> $rows */
+        $rows = $related->newQuery();
+        $rows->whereColumn($related->qualifyColumn($attribute), '=', $query->getModel()->getQualifiedKeyName());
+        if ($morph !== null) {
+            $rows->whereIn($related->qualifyColumn($morph->type), $morph->storedValues($parentType));
+        } elseif ($belongsTo instanceof EloquentMorphTo) {
+            $rows->where($related->qualifyColumn($belongsTo->getMorphType()), $query->getModel()->getMorphClass());
+        }
+        if ($inner !== null) {
+            $inner($rows);
+        }
+        $query->addWhereExistsQuery($rows->toBase(), 'and', $not);
+
+        return true;
     }
 
     /**

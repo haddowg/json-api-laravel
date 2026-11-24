@@ -6,10 +6,7 @@ namespace haddowg\JsonApiLaravel\DataProvider;
 
 use haddowg\JsonApi\Collection\CollectionResult;
 use haddowg\JsonApi\Collection\WindowExecutor;
-use haddowg\JsonApi\Resource\AbstractResource;
-use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
-use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Resource\Filter\InMemory\ArrayFilterHandler;
 use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortHandler;
 use haddowg\JsonApi\Server\Server;
@@ -121,7 +118,7 @@ final class ScopedPolymorphicMembers
         $wire = [];
         foreach ($keys as $key) {
             if (\is_string($key) || \is_int($key)) {
-                $wire[(string) $key] = self::wireId($server, $type, $key);
+                $wire[(string) $key] = StoredIds::wireId($server, $type, $key);
             }
         }
         $admitted = $this->admittedIds($server, $provider, $type, \array_values(\array_unique($wire)));
@@ -129,22 +126,6 @@ final class ScopedPolymorphicMembers
         return \array_values(\array_filter($keys, static fn(mixed $key): bool => (\is_string($key) || \is_int($key)) && isset($admitted[$wire[(string) $key]])));
     }
 
-    /**
-     * A stored id, the storage key or the wire id, as the type's serializer renders it, through the id encoder it declares.
-     */
-    private static function wireId(Server $server, string $type, string|int $key): string
-    {
-        $serializer = $server->hasSerializerFor($type) ? $server->serializerFor($type) : null;
-        if ($serializer instanceof AbstractResource) {
-            foreach ($serializer->allFields() as $field) {
-                if ($field instanceof Id) {
-                    return StoredIdForms::wireId($field->encoder(), $key);
-                }
-            }
-        }
-
-        return (string) $key;
-    }
 
     /**
      * Applies `$criteria` to members already narrowed, so a page of them stays full and its total

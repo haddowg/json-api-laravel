@@ -203,11 +203,11 @@ abstract class IdKindsConformanceTestCase extends Orchestra
     {
         // Only Eloquent compares a native morphTo, which declares no columns.
         if ($this->store() === 'eloquent') {
-        self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[subject][type]=ikWriters'));
-        self::assertSame($this->refs('b2'), $this->ids('/api/ikBooks?filter[subject][type]=ikLabels'));
-        self::assertSame($this->refs('b2'), $this->ids('/api/ikBooks?filter[subject][type]=ikLabels&filter[subject][id]=' . $this->w('l1')));
-        self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[subject][type]=ikWriters&filter[subject][id]=' . $this->w('w2')));
-        self::assertSame([], $this->ids('/api/ikBooks?filter[subject][type]=ikWriters&filter[subject][id]=' . $this->w('w1')));
+            self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[subject][type]=ikWriters'));
+            self::assertSame($this->refs('b2'), $this->ids('/api/ikBooks?filter[subject][type]=ikLabels'));
+            self::assertSame($this->refs('b2'), $this->ids('/api/ikBooks?filter[subject][type]=ikLabels&filter[subject][id]=' . $this->w('l1')));
+            self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[subject][type]=ikWriters&filter[subject][id]=' . $this->w('w2')));
+            self::assertSame([], $this->ids('/api/ikBooks?filter[subject][type]=ikWriters&filter[subject][id]=' . $this->w('w1')));
         }
         self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[origin][type]=ikLabels'));
         self::assertSame($this->refs('b2'), $this->ids('/api/ikBooks?filter[origin][type]=ikWriters&filter[origin][id]=' . $this->w('w2')));
@@ -311,7 +311,7 @@ abstract class IdKindsConformanceTestCase extends Orchestra
      */
     private function refs(string ...$refs): array
     {
-        return $this->sorted(\array_map(IdKinds::wire(...), $refs));
+        return $this->sorted(\array_values(\array_map(IdKinds::wire(...), $refs)));
     }
 
     /**
@@ -321,7 +321,7 @@ abstract class IdKindsConformanceTestCase extends Orchestra
      */
     private function keys(array ...$pairs): array
     {
-        return $this->sorted(\array_map(static fn(array $pair): string => $pair[0] . ':' . IdKinds::wire($pair[1]), $pairs));
+        return $this->sorted(\array_values(\array_map(static fn(array $pair): string => $pair[0] . ':' . IdKinds::wire($pair[1]), $pairs)));
     }
 
     private function path(string $type, string $ref, ?string $tail = null): string

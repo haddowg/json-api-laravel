@@ -10,6 +10,7 @@ use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApiLaravel\DataProvider\ForeignKeyParents;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
  * The related rows a page of parents holds through a foreign key, as one query scope and the
@@ -19,7 +20,8 @@ use Illuminate\Database\Eloquent\Model;
  *
  * A foreign key naming a `MorphTo` identified by columns also scopes its type column to the
  * values naming the parents' type, and its id column, which may hold a parent's storage key or
- * its wire id, matches either.
+ * its wire id, matches either. One naming an Eloquent `morphTo` scopes its type column to the
+ * morph class of the parents' model.
  *
  * @internal
  */
@@ -43,9 +45,11 @@ final readonly class ForeignKeyScope
     ) {}
 
     /**
+     * @param string|null $parentMorphClass the morph class of the model serving the parents' type, which a native `morphTo` stores
+     *
      * @throws \LogicException when a to-one foreign key names no `BelongsTo` of the related model
      */
-    public static function of(Model $related, string $relatedType, ForeignKey $foreignKey, ForeignKeyParents $parents, ?IdEncoderInterface $parentEncoder): self
+    public static function of(Model $related, string $relatedType, ForeignKey $foreignKey, ForeignKeyParents $parents, ?IdEncoderInterface $parentEncoder, ?string $parentMorphClass = null): self
     {
         $morph = $foreignKey->morphColumns();
         $typeColumn = null;
@@ -63,6 +67,10 @@ final readonly class ForeignKeyScope
                 $foreignKey->column,
             ));
             $attribute = $belongsTo->getForeignKeyName();
+            if ($belongsTo instanceof MorphTo) {
+                $typeColumn = $related->qualifyColumn($belongsTo->getMorphType());
+                $types = $parentMorphClass !== null ? [$parentMorphClass] : [];
+            }
         } else {
             $attribute = $foreignKey->column;
         }

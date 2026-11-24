@@ -130,7 +130,7 @@ final class IdKinds
             'uuid', 'object' => Id::make()->uuid(),
             'ulid' => Id::make()->ulid(),
             'binary' => Id::make()->uuid()->encodeUsing(new BinaryUuidEncoder()),
-            'prefix' => Id::make()->encodeUsing(new PrefixCodec(self::PREFIXES[$type])),
+            default => Id::make()->encodeUsing(new PrefixCodec(self::PREFIXES[$type] ?? '')),
         };
     }
 

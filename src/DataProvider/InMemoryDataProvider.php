@@ -357,19 +357,34 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
     private function rowsByForeignKey(ForeignKey $foreignKey, ForeignKeyParents $parents): array
     {
         $byObject = [];
+        $classes = [];
         foreach ($parents->parents as $wireId => $parent) {
             $byObject[\spl_object_id($parent)] = (string) $wireId;
+            $classes[$parent::class] = true;
         }
 
         $grouped = \array_fill_keys($parents->wireIds(), []);
+        $morph = $foreignKey->morphColumns();
         foreach ($this->store->all() as $row) {
             if (!\is_object($row)) {
+                continue;
+            }
+            // A polymorphic foreign key holds a parent of this type in either form of its id.
+            if ($morph !== null) {
+                $pair = $morph->pair($row);
+                $wireId = $pair === null || $pair[0] !== $parents->type ? null : ($parents->wireIdOf($pair[1]) ?? (isset($parents->keys[(string) $pair[1]]) ? (string) $pair[1] : null));
+                if ($wireId !== null) {
+                    $grouped[$wireId][] = $row;
+                }
+
                 continue;
             }
             $value = Accessor::get($row, $foreignKey->column);
             $wireId = match (true) {
                 \is_object($value) && isset($byObject[\spl_object_id($value)]) => $byObject[\spl_object_id($value)],
-                \is_object($value) && !$value instanceof \Stringable => $parents->wireIdOf(Accessor::get($value, 'id')),
+                // Another object holds a parent's key only when it is of the parents' class, so a
+                // polymorphic target of another type with the same id isn't one of them.
+                \is_object($value) && !$value instanceof \Stringable => isset($classes[$value::class]) ? $parents->wireIdOf(Accessor::get($value, 'id')) : null,
                 default => $parents->wireIdOf($value),
             };
             if ($wireId !== null) {

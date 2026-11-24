@@ -19,6 +19,7 @@ use haddowg\JsonApi\Pagination\CursorCodec;
 use haddowg\JsonApi\Pagination\CursorWindow;
 use haddowg\JsonApi\Pagination\OffsetWindow;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\BelongsToMany as PivotRelation;
 use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\FieldInterface;
@@ -174,7 +175,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         $this->idEncodersResolved = $idEncoders !== null;
         $this->applier = new CriteriaApplier();
         $this->windowExecutor = new WindowExecutor();
-        $this->filterHandler = new EloquentFilterHandler($filterArms, new ModelEncoders($modelByType, fn(string $type): ?IdEncoderInterface => $this->encoderFor($type)));
+        $this->filterHandler = new EloquentFilterHandler($filterArms, new ModelEncoders($modelByType, fn(string $type): ?IdEncoderInterface => $this->encoderFor($type)), $this->resourceFor(...));
         $this->sortHandler = new EloquentSortHandler($sortArms);
         $this->arrayFilterHandler = new ScopedArrayFilterHandler(new ArrayFilterHandler());
         $this->arraySortHandler = new ScopedArraySortHandler(new ArraySortHandler());
@@ -1303,7 +1304,9 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      */
     private function foreignKeyScope(string $relatedType, ForeignKey $foreignKey, ForeignKeyParents $parents): ForeignKeyScope
     {
-        return ForeignKeyScope::of($this->newQuery($relatedType)->getModel(), $relatedType, $foreignKey, $parents, $this->encoderFor($parents->type));
+        $parentClass = $this->modelByType[$parents->type] ?? null;
+
+        return ForeignKeyScope::of($this->newQuery($relatedType)->getModel(), $relatedType, $foreignKey, $parents, $this->encoderFor($parents->type), $parentClass !== null ? (new $parentClass())->getMorphClass() : null);
     }
 
     /**
@@ -1708,6 +1711,17 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             isset($traits[HasUlids::class]) => Str::isUlid($id) ? $id : null,
             default => $id,
         };
+    }
+
+    /**
+     * The resource serving `$type`, or `null` outside a container or for a type no resource
+     * declares.
+     */
+    private function resourceFor(string $type): ?AbstractResource
+    {
+        $this->encoderFor($type);
+
+        return $this->idEncoders?->resourceFor($type);
     }
 
     private function encoderFor(string $type): ?IdEncoderInterface

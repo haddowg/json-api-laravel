@@ -59,6 +59,9 @@ class IkBook extends Model
         return $this->hasMany(IkPin::class, 'book_id');
     }
 
+    /**
+     * @return list<string>
+     */
     protected function keyColumns(): array
     {
         return ['writer_id', 'featured_by', 'writer_ref'];

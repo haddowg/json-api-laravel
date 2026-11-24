@@ -783,6 +783,19 @@ Don't cast a key column with `AsBinary::uuid()`. Eloquent binds the cast string,
 bytes, when it queries by key or loads a relation, so `find()`, eager loading and pivot writes
 miss every row.
 
+## Keys behind casts
+
+A key or foreign key column may sit behind a value-object cast, a class implementing
+`CastsAttributes` or `CastsInboundAttributes`, so the model reads an object while the database
+holds what the cast's `set()` returns. The provider and persister bind and compare the stored
+value, never the object or its string: fetching by id, admitting ids, foreign-key reads and
+counts, to-many windows and cursor pages, link rows, linkage writes, pivot writes and the
+unique-row rule. A wire id with no id encoder is set through the key's cast before it is bound.
+A cast to an object whose string is the stored text, such as a value object over a text key,
+works everywhere, Eloquent's own relations included. A cast that stores something else, such
+as a UUID object over 16 bytes, works on a field named as a foreign key, which the package reads
+itself, but not on a key Eloquent's own relations load, for the reason above.
+
 ## Sorting, sparse fieldsets, pagination
 
 `sortable()` fields drive `?sort` (`SortByField::make($key, $column)` maps a wire key to a

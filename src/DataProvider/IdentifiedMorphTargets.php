@@ -5,11 +5,9 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\DataProvider;
 
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
-use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
-use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Schema\Relationship\ToOneRelationshipLinkage;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\Authorization\GuardedTypes;
@@ -126,7 +124,7 @@ final class IdentifiedMorphTargets
                 continue;
             }
 
-            $target = $pair === null ? null : ($rows[$pair[0]][$this->wireId($this->server, $pair[0], $pair[1])] ?? null);
+            $target = $pair === null ? null : ($rows[$pair[0]][StoredIds::wireId($this->server, $pair[0], $pair[1])] ?? null);
 
             $entry = $this->loaded[$parent] ?? [];
             $entry[$name] = $target === null ? ToOneRelationshipLinkage::none() : ToOneRelationshipLinkage::to($target);
@@ -168,7 +166,7 @@ final class IdentifiedMorphTargets
         }
 
         $provider = $this->providers->forType($type);
-        $ids = \array_map(fn(string|int $key): string => $this->wireId($server, $type, $key), $keys);
+        $ids = \array_map(fn(string|int $key): string => StoredIds::wireId($server, $type, $key), $keys);
 
         if ($provider instanceof FetchesManyInterface) {
             $found = $provider->fetchMany($type, $ids);
@@ -191,20 +189,4 @@ final class IdentifiedMorphTargets
         return $byId;
     }
 
-    /**
-     * A stored id, the storage key or the wire id, as the type's serializer renders it, through the id encoder it declares.
-     */
-    private function wireId(Server $server, string $type, string|int $key): string
-    {
-        $serializer = $server->hasSerializerFor($type) ? $server->serializerFor($type) : null;
-        if ($serializer instanceof AbstractResource) {
-            foreach ($serializer->allFields() as $field) {
-                if ($field instanceof Id) {
-                    return StoredIdForms::wireId($field->encoder(), $key);
-                }
-            }
-        }
-
-        return (string) $key;
-    }
 }

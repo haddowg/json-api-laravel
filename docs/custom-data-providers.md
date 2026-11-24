@@ -122,13 +122,16 @@ public function fetchByForeignKey(string $relatedType, RelationInterface $relati
 with none. A to-one's page holds its target as the first row. When the foreign key is a to-one
 relation (`$foreignKey->isRelation()`), the column holds a reference to the parent, so compare
 the id it references. The parents may come from any provider, so read their keys from
-`ForeignKeyParents` rather than from your own storage.
+`ForeignKeyParents` rather than from your own storage. When it is a `MorphTo` identified by columns,
+`$foreignKey->morphColumns()` returns its type and id fields: read the rows whose type field holds
+one of `storedValues($parents->type)` and whose id field holds a parent's key, in either form.
 
 A persister whose type is written through a foreign key implements
 [`WritesForeignKeysInterface`](../src/DataPersister/WritesForeignKeysInterface.php):
 `writeForeignKey()` points the joining rows at the parent and clears the key on the leaving
 ones, and `requiresForeignKey()` says whether storage refuses a row with no key, which turns a
-write that would clear one into a `403`.
+write that would clear one into a `403`. For a `MorphTo` identified by columns the type field is set
+before `writeForeignKey()` is called, so it sets the id field, `$foreignKey->morphColumns()->id`.
 
 A relation with no foreign key whose parent your provider serves, into a type the Eloquent or
 in-memory provider serves, reads the members the parent model holds. Its pages and counts are
