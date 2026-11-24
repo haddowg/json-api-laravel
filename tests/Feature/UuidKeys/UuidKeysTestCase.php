@@ -140,12 +140,15 @@ abstract class UuidKeysTestCase extends Orchestra
         DB::enableQueryLog();
         $this->read('/api/notes?filter[subject][type]=labels');
         DB::disableQueryLog();
-        $statements = \array_map(static fn(array $entry): string => \strtolower($entry['query']), DB::getQueryLog());
+        // Without identifier quotes, which differ between databases.
+        $statements = \array_map(static fn(array $entry): string => \str_replace(['"', '`'], '', \strtolower($entry['query'])), DB::getQueryLog());
 
-        self::assertSame([], \array_values(\array_filter($statements, static fn(string $sql): bool => \str_contains($sql, 'select distinct') && \str_contains($sql, '"uk_notes"'))), "no stored ids are read first:\n" . \implode("\n", $statements));
-        $compared = \array_filter($statements, static fn(string $sql): bool => \str_contains($sql, 'from "uk_notes"') && \str_contains($sql, 'from "uk_labels"'));
+        self::assertSame([], \array_values(\array_filter($statements, static fn(string $sql): bool => \str_contains($sql, 'select distinct') && \str_contains($sql, 'uk_notes'))), "no stored ids are read first:\n" . \implode("\n", $statements));
+        $compared = \array_filter($statements, static fn(string $sql): bool => \str_contains($sql, 'from uk_notes') && \str_contains($sql, 'from uk_labels'));
         self::assertCount(1, $compared, "one statement compares the keys in SQL:\n" . \implode("\n", $statements));
-        self::assertSame($this->storage() === 'binary', \str_contains((string) \reset($compared), 'hex('), 'a binary key is read as its canonical text');
+        // hex() on SQLite, BIN_TO_UUID() on MySQL 8 and encode() on PostgreSQL.
+        $sql = (string) \reset($compared);
+        self::assertSame($this->storage() === 'binary', \str_contains($sql, 'hex(') || \str_contains($sql, 'bin_to_uuid(') || \str_contains($sql, 'encode('), 'a binary key is read as its canonical text');
     }
 
     #[Test]
@@ -383,7 +386,7 @@ abstract class UuidKeysTestCase extends Orchestra
     /**
      * Notes 1 and 4 are about visible labels, 2 about a label the scope hides, 3 about a
      * writer, each id stored as its canonical string. Note 6 is about label L2 stored as
-     * its storage key, 16 bytes when keys are binary.
+     * its storage key, 16 bytes when keys are binary and the database is SQLite.
      */
     private function seedNotes(): void
     {
@@ -392,7 +395,9 @@ abstract class UuidKeysTestCase extends Orchestra
         Note::query()->create(['id' => 2, 'subject_type' => 'labels', 'subject_id' => self::L3]);
         Note::query()->create(['id' => 3, 'subject_type' => 'writers', 'subject_id' => self::W1]);
         Note::query()->create(['id' => 4, 'subject_type' => 'labels', 'subject_id' => self::L2]);
-        Note::query()->create(['id' => 6, 'subject_type' => 'labels', 'subject_id' => $this->storageKey(self::L2)]);
+        // Only SQLite keeps raw bytes in a text column.
+        $sqlite = DB::connection()->getDriverName() === 'sqlite';
+        Note::query()->create(['id' => 6, 'subject_type' => 'labels', 'subject_id' => $sqlite ? $this->storageKey(self::L2) : self::L2]);
     }
 
     protected function storageKey(string $uuid): string

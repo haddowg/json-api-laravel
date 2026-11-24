@@ -28,8 +28,8 @@ final class EloquentMorphKeysConformanceTest extends MorphKeysConformanceTestCas
     {
         $statements = $this->statementsOf('/api/mkNotes?filter[subject][type]=mkCounters');
 
-        self::assertCount(1, $this->containing($statements, 'select distinct', '"mk_notes"'), "the distinct stored ids are read once:\n" . \implode("\n", $statements));
-        self::assertSame([], $this->containing($statements, 'from "mk_notes"', 'from "mk_counters"'), "no statement compares the text column with the integer keys in SQL:\n" . \implode("\n", $statements));
+        self::assertCount(1, $this->containing($statements, 'select distinct', 'mk_notes'), "the distinct stored ids are read once:\n" . \implode("\n", $statements));
+        self::assertSame([], $this->containing($statements, 'from mk_notes', 'from mk_counters'), "no statement compares the text column with the integer keys in SQL:\n" . \implode("\n", $statements));
     }
 
     #[Test]
@@ -38,8 +38,8 @@ final class EloquentMorphKeysConformanceTest extends MorphKeysConformanceTestCas
     {
         $statements = $this->statementsOf('/api/mkNotes?filter[subject][type]=mkCodes');
 
-        self::assertSame([], $this->containing($statements, 'select distinct', '"mk_notes"'), "no stored ids are read first:\n" . \implode("\n", $statements));
-        self::assertCount(1, $this->containing($statements, 'from "mk_notes"', 'from "mk_codes"'), "one statement compares the keys in SQL:\n" . \implode("\n", $statements));
+        self::assertSame([], $this->containing($statements, 'select distinct', 'mk_notes'), "no stored ids are read first:\n" . \implode("\n", $statements));
+        self::assertCount(1, $this->containing($statements, 'from mk_notes', 'from mk_codes'), "one statement compares the keys in SQL:\n" . \implode("\n", $statements));
     }
 
     #[Test]
@@ -60,7 +60,7 @@ final class EloquentMorphKeysConformanceTest extends MorphKeysConformanceTestCas
 
         \sort($ids);
         self::assertSame(['3', '4'], $ids);
-        self::assertNotSame([], $this->containing($statements, 'from "mk_notes"', ' in (?) or '), "the admitted ids bind as several lists:\n" . \implode("\n", $statements));
+        self::assertNotSame([], $this->containing($statements, 'from mk_notes', ' in (?) or '), "the admitted ids bind as several lists:\n" . \implode("\n", $statements));
     }
 
     /**
@@ -75,7 +75,8 @@ final class EloquentMorphKeysConformanceTest extends MorphKeysConformanceTestCas
         $this->request($path)->assertOk();
         DB::disableQueryLog();
 
-        return \array_map(static fn(array $entry): string => \strtolower($entry['query']), DB::getQueryLog());
+        // Without identifier quotes, which differ between databases.
+        return \array_map(static fn(array $entry): string => \str_replace(['"', '`'], '', \strtolower($entry['query'])), DB::getQueryLog());
     }
 
     /**
