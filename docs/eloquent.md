@@ -399,12 +399,19 @@ When the model serving the requested type has global scopes, either form also re
 target to exist under them, so a target they hide never matches; see
 [filters that reach through relations](authorization.md#filters-that-reach-through-relations).
 A key with no value-object cast and no id encoder, of the same family as the morph column,
-both integers or both text, is kept to a subquery of the scoped keys. Any other key is admitted
+both integers or both text, is kept to a subquery of the scoped keys, with a string key read
+as text on PostgreSQL so a native uuid column compares. A binary UUID key behind
+`BinaryUuidEncoder` keeps the subquery too, with the key read as its canonical lowercase text
+inside it: `BIN_TO_UUID()` on MySQL 8, a `LOWER(HEX())` expression with dashes on MariaDB,
+older MySQL and SQLite, and an `ENCODE()` expression on PostgreSQL. On a database whose text
+column can hold raw bytes the subquery also compares the key as stored, so a column holding
+the 16-byte storage key, which `associate()` writes, still matches. Any other key is admitted
 the way a related read finds its target: an integer key under a text column, which PostgreSQL
-can't compare, a key the model mints as a UUID, which may be a native uuid column, a binary UUID
-behind a cast, or an encoded id. The requested ids, or with none the distinct ids of that type
-the column holds, are decoded through the encoder or set through the key's cast and looked up
-under the scopes in one query, and only the ids found are bound.
+can't compare, a key behind another cast, an encoded id, or a database with none of those
+expressions. The requested ids, or with none the distinct ids of that type the column holds,
+are decoded through the encoder or set through the key's cast and looked up under the scopes
+in one query, and the ids found are bound in lists of 2000 joined with `OR`, so a long list
+stays under the database's parameter limit.
 
 The id column may hold the target's storage key or its wire id. They differ only when the
 target's type declares an id encoder, and a text column that holds the ids of several kinds of
