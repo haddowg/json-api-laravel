@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Catalog;
 
+use haddowg\JsonApi\Catalog\AdditionalGate;
 use haddowg\JsonApi\Catalog\OperationSecurity;
 use haddowg\JsonApi\Catalog\OperationSecuritySourceInterface;
 use haddowg\JsonApi\Catalog\SecurityLevel;
@@ -30,8 +31,8 @@ use Illuminate\Support\Str;
  * - A related or relationship read is guarded by the relation's `security(read:)` ability,
  *   else a `view{Relation}` ability the policy or the Gate defines, else the parent's
  *   `fetchOne` rule. `read: false` is public. A to-many guarded by the parent's rule also
- *   needs the collection ability of every type it relates to, which
- *   {@see relatedListAbilities()} lists for the evaluator.
+ *   needs the collection ability of every type it relates to, each listed as an
+ *   {@see AdditionalGate}.
  * - A relationship mutation is guarded by the relation's `security(mutate:)` ability, else
  *   the parent's `update` rule. `mutate: false` is public.
  * - A custom action is guarded by its `ability`, or nothing.
@@ -104,20 +105,21 @@ final class OperationSecuritySource implements OperationSecuritySourceInterface
             return new OperationSecurity($convention, SecurityLevel::Entity);
         }
 
-        return $this->crud($server, $type->type(), Operation::FetchOne);
+        $parent = $this->crud($server, $type->type(), Operation::FetchOne);
+
+        return new OperationSecurity($parent->expression, $parent->level, $this->relatedListGates($server, $type, $relation));
     }
 
     /**
      * The collection ability of each type a related or relationship read through `$relation`
-     * must also pass, keyed by type, as the handler checks them: a to-many is refused when the
-     * caller may not list a type it relates to. A to-one needs none, and neither does a
-     * relation whose own read permission, declared or by the `view{Relation}` convention,
-     * replaces them. A `true` or `false` collection rule is not enforced, so only abilities
-     * are listed.
+     * must also pass, as the handler checks them: a to-many is refused when the caller may not
+     * list a type it relates to. A to-one needs none, and neither does a relation whose own
+     * read permission, declared or by the `view{Relation}` convention, replaces them. A `true`
+     * or `false` collection rule is not enforced, so only abilities are listed.
      *
-     * @return array<string, string>
+     * @return list<AdditionalGate>
      */
-    public function relatedListAbilities(string $server, TypeMetadataInterface $type, string $relation): array
+    private function relatedListGates(string $server, TypeMetadataInterface $type, string $relation): array
     {
         $declared = $this->relation($type, $relation);
         if ($declared === null || !$declared->isToMany() || $declared->securityRead() !== null
@@ -125,15 +127,15 @@ final class OperationSecuritySource implements OperationSecuritySourceInterface
             return [];
         }
 
-        $abilities = [];
+        $gates = [];
         foreach ($declared->relatedTypes() as $related) {
-            $rule = $this->crud($server, $related, Operation::FetchCollection)->expression;
-            if (\is_string($rule)) {
-                $abilities[$related] = $rule;
+            $rule = $this->crud($server, $related, Operation::FetchCollection);
+            if (\is_string($rule->expression)) {
+                $gates[] = new AdditionalGate($related, OperationKind::FetchCollection, $rule->expression, $rule->level);
             }
         }
 
-        return $abilities;
+        return $gates;
     }
 
     /**

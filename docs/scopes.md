@@ -195,6 +195,7 @@ The evaluator inspects the ability through `Gate::forUser($user)->inspect()`. It
 well as the user, or when the policy has a `before()` method, since the answer then depends on
 the resource. A public or unguarded operation is `Allowed`. A to-many's related and
 relationship reads also need the collection ability of every type the relation reaches, as
-their endpoints check it, unless the relation has its own read ability: the evaluator answers
-`Denied` when one of those refuses the caller, though the operation lists only the parent's
-ability. `ScopeChecker` uses the same matcher as enforcement.
+their endpoints check it, unless the relation has its own read ability. The definition lists
+those in `additionalGates`, one `AdditionalGate` per related type, beside the parent's ability
+in `security`. The evaluator judges each against its own type, and one that refuses the caller
+makes the answer `Denied` even when the parent's ability needs the resource. `ScopeChecker` uses the same matcher as enforcement.
