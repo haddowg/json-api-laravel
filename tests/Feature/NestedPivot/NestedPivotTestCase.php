@@ -38,6 +38,14 @@ abstract class NestedPivotTestCase extends Orchestra
     }
 
     /**
+     * Whether the provider reads the stored pivot columns of a record's crates.
+     */
+    protected function storesRecordPivots(): bool
+    {
+        return $this->storesWrittenPivots();
+    }
+
+    /**
      * @param \Illuminate\Foundation\Application $app
      *
      * @return array<int, class-string>
@@ -327,6 +335,86 @@ abstract class NestedPivotTestCase extends Orchestra
         self::assertSame(['1' => $this->pivot(1, 1), '2' => $this->pivot(1, 2)], $this->linkagePivots($this->included($document, 'npCrates', '1'), 'records'));
     }
 
+    public function test_every_rendered_pivot_linkage_carries_its_pivot(): void
+    {
+        foreach ([
+            '/api/npCrates/1',
+            '/api/npCrates',
+            '/api/npCrates/1?include=labelledRecords',
+            '/api/npCrates/2?fields[npCrates]=records',
+            '/api/npShelves?include=crate',
+            '/api/npShelves/1?include=crate,altCrate',
+            '/api/npShelves?include=crate&fields[npCrates]=records',
+            '/api/npRooms/1?include=shelves.crate',
+            '/api/npRooms?include=shelves.crate',
+            '/api/npRooms/1?include=pinned,things',
+            '/api/npRooms/1/things',
+            '/api/npRooms/1/pinned',
+            '/api/npShelves/1/crate',
+            '/api/npShelves/2/holder',
+            '/api/npRecords/1/crates',
+            '/api/npRecords/1?include=crates',
+            '/api/npBins/1',
+            '/api/npBins/1?include=records',
+        ] as $uri) {
+            $this->assertEveryLinkageCarriesItsPivot($this->document($uri), $uri);
+        }
+    }
+
+    public function test_a_write_response_carries_the_pivot_of_every_linkage_it_renders(): void
+    {
+        $this->assertEveryLinkageCarriesItsPivot($this->write('PATCH', '/api/npBins/1', 200, ['data' => [
+            'type' => 'npBins', 'id' => '1', 'attributes' => ['title' => 'Gamma'],
+        ]]), 'update');
+
+        $this->assertEveryLinkageCarriesItsPivot($this->write('PATCH', '/api/npBins/1?include=records', 200, ['data' => [
+            'type' => 'npBins', 'id' => '1', 'attributes' => ['title' => 'Gamma'],
+        ]]), 'update with an include');
+
+        $document = $this->write('POST', '/api/npBins', 201, ['data' => [
+            'type' => 'npBins',
+            'attributes' => ['title' => 'Delta'],
+            'relationships' => ['records' => ['data' => [['type' => 'npRecords', 'id' => '2', 'meta' => ['pivot' => ['position' => 4]]]]]],
+        ]]);
+        $this->assertEveryLinkageCarriesItsPivot($document, 'create');
+
+        foreach (['PATCH', 'POST', 'DELETE'] as $method) {
+            $linkage = $this->write($method, '/api/npBins/2/relationships/records', 200, ['data' => [['type' => 'npRecords', 'id' => '3', 'meta' => ['pivot' => ['position' => 7]]]]]);
+            foreach ($this->arrayAt($linkage['data'] ?? null) as $member) {
+                self::assertIsArray(\data_get($member, 'meta.pivot'), $method . ' ' . \json_encode($member));
+            }
+        }
+    }
+
+    public function test_an_action_response_carries_the_pivot_of_every_linkage_it_renders(): void
+    {
+        foreach ([
+            ['/api/npCrates/1/-actions/muster', 200],
+            ['/api/npShelves/2/-actions/muster?include=crate', 200],
+            ['/api/npCrates/-actions/roll', 200],
+            ['/api/npCrates/-actions/mix', 200],
+            ['/api/npCrates/2/-actions/queue', 202],
+        ] as [$uri, $status]) {
+            $this->assertEveryLinkageCarriesItsPivot($this->action($uri, $status), $uri);
+        }
+    }
+
+    public function test_an_atomic_result_carries_the_pivot_of_every_linkage_it_renders(): void
+    {
+        $document = $this->write('POST', '/api/operations', 200, ['atomic:operations' => [
+            ['op' => 'update', 'ref' => ['type' => 'npBins', 'id' => '2'], 'data' => ['type' => 'npBins', 'id' => '2', 'attributes' => ['title' => 'Beta']]],
+            ['op' => 'add', 'data' => [
+                'type' => 'npBins',
+                'attributes' => ['title' => 'Delta'],
+                'relationships' => ['records' => ['data' => [['type' => 'npRecords', 'id' => '1', 'meta' => ['pivot' => ['position' => 4]]]]]],
+            ]],
+        ]], self::ATOMIC_MEDIA_TYPE);
+
+        foreach ([0, 1] as $index) {
+            $this->assertEveryLinkageCarriesItsPivot(['data' => \data_get($document, 'atomic:results.' . $index . '.data')], 'atomic result ' . $index);
+        }
+    }
+
     /**
      * The `meta.pivot` bin 1's `keptRecords` relation renders for record `$record`.
      *
@@ -512,5 +600,39 @@ abstract class NestedPivotTestCase extends Orchestra
     private function includedPivot(array $document, string $type, string $id): mixed
     {
         return \data_get($this->included($document, $type, $id), 'meta.pivot');
+    }
+
+    /**
+     * Asserts that every member of every pivot relation's linkage the document renders, on
+     * its primary data and its included resources, carries `meta.pivot`, and that at least one
+     * such linkage rendered. A relation whose pivot fields are all stored renders none on a
+     * provider that stores no pivot rows.
+     *
+     * @param array<mixed> $document
+     */
+    private function assertEveryLinkageCarriesItsPivot(array $document, string $context): void
+    {
+        $relations = ['npCrates' => ['records', 'labelledRecords'], 'npBins' => ['records'], 'npRecords' => $this->storesRecordPivots() ? ['placedIn'] : []];
+        $data = $document['data'] ?? null;
+        $resources = \is_array($data) ? (\array_is_list($data) ? $data : [$data]) : [];
+        $checked = 0;
+        foreach ([...$resources, ...$this->arrayAt($document['included'] ?? [])] as $resource) {
+            $type = \data_get($resource, 'type');
+            self::assertIsString($type);
+            foreach ($relations[$type] ?? [] as $relation) {
+                $relationship = \data_get($resource, 'relationships.' . $relation);
+                if (!\is_array($relationship) || !\array_key_exists('data', $relationship)) {
+                    continue;
+                }
+                foreach ($this->arrayAt($relationship['data']) as $member) {
+                    $pivot = \data_get($member, 'meta.pivot');
+                    $where = \sprintf('%s: %s %s %s member %s', $context, $type, \json_encode(\data_get($resource, 'id')), $relation, \json_encode($member));
+                    self::assertIsArray($pivot, $where);
+                    self::assertNotSame([], $pivot, $where);
+                    ++$checked;
+                }
+            }
+        }
+        self::assertGreaterThan(0, $checked, $context . ' renders no pivot linkage: ' . \json_encode($document));
     }
 }

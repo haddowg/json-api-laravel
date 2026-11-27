@@ -336,9 +336,13 @@ BelongsToMany::make('items', 'items')->fields(
 `meta.pivot` renders on the related endpoint, the relationship endpoint and the `200` linkage a
 relationship mutation answers with. Reads of a resource, a collection or a related endpoint,
 polymorphic ones included, create and update responses, atomic results among them, and a
-custom action's response, its `202` job resource included, also render it wherever the relation's linkage carries data, at any depth of `?include`: on each
+custom action's response, its `202` job resource included, also render it on every member of
+the relation's linkage wherever that linkage carries data, at any depth of `?include`: on each
 linkage member of `GET /playlists/1?include=orderedTracks`, of an include that reaches
-`orderedTracks` through other relations, and on each track those include. The stored values
+`orderedTracks` through other relations, and on each track those include. Whatever makes the
+data render, the pivot comes with it: an `?include`, `withData()`, a relation already loaded on
+the model, or a sparse fieldset naming a relation whose data renders. A linkage that renders
+links only reads no pivot. The stored values
 come from the join row the include's own query loads with each member, so they cost no extra
 query. A member that comes back without its row, such as one a provider reads without the join,
 takes its values from one batched read for every parent in the document

@@ -14,8 +14,9 @@ use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
 use haddowg\JsonApiLaravel\Operation\Operation;
 
 /**
- * A writable view of the crates whose pivot relation renders its linkage on every response.
- * `keptRecords` reads the same join, rendered whatever `fields[npBins]` lists.
+ * A writable view of the crates whose pivot relation renders its linkage on every response,
+ * its `position` required. `keptRecords` reads the same join, rendered whatever
+ * `fields[npBins]` lists.
  */
 #[AsJsonApiResource(operations: [Operation::FetchOne, Operation::Create, Operation::Update])]
 final class NpBinResource extends AbstractResource
@@ -30,7 +31,7 @@ final class NpBinResource extends AbstractResource
             BelongsToMany::make('records', 'npRecords')
                 ->withData()
                 ->fields(
-                    Integer::make('position'),
+                    Integer::make('position')->required(),
                     Str::make('label')->computedUsing(static function (mixed $edge): string {
                         if (!$edge instanceof PivotEdge) {
                             return '';
