@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature\NestedPivot;
 
+use haddowg\JsonApi\Resource\Field\BelongsToMany;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\Testing\SchemaConformanceTrait;
 use haddowg\JsonApiLaravel\Testing\SchemaDocumentKind;
 use haddowg\JsonApiLaravel\Tests\Fixtures\NestedPivot\NestedPivotServiceProvider;
+use haddowg\JsonApiLaravel\Tests\Fixtures\NestedPivot\NpCrate;
+use haddowg\JsonApiLaravel\Tests\Fixtures\NestedPivot\NpCrateResource;
+use haddowg\JsonApiLaravel\Tests\Fixtures\NestedPivot\NpRecord;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversNothing;
 
@@ -53,14 +58,37 @@ final class EloquentNestedPivotTest extends NestedPivotTestCase
 
     public function test_the_pivot_rides_the_include_queries_whatever_the_number_of_parents(): void
     {
-        $single = $this->pivotQueries('/api/npShelves/1?include=crate.records,crate.labelledRecords');
-        $collection = $this->pivotQueries('/api/npShelves?include=crate.records,crate.labelledRecords');
+        $shelves = $this->pivotQueries('/api/npShelves?include=crate.records,crate.labelledRecords');
 
-        self::assertSame(\count($single), \count($collection));
-        self::assertSame(\count($single), \count($this->pivotQueries('/api/npRooms?include=shelves.crate.records,shelves.crate.labelledRecords')));
-        foreach ($collection as $query) {
+        self::assertCount(\count($shelves), $this->pivotQueries('/api/npRooms?include=shelves.crate.records,shelves.crate.labelledRecords'));
+        foreach ([...$shelves, ...$this->pivotQueries('/api/npShelves/1?include=crate.records,altCrate.records')] as $query) {
             self::assertStringNotContainsString('"crate_id" = ?', $query);
+            self::assertStringNotContainsString('"record_id" = ?', $query);
         }
+    }
+
+    public function test_the_provider_reads_every_parents_pivot_rows_in_one_query(): void
+    {
+        $provider = new EloquentDataProvider(['npCrates' => NpCrate::class, 'npRecords' => NpRecord::class]);
+        $relation = null;
+        foreach ((new NpCrateResource())->allFields() as $field) {
+            if ($field instanceof BelongsToMany && $field->name() === 'records') {
+                $relation = $field;
+            }
+        }
+        self::assertNotNull($relation);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $maps = $provider->fetchRelationshipPivotBatch('npCrates', \array_values(NpCrate::query()->orderBy('id')->get()->all()), $relation);
+        $queries = \count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        self::assertSame(2, $queries);
+        self::assertSame(['1', '2'], \array_map('strval', \array_keys($maps)));
+        self::assertSame(['1', '2'], \array_map('strval', \array_keys($maps['1'] ?? [])));
+        self::assertSame(5, $maps['2']['1']['position'] ?? null);
+        self::assertInstanceOf(\DateTimeInterface::class, $maps['2']['3']['addedAt'] ?? null);
     }
 
     /**

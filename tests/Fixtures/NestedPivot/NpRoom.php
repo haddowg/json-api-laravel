@@ -22,4 +22,14 @@ final class NpRoom extends Model
     {
         return $this->hasMany(NpShelf::class, 'room_id');
     }
+
+    /**
+     * The crates the room keeps, read as a polymorphic list.
+     *
+     * @return list<NpCrate>
+     */
+    public function thingList(): array
+    {
+        return \array_values(NpCrate::query()->orderBy('id')->get()->all());
+    }
 }

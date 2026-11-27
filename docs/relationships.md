@@ -334,14 +334,20 @@ BelongsToMany::make('items', 'items')->fields(
 ```
 
 `meta.pivot` renders on the related endpoint, the relationship endpoint and the `200` linkage a
-relationship mutation answers with. A read of a resource, a collection or a related endpoint
-also renders it wherever the relation's linkage carries data, at any depth of `?include`: on
-each linkage member of `GET /playlists/1?include=orderedTracks`, of an include that reaches
+relationship mutation answers with. Reads of a resource, a collection or a related endpoint,
+polymorphic ones included, and create and update responses, atomic results among them, also
+render it wherever the relation's linkage carries data, at any depth of `?include`: on each
+linkage member of `GET /playlists/1?include=orderedTracks`, of an include that reaches
 `orderedTracks` through other relations, and on each track those include. The stored values
 come from the join row the include's own query loads with each member, so they cost no extra
-query. A track two playlists include appears once in `included`, so its `meta.pivot` there is
-one playlist's, while each playlist's linkage carries its own. A relation reached through a
-polymorphic relation renders no pivot.
+query. A member that comes back without its row, such as one a provider reads without the join,
+takes its values from one batched read for every parent in the document
+([custom data providers](custom-data-providers.md)). A track two playlists include appears once
+in `included`, so its `meta.pivot` there is one playlist's, while each playlist's linkage
+carries its own.
+
+Two places render no pivot on included linkage: a custom action's response, and the resources
+below a `MorphTo` or `MorphToMany` declared with `identifiedBy()`.
 
 Only a provider that reads pivot rows supplies the stored fields, so the in-memory provider
 renders none of them; it renders only the [computed fields](#computed-pivot-fields).

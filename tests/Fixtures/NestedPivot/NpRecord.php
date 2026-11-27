@@ -20,6 +20,7 @@ final class NpRecord extends Model
      */
     public function crates(): BelongsToMany
     {
-        return $this->belongsToMany(NpCrate::class, 'np_crate_record', 'record_id', 'crate_id');
+        return $this->belongsToMany(NpCrate::class, 'np_crate_record', 'record_id', 'crate_id')
+            ->withPivot('position', 'added_at');
     }
 }

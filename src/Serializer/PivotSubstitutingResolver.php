@@ -8,6 +8,7 @@ use haddowg\JsonApi\Resource\DeclaresRelatedOnlyTypesInterface;
 use haddowg\JsonApi\Resource\DeclaresSingletonTypesInterface;
 use haddowg\JsonApi\Resource\ProvidesOutputTimezoneInterface;
 use haddowg\JsonApi\Resource\ProvidesRelationAuthorizerInterface;
+use haddowg\JsonApi\Resource\ProvidesResourcesInterface;
 use haddowg\JsonApi\Resource\RejectsReadOnlyAttributesInterface;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
@@ -30,7 +31,7 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  * the server's authorizer, links to no endpoint a related-only type lacks and links a
  * singleton's endpoints at its type's path.
  */
-final class PivotSubstitutingResolver implements SerializerResolverInterface, ProvidesOutputTimezoneInterface, ProvidesRelationAuthorizerInterface, RejectsReadOnlyAttributesInterface, DeclaresRelatedOnlyTypesInterface, DeclaresSingletonTypesInterface
+final class PivotSubstitutingResolver implements SerializerResolverInterface, ProvidesOutputTimezoneInterface, ProvidesRelationAuthorizerInterface, RejectsReadOnlyAttributesInterface, DeclaresRelatedOnlyTypesInterface, DeclaresSingletonTypesInterface, ProvidesResourcesInterface
 {
     use ForwardsResolverSeams;
 

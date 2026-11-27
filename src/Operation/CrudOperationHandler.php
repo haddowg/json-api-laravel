@@ -114,6 +114,7 @@ use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphTargets;
 use haddowg\JsonApiLaravel\DataProvider\PivotRowRelationRouter;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
+use haddowg\JsonApiLaravel\DataProvider\ReadsRelationshipPivotBatchInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
@@ -361,6 +362,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->idEncoders?->bind($serverName);
 
         $this->preloaded = [];
+        if ($this->depth === 1) {
+            $this->includeBatcher->forgetLoaded();
+        }
 
         // A context left active outside a batch is one a batch failed to deactivate in this
         // long-lived handler; left alone, every later single write would skip its transaction.
@@ -1051,11 +1055,10 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $polymorphic = false;
         }
 
-        $serializer = match (true) {
-            $pair !== null => $server->serializerFor($relatedType),
-            !$polymorphic => $this->pivotRendering($server)->serializerFor($relatedType),
-            default => $relation->resolveSerializer($related, $server) ?? $server->serializerFor($relatedType),
-        };
+        $rendering = $this->pivotRendering($server);
+        $serializer = $pair !== null || !$polymorphic
+            ? $rendering->serializerFor($relatedType)
+            : $relation->resolveSerializer($related, $rendering) ?? $rendering->serializerFor($relatedType);
 
         // Preload the related resource's own ?include tree (a single related object as a
         // one-element list) and install its `?withCount` counts, so a `?withCount=<rel>` named
@@ -1750,18 +1753,20 @@ final class CrudOperationHandler implements OperationHandlerInterface
      */
     private function identifiedSerializer(RelationInterface $relation, Server $server, array $types, array $pivots = []): PolymorphicSerializer
     {
+        $rendering = $this->pivotRendering($server);
+
         return new PolymorphicSerializer(
-            static function (mixed $object) use ($relation, $server, $types, $pivots): SerializerInterface {
+            static function (mixed $object) use ($relation, $rendering, $types, $pivots): SerializerInterface {
                 if (!\is_object($object) || !isset($types[\spl_object_id($object)])) {
                     throw new \LogicException(\sprintf('No stored pair of the "%s" relationship names a related object.', $relation->name()));
                 }
 
-                $serializer = $server->serializerFor($types[\spl_object_id($object)]);
+                $serializer = $rendering->serializerFor($types[\spl_object_id($object)]);
                 $pivot = $pivots[\spl_object_id($object)] ?? [];
 
                 return $pivot === [] ? $serializer : new PivotMetaSerializer($serializer, [$serializer->getId($object) => $pivot]);
             },
-            PolymorphicSerializer::forRelation($relation, $server)->members(),
+            PolymorphicSerializer::forRelation($relation, $rendering)->members(),
         );
     }
 
@@ -1786,7 +1791,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      */
     private function polymorphicSerializer(RelationInterface $relation, Server $server): PolymorphicSerializer
     {
-        return PolymorphicSerializer::forRelation($relation, $server);
+        return PolymorphicSerializer::forRelation($relation, $this->pivotRendering($server));
     }
 
     /**
@@ -1909,37 +1914,69 @@ final class CrudOperationHandler implements OperationHandlerInterface
     }
 
     /**
-     * The resolver a read's document builds its relationships through, so every pivot
-     * relation the include tree reaches renders `meta.pivot`: the stored values from the
-     * members its include loaded, the computed ones from each parent and member.
+     * The resolver a document builds its relationships through, so every pivot relation the
+     * include tree reaches renders `meta.pivot`: the stored values from the members its include
+     * loaded, or else from one batched read per pivot relation over every parent the include
+     * walk loaded, and the computed ones from each parent and member.
      */
     private function pivotRendering(Server $server): PivotRenderingResolver
     {
+        /** @var array<string, array{covered: array<string, true>, map: array<string, array<string, array<string, mixed>>>}> $batches */
+        $batches = [];
+
         return new PivotRenderingResolver(
             $server,
             fn(string $type): array => $this->types->relationsFor($server, $type),
-            fn(object $parent, BelongsToMany $relation): ?\Closure => $this->storedPivotReader($server, $parent, $relation),
+            function (object $parent, BelongsToMany $relation, string $type) use ($server, &$batches): ?\Closure {
+                return $this->storedPivotReader($server, $type, $parent, $relation, $batches);
+            },
         );
     }
 
     /**
-     * Reads one member's stored pivot values for `$parent`'s `$relation` off the pivot row
-     * the query that loaded the member hydrated, or `null` when the related provider reads no
-     * pivot columns for it.
+     * Reads one member's stored pivot values for `$parent`'s `$relation`: off the pivot row the
+     * query that loaded the member hydrated, else from the parent provider's batched pivot map,
+     * read once for every `$type` parent the include walk loaded. `null` when neither provider
+     * reads stored pivot values.
+     *
+     * @param array<string, array{covered: array<string, true>, map: array<string, array<string, array<string, mixed>>>}> $batches the batched maps read so far, by type and relation
      *
      * @return (\Closure(object): ?array<string, mixed>)|null
      */
-    private function storedPivotReader(Server $server, object $parent, BelongsToMany $relation): ?\Closure
+    private function storedPivotReader(Server $server, string $type, object $parent, BelongsToMany $relation, array &$batches): ?\Closure
     {
-        $provider = $this->pivotQueryingProvider($parent, $relation);
-        if ($provider === null) {
+        $loaded = $this->pivotQueryingProvider($parent, $relation);
+        $batching = $this->providers->supportsType($type) ? $this->providers->forType($type) : null;
+        $batching = $batching instanceof ReadsRelationshipPivotBatchInterface ? $batching : null;
+        $relatedType = $relation->relatedTypes()[0] ?? null;
+        if (($loaded === null && $batching === null) || $relatedType === null || !$server->hasSerializerFor($type) || !$server->hasSerializerFor($relatedType)) {
             return null;
         }
 
-        return function (object $member) use ($server, $provider, $parent, $relation): ?array {
-            $pivots = $this->formatPivotDates($server, $relation, $provider->pivotMapOf($parent, $relation, [$member]));
+        return function (object $member) use ($server, $type, $relatedType, $parent, $relation, $loaded, $batching, &$batches): ?array {
+            $memberId = $server->serializerFor($relatedType)->getId($member);
+            $values = $loaded?->pivotMapOf($parent, $relation, [$member])[$memberId] ?? null;
 
-            return $pivots === [] ? null : \array_values($pivots)[0];
+            if ($values === null && $batching !== null) {
+                $key = $type . '.' . $relation->name();
+                $batches[$key] ??= ['covered' => [], 'map' => []];
+                $serializer = $server->serializerFor($type);
+                $parentId = $serializer->getId($parent);
+                if (!isset($batches[$key]['covered'][$parentId])) {
+                    $parents = [];
+                    foreach ([...$this->includeBatcher->loaded($type), $parent] as $candidate) {
+                        $candidateId = $serializer->getId($candidate);
+                        if (!isset($batches[$key]['covered'][$candidateId])) {
+                            $batches[$key]['covered'][$candidateId] = true;
+                            $parents[] = $candidate;
+                        }
+                    }
+                    $batches[$key]['map'] = \array_replace($batches[$key]['map'], $batching->fetchRelationshipPivotBatch($type, $parents, $relation));
+                }
+                $values = $batches[$key]['map'][$parentId][$memberId] ?? null;
+            }
+
+            return $values === null ? null : $this->formatPivotDates($server, $relation, [$memberId => $values])[$memberId];
         };
     }
 
@@ -2114,7 +2151,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $uriType = $server->hasResourceFor($type) ? $server->resourceFor($type)->uriType() : $type;
         $baseUri = RequestBaseUri::resolve($server->baseUri(), $request->getUri());
 
-        $response = DataResponse::fromResource($entity, $serializer)
+        $response = DataResponse::fromResource($entity, $this->pivotRendering($server)->serializerFor($type))
             ->withStatus(201)
             ->withHeader('Location', $baseUri . '/' . $uriType . '/' . $serializer->getId($entity));
 
@@ -2265,7 +2302,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->loadRelations($server, [$entity], $type, $request);
         $this->applyRelationshipCounts($server, $type, [$entity], $request);
 
-        $response = DataResponse::fromResource($entity, $serializer);
+        $response = DataResponse::fromResource($entity, $this->pivotRendering($server)->serializerFor($type));
 
         // After-update then after-save lifecycle hooks (post-commit) may replace the 200;
         // after-save fires last. Deferred to post-commit under an active Atomic Operations

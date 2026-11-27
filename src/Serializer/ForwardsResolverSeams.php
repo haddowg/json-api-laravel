@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Serializer;
 
+use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\DeclaresRelatedOnlyTypesInterface;
 use haddowg\JsonApi\Resource\DeclaresSingletonTypesInterface;
 use haddowg\JsonApi\Resource\ProvidesOutputTimezoneInterface;
 use haddowg\JsonApi\Resource\ProvidesRelationAuthorizerInterface;
+use haddowg\JsonApi\Resource\ProvidesResourcesInterface;
 use haddowg\JsonApi\Resource\RejectsReadOnlyAttributesInterface;
 use haddowg\JsonApi\Resource\RelationAuthorizerInterface;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
@@ -21,7 +23,8 @@ use haddowg\JsonApi\Serializer\ResourceLinkContributorInterface;
 /**
  * Passes every seam of a {@see SerializerResolverInterface} other than serializer resolution
  * through to the resolver it decorates: the request-scoped relationship seams, the output
- * timezone, the relation authorizer and the related-only and singleton types, so a
+ * timezone, the relation authorizer, the registered resources and the related-only and
+ * singleton types, so a
  * relationship built through the decorator renders exactly as one built through the server.
  *
  * @phpstan-require-implements SerializerResolverInterface
@@ -95,5 +98,22 @@ trait ForwardsResolverSeams
         $inner = $this->decorated();
 
         return $inner instanceof DeclaresSingletonTypesInterface ? $inner->resolveSingletonId($type, $context) : null;
+    }
+
+    public function hasResourceFor(string $type): bool
+    {
+        $inner = $this->decorated();
+
+        return $inner instanceof ProvidesResourcesInterface && $inner->hasResourceFor($type);
+    }
+
+    public function resourceFor(string $type): AbstractResource
+    {
+        $inner = $this->decorated();
+        if (!$inner instanceof ProvidesResourcesInterface) {
+            throw new \LogicException(\sprintf('The resolver this one decorates registers no resources, so it has none for type "%s".', $type));
+        }
+
+        return $inner->resourceFor($type);
     }
 }

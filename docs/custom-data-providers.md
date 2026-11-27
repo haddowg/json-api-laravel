@@ -38,6 +38,15 @@ A provider that can filter and sort a `belongsToMany` on its join columns also i
 member's pivot values for `meta.pivot` without another query. Without it, pivot sort and filter
 keys are a `400` and `meta.pivot` comes from `fetchRelationshipPivot()`.
 
+`fetchRelationshipPivot()` reads one parent's rows, which serves the related and relationship
+endpoints. An included pivot relation renders the stored values of every parent in the
+document, so it reads them through `ReadsRelationshipPivotBatchInterface` instead:
+`fetchRelationshipPivotBatch($type, $parents, $relation)` returns the values keyed by the parent's
+wire id, then the member's. The package calls it once per pivot relation, for every parent of
+that type the include walk loaded, and only for members that came back without their pivot row.
+A provider that stores pivot values and doesn't implement it renders only the computed fields of
+an included pivot relation.
+
 That interface also decides where a `->through()` path starting with `pivot` runs: its filters and
 sorts reach `fetchRelatedCollection()` beside the `pivot.`-columned ones. A path that goes on past
 a pivot row, such as `pivot.addedBy`, needs the provider serving the relation's related type to

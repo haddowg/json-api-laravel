@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Serializer;
 
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\Field\NestedFieldset;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\ResourceMeta;
 use haddowg\JsonApi\Resource\SerializerResolverAwareInterface;
@@ -20,6 +21,7 @@ use haddowg\JsonApi\Serializer\RendersDeclaredLinksInterface;
 use haddowg\JsonApi\Serializer\RendersResourceMetaInterface;
 use haddowg\JsonApi\Serializer\SelfLinkAwareInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
+use haddowg\JsonApi\Serializer\SerializesNestedFieldsetsInterface;
 use haddowg\JsonApi\Serializer\UriTypeAwareInterface;
 
 /**
@@ -53,7 +55,8 @@ abstract class AbstractPivotParentSerializer implements
     SelfLinkAwareInterface,
     RendersDeclaredLinksInterface,
     UriTypeAwareInterface,
-    SerializerResolverAwareInterface
+    SerializerResolverAwareInterface,
+    SerializesNestedFieldsetsInterface
 {
     use RebindsPivotLinkage;
 
@@ -215,5 +218,18 @@ abstract class AbstractPivotParentSerializer implements
         $inner = $this->inner();
 
         return $inner instanceof SerializerResolverAwareInterface ? $inner->serializerResolver() : null;
+    }
+
+    public function getNestedFieldsetAttribute(mixed $object, JsonApiRequestInterface $request, string $name, NestedFieldset $fieldset): mixed
+    {
+        $inner = $this->inner();
+        if ($inner instanceof SerializesNestedFieldsetsInterface) {
+            return $inner->getNestedFieldsetAttribute($object, $request, $name, $fieldset);
+        }
+
+        // The value core reads when the serializer selects no keys itself, which it then trims.
+        $attribute = $this->getAttributes($object, $request)[$name] ?? null;
+
+        return $attribute === null ? null : $attribute($object, $request, $name);
     }
 }

@@ -36,6 +36,7 @@ final class PivotLinkageParentSerializer extends AbstractPivotParentSerializer
         }
 
         $resolver = $this->resolver;
+        $type = $this->inner->getType($object);
         foreach ($relationships as $name => $callable) {
             $relation = $this->inner->relationNamedIncludingHidden((string) $name);
             if ($relation === null) {
@@ -43,7 +44,7 @@ final class PivotLinkageParentSerializer extends AbstractPivotParentSerializer
             }
 
             $build = static fn(mixed $model, JsonApiRequestInterface $req, string $relationshipName): AbstractRelationship
-                => $relation->buildRelationship($model, $req, $resolver->forRelation($model, $relation));
+                => $relation->buildRelationship($model, $req, $resolver->forRelation($model, $relation, $type));
 
             // A not-sparse relation renders whatever `fields[type]` lists, which core reads off the callable's class.
             $relationships[$name] = $callable instanceof NonSparseMember ? new NonSparseMember($build) : $build;

@@ -20,11 +20,22 @@ abstract class NestedPivotTestCase extends Orchestra
 {
     private const string MEDIA_TYPE = 'application/vnd.api+json';
 
+    private const string ATOMIC_MEDIA_TYPE = 'application/vnd.api+json; ext="https://jsonapi.org/ext/atomic"';
+
     /**
      * Whether the provider reads stored pivot columns. One that doesn't renders only the
      * computed fields.
      */
     abstract protected function storesPivots(): bool;
+
+    /**
+     * Whether the provider stores the pivot values a write sends, and reads the pivot
+     * columns of the records' crates.
+     */
+    protected function storesWrittenPivots(): bool
+    {
+        return $this->storesPivots();
+    }
 
     /**
      * @param \Illuminate\Foundation\Application $app
@@ -33,6 +44,10 @@ abstract class NestedPivotTestCase extends Orchestra
      */
     protected function getPackageProviders($app): array
     {
+        /** @var \Illuminate\Contracts\Config\Repository $config */
+        $config = $app['config'];
+        $config->set('jsonapi.atomic_operations.enabled', true);
+
         return [JsonApiServiceProvider::class, NestedPivotServiceProvider::class];
     }
 
@@ -150,6 +165,108 @@ abstract class NestedPivotTestCase extends Orchestra
         self::assertSame($this->pivot(2, 3), \data_get($this->primary($relationship, '3'), 'meta.pivot'));
     }
 
+    public function test_an_include_below_a_polymorphic_related_page_renders_pivot(): void
+    {
+        $toOne = $this->document('/api/npShelves/2/holder?include=records');
+        self::assertSame(['1' => $this->pivot(2, 1), '3' => $this->pivot(2, 3)], $this->linkagePivots($this->arrayAt($toOne['data'] ?? null), 'records'));
+        self::assertSame($this->pivot(2, 3), $this->includedPivot($toOne, 'npRecords', '3'));
+
+        $toMany = $this->document('/api/npRooms/1/things?include=records');
+        self::assertSame(['1' => $this->pivot(1, 1), '2' => $this->pivot(1, 2)], $this->linkagePivots($this->primary($toMany, '1'), 'records'));
+        self::assertSame(['1' => $this->pivot(2, 1), '3' => $this->pivot(2, 3)], $this->linkagePivots($this->primary($toMany, '2'), 'records'));
+    }
+
+    public function test_an_include_through_a_polymorphic_relation_renders_pivot(): void
+    {
+        $toOne = $this->document('/api/npShelves/2?include=holder.records');
+        self::assertSame(['1' => $this->pivot(2, 1), '3' => $this->pivot(2, 3)], $this->linkagePivots($this->included($toOne, 'npCrates', '2'), 'records'));
+
+        $toMany = $this->document('/api/npRooms/1?include=things.records');
+        self::assertSame(['1' => $this->pivot(1, 1), '2' => $this->pivot(1, 2)], $this->linkagePivots($this->included($toMany, 'npCrates', '1'), 'records'));
+        self::assertSame(['1' => $this->pivot(2, 1), '3' => $this->pivot(2, 3)], $this->linkagePivots($this->included($toMany, 'npCrates', '2'), 'records'));
+    }
+
+    public function test_a_not_sparse_relation_carries_the_pivot_below_it(): void
+    {
+        $document = $this->document('/api/npShelves/1?include=pinnedCrate.records&fields[npShelves]=name');
+
+        self::assertSame(['type' => 'npCrates', 'id' => '1'], \data_get($document, 'data.relationships.pinnedCrate.data'));
+        self::assertSame(['1' => $this->pivot(1, 1), '2' => $this->pivot(1, 2)], $this->linkagePivots($this->included($document, 'npCrates', '1'), 'records'));
+        self::assertSame($this->pivot(1, 2), $this->includedPivot($document, 'npRecords', '2'));
+    }
+
+    public function test_an_update_response_renders_pivot_at_every_depth(): void
+    {
+        $document = $this->write('PATCH', '/api/npBins/1?include=records.placedIn', 200, ['data' => [
+            'type' => 'npBins', 'id' => '1', 'attributes' => ['title' => 'Alpha'],
+        ]]);
+
+        self::assertSame(['1' => $this->binPivot('Alpha', 1, 1), '2' => $this->binPivot('Alpha', 2, 2)], $this->linkagePivots($this->arrayAt($document['data'] ?? null), 'records'));
+        self::assertSame(['1' => $this->placedInPivot(1), '2' => $this->placedInPivot(5)], $this->linkagePivots($this->included($document, 'npRecords', '1'), 'placedIn'));
+    }
+
+    public function test_a_create_response_renders_pivot(): void
+    {
+        $document = $this->write('POST', '/api/npBins?include=records', 201, ['data' => [
+            'type' => 'npBins',
+            'attributes' => ['title' => 'Gamma'],
+            'relationships' => ['records' => ['data' => [['type' => 'npRecords', 'id' => '2', 'meta' => ['pivot' => ['position' => 9]]]]]],
+        ]]);
+
+        self::assertSame(['2' => $this->binPivot('Gamma', 2, 9)], $this->linkagePivots($this->arrayAt($document['data'] ?? null), 'records'));
+        self::assertSame($this->binPivot('Gamma', 2, 9), $this->includedPivot($document, 'npRecords', '2'));
+    }
+
+    public function test_an_atomic_result_renders_the_pivot_of_a_relation_with_data(): void
+    {
+        $document = $this->write('POST', '/api/operations', 200, ['atomic:operations' => [
+            ['op' => 'update', 'ref' => ['type' => 'npBins', 'id' => '2'], 'data' => ['type' => 'npBins', 'id' => '2', 'attributes' => ['title' => 'Beta']]],
+        ]], self::ATOMIC_MEDIA_TYPE);
+
+        self::assertSame(
+            ['1' => $this->binPivot('Beta', 1, 5), '3' => $this->binPivot('Beta', 3, 6)],
+            $this->linkagePivots($this->arrayAt(\data_get($document, 'atomic:results.0.data')), 'records'),
+        );
+    }
+
+    /**
+     * The `meta.pivot` a bin's `records` relation renders for a record at `$position`.
+     *
+     * @return array<string, mixed>
+     */
+    protected function binPivot(string $bin, int $record, int $position): array
+    {
+        $label = $bin . ' / ' . NestedPivotServiceProvider::RECORDS[$record];
+
+        return $this->storesWrittenPivots() ? ['position' => $position, 'label' => $label] : ['label' => $label];
+    }
+
+    /**
+     * The `meta.pivot` a record's `placedIn` relation renders for a crate holding it at `$position`.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function placedInPivot(int $position): ?array
+    {
+        return $this->storesWrittenPivots() ? ['position' => $position] : null;
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     *
+     * @return array<mixed>
+     */
+    protected function write(string $method, string $uri, int $status, array $body, string $mediaType = self::MEDIA_TYPE): array
+    {
+        $response = $this->call($method, $uri, [], [], [], [
+            'HTTP_ACCEPT' => $mediaType,
+            'CONTENT_TYPE' => $mediaType,
+        ], (string) \json_encode($body));
+        self::assertSame($status, $response->getStatusCode(), $uri . ': ' . $response->getContent());
+
+        return $this->arrayAt($response->json());
+    }
+
     /**
      * The `meta.pivot` crate `$crate`'s `records` relation renders for record `$record`.
      *
@@ -185,7 +302,7 @@ abstract class NestedPivotTestCase extends Orchestra
     /**
      * @return array<mixed>
      */
-    private function arrayAt(mixed $value): array
+    protected function arrayAt(mixed $value): array
     {
         self::assertIsArray($value);
 
