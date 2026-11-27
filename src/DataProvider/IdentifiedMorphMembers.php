@@ -581,7 +581,8 @@ final class IdentifiedMorphMembers
         $serializer = $server->serializerFor($type);
         $byId = [];
         foreach ($found as $row) {
-            $byId[$serializer->getId($row)] = $row;
+            // Keyed as a stored id reads, a uuid-like one in lower case.
+            $byId[StoredIds::canonical($serializer->getId($row))] = $row;
         }
 
         return $byId;

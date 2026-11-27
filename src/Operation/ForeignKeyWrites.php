@@ -15,6 +15,7 @@ use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Server\Server;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface;
 use haddowg\JsonApiLaravel\DataPersister\DataPersisterRegistry;
@@ -78,7 +79,8 @@ final class ForeignKeyWrites
         $identifiers = $linkage instanceof ToManyRelationship ? $linkage->resourceIdentifiers : \array_filter([$linkage->resourceIdentifier]);
         foreach ($identifiers as $identifier) {
             if ($identifier->id !== null && $identifier->id !== '') {
-                $ids[(string) $identifier->id] = (string) $identifier->id;
+                // Keyed as the member renders its id, a uuid-like one in lower case.
+                $ids[StoredIdForms::comparable($identifier->id)] = (string) $identifier->id;
             }
         }
 
@@ -284,7 +286,7 @@ final class ForeignKeyWrites
 
         $rows = [];
         foreach ($ids as $id) {
-            $row = $found[$id] ?? $provider->fetchOne($type, $id);
+            $row = $found[StoredIdForms::comparable($id)] ?? $provider->fetchOne($type, $id);
             if ($row === null) {
                 throw new ResourceNotFound();
             }

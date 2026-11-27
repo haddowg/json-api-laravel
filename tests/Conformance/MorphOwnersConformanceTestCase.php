@@ -175,6 +175,24 @@ abstract class MorphOwnersConformanceTestCase extends Orchestra
         self::assertSame([], $this->ids('/api/moVideos/1/relationships/note'));
     }
 
+    #[Test]
+    #[Group('spec:updating-relationships')]
+    public function theMorphToItselfIsWrittenThroughItsColumns(): void
+    {
+        $this->write('PATCH', '/api/moNotes/3/relationships/owner', ['data' => ['type' => 'moVideos', 'id' => '2']])->assertSuccessful();
+        $this->read('/api/moNotes/3')->assertJsonPath('data.relationships.owner.data', ['type' => 'moVideos', 'id' => '2']);
+        $this->read('/api/moVideos/2/note')->assertJsonPath('data.id', '3');
+
+        $this->write('PATCH', '/api/moNotes/3', ['data' => ['type' => 'moNotes', 'id' => '3', 'relationships' => ['owner' => ['data' => ['type' => 'moPosts', 'id' => '2']]]]])
+            ->assertOk()
+            ->assertJsonPath('data.relationships.owner.data', ['type' => 'moPosts', 'id' => '2']);
+        self::assertContains('3', $this->ids('/api/moPosts/2/notes'));
+
+        $this->write('PATCH', '/api/moNotes/3', ['data' => ['type' => 'moNotes', 'id' => '3', 'relationships' => ['owner' => ['data' => null]]]])->assertOk();
+        $this->read('/api/moNotes/3/relationships/owner')->assertJsonPath('data', null);
+        $this->write('PATCH', '/api/moNotes/3/relationships/owner', ['data' => ['type' => 'moVideos', 'id' => '99']])->assertNotFound();
+    }
+
     /**
      * @return list<string>
      */

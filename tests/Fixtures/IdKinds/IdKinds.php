@@ -23,10 +23,14 @@ use Ramsey\Uuid\Uuid;
  *   field-only foreign key `writer_ref` cast to a UUID object that stores the bytes.
  * - `prefix`: an integer key served as `<prefix><key>` by an id encoder.
  * - `object`: a text key and foreign keys cast to a `Stringable` value object.
+ * - `upper`: a `HasUuids` text key stored in capitals, served in lower case, with the
+ *   labels' link rows holding the keys in lower case.
+ *
+ * With `id_kinds.sent` set to `upper`, a request names each row by its id in capitals.
  */
 final class IdKinds
 {
-    public const array KINDS = ['int', 'string', 'uuid', 'ulid', 'binary', 'prefix', 'object'];
+    public const array KINDS = ['int', 'string', 'uuid', 'ulid', 'binary', 'prefix', 'object', 'upper'];
 
     /**
      * Each row's wire id per kind, by row reference.
@@ -37,6 +41,7 @@ final class IdKinds
         'uuid' => self::UUIDS,
         'binary' => self::UUIDS,
         'object' => self::UUIDS,
+        'upper' => self::UUIDS,
         'ulid' => [
             'w1' => '01jd5w8m2a3b4c5d6e7f8g9hw1', 'w2' => '01jd5w8m2a3b4c5d6e7f8g9hw2', 'w3' => '01jd5w8m2a3b4c5d6e7f8g9hw3', 'w9' => '01jd5w8m2a3b4c5d6e7f8g9hw9',
             'b1' => '01jd5w8m2a3b4c5d6e7f8g9hb1', 'b2' => '01jd5w8m2a3b4c5d6e7f8g9hb2', 'b3' => '01jd5w8m2a3b4c5d6e7f8g9hb3', 'b4' => '01jd5w8m2a3b4c5d6e7f8g9hb4',
@@ -69,6 +74,24 @@ final class IdKinds
     }
 
     /**
+     * The id a request names the row `$ref` by: its wire id, or in capitals when
+     * `id_kinds.sent` is `upper`.
+     */
+    public static function sent(string $ref): string
+    {
+        return config('id_kinds.sent') === 'upper' ? \strtoupper(self::wire($ref)) : self::wire($ref);
+    }
+
+    /**
+     * The id the in-memory witness holds the row `$ref` under: in capitals for `upper`, and
+     * its wire id otherwise.
+     */
+    public static function held(string $ref): string
+    {
+        return self::kind() === 'upper' ? \strtoupper(self::wire($ref)) : self::wire($ref);
+    }
+
+    /**
      * The value the database holds for the row `$ref` names.
      */
     public static function stored(string $ref): int|string
@@ -79,6 +102,7 @@ final class IdKinds
             'int' => (int) $wire,
             'prefix' => (int) \substr($wire, 2),
             'binary' => Uuid::fromString($wire)->getBytes(),
+            'upper' => \strtoupper($wire),
             default => $wire,
         };
     }
@@ -93,7 +117,11 @@ final class IdKinds
         }
         $uuid = Str::orderedUuid();
 
-        return self::kind() === 'binary' ? $uuid->getBytes() : $uuid->toString();
+        return match (self::kind()) {
+            'binary' => $uuid->getBytes(),
+            'upper' => \strtoupper($uuid->toString()),
+            default => $uuid->toString(),
+        };
     }
 
     public static function integerKeys(): bool
@@ -118,7 +146,7 @@ final class IdKinds
         if (config('id_kinds.store') === 'memory') {
             return match (self::kind()) {
                 'int' => Id::make()->numeric(),
-                'uuid', 'object', 'binary' => Id::make()->uuid(),
+                'uuid', 'object', 'binary', 'upper' => Id::make()->uuid(),
                 'ulid' => Id::make()->ulid(),
                 default => Id::make(),
             };
@@ -127,7 +155,7 @@ final class IdKinds
         return match (self::kind()) {
             'int' => Id::make()->numeric(),
             'string' => Id::make()->pattern('[a-z]+'),
-            'uuid', 'object' => Id::make()->uuid(),
+            'uuid', 'object', 'upper' => Id::make()->uuid(),
             'ulid' => Id::make()->ulid(),
             'binary' => Id::make()->uuid()->encodeUsing(new BinaryUuidEncoder()),
             default => Id::make()->encodeUsing(new PrefixCodec(self::PREFIXES[$type] ?? '')),
@@ -142,9 +170,9 @@ final class IdKinds
     public static function model(string $role): string
     {
         return match ([self::kind(), $role]) {
-            ['uuid', 'writer'], ['binary', 'writer'] => IkUuidWriter::class,
-            ['uuid', 'book'], ['binary', 'book'] => IkUuidBook::class,
-            ['uuid', 'label'], ['binary', 'label'] => IkUuidLabel::class,
+            ['uuid', 'writer'], ['binary', 'writer'], ['upper', 'writer'] => IkUuidWriter::class,
+            ['uuid', 'book'], ['binary', 'book'], ['upper', 'book'] => IkUuidBook::class,
+            ['uuid', 'label'], ['binary', 'label'], ['upper', 'label'] => IkUuidLabel::class,
             ['ulid', 'writer'] => IkUlidWriter::class,
             ['ulid', 'book'] => IkUlidBook::class,
             ['ulid', 'label'] => IkUlidLabel::class,

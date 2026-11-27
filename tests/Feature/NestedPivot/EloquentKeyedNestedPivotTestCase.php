@@ -99,6 +99,27 @@ abstract class EloquentKeyedNestedPivotTestCase extends Orchestra
         self::assertSame($records, $this->linkagePivots($this->arrayAt(\data_get($response->json(), 'data')), 'records'));
     }
 
+    public function test_a_morph_identified_by_a_callback_includes_its_target_under_its_wire_id(): void
+    {
+        $shelf = $this->document('/api/npShelves/2?include=tagged');
+        self::assertSame(['type' => 'npCrates', 'id' => NpKeys::wire('c', 2)], \data_get($shelf, 'data.relationships.tagged.data'));
+        self::assertSame('Beta', \data_get($this->resource($shelf['included'] ?? null, 'npCrates', NpKeys::wire('c', 2)), 'attributes.title'));
+
+        $room = $this->document('/api/npRooms/1?include=pinned');
+        self::assertSame([NpKeys::wire('c', 1), NpKeys::wire('c', 2)], \array_column($this->arrayAt(\data_get($room, 'data.relationships.pinned.data')), 'id'));
+        self::assertSame('Alpha', \data_get($this->resource($room['included'] ?? null, 'npCrates', NpKeys::wire('c', 1)), 'attributes.title'));
+    }
+
+    public function test_a_crate_is_found_by_its_id_in_either_case(): void
+    {
+        foreach ([\strtolower(NpKeys::wire('c', 1)), \strtoupper(NpKeys::wire('c', 1))] as $id) {
+            if (NpKeys::kind() === 'prefix' && $id !== NpKeys::wire('c', 1)) {
+                continue;
+            }
+            self::assertSame(NpKeys::wire('c', 1), \data_get($this->document('/api/npCrates/' . $id), 'data.id'), $id);
+        }
+    }
+
     public function test_the_batched_pivot_read_keys_each_parent_and_member_by_its_wire_id(): void
     {
         $relation = null;

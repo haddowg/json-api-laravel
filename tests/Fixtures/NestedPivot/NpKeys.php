@@ -12,8 +12,9 @@ use haddowg\JsonApiLaravel\Tests\Fixtures\MorphKeys\PrefixCodec;
 /**
  * The key kind the crates and records are stored under, set by `nested_pivot.keys`: plain
  * integers, uuids stored in capitals, integers served through a prefix encoder, 16-byte
- * binary uuids served through {@see BinaryUuidEncoder}, or uuids the models cast to a value
- * object.
+ * binary uuids served through {@see BinaryUuidEncoder}, uuids the models cast to a value
+ * object, or `nocase`: uuids stored in capitals whose join rows hold them in lower case, in
+ * columns that compare without case, as do the records' keys the joins read through.
  *
  * @internal
  */
@@ -23,7 +24,7 @@ final class NpKeys
     {
         $kind = config('nested_pivot.keys');
 
-        return \is_string($kind) && \in_array($kind, ['uuid', 'prefix', 'binary', 'object'], true) ? $kind : 'int';
+        return \is_string($kind) && \in_array($kind, ['uuid', 'prefix', 'binary', 'object', 'nocase'], true) ? $kind : 'int';
     }
 
     /**
@@ -31,7 +32,7 @@ final class NpKeys
      */
     public static function stringKeys(): bool
     {
-        return \in_array(self::kind(), ['uuid', 'binary', 'object'], true);
+        return \in_array(self::kind(), ['uuid', 'binary', 'object', 'nocase'], true);
     }
 
     /**
@@ -52,9 +53,8 @@ final class NpKeys
     public static function wire(string $role, int $n): string
     {
         return match (self::kind()) {
-            'uuid' => \strtoupper(self::uuid($role, $n)),
             'prefix' => $role . '-' . $n,
-            'binary', 'object' => self::uuid($role, $n),
+            'uuid', 'binary', 'object', 'nocase' => self::uuid($role, $n),
             default => (string) $n,
         };
     }
@@ -65,11 +65,29 @@ final class NpKeys
     public static function stored(string $role, int $n): int|string
     {
         return match (self::kind()) {
-            'uuid' => \strtoupper(self::uuid($role, $n)),
+            'uuid', 'nocase' => \strtoupper(self::uuid($role, $n)),
             'binary' => (string) \hex2bin(\str_replace('-', '', self::uuid($role, $n))),
             'object' => self::uuid($role, $n),
             default => $n,
         };
+    }
+
+    /**
+     * The key a join row holds for crate (`c`) or record (`r`) `$n`: the stored key, or in
+     * lower case for `nocase`.
+     */
+    public static function joined(string $role, int $n): int|string
+    {
+        return self::kind() === 'nocase' ? self::uuid($role, $n) : self::stored($role, $n);
+    }
+
+    /**
+     * How a room's `pinned` pair names crate `$n`: by the key it is stored under, as a uuid
+     * stored in capitals, or by its wire id, which the in-memory stores and an encoder take.
+     */
+    public static function pinned(int $n): string
+    {
+        return \in_array(self::kind(), ['uuid', 'nocase'], true) && config('nested_pivot.store') === null ? (string) self::stored('c', $n) : self::wire('c', $n);
     }
 
     private static function uuid(string $role, int $n): string

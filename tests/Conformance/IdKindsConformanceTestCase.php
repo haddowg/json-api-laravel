@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
+use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Tests\Fixtures\IdKinds\IdKinds;
 use haddowg\JsonApiLaravel\Tests\Fixtures\IdKinds\IdKindsServiceProvider;
@@ -39,6 +40,14 @@ abstract class IdKindsConformanceTestCase extends Orchestra
     abstract protected function store(): string;
 
     /**
+     * How a request names a row: `wire`, by its wire id, or `upper`, by its id in capitals.
+     */
+    protected function sentCase(): string
+    {
+        return 'wire';
+    }
+
+    /**
      * @param \Illuminate\Foundation\Application $app
      *
      * @return array<int, class-string>
@@ -49,6 +58,8 @@ abstract class IdKindsConformanceTestCase extends Orchestra
         $config = $app['config'];
         $config->set('id_kinds.kind', $this->kind());
         $config->set('id_kinds.store', $this->store());
+        $config->set('id_kinds.sent', $this->sentCase());
+        $config->set('jsonapi.atomic_operations.enabled', true);
 
         return [JsonApiServiceProvider::class, IdKindsServiceProvider::class];
     }
@@ -197,17 +208,28 @@ abstract class IdKindsConformanceTestCase extends Orchestra
     #[Group('spec:fetching-filtering')]
     public function filtersCompareKeysInTheirStoredForm(): void
     {
-        self::assertSame($this->refs('b1', 'b3'), $this->ids('/api/ikBooks?filter[id]=' . $this->w('b1') . ',' . $this->w('b3')));
-        self::assertSame($this->refs('b1', 'b2'), $this->ids('/api/ikBooks?filter[writer]=' . $this->w('w1')));
-        self::assertSame([], $this->ids('/api/ikBooks?filter[writer]=' . $this->w('w3')));
-        self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[labels]=' . $this->w('l2')));
-        self::assertSame($this->refs('b1', 'b2'), $this->ids('/api/ikBooks?filter[labels]=' . $this->w('l1')));
-        self::assertSame([], $this->ids('/api/ikBooks?filter[labels]=' . $this->w('l3')));
         self::assertSame($this->refs('b1', 'b2'), $this->ids('/api/ikBooks?filter[writerName]=Ada'));
         self::assertSame($this->refs('b1', 'b2'), $this->ids('/api/ikBooks?filter[labelled]=true'));
         self::assertSame($this->refs('b3'), $this->ids('/api/ikBooks?filter[unlabelled]=true'));
-        self::assertSame($this->refs('w2'), $this->ids('/api/ikWriters?filter[books]=' . $this->w('b3')));
-        self::assertSame($this->refs('w1', 'w3'), $this->ids('/api/ikWriters?filter[id]=' . $this->w('w1') . ',' . $this->w('w3')));
+    }
+
+    #[Test]
+    #[Group('spec:fetching-filtering')]
+    public function idFiltersMatchTheRowsTheyName(): void
+    {
+        // Core's in-memory handler compares an id filter's members exactly, so the witness
+        // matches a uuid only in the case it holds the id in.
+        if ($this->store() === 'memory' && IdKinds::sent('b1') !== IdKinds::held('b1')) {
+            self::markTestSkipped('The in-memory witness compares an id filter in the case it holds the id in.');
+        }
+        self::assertSame($this->refs('b1', 'b3'), $this->ids('/api/ikBooks?filter[id]=' . $this->s('b1') . ',' . $this->s('b3')));
+        self::assertSame($this->refs('w1', 'w3'), $this->ids('/api/ikWriters?filter[id]=' . $this->s('w1') . ',' . $this->s('w3')));
+        self::assertSame($this->refs('b1', 'b2'), $this->ids('/api/ikBooks?filter[writer]=' . $this->s('w1')));
+        self::assertSame([], $this->ids('/api/ikBooks?filter[writer]=' . $this->s('w3')));
+        self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[labels]=' . $this->s('l2')));
+        self::assertSame($this->refs('b1', 'b2'), $this->ids('/api/ikBooks?filter[labels]=' . $this->s('l1')));
+        self::assertSame([], $this->ids('/api/ikBooks?filter[labels]=' . $this->s('l3')));
+        self::assertSame($this->refs('w2'), $this->ids('/api/ikWriters?filter[books]=' . $this->s('b3')));
     }
 
     #[Test]
@@ -235,33 +257,33 @@ abstract class IdKindsConformanceTestCase extends Orchestra
         if ($this->store() === 'eloquent') {
             self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[subject][type]=ikWriters'));
             self::assertSame($this->refs('b2'), $this->ids('/api/ikBooks?filter[subject][type]=ikLabels'));
-            self::assertSame($this->refs('b2'), $this->ids('/api/ikBooks?filter[subject][type]=ikLabels&filter[subject][id]=' . $this->w('l1')));
-            self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[subject][type]=ikWriters&filter[subject][id]=' . $this->w('w2')));
-            self::assertSame([], $this->ids('/api/ikBooks?filter[subject][type]=ikWriters&filter[subject][id]=' . $this->w('w1')));
+            self::assertSame($this->refs('b2'), $this->ids('/api/ikBooks?filter[subject][type]=ikLabels&filter[subject][id]=' . $this->s('l1')));
+            self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[subject][type]=ikWriters&filter[subject][id]=' . $this->s('w2')));
+            self::assertSame([], $this->ids('/api/ikBooks?filter[subject][type]=ikWriters&filter[subject][id]=' . $this->s('w1')));
         }
         self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[origin][type]=ikLabels'));
-        self::assertSame($this->refs('b2', 'b3'), $this->ids('/api/ikBooks?filter[origin][type]=ikWriters&filter[origin][id]=' . $this->w('w2')));
+        self::assertSame($this->refs('b2', 'b3'), $this->ids('/api/ikBooks?filter[origin][type]=ikWriters&filter[origin][id]=' . $this->s('w2')));
         self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[pinned][type]=ikWriters'));
         self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[pinned][type]=ikLabels'));
-        self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[pinned][type]=ikLabels&filter[pinned][id]=' . $this->w('l2')));
-        self::assertSame([], $this->ids('/api/ikBooks?filter[pinned][type]=ikLabels&filter[pinned][id]=' . $this->w('l3')));
+        self::assertSame($this->refs('b1'), $this->ids('/api/ikBooks?filter[pinned][type]=ikLabels&filter[pinned][id]=' . $this->s('l2')));
+        self::assertSame([], $this->ids('/api/ikBooks?filter[pinned][type]=ikLabels&filter[pinned][id]=' . $this->s('l3')));
     }
 
     #[Test]
     #[Group('spec:updating-relationships')]
     public function toOneWritesRepointTheKey(): void
     {
-        $this->write('PATCH', $this->path('ikBooks', 'b3', 'relationships/writer'), ['data' => ['type' => 'ikWriters', 'id' => $this->w('w3')]])->assertSuccessful();
+        $this->write('PATCH', $this->path('ikBooks', 'b3', 'relationships/writer'), ['data' => ['type' => 'ikWriters', 'id' => $this->s('w3')]])->assertSuccessful();
         $this->read($this->path('ikBooks', 'b3'))->assertJsonPath('data.relationships.writer.data.id', $this->w('w3'));
         self::assertSame($this->refs('b3'), $this->ids($this->path('ikWriters', 'w3', 'authored')));
 
-        $this->write('PATCH', $this->path('ikBooks', 'b3', 'relationships/subject'), ['data' => ['type' => 'ikWriters', 'id' => $this->w('w3')]])->assertSuccessful();
+        $this->write('PATCH', $this->path('ikBooks', 'b3', 'relationships/subject'), ['data' => ['type' => 'ikWriters', 'id' => $this->s('w3')]])->assertSuccessful();
         $this->read($this->path('ikBooks', 'b3', 'subject'))->assertJsonPath('data.attributes.name', 'Cleo');
         if ($this->store() === 'eloquent') {
-            self::assertSame($this->refs('b3'), $this->ids('/api/ikBooks?filter[subject][type]=ikWriters&filter[subject][id]=' . $this->w('w3')));
+            self::assertSame($this->refs('b3'), $this->ids('/api/ikBooks?filter[subject][type]=ikWriters&filter[subject][id]=' . $this->s('w3')));
         }
 
-        $this->write('PATCH', $this->path('ikWriters', 'w3', 'relationships/featured'), ['data' => ['type' => 'ikBooks', 'id' => $this->w('b2')]])->assertSuccessful();
+        $this->write('PATCH', $this->path('ikWriters', 'w3', 'relationships/featured'), ['data' => ['type' => 'ikBooks', 'id' => $this->s('b2')]])->assertSuccessful();
         $this->read($this->path('ikWriters', 'w3', 'featured'))->assertJsonPath('data.id', $this->w('b2'));
     }
 
@@ -269,24 +291,24 @@ abstract class IdKindsConformanceTestCase extends Orchestra
     #[Group('spec:updating-relationships')]
     public function toManyWritesReplaceAddAndRemoveMembers(): void
     {
-        $this->write('PATCH', $this->path('ikBooks', 'b3', 'relationships/labels'), ['data' => [['type' => 'ikLabels', 'id' => $this->w('l2')]]])->assertSuccessful();
-        $this->write('POST', $this->path('ikBooks', 'b3', 'relationships/labels'), ['data' => [['type' => 'ikLabels', 'id' => $this->w('l1')]]])->assertSuccessful();
+        $this->write('PATCH', $this->path('ikBooks', 'b3', 'relationships/labels'), ['data' => [['type' => 'ikLabels', 'id' => $this->s('l2')]]])->assertSuccessful();
+        $this->write('POST', $this->path('ikBooks', 'b3', 'relationships/labels'), ['data' => [['type' => 'ikLabels', 'id' => $this->s('l1')]]])->assertSuccessful();
         self::assertSame($this->refs('l1', 'l2'), $this->ids($this->path('ikBooks', 'b3', 'relationships/labels')));
-        $this->write('DELETE', $this->path('ikBooks', 'b3', 'relationships/labels'), ['data' => [['type' => 'ikLabels', 'id' => $this->w('l2')]]])->assertSuccessful();
+        $this->write('DELETE', $this->path('ikBooks', 'b3', 'relationships/labels'), ['data' => [['type' => 'ikLabels', 'id' => $this->s('l2')]]])->assertSuccessful();
         self::assertSame($this->refs('l1'), $this->ids($this->path('ikBooks', 'b3', 'relationships/labels')));
 
         foreach (['books', 'authored', 'penned'] as $relation) {
-            $this->write('PATCH', $this->path('ikWriters', 'w3', 'relationships/' . $relation), ['data' => [['type' => 'ikBooks', 'id' => $this->w('b3')]]])->assertSuccessful();
+            $this->write('PATCH', $this->path('ikWriters', 'w3', 'relationships/' . $relation), ['data' => [['type' => 'ikBooks', 'id' => $this->s('b3')]]])->assertSuccessful();
             self::assertSame($this->refs('b3'), $this->ids($this->path('ikWriters', 'w3', $relation)), $relation);
             // The witness keeps a native to-many and its inverse as separate lists.
             if ($relation !== 'books' || $this->store() === 'eloquent') {
                 self::assertSame([], $this->ids($this->path('ikWriters', 'w2', $relation)), $relation);
             }
-            $this->write('POST', $this->path('ikWriters', 'w3', 'relationships/' . $relation), ['data' => [['type' => 'ikBooks', 'id' => $this->w('b2')]]])->assertSuccessful();
+            $this->write('POST', $this->path('ikWriters', 'w3', 'relationships/' . $relation), ['data' => [['type' => 'ikBooks', 'id' => $this->s('b2')]]])->assertSuccessful();
             self::assertSame($this->refs('b2', 'b3'), $this->ids($this->path('ikWriters', 'w3', 'relationships/' . $relation)), $relation);
-            $this->write('DELETE', $this->path('ikWriters', 'w3', 'relationships/' . $relation), ['data' => [['type' => 'ikBooks', 'id' => $this->w('b2')]]])->assertSuccessful();
+            $this->write('DELETE', $this->path('ikWriters', 'w3', 'relationships/' . $relation), ['data' => [['type' => 'ikBooks', 'id' => $this->s('b2')]]])->assertSuccessful();
             self::assertSame($this->refs('b3'), $this->ids($this->path('ikWriters', 'w3', 'relationships/' . $relation)), $relation);
-            $this->write('PATCH', $this->path('ikWriters', 'w2', 'relationships/' . $relation), ['data' => [['type' => 'ikBooks', 'id' => $this->w('b3')]]])->assertSuccessful();
+            $this->write('PATCH', $this->path('ikWriters', 'w2', 'relationships/' . $relation), ['data' => [['type' => 'ikBooks', 'id' => $this->s('b3')]]])->assertSuccessful();
         }
     }
 
@@ -294,9 +316,9 @@ abstract class IdKindsConformanceTestCase extends Orchestra
     #[Group('spec:updating-relationships')]
     public function aMissingOrMistypedTargetIsRefused(): void
     {
-        $this->write('PATCH', $this->path('ikBooks', 'b3', 'relationships/writer'), ['data' => ['type' => 'ikWriters', 'id' => $this->w('w9')]])->assertNotFound();
-        $this->write('POST', $this->path('ikBooks', 'b3', 'relationships/labels'), ['data' => [['type' => 'ikLabels', 'id' => $this->w('l3')]]])->assertNotFound();
-        $this->write('PATCH', $this->path('ikBooks', 'b3', 'relationships/writer'), ['data' => ['type' => 'ikLabels', 'id' => $this->w('l1')]])->assertStatus(409);
+        $this->write('PATCH', $this->path('ikBooks', 'b3', 'relationships/writer'), ['data' => ['type' => 'ikWriters', 'id' => $this->s('w9')]])->assertNotFound();
+        $this->write('POST', $this->path('ikBooks', 'b3', 'relationships/labels'), ['data' => [['type' => 'ikLabels', 'id' => $this->s('l3')]]])->assertNotFound();
+        $this->write('PATCH', $this->path('ikBooks', 'b3', 'relationships/writer'), ['data' => ['type' => 'ikLabels', 'id' => $this->s('l1')]])->assertStatus(409);
         $this->read($this->path('ikBooks', 'b3'))->assertJsonPath('data.relationships.writer.data.id', $this->w('w2'));
     }
 
@@ -304,17 +326,16 @@ abstract class IdKindsConformanceTestCase extends Orchestra
     #[Group('spec:crud-creating')]
     public function createTakesAClientIdAndLinkage(): void
     {
-        $id = $this->w('b4');
         $this->write('POST', '/api/ikBooks', ['data' => [
             'type' => 'ikBooks',
-            'id' => $id,
+            'id' => $this->s('b4'),
             'attributes' => ['title' => 'Middlemarch'],
             'relationships' => [
-                'writer' => ['data' => ['type' => 'ikWriters', 'id' => $this->w('w2')]],
-                'labels' => ['data' => [['type' => 'ikLabels', 'id' => $this->w('l1')]]],
-                'subject' => ['data' => ['type' => 'ikLabels', 'id' => $this->w('l2')]],
+                'writer' => ['data' => ['type' => 'ikWriters', 'id' => $this->s('w2')]],
+                'labels' => ['data' => [['type' => 'ikLabels', 'id' => $this->s('l1')]]],
+                'subject' => ['data' => ['type' => 'ikLabels', 'id' => $this->s('l2')]],
             ],
-        ]])->assertCreated()->assertJsonPath('data.id', $id);
+        ]])->assertCreated()->assertJsonPath('data.id', $this->w('b4'));
 
         $book = $this->read($this->path('ikBooks', 'b4') . '?include=writer,labels,subject');
         $book->assertJsonPath('data.relationships.writer.data.id', $this->w('w2'));
@@ -332,15 +353,72 @@ abstract class IdKindsConformanceTestCase extends Orchestra
     }
 
     #[Test]
+    #[Group('spec:crud-updating')]
+    #[Group('spec:crud-deleting')]
+    public function updateAndDeleteFindTheRowByItsId(): void
+    {
+        $this->write('PATCH', $this->path('ikBooks', 'b3'), ['data' => ['type' => 'ikBooks', 'id' => $this->s('b3'), 'attributes' => ['title' => 'Ulysses II']]])
+            ->assertOk()
+            ->assertJsonPath('data.id', $this->w('b3'))
+            ->assertJsonPath('data.relationships.writer.data.id', $this->w('w2'));
+        $this->read($this->path('ikBooks', 'b3'))->assertJsonPath('data.attributes.title', 'Ulysses II');
+
+        $this->call('DELETE', $this->path('ikBooks', 'b3'), server: ['HTTP_ACCEPT' => self::MEDIA_TYPE])->assertNoContent();
+        $this->get($this->path('ikBooks', 'b3'), ['Accept' => self::MEDIA_TYPE])->assertNotFound();
+        self::assertSame($this->refs('b1', 'b2'), $this->ids('/api/ikBooks'));
+    }
+
+    #[Test]
+    #[Group('ext:atomic')]
+    public function atomicOperationsAddressRowsByIdAndLid(): void
+    {
+        // A lid names a minted key, which only the Eloquent kinds that mint one have.
+        $minted = IdKinds::mintsKeys() && $this->store() === 'eloquent';
+        $operations = [
+            ['op' => 'update', 'ref' => ['type' => 'ikBooks', 'id' => $this->s('b3')], 'data' => ['type' => 'ikBooks', 'id' => $this->s('b3'), 'attributes' => ['title' => 'Ulysses II']]],
+            ['op' => 'update', 'ref' => ['type' => 'ikBooks', 'id' => $this->s('b3'), 'relationship' => 'writer'], 'data' => ['type' => 'ikWriters', 'id' => $this->s('w3')]],
+            ['op' => 'add', 'ref' => ['type' => 'ikBooks', 'id' => $this->s('b3'), 'relationship' => 'labels'], 'data' => [['type' => 'ikLabels', 'id' => $this->s('l1')]]],
+            ['op' => 'remove', 'ref' => ['type' => 'ikBooks', 'id' => $this->s('b2')]],
+        ];
+        if ($minted) {
+            $operations[] = ['op' => 'add', 'data' => ['type' => 'ikWriters', 'lid' => 'dora', 'attributes' => ['name' => 'Dora']]];
+            $operations[] = ['op' => 'update', 'ref' => ['type' => 'ikWriters', 'lid' => 'dora'], 'data' => ['type' => 'ikWriters', 'lid' => 'dora', 'attributes' => ['name' => 'Dorothy']]];
+        }
+        $response = $this->call('POST', '/api/operations', [], [], [], [
+            'HTTP_ACCEPT' => self::MEDIA_TYPE . ';ext="https://jsonapi.org/ext/atomic"',
+            'CONTENT_TYPE' => self::MEDIA_TYPE . ';ext="https://jsonapi.org/ext/atomic"',
+        ], (string) \json_encode(['atomic:operations' => $operations]));
+        self::assertSame(200, $response->getStatusCode(), (string) $response->getContent());
+        $response->assertJsonPath('atomic:results.0.data.id', $this->w('b3'));
+        if ($minted) {
+            $created = $response->json('atomic:results.4.data.id');
+            self::assertIsString($created);
+            $response->assertJsonPath('atomic:results.5.data.id', $created);
+            $response->assertJsonPath('atomic:results.5.data.attributes.name', 'Dorothy');
+            $this->read('/api/ikWriters/' . $created)->assertJsonPath('data.attributes.name', 'Dorothy');
+            if (StoredIdForms::isUuidLike($created)) {
+                self::assertSame(\strtolower($created), $created);
+                $this->read('/api/ikWriters/' . \strtoupper($created))->assertJsonPath('data.id', $created);
+            }
+        }
+
+        $book = $this->read($this->path('ikBooks', 'b3'));
+        $book->assertJsonPath('data.attributes.title', 'Ulysses II');
+        $book->assertJsonPath('data.relationships.writer.data.id', $this->w('w3'));
+        self::assertSame($this->refs('l1'), $this->ids($this->path('ikBooks', 'b3', 'relationships/labels')));
+        self::assertSame($this->refs('b1', 'b3'), $this->ids('/api/ikBooks'));
+    }
+
+    #[Test]
     #[Group('ext:actions')]
     public function anActionReadsItsResourceAndInputLinkageByKey(): void
     {
-        $body = ['data' => ['type' => 'ikBooks', 'id' => $this->w('b1'), 'relationships' => ['writer' => ['data' => ['type' => 'ikWriters', 'id' => $this->w('w2')]]]]];
+        $body = ['data' => ['type' => 'ikBooks', 'id' => $this->s('b1'), 'relationships' => ['writer' => ['data' => ['type' => 'ikWriters', 'id' => $this->s('w2')]]]]];
         $this->write('PATCH', $this->path('ikBooks', 'b1', '-actions/repoint'), $body)->assertOk()
             ->assertJsonPath('data.id', $this->w('b1'))
             ->assertJsonPath('data.relationships.writer.data.id', $this->w('w2'));
 
-        $missing = ['data' => ['type' => 'ikBooks', 'id' => $this->w('b1'), 'relationships' => ['writer' => ['data' => ['type' => 'ikWriters', 'id' => $this->w('w9')]]]]];
+        $missing = ['data' => ['type' => 'ikBooks', 'id' => $this->s('b1'), 'relationships' => ['writer' => ['data' => ['type' => 'ikWriters', 'id' => $this->s('w9')]]]]];
         $this->write('PATCH', $this->path('ikBooks', 'b1', '-actions/repoint'), $missing)->assertNotFound();
         $this->write('PATCH', $this->path('ikBooks', 'w9', '-actions/repoint'), $body)->assertNotFound();
     }
@@ -348,6 +426,14 @@ abstract class IdKindsConformanceTestCase extends Orchestra
     private function w(string $ref): string
     {
         return IdKinds::wire($ref);
+    }
+
+    /**
+     * The id a request names `$ref` by.
+     */
+    private function s(string $ref): string
+    {
+        return IdKinds::sent($ref);
     }
 
     /**
@@ -370,7 +456,7 @@ abstract class IdKindsConformanceTestCase extends Orchestra
 
     private function path(string $type, string $ref, ?string $tail = null): string
     {
-        return '/api/' . $type . '/' . IdKinds::wire($ref) . ($tail !== null ? '/' . $tail : '');
+        return '/api/' . $type . '/' . IdKinds::sent($ref) . ($tail !== null ? '/' . $tail : '');
     }
 
     /**

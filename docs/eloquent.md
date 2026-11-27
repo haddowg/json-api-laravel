@@ -778,6 +778,25 @@ delete and the package synthesizes `restore`/`force-delete` actions. See
 A string UUID key works with no extra wiring. Use Laravel's `HasUuids` trait on the model and
 declare `Id::make()->uuid()` on the resource; the canonical UUID the column holds is the wire id.
 
+A uuid-shaped id with no id encoder renders in lower case everywhere, even when its column keeps
+it in capitals, as a GUID written by another system often does. Every lookup by id matches the
+stored key in either case: fetching a resource, its related and relationship endpoints, an update
+or delete, `filter[id]` and the other id filters, linkage on a create, update or relationship
+write, an atomic operation's `ref`, and an action's target. Each id binds in both cases on the
+column side rather than wrapping the column in `LOWER()`, so the column's index still serves the
+query. A URL holding the id in capitals keeps working. A linkage write stores the foreign key, or
+the join row's key, as the related row stores its own key, and reuses the case a join row already
+holds for a member. A UUID stored in mixed case isn't matched.
+
+A join row or child row may keep a parent's UUID in another case than the parent's own column,
+where the foreign key column compares without case, such as a `utf8mb4_*_ci` column on MySQL or
+SQLite's `NOCASE`. Eloquent's eager loading matches a row to its parent by the exact key, so the
+package's batched reads match such a row to its parent in either case, and pivot meta, linkage and
+includes all find it. Eloquent's own relation loading outside the package, `$crate->load('records')`
+for example, still matches the exact key only. A foreign key in another case in a column that
+compares with case matches nothing in SQL at all, so keep each foreign key in its target's case
+there.
+
 A UUID stored as 16 raw bytes, such as a `BINARY(16)` column, keeps the bytes on the model and
 attaches the package's `BinaryUuidEncoder` to the id:
 

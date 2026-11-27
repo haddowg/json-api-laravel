@@ -10,6 +10,7 @@ use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Resource\Filter\DateOperand;
 use haddowg\JsonApi\Resource\Filter\DateRange;
 use haddowg\JsonApi\Resource\Filter\FilterHandlerInterface;
@@ -565,6 +566,9 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         $expected = $filter->deserialize !== null ? ($filter->deserialize)($value) : $value;
         if (!$this->decodedLeaf && $this->isKeyOf($query->getModel(), $filter->column)) {
             $expected = $this->storageKey($query->getModel(), $expected, $filter, $filter->column, $this->type);
+            if ($this->compareKey($query, $filter->column, $filter->operator, $expected)) {
+                return;
+            }
         }
 
         $this->applyComparison($query, $filter->column, $filter->operator, $expected, $filter->key());
@@ -643,7 +647,10 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
                 $belongsTo = $leaf !== null ? BelongsToLeaf::of($sub->getModel(), $leaf) : null;
                 if ($belongsTo !== null) {
                     $operator = \in_array($filter->operator, ['!=', '<>'], true) ? '<>' : '=';
-                    $this->compare($sub, $belongsTo->getForeignKeyName(), $operator, $this->storageKey($belongsTo->getRelated(), $expected, $filter, $filter->throughPath()));
+                    $key = $this->storageKey($belongsTo->getRelated(), $expected, $filter, $filter->throughPath());
+                    if (!$this->compareKey($sub, $belongsTo->getForeignKeyName(), $operator, $key)) {
+                        $this->compare($sub, $belongsTo->getForeignKeyName(), $operator, $key);
+                    }
 
                     return;
                 }
@@ -677,7 +684,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
                 $belongsTo = $leaf !== null ? BelongsToLeaf::of($sub->getModel(), $leaf) : null;
                 if ($belongsTo !== null) {
                     $related = $belongsTo->getRelated();
-                    $this->whereIn($sub, $belongsTo->getForeignKeyName(), \array_map(fn(mixed $value): mixed => $this->storageKey($related, $value, $filter, $filter->throughPath()), $values), false);
+                    $this->whereIn($sub, $belongsTo->getForeignKeyName(), StoredIdForms::forms(null, \array_map(fn(mixed $value): mixed => $this->storageKey($related, $value, $filter, $filter->throughPath()), $values)), false);
 
                     return;
                 }
@@ -920,9 +927,12 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         }
 
         $read = $driver === 'pgsql' && !$keyInt ? \sprintf('CAST(%s AS TEXT)', $grammar->wrap($column)) : $column;
-        // A HasUuids key is lowercase, so a UUID stored in capitals matches its uppercase form.
+        // A HasUuids key may be stored in either case, so a reference holding a UUID in the
+        // other case matches its upper or lower form.
         if (isset(\class_uses_recursive($targetModel)[HasUuids::class])) {
-            return [$read, \sprintf('UPPER(%s)', $read === $column ? $grammar->wrap($column) : $read)];
+            $wrapped = $read === $column ? $grammar->wrap($column) : $read;
+
+            return [$read, \sprintf('UPPER(%s)', $wrapped), \sprintf('LOWER(%s)', $wrapped)];
         }
 
         return [$read];
@@ -958,7 +968,8 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
 
         $admitted = [];
         $keys = \array_map(static fn(int|string $decoded): string => (string) $decoded, \array_keys($byKey));
-        foreach ($targetModel->newQuery()->whereIn($targetModel->qualifyColumn($key), $keys)->toBase()->pluck($targetModel->qualifyColumn($key)) as $found) {
+        // The target may keep a uuid-like key in either case.
+        foreach ($targetModel->newQuery()->whereIn($targetModel->qualifyColumn($key), StoredIdForms::forms(null, $keys))->toBase()->pluck($targetModel->qualifyColumn($key)) as $found) {
             if (\is_string($found) || \is_int($found)) {
                 \array_push($admitted, ...$byKey[StoredIds::canonical($found)] ?? []);
             }
@@ -1167,12 +1178,12 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         }
 
         $model = $belongsTo?->getRelated() ?? $query->getModel();
-        $this->compare(
-            $query,
-            $belongsTo?->getForeignKeyName() ?? $model->getKeyName(),
-            \in_array($operator, ['!=', '<>'], true) ? '<>' : '=',
-            $this->storageKey($model, $value, $filter, $filter->path),
-        );
+        $column = $belongsTo?->getForeignKeyName() ?? $model->getKeyName();
+        $operator = \in_array($operator, ['!=', '<>'], true) ? '<>' : '=';
+        $key = $this->storageKey($model, $value, $filter, $filter->path);
+        if (!$this->compareKey($query, $column, $operator, $key)) {
+            $this->compare($query, $column, $operator, $key);
+        }
     }
 
     /**
@@ -1191,7 +1202,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         }
 
         $model = $belongsTo?->getRelated() ?? $query->getModel();
-        $this->whereIn($query, $belongsTo?->getForeignKeyName() ?? $model->getKeyName(), \array_map(fn(mixed $value): mixed => $this->storageKey($model, $value, $filter, $filter->path), $values), false);
+        $this->whereIn($query, $belongsTo?->getForeignKeyName() ?? $model->getKeyName(), StoredIdForms::forms(null, \array_map(fn(mixed $value): mixed => $this->storageKey($model, $value, $filter, $filter->path), $values)), false);
     }
 
     /**
@@ -1212,7 +1223,25 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
 
         $model = $query->getModel();
 
-        return \array_map(fn(mixed $member): mixed => $this->storageKey($model, $member, $filter, $filter->column, $this->type), $members);
+        // A uuid-like key may be stored in either case.
+        return StoredIdForms::forms(null, \array_map(fn(mixed $member): mixed => $this->storageKey($model, $member, $filter, $filter->column, $this->type), $members));
+    }
+
+    /**
+     * Compares a key column with a uuid-like `$key` in both cases a text column may keep it
+     * in, as an `IN` or `NOT IN`. False, adding nothing, for any other key or operator.
+     *
+     * @param Builder<Model> $query
+     */
+    private function compareKey(Builder $query, string $column, string $operator, mixed $key): bool
+    {
+        $forms = StoredIdForms::forms(null, [$key]);
+        if (\count($forms) < 2 || !\in_array($operator, ['=', '!=', '<>'], true)) {
+            return false;
+        }
+        $this->whereIn($query, $column, $forms, $operator !== '=');
+
+        return true;
     }
 
     private function isKeyOf(Model $model, string $column): bool

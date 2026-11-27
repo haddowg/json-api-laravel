@@ -830,6 +830,13 @@ Eloquent reads the model's `morphTo` relation when it has one. The example's
 `favorites.favoritable` declares both. The id attribute may hold the target's storage key or its
 wire id, and the linkage, the related read, the include and the filter accept either.
 
+Unless the relation is `readOnly()`, a write through it sets both attributes, on an update, a
+create or the relationship endpoint, when the model has no relation method of that name. The
+type attribute takes the first `typeMap` key naming the target's type, or the type itself, and
+the id attribute the target's key as its row stores it. A target whose type declares an id
+encoder is written as its wire id instead, so a key such as 16 raw bytes never lands in a text
+column. Empty linkage clears both, and a target no row holds is a `404`.
+
 Whether linkage needs a query depends on whether the target's type is guarded on the server.
 A type is guarded when something other than a row's existence decides whether a read shows it:
 a global scope on its model, a data provider of its own that may scope or hide rows, or a `view`

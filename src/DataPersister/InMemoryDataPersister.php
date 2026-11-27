@@ -15,10 +15,12 @@ use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\HasMany;
 use haddowg\JsonApi\Resource\Field\HasOne;
 use haddowg\JsonApi\Resource\Field\Mode;
+use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
 use haddowg\JsonApi\Resource\Field\Positions;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryStore;
 use haddowg\JsonApiLaravel\Server\IdEncoderResolver;
@@ -183,9 +185,17 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
             // polymorphic to-one resolves the member by its OWN linkage type, not the
             // relation's first declared type.
             $identifier = $linkage->resourceIdentifier;
-            $entity->{$property} = $identifier?->id !== null
+            $related = $identifier?->id !== null
                 ? $this->resolveRelated($this->linkageType($identifier, $fallbackType), $identifier->id)
                 : null;
+            // A MorphTo identified by columns reads its pair from them, so the write sets them.
+            $columns = $relation instanceof MorphTo ? $relation->identifierColumns() : null;
+            if ($columns !== null) {
+                Accessor::set($entity, $columns->type, $related !== null && $identifier !== null ? $columns->storedValueFor($this->linkageType($identifier, $fallbackType)) : null);
+                Accessor::set($entity, $columns->id, $related !== null ? $this->idOf($related) : null);
+            } else {
+                $entity->{$property} = $related;
+            }
         } else {
             $current = $this->currentList($entity, $property);
             $entity->{$property} = $this->applyToMany($entity, $property, $fallbackType, $linkage, $mode);
@@ -269,14 +279,16 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
         Mode $mode,
     ): array {
         if ($mode === Mode::Remove) {
-            $remove = \array_fill_keys(\array_values(\array_filter(
-                $linkage->getResourceIdentifierIds(),
-                static fn(?string $id): bool => $id !== null,
-            )), true);
+            $remove = [];
+            foreach ($linkage->getResourceIdentifierIds() as $id) {
+                if ($id !== null) {
+                    $remove[StoredIdForms::comparable($id)] = true;
+                }
+            }
 
             return \array_values(\array_filter(
                 $this->currentList($entity, $property),
-                fn(object $member): bool => !isset($remove[$this->idOf($member)]),
+                fn(object $member): bool => !isset($remove[StoredIdForms::comparable($this->idOf($member))]),
             ));
         }
 
@@ -287,7 +299,7 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
             }
             $related = $this->resolveRelated($this->linkageType($identifier, $fallbackType), $identifier->id);
             if ($related !== null) {
-                $resolved[$identifier->id] = $related;
+                $resolved[StoredIdForms::comparable($this->idOf($related))] = $related;
             }
         }
 
@@ -299,7 +311,7 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
         // (an already-present member is not duplicated).
         $next = [];
         foreach ($this->currentList($entity, $property) as $member) {
-            $next[$this->idOf($member)] = $member;
+            $next[StoredIdForms::comparable($this->idOf($member))] = $member;
         }
         foreach ($resolved as $id => $member) {
             $next[$id] = $member;
@@ -385,7 +397,15 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
             ));
         }
 
-        return ($this->relatedResolver)($relatedType, $id);
+        // A uuid-like id names the object whichever case it is held under.
+        foreach (StoredIdForms::forms(null, [$id]) as $form) {
+            $related = \is_string($form) ? ($this->relatedResolver)($relatedType, $form) : null;
+            if ($related !== null) {
+                return $related;
+            }
+        }
+
+        return null;
     }
 
     /**
