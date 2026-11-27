@@ -71,8 +71,8 @@ final class IdKindsServiceProvider extends ServiceProvider
             $writers[IdKinds::held($ref)] = new IkWriterRecord(IdKinds::held($ref), $name);
         }
         foreach ($seed['seats'] as [$owner, $peer]) {
-            $writers[IdKinds::wire($owner)]->peers[] = $writers[IdKinds::wire($peer)];
-            $writers[IdKinds::wire($peer)]->followers[] = $writers[IdKinds::wire($owner)];
+            $writers[IdKinds::held($owner)]->peers[] = $writers[IdKinds::held($peer)];
+            $writers[IdKinds::held($peer)]->followers[] = $writers[IdKinds::held($owner)];
         }
         $labels = [];
         foreach ($seed['labels'] as [$ref, $name, $hidden]) {
