@@ -55,6 +55,10 @@ abstract class NestedPivotTestCase extends Orchestra
         /** @var \Illuminate\Contracts\Config\Repository $config */
         $config = $app['config'];
         $config->set('jsonapi.atomic_operations.enabled', true);
+        // The output-zone test renders under Tokyo's zone, every other test under the default.
+        if ($this->name() === 'test_a_pivot_date_renders_in_the_server_output_zone_on_every_store') {
+            $config->set('jsonapi.output_timezone', 'Asia/Tokyo');
+        }
 
         return [JsonApiServiceProvider::class, NestedPivotServiceProvider::class];
     }
@@ -333,6 +337,20 @@ abstract class NestedPivotTestCase extends Orchestra
         $document = $this->action('/api/npShelves/1/-actions/muster?include=pinnedCrate.records&fields[npShelves]=name');
         self::assertSame(['pinnedCrate'], \array_keys($this->arrayAt(\data_get($document, 'data.relationships'))));
         self::assertSame(['1' => $this->pivot(1, 1), '2' => $this->pivot(1, 2)], $this->linkagePivots($this->included($document, 'npCrates', '1'), 'records'));
+    }
+
+    public function test_a_pivot_date_renders_in_the_server_output_zone_on_every_store(): void
+    {
+        // Crate 1 added record 1 at 10:00 UTC, which Tokyo renders at 19:00.
+        $expected = '2026-01-01T19:00:00+09:00';
+        $relationship = $this->document('/api/npCrates/1/relationships/records');
+        $related = $this->document('/api/npCrates/1/records');
+        $included = $this->document('/api/npCrates/1?include=records');
+
+        self::assertSame($expected, \data_get($this->primary($relationship, '1'), 'meta.pivot.addedAt'));
+        self::assertSame($expected, \data_get($this->primary($related, '1'), 'meta.pivot.addedAt'));
+        self::assertSame($expected, $this->linkagePivots($this->arrayAt($included['data'] ?? null), 'records')['1']['addedAt'] ?? null);
+        self::assertSame($expected, \data_get($this->included($included, 'npRecords', '1'), 'meta.pivot.addedAt'));
     }
 
     public function test_every_rendered_pivot_linkage_carries_its_pivot(): void

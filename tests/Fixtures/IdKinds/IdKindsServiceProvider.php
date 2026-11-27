@@ -135,6 +135,18 @@ final class IdKindsServiceProvider extends ServiceProvider
         };
 
         $writerProvider = new InMemoryDataProvider('ikWriters', $writers, identify: $identify, assignId: $assignId);
+        // Each seat's rank, on the owner's peers and the peer's followers, as the Eloquent join holds it.
+        $peers = [];
+        $followers = [];
+        foreach ($seed['seats'] as [$owner, $peer, $rank]) {
+            $peers[IdKinds::held($owner)][IdKinds::held($peer)] = ['rank' => $rank];
+            $followers[IdKinds::held($peer)][IdKinds::held($owner)] = ['rank' => $rank];
+        }
+        foreach (['peers' => $peers, 'followers' => $followers] as $relation => $byWriter) {
+            foreach ($byWriter as $writer => $rows) {
+                $writerProvider->store()->writePivotRows($writers[$writer], $relation, $rows);
+            }
+        }
         $bookProvider = new InMemoryDataProvider('ikBooks', $books, identify: $identify, assignId: $assignId);
         $labelProvider = new InMemoryDataProvider('ikLabels', $labels, identify: $identify);
         JsonApi::provider($writerProvider);

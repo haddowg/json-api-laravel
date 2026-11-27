@@ -104,6 +104,14 @@ final class ScopedIncludesServiceProvider extends ServiceProvider
         $vaultProvider = new InMemoryDataProvider('vaults', $vaults, identify: $identify, assignId: $assignId, coordinator: $coordinator);
         $coinStore = new InMemoryDataProvider('coins', $coins, identify: $identify, assignId: $assignId, coordinator: $coordinator);
         $markStore = new InMemoryDataProvider('marks', $marks, identify: $identify, coordinator: $coordinator);
+        // Each coin's mark positions, as the Eloquent join holds them.
+        foreach ($coins as $coin) {
+            $rows = [];
+            foreach (\array_values($coin->marks) as $index => $mark) {
+                $rows[$mark->id] = ['position' => $index + 1];
+            }
+            $coinStore->store()->writePivotRows($coin, 'marks', $rows);
+        }
 
         // The persisters resolve linkage ids straight from the stores, hidden rows included,
         // the way an application's own storage lookup would.

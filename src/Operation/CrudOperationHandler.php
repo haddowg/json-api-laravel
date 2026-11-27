@@ -141,9 +141,11 @@ use haddowg\JsonApiLaravel\Event\BeforeRelationshipMutateEvent;
 use haddowg\JsonApiLaravel\Event\BeforeSaveEvent;
 use haddowg\JsonApiLaravel\Event\BeforeUpdateEvent;
 use haddowg\JsonApiLaravel\Serializer\BatchedRelationshipCount;
+use haddowg\JsonApiLaravel\Serializer\MissingPivotRow;
 use haddowg\JsonApiLaravel\Serializer\PivotMetaSerializer;
 use haddowg\JsonApiLaravel\Serializer\PivotParentSerializer;
 use haddowg\JsonApiLaravel\Serializer\PivotRenderingResolver;
+use haddowg\JsonApiLaravel\Serializer\PivotRowSource;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipPagination;
@@ -1009,7 +1011,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $pivotMap = $this->pivotMap($server, $type, $parent, $relation, $items);
                 if ($this->rendersPivotMeta($relation, $pivotMap)) {
                     \assert($relation instanceof BelongsToMany);
-                    $serializer = new PivotMetaSerializer($serializer, $pivotMap, $relation, $parent, $server->outputTimezone());
+                    $serializer = new PivotMetaSerializer($serializer, $pivotMap, $relation, $parent, $server->outputTimezone(), source: $this->pivotSource($server, $type, $parent, $relation));
                 }
             }
 
@@ -1903,19 +1905,32 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $relationshipName,
             $relation,
             $server,
-            new PivotMetaSerializer($server->serializerFor($relatedType), $pivotMap, $relation instanceof BelongsToMany ? $relation : null, $parent, $server->outputTimezone()),
+            new PivotMetaSerializer($server->serializerFor($relatedType), $pivotMap, $relation instanceof BelongsToMany ? $relation : null, $parent, $server->outputTimezone(), source: $this->pivotSource($server, $type, $parent, $relation)),
         );
     }
 
     /**
-     * Whether a relation's members carry `meta.pivot`: the provider stored some, or the
-     * relation declares computed pivot fields, which render on any provider.
+     * Whether a relation's members carry `meta.pivot`: any `belongsToMany` declaring pivot
+     * fields, its stored ones read from `$pivotMap` and its computed ones off the parent.
      *
      * @param array<string, array<string, mixed>> $pivotMap
      */
     private function rendersPivotMeta(RelationInterface $relation, array $pivotMap): bool
     {
-        return $pivotMap !== [] || ($relation instanceof BelongsToMany && $relation->computedPivotFields() !== []);
+        return $relation instanceof BelongsToMany && $relation->pivotFields() !== [];
+    }
+
+    /**
+     * The parent of `$type` whose pivot rows were read for `$relation`, and the provider that
+     * read them, named when a member has none.
+     */
+    private function pivotSource(Server $server, string $type, object $parent, RelationInterface $relation): PivotRowSource
+    {
+        $relatedType = $relation->relatedTypes()[0] ?? null;
+        $provider = $this->pivotQueryingProvider($parent, $relation)
+            ?? ($relatedType !== null && $this->providers->supportsType($relatedType) ? $this->providers->forType($relatedType) : null);
+
+        return new PivotRowSource($type, $server->serializerFor($type)->getId($parent), $provider === null ? 'no provider' : $provider::class);
     }
 
     /**
@@ -2020,11 +2035,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
      * Reads one member's stored pivot values for `$parent`'s `$relation`: off the pivot row the
      * query that loaded the member hydrated, else from the related provider's batched pivot map,
      * read once for every `$type` parent the include walk loaded. `null` when neither provider
-     * reads stored pivot values.
+     * reads stored pivot values. A member neither provider has a row for fails the render.
      *
      * @param array<string, array{covered: array<string, true>, map: array<string, array<string, array<string, mixed>>>}> $batches the batched maps read so far, by type and relation
      *
-     * @return (\Closure(object): ?array<string, mixed>)|null
+     * @return (\Closure(object): array<string, mixed>)|null
      */
     private function storedPivotReader(Server $server, string $type, object $parent, BelongsToMany $relation, array &$batches): ?\Closure
     {
@@ -2036,7 +2051,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             return null;
         }
 
-        return function (object $member) use ($server, $type, $relatedType, $parent, $relation, $loaded, $batching, &$batches): ?array {
+        return function (object $member) use ($server, $type, $relatedType, $parent, $relation, $loaded, $batching, &$batches): array {
             $memberId = $server->serializerFor($relatedType)->getId($member);
             $values = $loaded?->pivotMapOf($parent, $relation, [$member])[$memberId] ?? null;
 
@@ -2065,7 +2080,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $values = $batches[$key]['map'][StoredIdForms::comparable($parentId)][StoredIdForms::comparable($memberId)] ?? null;
             }
 
-            return $values === null ? null : $this->formatPivotDates($server, $relation, [$memberId => $values])[$memberId];
+            if ($values === null) {
+                $provider = $batching ?? $loaded;
+                throw MissingPivotRow::for($type, $relation->name(), $server->serializerFor($type)->getId($parent), $memberId, $provider !== null ? $provider::class : 'no provider');
+            }
+
+            return $this->formatPivotDates($server, $relation, [$memberId => $values])[$memberId];
         };
     }
 

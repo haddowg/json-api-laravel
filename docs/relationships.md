@@ -368,9 +368,12 @@ can hide a value for one member and show it for another:
 Integer::make('position')->hidden(static fn(mixed $track): bool => Accessor::get($track, 'explicit') === true),
 ```
 
-A field the join row holds no value for renders as `null`, and so does each stored field of a
-member the provider returns no row for, which is what the response pivot schema in the
-[OpenAPI document](openapi.md) promises when it lists the field as `required`.
+A field the join row holds no value for renders as `null`, which is what the response pivot
+schema in the [OpenAPI document](openapi.md) promises when it lists the field as `required`.
+A member the provider returns no pivot row for is a data integrity fault: the response fails
+with a reported `500` naming the type, the relation, the parent and member ids and the
+provider, and in debug the error's meta says the same. A relation whose fields are all computed
+has no row to miss.
 A `Date`, `DateTime` or `Time` pivot field renders in its format (ISO 8601 with an offset for
 a `DateTime` by default), and a `DateTime` follows the server's
 [`output_timezone`](configuration.md#output_timezone). The pivot model doesn't have to cast

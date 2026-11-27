@@ -65,7 +65,20 @@ final class ThroughPivotServiceProvider extends ServiceProvider
                     $member->cursorPlaylists[] = $playlists[(string) $playlist];
                 }
             }
-            JsonApi::provider(new InMemoryDataProvider('tpTracks', $tracks, identify: $identify));
+            $trackProvider = new InMemoryDataProvider('tpTracks', $tracks, identify: $identify);
+            // Each entry's pivot row, as the Eloquent join holds it.
+            $rows = [];
+            foreach (self::ENTRIES as [, $playlist, $track, $position, $addedAt]) {
+                $rows[(string) $track][(string) $playlist] = ['position' => $position, 'added_at' => new \DateTimeImmutable($addedAt, new \DateTimeZone('UTC'))];
+            }
+            foreach ($rows as $track => $members) {
+                $member = $tracks[$track] ?? null;
+                if ($member !== null) {
+                    $trackProvider->store()->writePivotRows($member, 'playlists', $members);
+                    $trackProvider->store()->writePivotRows($member, 'cursorPlaylists', $members);
+                }
+            }
+            JsonApi::provider($trackProvider);
             JsonApi::provider(new InMemoryDataProvider('tpPlaylists', $playlists, identify: $identify));
             JsonApi::provider(new InMemoryDataProvider('tpAlbums', $albums, identify: $identify));
             JsonApi::provider(new InMemoryDataProvider('tpUsers', [], identify: $identify));

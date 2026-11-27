@@ -57,6 +57,7 @@ final class PivotMetaSerializer extends AbstractPivotParentSerializer
      * @param object|null                         $parent         the parent whose relation renders, which computed pivot fields read; without it they render nothing
      * @param string|null                         $outputTimezone the server's default output zone for computed date fields
      * @param (\Closure(object): ?array<string, mixed>)|null $storedPivotOf reads a member's stored values when the map holds none for it, `null` when it has no stored row
+     * @param PivotRowSource|null                 $source         the parent and provider the map came from, named when a member has no row
      */
     public function __construct(
         private readonly SerializerInterface $inner,
@@ -65,6 +66,7 @@ final class PivotMetaSerializer extends AbstractPivotParentSerializer
         private readonly ?object $parent = null,
         private readonly ?string $outputTimezone = null,
         private readonly ?\Closure $storedPivotOf = null,
+        private readonly ?PivotRowSource $source = null,
     ) {}
 
     public function getMeta(mixed $object, JsonApiRequestInterface $request): array
@@ -103,13 +105,22 @@ final class PivotMetaSerializer extends AbstractPivotParentSerializer
         }
 
         // A relation declaring no pivot field, an additionalProperties entry at most, renders
-        // none. Stored fields render wherever pivot rows were read, `null` for a member with
-        // no row; computed fields render wherever the parent is known.
+        // none. Stored fields render wherever pivot rows were read, and a member with no row
+        // fails the render; computed fields render wherever the parent is known.
         if ($this->relation->pivotFields() === []) {
             return $meta;
         }
 
-        $stored = $pivot !== null || $this->storedPivotOf !== null || $this->pivotMap !== [];
+        $stored = $pivot !== null || $this->storedPivotOf !== null || $this->pivotMap !== [] || $this->source !== null;
+        if ($stored && $pivot === null && $this->relation->storedPivotFields() !== []) {
+            throw MissingPivotRow::for(
+                $this->source->parentType ?? 'unknown',
+                $this->relation->name(),
+                $this->source->parentId ?? 'unknown',
+                $id,
+                $this->source->provider ?? 'its provider',
+            );
+        }
         $computes = $this->parent !== null && $this->relation->computedPivotFields() !== [];
         if (!$stored && !$computes) {
             return $meta;

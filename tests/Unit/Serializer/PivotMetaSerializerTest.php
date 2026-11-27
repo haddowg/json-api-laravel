@@ -11,14 +11,16 @@ use haddowg\JsonApi\Resource\Field\Integer;
 use haddowg\JsonApi\Resource\Field\PivotEdge;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Serializer\SerializerInterface;
+use haddowg\JsonApiLaravel\Serializer\MissingPivotRow;
 use haddowg\JsonApiLaravel\Serializer\PivotMetaSerializer;
+use haddowg\JsonApiLaravel\Serializer\PivotRowSource;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Every member of a relation with pivot fields carries a `meta.pivot` object: empty when every
- * field is hidden, and with `null` stored fields when the member has no pivot row.
+ * Every member of a relation with pivot fields carries a `meta.pivot` object, empty when every
+ * field is hidden, and a member with no pivot row fails the render.
  *
  * @internal
  */
@@ -26,15 +28,28 @@ use PHPUnit\Framework\TestCase;
 final class PivotMetaSerializerTest extends TestCase
 {
     #[Test]
-    public function aMemberWithNoPivotRowRendersItsStoredFieldsAsNullAndItsComputedFields(): void
+    public function aMemberWithNoPivotRowFailsTheRenderNamingWhereItCameFrom(): void
     {
         $relation = BelongsToMany::make('records', 'records')->fields(
             Integer::make('position'),
             Str::make('label')->computedUsing(static fn(mixed $edge): string => $edge instanceof PivotEdge ? 'computed' : ''),
         )->build();
-        $serializer = new PivotMetaSerializer($this->inner(), ['t9' => ['position' => 1]], $relation, new \stdClass(), null, static fn(object $member): ?array => null);
+        $serializer = new PivotMetaSerializer($this->inner(), ['t9' => ['position' => 1]], $relation, new \stdClass(), source: new PivotRowSource('crates', 'c1', 'App\\RecordProvider'));
 
-        self::assertSame('{"pivot":{"position":null,"label":"computed"}}', \json_encode($serializer->getMeta((object) ['id' => 't1'], $this->request())));
+        $this->expectException(MissingPivotRow::class);
+        $this->expectExceptionMessage('The "records" relation of "crates" "c1" renders the member "t1", but App\\RecordProvider returned no pivot row for it.');
+        $serializer->getMeta((object) ['id' => 't1'], $this->request());
+    }
+
+    #[Test]
+    public function aMemberOfAnAllComputedRelationNeedsNoPivotRow(): void
+    {
+        $relation = BelongsToMany::make('records', 'records')->fields(
+            Str::make('label')->computedUsing(static fn(mixed $edge): string => $edge instanceof PivotEdge ? 'computed' : ''),
+        )->build();
+        $serializer = new PivotMetaSerializer($this->inner(), [], $relation, new \stdClass());
+
+        self::assertSame('{"pivot":{"label":"computed"}}', \json_encode($serializer->getMeta((object) ['id' => 't1'], $this->request())));
     }
 
     #[Test]
