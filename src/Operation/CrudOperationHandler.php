@@ -421,8 +421,14 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $response = DocumentMeta::forActionStatus($operation->responds(), $status)->applyTo($response, $request);
         }
 
-        if ($response instanceof DataResponse && $server instanceof Server && $request instanceof JsonApiRequestInterface) {
+        // An action builds its response before the include walk runs, so its resources, and
+        // the job resource of its 202, load and render their pivots here.
+        if (($response instanceof DataResponse || ($operation instanceof CustomActionOperation && $response instanceof AcceptedResponse))
+            && $server instanceof Server && $request instanceof JsonApiRequestInterface) {
             $response = $this->loadRendered($server, $response, $request);
+            if ($operation instanceof CustomActionOperation) {
+                $response = $this->withRenderedPivotLinkage($server, $response);
+            }
         }
 
         return $this->withIncludeProfiles($response);
@@ -440,7 +446,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
      */
     private function withIncludeProfiles(object $response): object
     {
-        if ($this->includeProfiles === [] || (!$response instanceof DataResponse && !$response instanceof RelatedResponse)) {
+        if ($this->includeProfiles === [] || (!$response instanceof DataResponse && !$response instanceof RelatedResponse && !$response instanceof AcceptedResponse)) {
             return $response;
         }
 
@@ -454,20 +460,25 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * Loads the relations of the resources a response renders that this operation did
-     * not load them for: a custom action's resources, or ones an after-hook answered
-     * with. They render through the same scoped preload, windows and counts a read
-     * runs, so no linkage, included resource or count is read off the model.
+     * not load them for: a custom action's resources or the job resource of its `202`,
+     * or ones an after-hook answered with. They render through the same scoped preload,
+     * windows and counts a read runs, so no linkage, included resource or count is read
+     * off the model.
+     *
+     * @template TResponse of DataResponse|AcceptedResponse
+     *
+     * @param TResponse $response
+     *
+     * @return TResponse
      */
-    private function loadRendered(Server $server, DataResponse $response, JsonApiRequestInterface $request): DataResponse
+    private function loadRendered(Server $server, DataResponse|AcceptedResponse $response, JsonApiRequestInterface $request): DataResponse|AcceptedResponse
     {
-        $groups = [];
+        $groups = $this->renderedGroups($response);
         $loaded = true;
-        foreach ($response->primaryResources() as $member) {
-            if (!\is_object($member)) {
-                continue;
+        foreach ($groups as $members) {
+            foreach ($members as $member) {
+                $loaded = $loaded && isset($this->preloaded[\spl_object_id($member)]);
             }
-            $groups[$response->serializer()->getType($member)][] = $member;
-            $loaded = $loaded && isset($this->preloaded[\spl_object_id($member)]);
         }
         if ($loaded || $groups === []) {
             return $response;
@@ -489,6 +500,66 @@ final class CrudOperationHandler implements OperationHandlerInterface
         $this->applyRelationshipCounts($server, $type, $members, $request);
 
         return $activatedProfiles === [] ? $response : $response->withActivatedProfiles(...$activatedProfiles);
+    }
+
+    /**
+     * The resources `$response` renders as primary data, or as the job resource of a `202`,
+     * grouped by the type each renders as.
+     *
+     * @return array<string, list<object>>
+     */
+    private function renderedGroups(DataResponse|AcceptedResponse $response): array
+    {
+        $serializer = $response->serializer();
+        if ($serializer === null) {
+            return [];
+        }
+
+        $groups = [];
+        foreach ($response instanceof DataResponse ? $response->primaryResources() : [$response->job()] as $member) {
+            if (\is_object($member)) {
+                $groups[$serializer->getType($member)][] = $member;
+            }
+        }
+
+        return $groups;
+    }
+
+    /**
+     * Renders the pivot relations of the resources a custom action answered with as a read
+     * renders them, on their linkage and on their included members at every include depth.
+     * A response of several types decorates each type's resources in turn, and stays a
+     * {@see PolymorphicSerializer} when it was one, so `?withCount` still validates against
+     * the union of its member types.
+     *
+     * @template TResponse of DataResponse|AcceptedResponse
+     *
+     * @param TResponse $response
+     *
+     * @return TResponse
+     */
+    private function withRenderedPivotLinkage(Server $server, DataResponse|AcceptedResponse $response): DataResponse|AcceptedResponse
+    {
+        $serializer = $response->serializer();
+        $groups = $this->renderedGroups($response);
+        if ($serializer === null || $groups === []) {
+            return $response;
+        }
+
+        $rendering = $this->pivotRendering($server);
+        $mixed = \count($groups) > 1;
+        $decorated = $serializer;
+        foreach (\array_keys($groups) as $type) {
+            $decorated = $rendering->decorate($decorated, $type, $mixed);
+        }
+        if ($decorated === $serializer) {
+            return $response;
+        }
+        if ($serializer instanceof PolymorphicSerializer) {
+            $decorated = new PolymorphicSerializer(static fn(mixed $object): SerializerInterface => $decorated, $serializer->members());
+        }
+
+        return $response->withSerializer($decorated);
     }
 
     /**

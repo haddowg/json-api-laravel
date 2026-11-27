@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Serializer;
 
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
-use haddowg\JsonApi\Resource\Internal\NonSparseMember;
-use haddowg\JsonApi\Schema\Relationship\AbstractRelationship;
 use haddowg\JsonApi\Serializer\DeclaresRelationsInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 
@@ -19,35 +17,41 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  * It keeps the inner serializer's relationship set, so a relation the inner serializer hides
  * for this request stays hidden, and replaces only the callable of a relation the inner
  * serializer declares. A custom relationship callable with no declared relation renders as
- * the inner serializer built it.
+ * the inner serializer built it. Each callable comes from core's
+ * {@see \haddowg\JsonApi\Resource\RendersRelationsTrait::relationshipCallable()}, so a relation declared
+ * `notSparseField()` still renders whatever `fields[type]` lists.
  */
 final class PivotLinkageParentSerializer extends AbstractPivotParentSerializer
 {
+    /**
+     * @param DeclaresRelationsInterface|null $declaring the serializer declaring the relations, when the inner one doesn't
+     * @param string|null                     $type      the one type whose resources this decorator rebinds, when the inner serializer renders several
+     */
     public function __construct(
         private readonly SerializerInterface $inner,
         private readonly PivotRenderingResolver $resolver,
+        private readonly ?DeclaresRelationsInterface $declaring = null,
+        private readonly ?string $type = null,
     ) {}
 
     public function getRelationships(mixed $object, JsonApiRequestInterface $request): array
     {
         $relationships = $this->inner->getRelationships($object, $request);
-        if (!$this->inner instanceof DeclaresRelationsInterface) {
+        $declaring = $this->declaring ?? ($this->inner instanceof DeclaresRelationsInterface ? $this->inner : null);
+        if ($declaring === null) {
             return $relationships;
         }
 
-        $resolver = $this->resolver;
         $type = $this->inner->getType($object);
+        if ($this->type !== null && $type !== $this->type) {
+            return $relationships;
+        }
+
         foreach ($relationships as $name => $callable) {
-            $relation = $this->inner->relationNamedIncludingHidden((string) $name);
-            if ($relation === null) {
-                continue;
+            $relation = $declaring->relationNamedIncludingHidden((string) $name);
+            if ($relation !== null) {
+                $relationships[$name] = self::relationshipCallable($relation, $this->resolver->forRelation($object, $relation, $type));
             }
-
-            $build = static fn(mixed $model, JsonApiRequestInterface $req, string $relationshipName): AbstractRelationship
-                => $relation->buildRelationship($model, $req, $resolver->forRelation($model, $relation, $type));
-
-            // A not-sparse relation renders whatever `fields[type]` lists, which core reads off the callable's class.
-            $relationships[$name] = $callable instanceof NonSparseMember ? new NonSparseMember($build) : $build;
         }
 
         return $relationships;

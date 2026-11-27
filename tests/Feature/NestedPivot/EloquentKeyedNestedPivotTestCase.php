@@ -120,6 +120,69 @@ abstract class EloquentKeyedNestedPivotTestCase extends Orchestra
         }
     }
 
+    public function test_an_action_response_renders_the_pivot_under_its_wire_ids(): void
+    {
+        $document = $this->action('/api/npCrates/' . NpKeys::wire('c', 1) . '/-actions/muster?include=records');
+
+        self::assertSame(NpKeys::wire('c', 1), \data_get($document, 'data.id'));
+        self::assertSame($this->pivots(1), $this->linkagePivots($this->arrayAt($document['data'] ?? null), 'records'));
+        self::assertSame($this->pivot(1, 2), \data_get($this->resource($document['included'] ?? null, 'npRecords', NpKeys::wire('r', 2)), 'meta.pivot'));
+
+        $nested = $this->action('/api/npShelves/2/-actions/muster?include=crate.records');
+        self::assertSame($this->pivots(2), $this->linkagePivots($this->resource($nested['included'] ?? null, 'npCrates', NpKeys::wire('c', 2)), 'records'));
+        self::assertSame($this->pivot(2, 3), \data_get($this->resource($nested['included'] ?? null, 'npRecords', NpKeys::wire('r', 3)), 'meta.pivot'));
+    }
+
+    public function test_collection_and_mixed_type_action_responses_render_the_pivot_under_their_wire_ids(): void
+    {
+        $roll = $this->action('/api/npCrates/-actions/roll?include=records');
+        self::assertSame($this->pivots(1), $this->linkagePivots($this->resource($roll['data'] ?? null, 'npCrates', NpKeys::wire('c', 1)), 'records'));
+        self::assertSame($this->pivots(2), $this->linkagePivots($this->resource($roll['data'] ?? null, 'npCrates', NpKeys::wire('c', 2)), 'records'));
+
+        $mix = $this->action('/api/npCrates/-actions/mix?include=records');
+        self::assertSame($this->pivots(1), $this->linkagePivots($this->resource($mix['data'] ?? null, 'npCrates', NpKeys::wire('c', 1)), 'records'));
+        self::assertSame(
+            [NpKeys::wire('r', 1) => ['position' => 5, 'label' => 'Beta / One'], NpKeys::wire('r', 3) => ['position' => 6, 'label' => 'Beta / Three']],
+            $this->linkagePivots($this->resource($mix['data'] ?? null, 'npBins', NpKeys::wire('c', 2)), 'records'),
+        );
+    }
+
+    public function test_an_action_relation_with_data_and_a_job_resource_render_the_pivot_under_their_wire_ids(): void
+    {
+        $bin = $this->action('/api/npBins/' . NpKeys::wire('c', 2) . '/-actions/muster');
+        self::assertSame(
+            [NpKeys::wire('r', 1) => ['position' => 5, 'label' => 'Beta / One'], NpKeys::wire('r', 3) => ['position' => 6, 'label' => 'Beta / Three']],
+            $this->linkagePivots($this->arrayAt($bin['data'] ?? null), 'records'),
+        );
+
+        $job = $this->action('/api/npCrates/' . NpKeys::wire('c', 2) . '/-actions/queue?include=records', 202);
+        self::assertSame(NpKeys::wire('c', 2), \data_get($job, 'data.id'));
+        self::assertSame($this->pivots(2), $this->linkagePivots($this->arrayAt($job['data'] ?? null), 'records'));
+        self::assertSame($this->pivot(2, 1), \data_get($this->resource($job['included'] ?? null, 'npRecords', NpKeys::wire('r', 1)), 'meta.pivot'));
+    }
+
+    public function test_an_identified_morph_to_renders_its_wire_id_and_the_pivot_below_it(): void
+    {
+        foreach ([$this->document('/api/npShelves/2?include=tagged.records'), $this->action('/api/npShelves/2/-actions/muster?include=tagged.records')] as $document) {
+            self::assertSame(['type' => 'npCrates', 'id' => NpKeys::wire('c', 2)], \data_get($document, 'data.relationships.tagged.data'));
+            self::assertSame($this->pivots(2), $this->linkagePivots($this->resource($document['included'] ?? null, 'npCrates', NpKeys::wire('c', 2)), 'records'));
+            self::assertSame($this->pivot(2, 3), \data_get($this->resource($document['included'] ?? null, 'npRecords', NpKeys::wire('r', 3)), 'meta.pivot'));
+        }
+    }
+
+    public function test_an_identified_morph_to_many_renders_its_wire_ids_and_the_pivot_below_it(): void
+    {
+        foreach ([$this->document('/api/npRooms/1?include=pinned.records'), $this->action('/api/npRooms/1/-actions/muster?include=pinned.records')] as $document) {
+            self::assertSame(
+                [['type' => 'npCrates', 'id' => NpKeys::wire('c', 1)], ['type' => 'npCrates', 'id' => NpKeys::wire('c', 2)]],
+                \data_get($document, 'data.relationships.pinned.data'),
+            );
+            self::assertSame($this->pivots(1), $this->linkagePivots($this->resource($document['included'] ?? null, 'npCrates', NpKeys::wire('c', 1)), 'records'));
+            self::assertSame($this->pivots(2), $this->linkagePivots($this->resource($document['included'] ?? null, 'npCrates', NpKeys::wire('c', 2)), 'records'));
+            self::assertSame($this->pivot(1, 2), \data_get($this->resource($document['included'] ?? null, 'npRecords', NpKeys::wire('r', 2)), 'meta.pivot'));
+        }
+    }
+
     public function test_the_batched_pivot_read_keys_each_parent_and_member_by_its_wire_id(): void
     {
         $relation = null;
@@ -171,6 +234,19 @@ abstract class EloquentKeyedNestedPivotTestCase extends Orchestra
         }
 
         self::fail(\sprintf('Crate %d holds no record %d.', $crate, $record));
+    }
+
+    /**
+     * The document a custom action answers with.
+     *
+     * @return array<mixed>
+     */
+    private function action(string $uri, int $status = 200): array
+    {
+        $response = $this->call('POST', $uri, [], [], [], ['HTTP_ACCEPT' => self::MEDIA_TYPE, 'CONTENT_TYPE' => self::MEDIA_TYPE]);
+        self::assertSame($status, $response->getStatusCode(), $uri . ': ' . $response->getContent());
+
+        return $this->arrayAt($response->json());
     }
 
     /**

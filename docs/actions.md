@@ -108,9 +108,12 @@ is no stored resource to compare them with; the factory or the handler decides w
 of them means.
 
 A `DataResponse` loads its resources' relations the way a read does, whether the handler
-built it with `$context->data()` or by hand. Linkage, `?include` and `?withCount` go through
-the related type's provider, so the scope, filter defaults and default order its
-relationship endpoint applies hold in the action's document too.
+built it with `$context->data()` or by hand, and so does the job resource of an
+`AcceptedResponse`. Linkage, `?include` and `?withCount` go through the related type's
+provider, so the scope, filter defaults and default order its relationship endpoint applies
+hold in the action's document too. A `belongsToMany` with pivot fields renders `meta.pivot` on
+its linkage and its included members at every include depth, as it does on a read; see
+[pivot data](relationships.md#pivot-belongstomany-data).
 
 A response that mixes types renders through core's `PolymorphicSerializer`. Pass it the
 serializer of every type the response may hold as its second argument, and `?withCount`

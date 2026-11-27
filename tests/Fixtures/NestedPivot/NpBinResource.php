@@ -15,6 +15,7 @@ use haddowg\JsonApiLaravel\Operation\Operation;
 
 /**
  * A writable view of the crates whose pivot relation renders its linkage on every response.
+ * `keptRecords` reads the same join, rendered whatever `fields[npBins]` lists.
  */
 #[AsJsonApiResource(operations: [Operation::FetchOne, Operation::Create, Operation::Update])]
 final class NpBinResource extends AbstractResource
@@ -40,6 +41,11 @@ final class NpBinResource extends AbstractResource
                         return (\is_string($bin) ? $bin : '') . ' / ' . (\is_string($record) ? $record : '');
                     }),
                 ),
+            BelongsToMany::make('keptRecords', 'npRecords')
+                ->storedAs('records')
+                ->notSparseField()
+                ->readOnly()
+                ->fields(Integer::make('position')),
         ];
     }
 }

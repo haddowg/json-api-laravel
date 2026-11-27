@@ -7,7 +7,6 @@ namespace haddowg\JsonApiLaravel\Tests\Unit\Serializer;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\Id;
-use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\ProvidesResourcesInterface;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
@@ -17,9 +16,8 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
 /**
- * A relation declared with `identifiedBy()` passes the rendering resolver on unless one of its
- * types encodes its ids, since core encodes its stored ids only through the type's own
- * resource.
+ * A relation declared with `identifiedBy()` passes the rendering resolver on, so the types
+ * below it render their pivots.
  *
  * @internal
  */
@@ -29,18 +27,10 @@ final class PivotRenderingResolverTest extends TestCase
     #[Test]
     public function anIdentifiedRelationOverPlainIdsPassesTheResolverOn(): void
     {
-        $server = $this->server(encoded: false);
+        $server = $this->server();
         $rendering = $this->rendering($server);
 
         self::assertSame($rendering, $rendering->forRelation(new \stdClass(), $this->identified(), 'shelves'));
-    }
-
-    #[Test]
-    public function anIdentifiedRelationOverEncodedIdsIsBuiltThroughTheServer(): void
-    {
-        $server = $this->server(encoded: true);
-
-        self::assertSame($server, $this->rendering($server)->forRelation(new \stdClass(), $this->identified(), 'shelves'));
     }
 
     private function identified(): MorphTo
@@ -50,23 +40,9 @@ final class PivotRenderingResolverTest extends TestCase
             ->build();
     }
 
-    private function server(bool $encoded): SerializerResolverInterface
+    private function server(): SerializerResolverInterface
     {
-        $id = Id::make();
-        if ($encoded) {
-            $id = $id->encodeUsing(new class implements IdEncoderInterface {
-                public function encode(mixed $storageKey): string
-                {
-                    return 'c-' . (\is_scalar($storageKey) ? (string) $storageKey : '');
-                }
-
-                public function decode(string $wireId): mixed
-                {
-                    return \substr($wireId, 2);
-                }
-            });
-        }
-        $resource = new class ($id->build()) extends AbstractResource {
+        $resource = new class (Id::make()->build()) extends AbstractResource {
             public static string $type = 'crates';
 
             public function __construct(private readonly Id $id) {}
