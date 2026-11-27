@@ -440,6 +440,30 @@ filter and its path. Register one type for that model, or move the filter to a `
 path that doesn't reach it. See
 [paths through a pivot row](eloquent.md#paths-through-a-pivot-row).
 
+### A type linked to itself
+
+A join table can link a model to itself, such as seats placing one writer beside another.
+Declare one Eloquent `belongsToMany` per direction, each naming its own foreign and related
+pivot keys, and a relation for each:
+
+```php
+public function peers(): BelongsToMany
+{
+    return $this->belongsToMany(Writer::class, 'seats', 'owner_id', 'peer_id')->withPivot('rank');
+}
+
+public function followers(): BelongsToMany
+{
+    return $this->belongsToMany(Writer::class, 'seats', 'peer_id', 'owner_id')->withPivot('rank');
+}
+```
+
+The Eloquent provider takes the parent side from the relation's foreign pivot key and the
+member's from its related pivot key, never from the models the keys point at, so each relation
+reads, counts, filters, includes and writes its own side of a seat. A pivot model's relations
+back to the parent and to the member are told apart by the key each `belongsTo` uses. A
+`through()` declared on the relation plays no part in choosing them.
+
 ### Computed pivot fields
 
 A pivot field declared with `computed()` or `computedUsing()` is computed: it has no column,

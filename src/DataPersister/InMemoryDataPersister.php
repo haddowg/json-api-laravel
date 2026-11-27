@@ -278,6 +278,19 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
         ToManyRelationship $linkage,
         Mode $mode,
     ): array {
+        // A remove also matches the members its ids resolve to, whose own id may be held in
+        // another form than the wire's, such as a UUID object behind an encoder.
+        $resolved = [];
+        foreach ($mode !== Mode::Remove || $this->relatedResolver !== null ? $linkage->resourceIdentifiers : [] as $identifier) {
+            if ($identifier->id === null) {
+                continue;
+            }
+            $related = $this->resolveRelated($this->linkageType($identifier, $fallbackType), $identifier->id);
+            if ($related !== null) {
+                $resolved[StoredIdForms::comparable($this->idOf($related))] = $related;
+            }
+        }
+
         if ($mode === Mode::Remove) {
             $remove = [];
             foreach ($linkage->getResourceIdentifierIds() as $id) {
@@ -288,19 +301,8 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
 
             return \array_values(\array_filter(
                 $this->currentList($entity, $property),
-                fn(object $member): bool => !isset($remove[StoredIdForms::comparable($this->idOf($member))]),
+                fn(object $member): bool => !isset($remove[StoredIdForms::comparable($this->idOf($member))]) && !\in_array($member, $resolved, true),
             ));
-        }
-
-        $resolved = [];
-        foreach ($linkage->resourceIdentifiers as $identifier) {
-            if ($identifier->id === null) {
-                continue;
-            }
-            $related = $this->resolveRelated($this->linkageType($identifier, $fallbackType), $identifier->id);
-            if ($related !== null) {
-                $resolved[StoredIdForms::comparable($this->idOf($related))] = $related;
-            }
         }
 
         if ($mode === Mode::Replace) {
@@ -314,7 +316,9 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
             $next[StoredIdForms::comparable($this->idOf($member))] = $member;
         }
         foreach ($resolved as $id => $member) {
-            $next[$id] = $member;
+            if (!\in_array($member, $next, true)) {
+                $next[$id] = $member;
+            }
         }
 
         return \array_values($next);
