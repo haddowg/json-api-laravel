@@ -15,7 +15,8 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
  * its pivot field sorts, and read each member's `meta.pivot` off the fetched page through
  * {@see pivotMapOf()} instead of a whole-association read. A provider that does not
  * implement it (the in-memory witness) leaves pivot keys unrecognised (a `400`) and renders
- * `meta.pivot` from {@see DataProviderInterface::fetchRelationshipPivot()}, if it stores any.
+ * `meta.pivot` from {@see PivotAwareProviderInterface::fetchRelatedPivotMapBatch()}, if it
+ * implements that.
  */
 interface QueriesPivotColumnsInterface
 {

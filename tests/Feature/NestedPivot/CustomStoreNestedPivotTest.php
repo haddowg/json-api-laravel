@@ -36,11 +36,6 @@ final class CustomStoreNestedPivotTest extends NestedPivotTestCase
         return true;
     }
 
-    protected function storesWrittenPivots(): bool
-    {
-        return false;
-    }
-
     public function test_an_include_reads_the_pivot_map_once_for_every_parent(): void
     {
         foreach (['/api/npShelves?include=crate.records', '/api/npRooms/1?include=shelves.crate.records', '/api/npShelves/1?include=crate.records,altCrate.records'] as $uri) {

@@ -25,14 +25,8 @@ use PHPUnit\Framework\Attributes\Test;
  * {@see \haddowg\JsonApiLaravel\DataPersister\DataPersisterInterface::mutateRelationship()}
  * seam — so a divergence localizes to one provider's persister execution.
  *
- * Two surfaces are provider-asymmetric by design and asserted through the
- * {@see providerRendersPivotMeta()} hook rather than here: the reference Eloquent provider
- * renders + stores the pivot `position`/`weight`/`addedAt` as each member's `meta.pivot`
- *, while the in-memory witness stores none (the documented boundary — a pivot
- * column needs an association entity it cannot model), so a pivot write still changes the
- * membership on both but only Eloquent renders `meta.pivot`. Everything else — the membership
- * round-trips, the merge-before-validate 422s, the mutability 403s, the error families — is
- * identical on both providers.
+ * Both providers store the pivot `position`/`weight`/`addedAt` and render them as each
+ * member's `meta.pivot`, so every assertion, the pivot ones included, holds on both.
  */
 abstract class RelationshipWriteConformanceTestCase extends Orchestra
 {
@@ -45,12 +39,6 @@ abstract class RelationshipWriteConformanceTestCase extends Orchestra
      * @return class-string
      */
     abstract protected function conformanceServiceProvider(): string;
-
-    /**
-     * Whether the concrete's provider stores + renders the pivot `meta.pivot` (Eloquent
-     * true, the in-memory witness false — the documented boundary).
-     */
-    abstract protected function providerRendersPivotMeta(): bool;
 
     /**
      * @param \Illuminate\Foundation\Application $app
@@ -213,16 +201,13 @@ abstract class RelationshipWriteConformanceTestCase extends Orchestra
         self::assertSame('/data/0/meta/pivot/weight', $response->json('errors.0.source.pointer'));
     }
 
-    // --- meta.pivot render shapes (provider-asymmetric via the hook) -----------
+    // --- meta.pivot render shapes -----------------------------------------------
 
     #[Test]
     #[Group('spec:fetching')]
-    public function theMutationEchoRendersPivotMetaOnlyWhenTheProviderStoresIt(): void
+    public function theMutationEchoRendersPivotMeta(): void
     {
-        // A pivot mutation's 200 linkage echo carries the just-written pivot values on the
-        // reference provider; the in-memory witness stores none, so its echo carries no
-        // `meta.pivot` (the dual-provider assertion is Eloquent-present /
-        // in-memory-absent).
+        // A pivot mutation's 200 linkage echo carries the just-written pivot values.
         $response = $this->writeManyRel('PATCH', '/api/playlists/2/relationships/orderedTracks', [
             ['type' => 'tracks', 'id' => '2', 'meta' => ['pivot' => ['position' => 5, 'weight' => 6]]],
         ]);
@@ -232,18 +217,14 @@ abstract class RelationshipWriteConformanceTestCase extends Orchestra
         $data = $response->json('data');
         $pivot = $this->pivotOf($data, '2');
 
-        if ($this->providerRendersPivotMeta()) {
-            self::assertNotNull($pivot);
-            self::assertSame(5, $pivot['position'] ?? null);
-            self::assertSame(6, $pivot['weight'] ?? null);
-        } else {
-            self::assertNull($pivot);
-        }
+        self::assertNotNull($pivot);
+        self::assertSame(5, $pivot['position'] ?? null);
+        self::assertSame(6, $pivot['weight'] ?? null);
     }
 
     #[Test]
     #[Group('spec:fetching')]
-    public function theRelatedEndpointRendersPivotMetaOnlyWhenTheProviderStoresIt(): void
+    public function theRelatedEndpointRendersPivotMeta(): void
     {
         // Playlist 1's seeded pivot: track 1 at position 1 / weight 1 / added_at 2024-01-01.
         $response = $this->readRel('/api/playlists/1/orderedTracks');
@@ -253,19 +234,15 @@ abstract class RelationshipWriteConformanceTestCase extends Orchestra
         $data = $response->json('data');
         $pivot = $this->pivotOf($data, '1');
 
-        if ($this->providerRendersPivotMeta()) {
-            self::assertNotNull($pivot);
-            self::assertSame(1, $pivot['position'] ?? null);
-            self::assertSame(1, $pivot['weight'] ?? null);
-            self::assertSame('2024-01-01T00:00:00+00:00', $pivot['addedAt'] ?? null);
-        } else {
-            self::assertNull($pivot);
-        }
+        self::assertNotNull($pivot);
+        self::assertSame(1, $pivot['position'] ?? null);
+        self::assertSame(1, $pivot['weight'] ?? null);
+        self::assertSame('2024-01-01T00:00:00+00:00', $pivot['addedAt'] ?? null);
     }
 
     #[Test]
     #[Group('spec:fetching')]
-    public function theRelationshipEndpointRendersPivotMetaOnlyWhenTheProviderStoresIt(): void
+    public function theRelationshipEndpointRendersPivotMeta(): void
     {
         $response = $this->readRel('/api/playlists/1/relationships/orderedTracks');
         $response->assertOk();
@@ -274,13 +251,9 @@ abstract class RelationshipWriteConformanceTestCase extends Orchestra
         $data = $response->json('data');
         $pivot = $this->pivotOf($data, '2');
 
-        if ($this->providerRendersPivotMeta()) {
-            self::assertNotNull($pivot);
-            self::assertSame(2, $pivot['position'] ?? null);
-            self::assertSame(2, $pivot['weight'] ?? null);
-        } else {
-            self::assertNull($pivot);
-        }
+        self::assertNotNull($pivot);
+        self::assertSame(2, $pivot['position'] ?? null);
+        self::assertSame(2, $pivot['weight'] ?? null);
     }
 
     // --- cannotReplace / cannotAdd / cannotRemove (403 family) -----------------

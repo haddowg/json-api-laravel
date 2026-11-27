@@ -350,12 +350,17 @@ takes its values from one batched read for every parent in the document
 in `included`, so its `meta.pivot` there is one playlist's, while each playlist's linkage
 carries its own.
 
-Only a provider that reads pivot rows supplies the stored fields, so the in-memory provider
-renders none of them; it renders only the [computed fields](#computed-pivot-fields).
+The related type's provider reads the stored fields on every path, so they all render the same
+values. The in-memory provider keeps each pivot row beside its parent: a relationship write, a
+create or update carrying the relationship, and an atomic operation store the fields each
+member's `meta.pivot` sends, and every read renders them. A relation with stored pivot fields
+whose related type's provider reads no pivot rows fails the boot and `jsonapi:optimize`, naming
+the relation, the type, the provider and `PivotAwareProviderInterface`, which it must implement.
 
 Each member's `meta.pivot` carries every pivot field a response may show for that member:
 core's `BelongsToMany::readablePivotFieldsFor($request, $member)`, which leaves out a field that
-is hidden or write-only for the request. A field's `hidden(when:)` predicate receives the
+is hidden or write-only for the request. A member whose every field is left out still carries
+`"pivot": {}`. A relation that declares only an `AdditionalProperties` entry renders no pivot. A field's `hidden(when:)` predicate receives the
 related member (the track here, an Eloquent model or whatever the provider returns), so it
 can hide a value for one member and show it for another:
 
@@ -363,8 +368,9 @@ can hide a value for one member and show it for another:
 Integer::make('position')->hidden(static fn(mixed $track): bool => Accessor::get($track, 'explicit') === true),
 ```
 
-A field the join row holds no value for renders as `null`, which is what the response pivot
-schema in the [OpenAPI document](openapi.md) promises when it lists the field as `required`.
+A field the join row holds no value for renders as `null`, and so does each stored field of a
+member the provider returns no row for, which is what the response pivot schema in the
+[OpenAPI document](openapi.md) promises when it lists the field as `required`.
 A `Date`, `DateTime` or `Time` pivot field renders in its format (ISO 8601 with an offset for
 a `DateTime` by default), and a `DateTime` follows the server's
 [`output_timezone`](configuration.md#output_timezone). The pivot model doesn't have to cast
@@ -376,7 +382,7 @@ on the related endpoint, the relationship endpoint, a Relationship Queries
 `relatedQuery[<relation>][filter]` window on an include, and the `?withCount` total that window
 reports. The endpoints page at the relation's paginator, and both read each member's pivot row in
 the same query as the page, so `meta.pivot` costs no extra query. The Eloquent provider resolves the `pivot.` prefix against the join table.
-A provider that stores no pivot columns, such as the in-memory one, answers a pivot sort or
+A provider that doesn't query the join, such as the in-memory one, answers a pivot sort or
 filter key with a `400`, and so a filter or sort whose `->through()` path reaches a pivot row;
 see [the in-memory provider](custom-data-providers.md#the-in-memory-provider) for each case.
 

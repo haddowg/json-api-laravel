@@ -36,17 +36,19 @@ A provider that can filter and sort a `belongsToMany` on its join columns also i
 `QueriesPivotColumnsInterface`. Its `fetchRelatedCollection()` then receives the relation's
 `pivot.`-columned filters and the pivot field sorts, and `pivotMapOf()` reads each fetched
 member's pivot values for `meta.pivot` without another query. Without it, pivot sort and filter
-keys are a `400` and `meta.pivot` comes from `fetchRelationshipPivot()`.
+keys are a `400` and `meta.pivot` comes from `PivotAwareProviderInterface`.
 
-`fetchRelationshipPivot()` reads one parent's rows, which serves the related and relationship
-endpoints. An included pivot relation renders the stored values of every parent in the
-document, so it reads them through `PivotAwareProviderInterface` instead, named and shaped as the
-Symfony bundle's: `fetchRelatedPivotMapBatch($parentType, $relatedType, $parents, $relation)`
-returns the values keyed by the parent's wire id, then the member's. The package asks the related
-type's provider, once per pivot relation, for every parent of that type the include walk loaded,
-and only for members that came back without their pivot row.
-A provider that stores pivot values and doesn't implement it renders only the computed fields of
-an included pivot relation.
+`PivotAwareProviderInterface` is named and shaped as the Symfony bundle's:
+`fetchRelatedPivotMapBatch($parentType, $relatedType, $parents, $relation)` returns the values
+keyed by the parent's wire id, then the member's. The package asks the related type's provider,
+for members that came back without their pivot row. A document's linkage asks it once per pivot
+relation for every parent of that type the include walk loaded, and the related and relationship
+endpoints ask it for their one parent, so every path renders the values one provider reads.
+A relation with stored pivot fields whose related type's provider doesn't implement it fails the
+boot and `jsonapi:optimize`, naming the relation, the type, the provider and the interface.
+
+`fetchRelationshipPivot()` reads one parent's existing rows when a write arrives, and the
+validator merges each incoming member's `meta.pivot` over the row it already has.
 
 That interface also decides where a `->through()` path starting with `pivot` runs: its filters and
 sorts reach `fetchRelatedCollection()` beside the `pivot.`-columned ones. A path that goes on past
@@ -169,8 +171,13 @@ declaration that names the classes without the type, such as the return type
 `InMemoryDataProvider`, reads as rows of any object, and `InMemoryDataProvider<Genre>` names
 one class.
 
-Its rows hold no pivot rows, so a path that reaches one needs a store that has them, such as the
-Eloquent provider. On a type the in-memory provider serves:
+The store keeps each parent's pivot rows beside it. A relationship write, a create or update
+carrying the relationship, and an atomic operation write the fields each member's `meta.pivot`
+sends, and the provider reads them back through `PivotAwareProviderInterface`, so every response
+renders them. To seed rows, write them to the store holding the parent with
+`$provider->store()->writePivotRows($parent, $relationColumn, [$memberId => [$column => $value]])`.
+It doesn't query those rows, so a filter, a sort or a path that reaches a pivot row needs a
+store that does, such as the Eloquent provider. On a type the in-memory provider serves:
 
 - a filter whose `->through()` path starts with `pivot` and ends on a pivot field answers `400`
   `FILTERING_UNRECOGNIZED`, as a `pivot.` column filter does, and so does a deprecated

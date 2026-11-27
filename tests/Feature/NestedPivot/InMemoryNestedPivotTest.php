@@ -7,8 +7,8 @@ namespace haddowg\JsonApiLaravel\Tests\Feature\NestedPivot;
 use PHPUnit\Framework\Attributes\CoversNothing;
 
 /**
- * {@see NestedPivotTestCase} on the in-memory provider, which stores no pivot columns and so
- * renders only the computed field.
+ * {@see NestedPivotTestCase} on the in-memory provider, which keeps the pivot rows with the
+ * parents and renders them beside the computed field.
  *
  * @internal
  */
@@ -31,6 +31,6 @@ final class InMemoryNestedPivotTest extends NestedPivotTestCase
 
     protected function storesPivots(): bool
     {
-        return false;
+        return true;
     }
 }

@@ -312,6 +312,12 @@ final class JsonApiServiceProvider extends ServiceProvider
 
                     return $providers;
                 });
+                $pivotStorage = new \haddowg\JsonApiLaravel\Server\PivotStorageGuard(static function () use ($app): DataProviderRegistry {
+                    $providers = $app->make(DataProviderRegistry::class);
+                    \assert($providers instanceof DataProviderRegistry);
+
+                    return $providers;
+                });
                 // Built only when a path goes on past a pivot row.
                 $pivotRows = new \haddowg\JsonApiLaravel\DataProvider\PivotRowRelationRouter(static function () use ($app): DataProviderRegistry {
                     $providers = $app->make(DataProviderRegistry::class);
@@ -328,6 +334,7 @@ final class JsonApiServiceProvider extends ServiceProvider
                     $guard->check($registry, $type, $resource);
                     $foreignKeys->check($registry, $type, $resource, unkeyed: false);
                     $pivotSides->check($type, $resource);
+                    $pivotStorage->check($type, $resource);
                     (new \haddowg\JsonApi\Serializer\RelationFilterDefaultsValidator($registry))->validate($type, $resource);
                     \haddowg\JsonApiLaravel\Server\FilterPathGuard::check($registry, $resource, pivotRows: $pivotRows);
                     \haddowg\JsonApiLaravel\Server\ThroughPathGuard::assertSortsResolve($registry, $server, $resource, $pivotRows);

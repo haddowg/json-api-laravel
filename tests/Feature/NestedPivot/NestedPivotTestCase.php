@@ -386,6 +386,18 @@ abstract class NestedPivotTestCase extends Orchestra
         }
     }
 
+    public function test_a_rolled_back_atomic_batch_leaves_the_pivot_rows_as_they_were(): void
+    {
+        $before = $this->document('/api/npBins/1');
+
+        $this->write('POST', '/api/operations', 404, ['atomic:operations' => [
+            ['op' => 'update', 'ref' => ['type' => 'npBins', 'id' => '1', 'relationship' => 'records'], 'data' => [['type' => 'npRecords', 'id' => '3', 'meta' => ['pivot' => ['position' => 7]]]]],
+            ['op' => 'update', 'ref' => ['type' => 'npBins', 'id' => '99'], 'data' => ['type' => 'npBins', 'id' => '99', 'attributes' => ['title' => 'Nope']]],
+        ]], self::ATOMIC_MEDIA_TYPE);
+
+        self::assertSame(\data_get($before, 'data.relationships.records.data'), \data_get($this->document('/api/npBins/1'), 'data.relationships.records.data'));
+    }
+
     public function test_an_action_response_carries_the_pivot_of_every_linkage_it_renders(): void
     {
         foreach ([

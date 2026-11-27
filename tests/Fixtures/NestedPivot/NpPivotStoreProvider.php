@@ -15,7 +15,8 @@ use haddowg\JsonApiLaravel\DataProvider\RelatedBatch;
 /**
  * A provider that keeps the crates' pivot rows beside an in-memory store, reads them through
  * the pivot SPI and doesn't query the join for its related reads. Its batched read answers
- * for the crates' relations only. It counts its pivot reads.
+ * for the crates' relations itself and leaves the rest to the in-memory provider it wraps. It
+ * counts its pivot reads.
  *
  * @internal
  *
@@ -85,7 +86,7 @@ final class NpPivotStoreProvider implements DataProviderInterface, PivotAwarePro
     public function fetchRelatedPivotMapBatch(string $parentType, string $relatedType, array $parents, RelationInterface $relation): array
     {
         if ($parentType !== 'npCrates') {
-            return [];
+            return $this->inner instanceof PivotAwareProviderInterface ? $this->inner->fetchRelatedPivotMapBatch($parentType, $relatedType, $parents, $relation) : [];
         }
         self::$batchSizes[] = \count($parents);
 

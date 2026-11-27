@@ -19,7 +19,8 @@ use haddowg\JsonApiLaravel\Operation\Operation;
  * A `mixtapes` view over the workbench playlists whose pivot fields restrict what a response
  * may show: `orderedTracks` declares a write-only `weight` and a hidden `addedAt`;
  * `rankedTracks` (the same join) hides `position` for track 2 and makes `weight` write-only
- * while the request carries an `X-Conceal-Weight` header.
+ * while the request carries an `X-Conceal-Weight` header; `quietTracks` (the same join again)
+ * declares only that `position`, so track 2 has no pivot field to show.
  *
  * @internal
  */
@@ -48,6 +49,13 @@ final class MixtapeResource extends AbstractResource
                         ->writeOnly(static fn(JsonApiRequestInterface $request): bool => \request()->hasHeader('X-Conceal-Weight'))
                         ->build(),
                     DateTime::make('addedAt')->storedAs('added_at')->build(),
+                ),
+            BelongsToMany::make('quietTracks', 'tracks')
+                ->storedAs('orderedTracks')
+                ->fields(
+                    Integer::make('position')
+                        ->hidden(static fn(mixed $track): bool => Accessor::get($track, 'id') === 2)
+                        ->build(),
                 ),
         ];
     }

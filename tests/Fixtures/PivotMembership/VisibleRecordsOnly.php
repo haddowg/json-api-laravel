@@ -10,6 +10,7 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApiLaravel\DataProvider\AbstractDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
+use haddowg\JsonApiLaravel\DataProvider\PivotAwareProviderInterface;
 
 /**
  * Serves `records` from in-memory rows, never a hidden one: by id, in a collection, or as a
@@ -17,9 +18,14 @@ use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
  *
  * @extends AbstractDataProvider<object>
  */
-final class VisibleRecordsOnly extends AbstractDataProvider
+final class VisibleRecordsOnly extends AbstractDataProvider implements PivotAwareProviderInterface
 {
     public function __construct(private readonly InMemoryDataProvider $inner) {}
+
+    public function fetchRelatedPivotMapBatch(string $parentType, string $relatedType, array $parents, RelationInterface $relation): array
+    {
+        return $this->inner->fetchRelatedPivotMapBatch($parentType, $relatedType, $parents, $relation);
+    }
 
     public function supports(string $type): bool
     {

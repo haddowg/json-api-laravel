@@ -11,7 +11,7 @@ use Workbench\App\Domain\CursorBoard;
 use Workbench\App\Domain\CursorGroup;
 use Workbench\App\Domain\CursorWidget;
 use Workbench\App\Support\ConformanceFixtures;
-use Workbench\App\Support\CursorBoardInMemoryDataProvider;
+use Workbench\App\Support\CursorBoards;
 
 /**
  * The in-memory twin of {@see CursorWithCountConformanceEloquentServiceProvider}, seeded from
@@ -54,6 +54,6 @@ final class CursorWithCountConformanceInMemoryServiceProvider extends ServicePro
 
         JsonApi::provider(new InMemoryDataProvider('cursorWidgets', $widgets));
         JsonApi::provider(new InMemoryDataProvider('cursorGroups', $groups));
-        JsonApi::provider(new CursorBoardInMemoryDataProvider(new InMemoryDataProvider('cursorBoards', $boards)));
+        JsonApi::provider(CursorBoards::provider($boards));
     }
 }

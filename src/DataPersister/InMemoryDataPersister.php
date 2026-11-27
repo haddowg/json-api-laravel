@@ -9,6 +9,7 @@ use haddowg\JsonApi\Collection\LinkRows\LinkRowWritePlan;
 use haddowg\JsonApi\Exception\ClientGeneratedIdAlreadyExists;
 use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Hydrator\Relationship\ToOneRelationship;
+use haddowg\JsonApi\Resource\Field\AbstractFieldValue;
 use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\ForeignKey;
@@ -200,6 +201,9 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
             $current = $this->currentList($entity, $property);
             $entity->{$property} = $this->applyToMany($entity, $property, $fallbackType, $linkage, $mode);
             $this->writePositions($relation, $current, $entity->{$property}, $mode);
+            if ($relation instanceof BelongsToMany) {
+                $this->writePivotRows($entity, $relation, $linkage, $entity->{$property}, $mode);
+            }
         }
 
         if ($flush) {
@@ -335,6 +339,7 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
     private function writePositions(RelationInterface $relation, array $current, array $next, Mode $mode): void
     {
         if ($mode === Mode::Remove || $relation instanceof PivotRelationInterface) {
+            // A pivot relation's positions live on its pivot rows.
             return;
         }
 
@@ -363,6 +368,69 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
         foreach ($positions as $id => $at) {
             Accessor::set($byId[(string) $id], $column, $at);
         }
+    }
+
+    /**
+     * Writes the pivot rows of a `belongsToMany` that stores pivot fields, as a database join
+     * would hold them: a member that stays keeps its row, with the writable fields its
+     * `meta.pivot` sends updated; a new member gets a row of the fields writable on create;
+     * a member that leaves loses its row. A relation positioned by a pivot field gives each
+     * row its position, as a replace or an add places the member.
+     *
+     * @param list<object> $members the parent's members after the write, in linkage order
+     */
+    private function writePivotRows(object $parent, BelongsToMany $relation, ToManyRelationship $linkage, array $members, Mode $mode): void
+    {
+        $position = PositionColumn::of($relation);
+        if ($relation->storedPivotFields() === [] && $position === null) {
+            return;
+        }
+
+        $storage = $relation->column() ?? $relation->name();
+        // The rows live in this persister's store, which its transactions snapshot; writing
+        // them makes it the store readers find the parent's rows in.
+        $store = $this->store;
+        $held = $store->pivotRows($parent, $storage);
+
+        $sent = [];
+        foreach ($linkage->resourceIdentifiers as $identifier) {
+            $pivot = $identifier->id !== null ? ($identifier->meta['pivot'] ?? []) : null;
+            if (\is_array($pivot)) {
+                $sent[StoredIdForms::comparable($identifier->id ?? '')] = $pivot;
+            }
+        }
+
+        $rows = [];
+        foreach ($members as $member) {
+            $key = StoredIdForms::comparable($this->idOf($member));
+            $creating = !isset($held[$key]);
+            $row = $held[$key] ?? [];
+            foreach ($mode === Mode::Remove ? [] : $relation->writablePivotFields($creating) as $field) {
+                $values = $sent[$key] ?? [];
+                if (\array_key_exists($field->name(), $values)) {
+                    $row[$field->column() ?? $field->name()] = $field instanceof AbstractFieldValue
+                        ? $field->castWireValueFor($values[$field->name()], $creating)
+                        : $field->castWireValue($values[$field->name()]);
+                }
+            }
+            $rows[$key] = $row;
+        }
+
+        if ($position !== null && $mode !== Mode::Remove) {
+            $at = [];
+            foreach ($held as $key => $row) {
+                $at[(string) $key] = \is_numeric($row[$position] ?? null) ? (int) $row[$position] : 0;
+            }
+            $order = \array_map(\strval(...), \array_keys($rows));
+            $placed = $mode === Mode::Replace ? Positions::forReplace($order) : $at + Positions::forAdd($at, $order);
+            foreach ($placed as $key => $value) {
+                if (isset($rows[(string) $key])) {
+                    $rows[(string) $key][$position] = $value;
+                }
+            }
+        }
+
+        $store->writePivotRows($parent, $storage, $rows);
     }
 
     /**

@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Serializer;
 
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
+use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Resource\ResourceMeta;
 use haddowg\JsonApi\Serializer\RendersResourceMetaInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
@@ -18,8 +19,8 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  * serializer and delegates everything to it, every optional serializer interface included
  * ({@see AbstractPivotParentSerializer}), EXCEPT {@see getMeta()} and
  * {@see renderResourceMeta()}, where it merges the
- * member's pivot values (`pivotMap[id]`, read off Eloquent's pivot accessor via
- * {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider::fetchRelationshipPivot()})
+ * member's pivot values (`pivotMap[id]`, read off the fetched members' pivot rows or the
+ * related type's {@see \haddowg\JsonApiLaravel\DataProvider\PivotAwareProviderInterface})
  * under a top-level `pivot` key into the inner serializer's meta. Bound for one parent through
  * an include ({@see PivotRenderingResolver}), it has no map and reads each member's stored
  * values through `$storedPivotOf` instead.
@@ -89,28 +90,62 @@ final class PivotMetaSerializer extends AbstractPivotParentSerializer
      */
     private function withPivot(array $meta, mixed $object, JsonApiRequestInterface $request): array
     {
-        $pivot = $this->pivotMap[$this->inner->getId($object)]
+        $id = $this->inner->getId($object);
+        $pivot = $this->pivotMap[$id]
+            ?? $this->byComparableId()[StoredIdForms::comparable($id)]
             ?? ($this->storedPivotOf !== null && \is_object($object) ? ($this->storedPivotOf)($object) : null);
-        $computes = $this->relation !== null && $this->parent !== null && $this->relation->computedPivotFields() !== [];
-        if ($this->relation !== null && ($pivot !== null || $computes)) {
-            $stored = $pivot !== null;
-            $values = $this->parent !== null
-                ? [...($pivot ?? []), ...$this->relation->hookedPivotValues($this->parent, $object, $pivot ?? [], $request, $this->outputTimezone)]
-                : ($pivot ?? []);
-            $readable = [];
-            foreach ($this->relation->readablePivotFieldsFor($request, $object) as $field) {
-                if ($stored || BelongsToMany::isComputedPivotField($field)) {
-                    $readable[$field->name()] = $values[$field->name()] ?? null;
-                }
+        if ($this->relation === null) {
+            if ($pivot !== null) {
+                $meta['pivot'] = $pivot === [] ? new \stdClass() : $pivot;
             }
-            $pivot = $readable;
+
+            return $meta;
         }
 
-        if ($pivot !== null && $pivot !== []) {
-            $meta['pivot'] = $pivot;
+        // A relation declaring no pivot field, an additionalProperties entry at most, renders
+        // none. Stored fields render wherever pivot rows were read, `null` for a member with
+        // no row; computed fields render wherever the parent is known.
+        if ($this->relation->pivotFields() === []) {
+            return $meta;
         }
+
+        $stored = $pivot !== null || $this->storedPivotOf !== null || $this->pivotMap !== [];
+        $computes = $this->parent !== null && $this->relation->computedPivotFields() !== [];
+        if (!$stored && !$computes) {
+            return $meta;
+        }
+
+        $values = $this->parent !== null
+            ? [...($pivot ?? []), ...$this->relation->hookedPivotValues($this->parent, $object, $pivot ?? [], $request, $this->outputTimezone)]
+            : ($pivot ?? []);
+        $readable = [];
+        foreach ($this->relation->readablePivotFieldsFor($request, $object) as $field) {
+            if ($stored || BelongsToMany::isComputedPivotField($field)) {
+                $readable[$field->name()] = $values[$field->name()] ?? null;
+            }
+        }
+
+        // A member whose every pivot field is hidden for this request still carries the
+        // object, empty, as the response pivot schema requires.
+        $meta['pivot'] = $readable === [] ? new \stdClass() : $readable;
 
         return $meta;
+    }
+
+    /**
+     * The pivot map keyed by each member's comparable id, so a uuid-shaped id the provider
+     * keyed in capitals matches the lower case the member renders in.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function byComparableId(): array
+    {
+        $keyed = [];
+        foreach ($this->pivotMap as $id => $values) {
+            $keyed[StoredIdForms::comparable((string) $id)] = $values;
+        }
+
+        return $keyed;
     }
 
     public function getRelationships(mixed $object, JsonApiRequestInterface $request): array

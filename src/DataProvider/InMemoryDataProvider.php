@@ -17,8 +17,10 @@ use haddowg\JsonApi\Pagination\CursorWindow;
 use haddowg\JsonApi\Pagination\OffsetWindow;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\Accessor;
+use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Resource\Filter\InMemory\ArrayFilterArmInterface;
 use haddowg\JsonApi\Resource\Filter\InMemory\ArrayFilterHandler;
 use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortArmInterface;
@@ -64,7 +66,7 @@ use Illuminate\Database\Eloquent\Builder;
  *
  * @extends AbstractDataProvider<object>
  */
-final class InMemoryDataProvider extends AbstractDataProvider implements FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, ReadsByForeignKeyInterface
+final class InMemoryDataProvider extends AbstractDataProvider implements PivotAwareProviderInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, ReadsByForeignKeyInterface
 {
     /**
      * @var InMemoryStore<TModel>
@@ -488,16 +490,56 @@ final class InMemoryDataProvider extends AbstractDataProvider implements Fetches
     }
 
     /**
-     * The in-memory store holds no pivot data — a pivot column needs an association entity
-     * the in-memory provider cannot model (the documented in-memory pivot boundary). So it
-     * returns no existing pivot meta: the validator then treats every incoming member as new
-     * (create context), and no `meta.pivot` renders (pivot READ is Eloquent-only).
+     * The stored values of `$parent`'s pivot rows for `$relation`, keyed by the member's id:
+     * the rows the {@see \haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister} wrote
+     * into the store holding the parent.
      *
      * @return array<string, array<string, mixed>>
      */
     public function fetchRelationshipPivot(string $type, object $parent, RelationInterface $relation): array
     {
-        return [];
+        return self::pivotValues($parent, $relation);
+    }
+
+    /**
+     * Each parent's stored pivot values for `$relation`, keyed by the parent's id in the store
+     * holding it, then the member's. The rows live with the parent, so this provider answers
+     * for parents held by any in-memory store.
+     */
+    public function fetchRelatedPivotMapBatch(string $parentType, string $relatedType, array $parents, RelationInterface $relation): array
+    {
+        $maps = [];
+        foreach ($parents as $parent) {
+            $id = InMemoryStore::holding($parent)?->idOf($parent);
+            $values = self::pivotValues($parent, $relation);
+            if ($id !== null && $values !== []) {
+                $maps[StoredIdForms::comparable($id)] = $values;
+            }
+        }
+
+        return $maps;
+    }
+
+    /**
+     * `$parent`'s stored pivot rows for `$relation`, each keyed by the stored field's name.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private static function pivotValues(object $parent, RelationInterface $relation): array
+    {
+        $store = InMemoryStore::holding($parent);
+        if ($store === null || !$relation instanceof BelongsToMany || $relation->storedPivotFields() === []) {
+            return [];
+        }
+
+        $values = [];
+        foreach ($store->pivotRows($parent, $relation->column() ?? $relation->name()) as $member => $row) {
+            foreach ($relation->storedPivotFields() as $field) {
+                $values[$member][$field->name()] = $row[$field->column() ?? $field->name()] ?? null;
+            }
+        }
+
+        return $values;
     }
 
     /**

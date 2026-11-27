@@ -59,8 +59,10 @@ use haddowg\JsonApi\Resource\Field\HasOne;
 use haddowg\JsonApi\Resource\Field\Mode;
 use haddowg\JsonApi\Resource\Field\MorphTo;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
+use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
 use haddowg\JsonApi\Resource\Field\Positions;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Resource\Field\Time;
 use haddowg\JsonApi\Resource\Field\Union;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
@@ -1833,9 +1835,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 }
 
                 $serializer = $rendering->serializerFor($types[\spl_object_id($object)]);
-                $pivot = $pivots[\spl_object_id($object)] ?? [];
-
-                return $pivot === [] ? $serializer : new PivotMetaSerializer($serializer, [$serializer->getId($object) => $pivot]);
+                // A relation with pivot fields gives each member its `meta.pivot`, empty
+                // when every field is hidden for the request.
+                return $relation instanceof PivotRelationInterface && $relation->pivotFields() !== []
+                    ? new PivotMetaSerializer($serializer, [$serializer->getId($object) => $pivots[\spl_object_id($object)] ?? []])
+                    : $serializer;
             },
             PolymorphicSerializer::forRelation($relation, $rendering)->members(),
         );
@@ -1916,14 +1920,14 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * The stored per-member pivot map (`relatedId => [field => value]`) for a `belongsToMany`
-     * relation declaring stored pivot fields, read through the parent's provider seam
-     * ({@see \haddowg\JsonApiLaravel\DataProvider\DataProviderInterface::fetchRelationshipPivot()}),
-     * or `[]` when the relation is not a pivot relation / declares no pivot fields / the
-     * provider stores none (the in-memory boundary — pivot READ is Eloquent-only).
+     * relation declaring stored pivot fields, or `[]` when the relation is not a pivot relation,
+     * declares no stored pivot fields or the related type's provider reads none (the in-memory
+     * boundary).
      *
      * Given the fetched `$members` of a page, a related provider that queries the pivot join
      * ({@see QueriesPivotColumnsInterface}) supplies the map off those members with no further
-     * query; otherwise the parent's provider reads the whole association's pivot rows.
+     * query; otherwise the related type's {@see PivotAwareProviderInterface} reads this parent's
+     * rows, as it does for a document's linkage, so every path renders the same values.
      *
      * A pivot value the provider returns as a `\DateTimeInterface` renders through its
      * `DateTime`, `Date` or `Time` field, in the field's format and, for a `DateTime`, in
@@ -1941,9 +1945,17 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         $pivotProvider = $members !== null ? $this->pivotQueryingProvider($parent, $relation) : null;
-        $pivots = $pivotProvider !== null && $members !== null
-            ? $pivotProvider->pivotMapOf($parent, $relation, $members)
-            : $this->providers->forType($type)->fetchRelationshipPivot($type, $parent, $relation);
+        if ($pivotProvider !== null && $members !== null) {
+            $pivots = $pivotProvider->pivotMapOf($parent, $relation, $members);
+        } else {
+            // The related type's provider, the one a document's linkage asks, so the related
+            // and relationship endpoints render what that linkage does.
+            $relatedType = $relation->relatedTypes()[0] ?? null;
+            $relatedProvider = $relatedType !== null && $this->providers->supportsType($relatedType) ? $this->providers->forType($relatedType) : null;
+            $pivots = $relatedProvider instanceof PivotAwareProviderInterface && $relatedType !== null
+                ? \array_values($relatedProvider->fetchRelatedPivotMapBatch($type, $relatedType, [$parent], $relation))[0] ?? []
+                : [];
+        }
 
         return $this->formatPivotDates($server, $relation, $pivots);
     }
@@ -2042,9 +2054,15 @@ final class CrudOperationHandler implements OperationHandlerInterface
                             $parents[] = $candidate;
                         }
                     }
-                    $batches[$key]['map'] = \array_replace($batches[$key]['map'], $batching->fetchRelatedPivotMapBatch($type, $relatedType, $parents, $relation));
+                    // Keyed by comparable ids, so a provider that keys a uuid-shaped id in
+                    // capitals, or by the id it stores, still matches the rendered member.
+                    foreach ($batching->fetchRelatedPivotMapBatch($type, $relatedType, $parents, $relation) as $parentKey => $members) {
+                        foreach ($members as $memberKey => $row) {
+                            $batches[$key]['map'][StoredIdForms::comparable((string) $parentKey)][StoredIdForms::comparable((string) $memberKey)] = $row;
+                        }
+                    }
                 }
-                $values = $batches[$key]['map'][$parentId][$memberId] ?? null;
+                $values = $batches[$key]['map'][StoredIdForms::comparable($parentId)][StoredIdForms::comparable($memberId)] ?? null;
             }
 
             return $values === null ? null : $this->formatPivotDates($server, $relation, [$memberId => $values])[$memberId];

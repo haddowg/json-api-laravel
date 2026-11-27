@@ -10,17 +10,15 @@ use Illuminate\Support\ServiceProvider;
 use Workbench\App\Domain\CursorBoard;
 use Workbench\App\Domain\CursorWidget;
 use Workbench\App\Support\ConformanceFixtures;
-use Workbench\App\Support\CursorBoardInMemoryDataProvider;
+use Workbench\App\Support\CursorBoards;
 
 /**
  * The **in-memory** half of the PIVOT-bearing related-collection cursor (keyset)
  * conformance wiring: it discovers the isolated cursor resources
  * ({@see \Workbench\App\Cursor\CursorWidgetResource} plus the
  * {@see \Workbench\App\CursorPivot\CursorBoardResource} pivot parent) and registers
- * one provider per type — the boards store wrapped in the
- * {@see CursorBoardInMemoryDataProvider} so the pivot map (the one seam the built-in
- * witness leaves empty) serves the SAME `position` values the Eloquent join stores,
- * seeded from the shared {@see ConformanceFixtures::cursorBoards()} partition over the
+ * one provider per type — the boards store built by {@see CursorBoards}, whose pivot rows
+ * hold the SAME `position` values the Eloquent join stores, seeded from the shared {@see ConformanceFixtures::cursorBoards()} partition over the
  * SAME widget POPO instances the widgets store carries. `GET /cursorBoards/{id}/widgets`
  * then reads the member set off the parent and runs the ground-truth keyset the
  * Eloquent pivot-joined push-down must match byte-for-byte, `meta.pivot` included
@@ -35,9 +33,7 @@ final class PivotCursorConformanceInMemoryServiceProvider extends ServiceProvide
         $widgets = $this->cursorWidgets();
 
         JsonApi::provider(new InMemoryDataProvider('cursorWidgets', $widgets));
-        JsonApi::provider(new CursorBoardInMemoryDataProvider(
-            new InMemoryDataProvider('cursorBoards', $this->cursorBoards($widgets)),
-        ));
+        JsonApi::provider(CursorBoards::provider($this->cursorBoards($widgets)));
     }
 
     /**
