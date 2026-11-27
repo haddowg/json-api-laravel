@@ -418,6 +418,86 @@ abstract class IdKindsConformanceTestCase extends Orchestra
         $this->write('PATCH', $this->path('ikBooks', 'w9', '-actions/repoint'), $body)->assertNotFound();
     }
 
+    #[Test]
+    public function aSelfReferencingPivotReadsEachRelationFromItsOwnSide(): void
+    {
+        self::assertSame($this->refs('w2'), $this->ids($this->path('ikWriters', 'w1', 'relationships/peers')));
+        self::assertSame($this->refs('w3'), $this->ids($this->path('ikWriters', 'w2', 'relationships/peers')));
+        self::assertSame([], $this->ids($this->path('ikWriters', 'w3', 'relationships/peers')));
+        self::assertSame([], $this->ids($this->path('ikWriters', 'w1', 'relationships/followers')));
+        self::assertSame($this->refs('w1'), $this->ids($this->path('ikWriters', 'w2', 'relationships/followers')));
+        self::assertSame($this->refs('w3'), $this->ids($this->path('ikWriters', 'w2', 'peers')));
+        self::assertSame($this->refs('w1'), $this->ids($this->path('ikWriters', 'w2', 'followers')));
+
+        $writer = $this->read($this->path('ikWriters', 'w2') . '?include=peers,followers');
+        self::assertSame($this->refs('w3'), $this->sortedIds($writer->json('data.relationships.peers.data')));
+        self::assertSame($this->refs('w1'), $this->sortedIds($writer->json('data.relationships.followers.data')));
+        self::assertSame($this->keys(['ikWriters', 'w1'], ['ikWriters', 'w3']), $this->included($writer));
+
+        $writers = $this->read('/api/ikWriters?include=peers&sort=name');
+        self::assertSame($this->refs('w2'), $this->sortedIds($writers->json('data.0.relationships.peers.data')));
+        self::assertSame($this->refs('w3'), $this->sortedIds($writers->json('data.1.relationships.peers.data')));
+        self::assertSame([], $this->sortedIds($writers->json('data.2.relationships.peers.data')));
+
+        $nested = $this->read($this->path('ikWriters', 'w1') . '?include=peers.peers');
+        self::assertSame($this->refs('w2'), $this->sortedIds($nested->json('data.relationships.peers.data')));
+        self::assertSame($this->keys(['ikWriters', 'w2'], ['ikWriters', 'w3']), $this->included($nested));
+        foreach ((array) $nested->json('included') as $index => $resource) {
+            self::assertIsArray($resource);
+            if (($resource['id'] ?? null) === $this->w('w2')) {
+                self::assertSame($this->refs('w3'), $this->sortedIds($nested->json("included.{$index}.relationships.peers.data")));
+            }
+        }
+
+        $counts = $this->read('/api/ikWriters?withCount=peers,followers&sort=name', self::COUNTABLE);
+        foreach ([[1, 0], [1, 1], [0, 1]] as $index => [$peers, $followers]) {
+            $counts->assertJsonPath("data.{$index}.relationships.peers.meta.total", $peers);
+            $counts->assertJsonPath("data.{$index}.relationships.followers.meta.total", $followers);
+        }
+
+        self::assertSame($this->refs('w1'), $this->ids('/api/ikWriters?filter[peerName]=Bronte'));
+        self::assertSame($this->refs('w3'), $this->ids('/api/ikWriters?filter[followerName]=Bronte'));
+    }
+
+    #[Test]
+    #[Group('spec:updating-relationships')]
+    public function aSelfReferencingPivotWritesOnlyTheParentsRows(): void
+    {
+        $peers = fn(string $ref): string => $this->path('ikWriters', $ref, 'relationships/peers');
+        $member = fn(string $ref): array => ['type' => 'ikWriters', 'id' => $this->w($ref)];
+
+        $this->write('POST', $peers('w3'), ['data' => [$member('w1')]])->assertSuccessful()->assertJsonPath('data.0.id', $this->w('w1'));
+        self::assertSame($this->refs('w1'), $this->ids($peers('w3')));
+        self::assertSame($this->refs('w2'), $this->ids($peers('w1')));
+        $this->write('POST', $peers('w1'), ['data' => [$member('w2')]])->assertSuccessful();
+        self::assertSame($this->refs('w2'), $this->ids($peers('w1')));
+
+        $this->write('DELETE', $peers('w2'), ['data' => [$member('w3')]])->assertSuccessful();
+        self::assertSame([], $this->ids($peers('w2')));
+        self::assertSame($this->refs('w2'), $this->ids($peers('w1')));
+
+        $this->write('PATCH', $peers('w1'), ['data' => [$member('w3')]])->assertSuccessful()->assertJsonPath('data.0.id', $this->w('w3'));
+        self::assertSame($this->refs('w3'), $this->ids($peers('w1')));
+        self::assertSame($this->refs('w1'), $this->ids($peers('w3')));
+
+        $created = $this->write('POST', '/api/ikWriters', ['data' => [
+            'type' => 'ikWriters',
+            'id' => $this->w('w9'),
+            'attributes' => ['name' => 'Zed'],
+            'relationships' => ['peers' => ['data' => [$member('w2')]]],
+        ]]);
+        $created->assertCreated();
+        self::assertSame($this->refs('w2'), $this->ids($peers('w9')));
+        self::assertSame($this->refs('w3'), $this->ids($peers('w1')));
+
+        if ($this->store() === 'eloquent') {
+            // The witness keeps each side as its own list; the seat table has one row per seat.
+            self::assertSame($this->refs('w9'), $this->ids($this->path('ikWriters', 'w2', 'followers')));
+            self::assertSame($this->refs('w1'), $this->ids($this->path('ikWriters', 'w3', 'followers')));
+            self::assertSame($this->refs('w3'), $this->ids($this->path('ikWriters', 'w1', 'followers')));
+        }
+    }
+
     private function w(string $ref): string
     {
         return IdKinds::wire($ref);

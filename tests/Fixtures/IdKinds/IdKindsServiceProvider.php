@@ -27,6 +27,7 @@ final class IdKindsServiceProvider extends ServiceProvider
      * @return array{
      *     writers: list<array{string, string}>,
      *     labels: list<array{string, string, bool}>,
+     *     seats: list<array{string, string, int}>,
      *     books: list<array{id: string, title: string, writer: ?string, featuredBy: ?string, labels: list<string>, subject: ?array{string, string}, origin: ?array{string, string}, pins: list<array{string, string}>}>
      * }
      */
@@ -35,6 +36,7 @@ final class IdKindsServiceProvider extends ServiceProvider
         return [
             'writers' => [['w1', 'Ada'], ['w2', 'Bronte'], ['w3', 'Cleo']],
             'labels' => [['l1', 'classic', false], ['l2', 'scifi', false], ['l3', 'secret', true]],
+            'seats' => [['w1', 'w2', 1], ['w2', 'w3', 2]],
             'books' => [
                 ['id' => 'b1', 'title' => 'Dune', 'writer' => 'w1', 'featuredBy' => 'w1', 'labels' => ['l1', 'l2'], 'subject' => ['ikWriters', 'w2'], 'origin' => ['ikLabels', 'l1'], 'pins' => [['ikWriters', 'w1'], ['ikLabels', 'l2']]],
                 ['id' => 'b2', 'title' => 'Emma', 'writer' => 'w1', 'featuredBy' => null, 'labels' => ['l1', 'l3'], 'subject' => ['ikLabels', 'l1'], 'origin' => ['ikWriters', 'w2'], 'pins' => [['ikLabels', 'l3']]],
@@ -67,6 +69,10 @@ final class IdKindsServiceProvider extends ServiceProvider
         $writers = [];
         foreach ($seed['writers'] as [$ref, $name]) {
             $writers[IdKinds::held($ref)] = new IkWriterRecord(IdKinds::held($ref), $name);
+        }
+        foreach ($seed['seats'] as [$owner, $peer]) {
+            $writers[IdKinds::held($owner)]->peers[] = $writers[IdKinds::held($peer)];
+            $writers[IdKinds::held($peer)]->followers[] = $writers[IdKinds::held($owner)];
         }
         $labels = [];
         foreach ($seed['labels'] as [$ref, $name, $hidden]) {

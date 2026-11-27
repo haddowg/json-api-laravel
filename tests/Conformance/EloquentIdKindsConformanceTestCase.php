@@ -5,12 +5,17 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentFilterHandler;
+use haddowg\JsonApiLaravel\Routing\RouteRegistrar;
+use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use haddowg\JsonApiLaravel\Tests\Fixtures\IdKinds\IdKinds;
 use haddowg\JsonApiLaravel\Tests\Fixtures\IdKinds\IdKindsServiceProvider;
+use haddowg\JsonApiLaravel\Tests\Fixtures\IdKinds\IkWriterResource;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\Schema\ColumnDefinition;
+use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
@@ -117,6 +122,80 @@ abstract class EloquentIdKindsConformanceTestCase extends IdKindsConformanceTest
         self::assertSame([$stored('l2')], DB::table('ik_book_label')->where('book_id', $created->id ?? null)->pluck('label_id')->map(static fn(mixed $key): string => \is_scalar($key) ? (string) $key : '')->all());
     }
 
+    /**
+     * Each side of a seat renders and filters by the rank of the parent's own seat, and a
+     * path through the seat reaches the side it names.
+     */
+    #[Test]
+    public function aSelfReferencingPivotRendersAndFiltersItsOwnSeats(): void
+    {
+        $accept = ['Accept' => 'application/vnd.api+json'];
+        $peers = '/api/ikWriters/' . IdKinds::wire('w2') . '/peers';
+        $followers = '/api/ikWriters/' . IdKinds::wire('w2') . '/followers';
+
+        $this->get('/api/ikWriters/' . IdKinds::wire('w2') . '/relationships/peers', $accept)->assertOk()
+            ->assertJsonPath('data.0.id', IdKinds::wire('w3'))->assertJsonPath('data.0.meta.pivot.rank', 2);
+        $this->get('/api/ikWriters/' . IdKinds::wire('w2') . '/relationships/followers', $accept)->assertOk()
+            ->assertJsonPath('data.0.id', IdKinds::wire('w1'))->assertJsonPath('data.0.meta.pivot.rank', 1);
+
+        $this->get($peers . '?filter[rank]=2', $accept)->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', IdKinds::wire('w3'));
+        $this->get($peers . '?filter[rank]=1', $accept)->assertOk()->assertJsonCount(0, 'data');
+        $this->get($followers . '?filter[rank]=1', $accept)->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', IdKinds::wire('w1'));
+
+        $this->get($peers . '?filter[seatedBy]=' . IdKinds::wire('w2'), $accept)->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', IdKinds::wire('w3'));
+        $this->get($peers . '?filter[seatedBy]=' . IdKinds::wire('w3'), $accept)->assertOk()->assertJsonCount(0, 'data');
+        $this->get($peers . '?filter[seating]=' . IdKinds::wire('w3'), $accept)->assertOk()->assertJsonCount(1, 'data');
+        $this->get($followers . '?filter[seatedBy]=' . IdKinds::wire('w2'), $accept)->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', IdKinds::wire('w1'));
+        $this->get($followers . '?filter[seating]=' . IdKinds::wire('w2'), $accept)->assertOk()->assertJsonCount(0, 'data');
+
+        $this->json('POST', '/api/ikWriters/' . IdKinds::wire('w3') . '/relationships/peers', ['data' => [['type' => 'ikWriters', 'id' => IdKinds::wire('w1'), 'meta' => ['pivot' => ['rank' => 7]]]]], ['Accept' => 'application/vnd.api+json', 'Content-Type' => 'application/vnd.api+json'])->assertSuccessful();
+        $this->json('PATCH', '/api/ikWriters/' . IdKinds::wire('w2') . '/relationships/peers', ['data' => [['type' => 'ikWriters', 'id' => IdKinds::wire('w3'), 'meta' => ['pivot' => ['rank' => 5]]]]], ['Accept' => 'application/vnd.api+json', 'Content-Type' => 'application/vnd.api+json'])->assertSuccessful();
+
+        $seats = DB::table('ik_writer_seats')->orderBy('rank')->get()->map(static fn(object $row): array => [(array) $row])->all();
+        $stored = \array_map(static fn(array $row): array => [$row[0]['owner_id'], $row[0]['peer_id'], $row[0]['rank']], $seats);
+        self::assertSame([
+            [IdKinds::stored('w1'), IdKinds::stored('w2'), 1],
+            [IdKinds::stored('w2'), IdKinds::stored('w3'), 5],
+            [IdKinds::stored('w3'), IdKinds::stored('w1'), 7],
+        ], $stored);
+    }
+
+    /**
+     * @return iterable<string, array{array{parent?: string, related?: string}, string}>
+     */
+    public static function wrongSides(): iterable
+    {
+        yield 'the other side\'s key' => [['parent' => 'owner_id'], 'The relation "followers" on type "ikWriters" declares through(parent: \'owner_id\'), but {model}::followers() keys its parent side by the pivot column "peer_id" of ik_writer_seats. Name "peer_id", or a belongsTo of the pivot model on that column.'];
+        yield 'the other side\'s relation' => [['related' => 'peer'], 'declares through(related: \'peer\'), but {model}::followers() keys its related side by the pivot column "owner_id" of ik_writer_seats.'];
+        yield 'no member of the pivot model' => [['parent' => 'seat'], 'declares through(parent: \'seat\')'];
+    }
+
+    /**
+     * @param array{parent?: string, related?: string} $sides
+     */
+    #[Test]
+    #[DataProvider('wrongSides')]
+    public function aPivotSideTheEloquentRelationDoesNotKeyIsRefused(array $sides, string $message): void
+    {
+        IkWriterResource::$followerSides = $sides;
+        $message = \str_replace('{model}', IdKinds::model('writer'), $message);
+        try {
+            $warmer = $this->app?->make(ServableResourceWarmer::class);
+            self::assertInstanceOf(ServableResourceWarmer::class, $warmer);
+            self::assertStringContainsString($message, \implode("\n", $warmer->warm()));
+
+            $router = $this->app?->make(Router::class);
+            $registrar = $this->app?->make(RouteRegistrar::class);
+            self::assertInstanceOf(Router::class, $router);
+            self::assertInstanceOf(RouteRegistrar::class, $registrar);
+            $this->expectException(\LogicException::class);
+            $this->expectExceptionMessage($message);
+            $registrar->registerServer($router);
+        } finally {
+            IkWriterResource::$followerSides = null;
+        }
+    }
+
     protected function defineDatabaseMigrations(): void
     {
         // Laravel binds a string as text, which a bytea column refuses, and PDO reads bytea back
@@ -125,11 +204,11 @@ abstract class EloquentIdKindsConformanceTestCase extends IdKindsConformanceTest
             self::markTestSkipped('Eloquent can neither bind nor read a 16-byte key in a PostgreSQL bytea column.');
         }
         EloquentFilterHandler::forgetColumnTypes();
-        foreach (['ik_pins', 'ik_book_label', 'ik_books', 'ik_labels', 'ik_writers'] as $table) {
+        foreach (['ik_writer_seats', 'ik_pins', 'ik_book_label', 'ik_books', 'ik_labels', 'ik_writers'] as $table) {
             Schema::dropIfExists($table);
         }
         $this->beforeApplicationDestroyed(static function (): void {
-            foreach (['ik_pins', 'ik_book_label', 'ik_books', 'ik_labels', 'ik_writers'] as $table) {
+            foreach (['ik_writer_seats', 'ik_pins', 'ik_book_label', 'ik_books', 'ik_labels', 'ik_writers'] as $table) {
                 Schema::dropIfExists($table);
             }
         });
@@ -171,6 +250,11 @@ abstract class EloquentIdKindsConformanceTestCase extends IdKindsConformanceTest
             $key($table, 'label_id');
             $table->integer('weight')->default(0);
         });
+        Schema::create('ik_writer_seats', static function (Blueprint $table) use ($key): void {
+            $key($table, 'owner_id');
+            $key($table, 'peer_id');
+            $table->integer('rank')->nullable();
+        });
         Schema::create('ik_pins', static function (Blueprint $table) use ($key): void {
             $table->increments('id');
             $key($table, 'book_id');
@@ -181,6 +265,9 @@ abstract class EloquentIdKindsConformanceTestCase extends IdKindsConformanceTest
         $seed = IdKindsServiceProvider::seed();
         foreach ($seed['writers'] as [$ref, $name]) {
             DB::table('ik_writers')->insert(['id' => IdKinds::stored($ref), 'name' => $name]);
+        }
+        foreach ($seed['seats'] as [$owner, $peer, $rank]) {
+            DB::table('ik_writer_seats')->insert(['owner_id' => IdKinds::stored($owner), 'peer_id' => IdKinds::stored($peer), 'rank' => $rank]);
         }
         foreach ($seed['labels'] as [$ref, $name]) {
             DB::table('ik_labels')->insert(['id' => IdKinds::stored($ref), 'name' => $name]);

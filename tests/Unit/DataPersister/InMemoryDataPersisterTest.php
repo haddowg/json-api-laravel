@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Unit\DataPersister;
 
+use haddowg\JsonApi\Hydrator\Relationship\ToManyRelationship;
 use haddowg\JsonApi\Resource\Field\Accessor;
+use haddowg\JsonApi\Resource\Field\BelongsToMany;
+use haddowg\JsonApi\Resource\Field\Mode;
+use haddowg\JsonApi\Schema\ResourceIdentifier;
 use haddowg\JsonApiLaravel\DataPersister\InMemoryDataPersister;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryStore;
 use haddowg\JsonApiLaravel\Tests\Fixtures\Widget;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Ramsey\Uuid\Uuid;
 
 /**
  * The in-memory write witness executed against a shared {@see InMemoryStore}: create /
@@ -142,6 +147,34 @@ final class InMemoryDataPersisterTest extends TestCase
         $persister = $this->persister($this->store());
 
         self::assertInstanceOf(Widget::class, $persister->instantiate('widgets'));
+    }
+
+    #[Test]
+    public function aMemberWhoseIdIsAnObjectIsRemovedAndAddedOnceByItsWireId(): void
+    {
+        $owner = new \stdClass();
+        $owner->id = Uuid::fromString('0b6a1c2e-6a8f-4d55-9a6e-1f2d3c4b5a61');
+        $first = new \stdClass();
+        $first->id = Uuid::fromString('0b6a1c2e-6a8f-4d55-9a6e-1f2d3c4b5a62');
+        $second = new \stdClass();
+        $second->id = Uuid::fromString('0b6a1c2e-6a8f-4d55-9a6e-1f2d3c4b5a63');
+        $owner->peers = [$first, $second];
+        $byWireId = ['own-' . $first->id->toString() => $first, 'own-' . $second->id->toString() => $second];
+
+        $persister = new InMemoryDataPersister(
+            'owners',
+            $this->store(),
+            static fn(): \stdClass => new \stdClass(),
+            static fn(string $type, string $id): ?object => $byWireId[$id] ?? null,
+        );
+        $peers = BelongsToMany::make('peers', 'owners')->build();
+        $linkage = static fn(\stdClass $member): ToManyRelationship => new ToManyRelationship([new ResourceIdentifier('owners', 'own-' . $member->id->toString())]);
+
+        $persister->mutateRelationship('owners', $owner, $peers, $linkage($first), Mode::Add, flush: false);
+        self::assertSame([$first, $second], $owner->peers);
+
+        $persister->mutateRelationship('owners', $owner, $peers, $linkage($first), Mode::Remove, flush: false);
+        self::assertSame([$second], $owner->peers);
     }
 
     /**
