@@ -1,5 +1,37 @@
 # Changelog
 
+## [2.25.0](https://github.com/haddowg/json-api-laravel/compare/v2.24.0...v2.25.0) (2026-11-27)
+
+
+### Features
+
+* a belongsToMany that names a pivot side in through which its Eloquent relation does not key now fails route registration and jsonapi optimize ([4bda5ae](https://github.com/haddowg/json-api-laravel/commit/4bda5ae9882fb953a698e8e108f5007dbcbae657))
+* read a custom provider's stored pivots on includes through PivotAwareProviderInterface ([d05b7c4](https://github.com/haddowg/json-api-laravel/commit/d05b7c457fa6eeb3a5c3b067a35889b217ad1c39))
+
+
+### Bug Fixes
+
+* an in-memory to-many now removes a member whose id is an object and no longer duplicates one that is added again ([4bda5ae](https://github.com/haddowg/json-api-laravel/commit/4bda5ae9882fb953a698e8e108f5007dbcbae657))
+* find a uuid-shaped id in either case on every lookup by id, filter, write and atomic operation ([2958a83](https://github.com/haddowg/json-api-laravel/commit/2958a830accacb1569614b76f32e330f5d2f652d))
+* forward a pivot member's resolver, links, self-link toggle and nested fieldsets ([d05b7c4](https://github.com/haddowg/json-api-laravel/commit/d05b7c457fa6eeb3a5c3b067a35889b217ad1c39))
+* keep a notSparseField pivot relation in the document when fields leaves it out ([7f34c90](https://github.com/haddowg/json-api-laravel/commit/7f34c907d77f8bce8a7e281e299c38d0771fb8a1))
+* load an action's 202 job resource relations through the include walk like a read ([7f34c90](https://github.com/haddowg/json-api-laravel/commit/7f34c907d77f8bce8a7e281e299c38d0771fb8a1))
+* match a pivot batch read to parents whose key is behind a value-object cast ([d05b7c4](https://github.com/haddowg/json-api-laravel/commit/d05b7c457fa6eeb3a5c3b067a35889b217ad1c39))
+* match a pivot or child row whose foreign key holds its parent key in another case on the package's eager loads ([2958a83](https://github.com/haddowg/json-api-laravel/commit/2958a830accacb1569614b76f32e330f5d2f652d))
+* render a uuid-shaped id with no encoder in lower case in every provider map, count and pivot map ([2958a83](https://github.com/haddowg/json-api-laravel/commit/2958a830accacb1569614b76f32e330f5d2f652d))
+* render an included identifiedBy MorphTo or MorphToMany whose target keys are stored in capitals ([2958a83](https://github.com/haddowg/json-api-laravel/commit/2958a830accacb1569614b76f32e330f5d2f652d))
+* render meta.pivot on custom action responses and their included resources at every include depth ([7f34c90](https://github.com/haddowg/json-api-laravel/commit/7f34c907d77f8bce8a7e281e299c38d0771fb8a1))
+* render pivot meta on included pivot relations at every depth ([d05b7c4](https://github.com/haddowg/json-api-laravel/commit/d05b7c457fa6eeb3a5c3b067a35889b217ad1c39))
+* render pivot meta on the includes of related endpoint, polymorphic page, write and atomic responses ([d05b7c4](https://github.com/haddowg/json-api-laravel/commit/d05b7c457fa6eeb3a5c3b067a35889b217ad1c39))
+* render pivots below a MorphTo or MorphToMany declared with identifiedBy when its types encode their ids ([7f34c90](https://github.com/haddowg/json-api-laravel/commit/7f34c907d77f8bce8a7e281e299c38d0771fb8a1))
+* write a MorphTo declared with identifiedByColumns through update and the relationship endpoint ([2958a83](https://github.com/haddowg/json-api-laravel/commit/2958a830accacb1569614b76f32e330f5d2f652d))
+
+
+### Miscellaneous Chores
+
+* pin the bundle's documents to 2.24.0 ([#339](https://github.com/haddowg/json-api-laravel/issues/339)) ([c2a0c07](https://github.com/haddowg/json-api-laravel/commit/c2a0c07122ba394550f06c700c42a654b6f4ce1f))
+* pin the bundle's documents to 2.25.0 ([#345](https://github.com/haddowg/json-api-laravel/issues/345)) ([0476e1a](https://github.com/haddowg/json-api-laravel/commit/0476e1a26253f6270ffd4aa3895ade1e8d558982))
+
 ## [2.24.0](https://github.com/haddowg/json-api-laravel/compare/v2.23.1...v2.24.0) (2026-11-24)
 
 
