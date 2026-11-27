@@ -461,8 +461,26 @@ public function followers(): BelongsToMany
 The Eloquent provider takes the parent side from the relation's foreign pivot key and the
 member's from its related pivot key, never from the models the keys point at, so each relation
 reads, counts, filters, includes and writes its own side of a seat. A pivot model's relations
-back to the parent and to the member are told apart by the key each `belongsTo` uses. A
-`through()` declared on the relation plays no part in choosing them.
+back to the parent and to the member are told apart by the key each `belongsTo` uses.
+
+A relation can also name its sides in `through()`, as the Symfony bundle needs for an
+association entity linking a type to itself. Here a name is the pivot key of its side or
+a `belongsTo` of the pivot model on that key:
+
+```php
+BelongsToMany::make('peers', 'writers')
+    ->through(Seat::class, parent: 'owner_id', related: 'peer_id')
+    ->fields(Integer::make('rank')),
+BelongsToMany::make('followers', 'writers')
+    ->through(Seat::class, parent: 'peer', related: 'owner')   // Seat::peer() and Seat::owner()
+    ->fields(Integer::make('rank')),
+```
+
+The names change nothing the provider reads, since the Eloquent relation already decides
+the sides. A name that isn't its side's key, or a `belongsTo` on it, fails route
+registration and `jsonapi:optimize`, naming the relation, the key its side uses and the
+pivot table, so a declaration shared with the bundle can't say one thing and do another.
+A relation that names no side isn't checked.
 
 ### Computed pivot fields
 

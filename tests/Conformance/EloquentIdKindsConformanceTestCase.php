@@ -5,12 +5,17 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Conformance;
 
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentFilterHandler;
+use haddowg\JsonApiLaravel\Routing\RouteRegistrar;
+use haddowg\JsonApiLaravel\Server\ServableResourceWarmer;
 use haddowg\JsonApiLaravel\Tests\Fixtures\IdKinds\IdKinds;
 use haddowg\JsonApiLaravel\Tests\Fixtures\IdKinds\IdKindsServiceProvider;
+use haddowg\JsonApiLaravel\Tests\Fixtures\IdKinds\IkWriterResource;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\Schema\ColumnDefinition;
+use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
@@ -153,6 +158,42 @@ abstract class EloquentIdKindsConformanceTestCase extends IdKindsConformanceTest
             [IdKinds::stored('w2'), IdKinds::stored('w3'), 5],
             [IdKinds::stored('w3'), IdKinds::stored('w1'), 7],
         ], $stored);
+    }
+
+    /**
+     * @return iterable<string, array{array{parent?: string, related?: string}, string}>
+     */
+    public static function wrongSides(): iterable
+    {
+        yield 'the other side\'s key' => [['parent' => 'owner_id'], 'The relation "followers" on type "ikWriters" declares through(parent: \'owner_id\'), but {model}::followers() keys its parent side by the pivot column "peer_id" of ik_writer_seats. Name "peer_id", or a belongsTo of the pivot model on that column.'];
+        yield 'the other side\'s relation' => [['related' => 'peer'], 'declares through(related: \'peer\'), but {model}::followers() keys its related side by the pivot column "owner_id" of ik_writer_seats.'];
+        yield 'no member of the pivot model' => [['parent' => 'seat'], 'declares through(parent: \'seat\')'];
+    }
+
+    /**
+     * @param array{parent?: string, related?: string} $sides
+     */
+    #[Test]
+    #[DataProvider('wrongSides')]
+    public function aPivotSideTheEloquentRelationDoesNotKeyIsRefused(array $sides, string $message): void
+    {
+        IkWriterResource::$followerSides = $sides;
+        $message = \str_replace('{model}', IdKinds::model('writer'), $message);
+        try {
+            $warmer = $this->app?->make(ServableResourceWarmer::class);
+            self::assertInstanceOf(ServableResourceWarmer::class, $warmer);
+            self::assertStringContainsString($message, \implode("\n", $warmer->warm()));
+
+            $router = $this->app?->make(Router::class);
+            $registrar = $this->app?->make(RouteRegistrar::class);
+            self::assertInstanceOf(Router::class, $router);
+            self::assertInstanceOf(RouteRegistrar::class, $registrar);
+            $this->expectException(\LogicException::class);
+            $this->expectExceptionMessage($message);
+            $registrar->registerServer($router);
+        } finally {
+            IkWriterResource::$followerSides = null;
+        }
     }
 
     protected function defineDatabaseMigrations(): void

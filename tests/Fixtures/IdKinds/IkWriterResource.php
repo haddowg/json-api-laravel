@@ -25,6 +25,13 @@ final class IkWriterResource extends AbstractResource
 {
     public static string $type = 'ikWriters';
 
+    /**
+     * The sides `followers` names in `through()`, when a test swaps in a wrong one.
+     *
+     * @var array{parent?: string, related?: string}|null
+     */
+    public static ?array $followerSides = null;
+
     public function fields(): array
     {
         return [
@@ -35,8 +42,9 @@ final class IkWriterResource extends AbstractResource
             HasMany::make('penned', 'ikBooks', 'writerRef')->countable()->paginate(PagePaginator::make()->withDefaultPerPage(10)),
             HasOne::make('featured', 'ikBooks')->nullable(),
             MorphMany::make('originated', 'ikBooks', 'origin')->countable()->paginate(PagePaginator::make()->withDefaultPerPage(10)),
-            $this->seats('peers', 'owner', 'peer'),
-            $this->seats('followers', 'peer', 'owner'),
+            // One names its sides by the pivot keys, the other by the pivot model's relations.
+            $this->seats('peers', 'owner', 'peer')->through(IkWriterSeat::class, parent: 'owner_id', related: 'peer_id'),
+            $this->seats('followers', 'peer', 'owner')->through(IkWriterSeat::class, ...(self::$followerSides ?? ['parent' => 'peer', 'related' => 'owner'])),
         ];
     }
 
