@@ -23,5 +23,6 @@ final class IkBookRecord
         public ?string $origin_type = null,
         public ?string $origin_id = null,
         public array $pins = [],
+        public ?string $writer_id = null,
     ) {}
 }

@@ -229,6 +229,46 @@ abstract class IdKindsConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:fetching-filtering')]
+    public function aColumnFilterMatchesAUuidValueInEitherCase(): void
+    {
+        // The key as the store holds it in the writer's foreign key: the witness keeps wire ids.
+        $held = fn(string $ref): int|string => $this->store() === 'memory' ? IdKinds::held($ref) : IdKinds::stored($ref);
+        $stored = $held('w1');
+        if (IdKinds::kind() === 'binary') {
+            self::markTestSkipped('A key stored as bytes has no letter case.');
+        }
+        if (!\is_string($stored) || !StoredIdForms::isUuidLike($stored)) {
+            // Any other key compares exactly.
+            self::assertSame($this->refs('b1', 'b2'), $this->ids('/api/ikBooks?filter[writerKey]=' . $stored));
+            if (\is_string($stored) && \strtoupper($stored) !== $stored) {
+                self::assertSame([], $this->ids('/api/ikBooks?filter[writerKey]=' . \strtoupper($stored)));
+                self::assertSame([], $this->ids('/api/ikBooks?filter[writerKeys]=' . \strtoupper($stored)));
+            }
+
+            return;
+        }
+
+        // The writer's key in the other case than its column keeps it in.
+        $flip = static fn(string $key): string => \strtolower($key) === $key ? \strtoupper($key) : \strtolower($key);
+        $sent = $flip($stored);
+        $second = $held('w2');
+        self::assertIsString($second);
+
+        self::assertSame($this->refs('b1', 'b2'), $this->ids('/api/ikBooks?filter[writerKey]=' . $sent));
+        self::assertSame($this->refs('b1', 'b2'), $this->ids('/api/ikBooks?filter[writerKeys]=' . $sent));
+        self::assertSame($this->refs('b1', 'b2', 'b3'), $this->ids('/api/ikBooks?filter[writerKeys]=' . $sent . ',' . $flip($second)));
+        self::assertSame($this->refs('b3'), $this->ids('/api/ikBooks?filter[writerKeyNot]=' . $sent));
+        self::assertSame($this->refs('b3'), $this->ids('/api/ikBooks?filter[writerKeysNot]=' . $sent));
+        self::assertSame($this->refs('b1', 'b2'), $this->ids($this->path('ikWriters', 'w1', 'books') . '?filter[writerKey]=' . $sent));
+        self::assertSame([], $this->ids($this->path('ikWriters', 'w1', 'books') . '?filter[writerKeyNot]=' . $sent));
+
+        // An ordered operator compares exactly: capitals sort before lower case.
+        $from = \array_keys(\array_filter(['b1' => $stored, 'b2' => $stored, 'b3' => $second], static fn(string $key): bool => \strcmp($key, $sent) >= 0));
+        self::assertSame($this->refs(...$from), $this->ids('/api/ikBooks?filter[writerKeyFrom]=' . $sent));
+    }
+
+    #[Test]
+    #[Group('spec:fetching-filtering')]
     public function aMalformedKeyMatchesNothing(): void
     {
         // A filter whose value its id format refuses is a 400; any other matches no row,

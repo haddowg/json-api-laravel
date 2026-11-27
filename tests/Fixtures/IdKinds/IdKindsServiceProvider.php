@@ -87,6 +87,7 @@ final class IdKindsServiceProvider extends ServiceProvider
             if ($row['writer'] !== null) {
                 $book->writer = $writers[IdKinds::held($row['writer'])];
                 $book->writer_ref = IdKinds::held($row['writer']);
+                $book->writer_id = IdKinds::held($row['writer']);
                 $book->writer->books[] = $book;
             }
             if ($row['featuredBy'] !== null) {
