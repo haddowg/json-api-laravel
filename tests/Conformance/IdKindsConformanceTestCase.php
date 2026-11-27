@@ -217,11 +217,6 @@ abstract class IdKindsConformanceTestCase extends Orchestra
     #[Group('spec:fetching-filtering')]
     public function idFiltersMatchTheRowsTheyName(): void
     {
-        // Core's in-memory handler compares an id filter's members exactly, so the witness
-        // matches a uuid only in the case it holds the id in.
-        if ($this->store() === 'memory' && IdKinds::sent('b1') !== IdKinds::held('b1')) {
-            self::markTestSkipped('The in-memory witness compares an id filter in the case it holds the id in.');
-        }
         self::assertSame($this->refs('b1', 'b3'), $this->ids('/api/ikBooks?filter[id]=' . $this->s('b1') . ',' . $this->s('b3')));
         self::assertSame($this->refs('w1', 'w3'), $this->ids('/api/ikWriters?filter[id]=' . $this->s('w1') . ',' . $this->s('w3')));
         self::assertSame($this->refs('b1', 'b2'), $this->ids('/api/ikBooks?filter[writer]=' . $this->s('w1')));
