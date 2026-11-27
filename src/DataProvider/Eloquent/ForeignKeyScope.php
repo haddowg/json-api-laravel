@@ -81,17 +81,18 @@ final readonly class ForeignKeyScope
             $attribute = $foreignKey->column;
         }
 
-        // A polymorphic id column may hold a parent's storage key or its wire id, a UUID in
-        // either case. On PostgreSQL an integer or uuid column holds only ids of its kind.
+        // A polymorphic id column may hold a parent's storage key or its wire id, and any id
+        // column a UUID in either case. On PostgreSQL an integer or uuid column holds only ids
+        // of its kind.
         $polymorphic = $typeColumn !== null;
-        $family = $polymorphic && $related->getConnection()->getDriverName() === 'pgsql' ? StoredKey::columnFamily($related, $attribute, $related->getTable()) : 'text';
+        $family = $related->getConnection()->getDriverName() === 'pgsql' ? StoredKey::columnFamily($related, $attribute, $related->getTable()) : 'text';
         $keys = [];
         $parentOf = [];
         $folded = false;
         $split = false;
         foreach ($parents->keys as $wireId => $key) {
             $distinct = [];
-            foreach ($polymorphic ? StoredIdForms::forms($parentEncoder, [$key]) : [$key] as $form) {
+            foreach (StoredIdForms::forms($polymorphic ? $parentEncoder : null, [$key]) as $form) {
                 $stored = StoredKey::of($related, $attribute, $form);
                 if (!\is_int($stored) && !\is_string($stored) || !self::holds($family, $stored)) {
                     continue;

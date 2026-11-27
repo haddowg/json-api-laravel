@@ -122,7 +122,7 @@ final class NestedPivotServiceProvider extends ServiceProvider
     {
         $key = static function (Blueprint $table, string $column): ColumnDefinition {
             return match (NpKeys::kind()) {
-                'uuid', 'object' => $table->string($column, 36),
+                'uuid', 'object', 'nocase' => $table->string($column, 36),
                 'binary' => $table->binary($column, 16, fixed: true),
                 default => $table->unsignedInteger($column),
             };
@@ -149,13 +149,15 @@ final class NestedPivotServiceProvider extends ServiceProvider
             }
             $table->string('title');
         });
-        Schema::create('np_records', static function (Blueprint $table) use ($key): void {
-            $key($table, 'id')->primary();
+        // Join rows and the records' keys compare without case, as SQLite's NOCASE does.
+        $caseless = static fn(ColumnDefinition $column): ColumnDefinition => NpKeys::kind() === 'nocase' ? $column->collation('NOCASE') : $column;
+        Schema::create('np_records', static function (Blueprint $table) use ($key, $caseless): void {
+            $caseless($key($table, 'id'))->primary();
             $table->string('title');
         });
-        Schema::create('np_crate_record', static function (Blueprint $table) use ($key): void {
-            $key($table, 'crate_id');
-            $key($table, 'record_id');
+        Schema::create('np_crate_record', static function (Blueprint $table) use ($key, $caseless): void {
+            $caseless($key($table, 'crate_id'));
+            $caseless($key($table, 'record_id'));
             $table->integer('position');
             $table->dateTime('added_at')->nullable();
         });
@@ -172,7 +174,7 @@ final class NestedPivotServiceProvider extends ServiceProvider
             DB::table('np_records')->insert(['id' => NpKeys::stored('r', $id), 'title' => $title]);
         }
         foreach (self::LINKS as [$crate, $record, $position, $addedAt]) {
-            DB::table('np_crate_record')->insert(['crate_id' => NpKeys::stored('c', $crate), 'record_id' => NpKeys::stored('r', $record), 'position' => $position, 'added_at' => $addedAt]);
+            DB::table('np_crate_record')->insert(['crate_id' => NpKeys::joined('c', $crate), 'record_id' => NpKeys::joined('r', $record), 'position' => $position, 'added_at' => $addedAt]);
         }
     }
 }

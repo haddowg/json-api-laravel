@@ -120,6 +120,27 @@ abstract class UuidKeysTestCase extends Orchestra
     }
 
     #[Test]
+    public function aMorphIdentifiedByColumnsIsWrittenThroughAnUpdateAndItsRelationship(): void
+    {
+        $this->seedNotes();
+
+        foreach ([self::L2, \strtoupper(self::L2)] as $sent) {
+            $this->write('PATCH', '/api/notes/2', ['data' => ['type' => 'notes', 'id' => '2', 'relationships' => ['subject' => ['data' => ['type' => 'labels', 'id' => $sent]]]]])
+                ->assertOk()
+                ->assertJsonPath('data.relationships.subject.data', ['type' => 'labels', 'id' => self::L2]);
+            $this->read('/api/notes/2/subject')->assertJsonPath('data.attributes.name', 'sci-fi');
+            $this->write('PATCH', '/api/notes/2', ['data' => ['type' => 'notes', 'id' => '2', 'relationships' => ['subject' => ['data' => null]]]])->assertOk();
+        }
+
+        $this->write('PATCH', '/api/notes/2/relationships/subject', ['data' => ['type' => 'writers', 'id' => \strtoupper(self::W2)]])->assertSuccessful();
+        $this->read('/api/notes/2')->assertJsonPath('data.relationships.subject.data', ['type' => 'writers', 'id' => self::W2]);
+        $this->read('/api/notes/2/subject')->assertJsonPath('data.attributes.name', 'Brontë');
+        self::assertSame(['2'], $this->ids($this->read('/api/notes?filter[subject][type]=writers&filter[subject][id]=' . self::W2)->json('data')));
+        // The id column holds the writer's key as its row stores it, or its wire id behind an encoder.
+        self::assertSame(['writers', self::W2], [DB::table('uk_notes')->where('id', 2)->value('subject_type'), DB::table('uk_notes')->where('id', 2)->value('subject_id')]);
+    }
+
+    #[Test]
     public function aMorphFilterMatchesUuidKeyedTargetsTheScopeAdmits(): void
     {
         $this->seedNotes();

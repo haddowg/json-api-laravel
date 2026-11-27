@@ -22,12 +22,14 @@ use haddowg\JsonApi\Serializer\IncludeControlsInterface;
 use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 use haddowg\JsonApi\Server\Server;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EagerMatch;
 use haddowg\JsonApiLaravel\Serializer\ProviderReadLoadState;
 use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\WindowedRelationshipPagination;
 use haddowg\JsonApiLaravel\Server\TypeMetadataResolver;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation as EloquentRelation;
 
 /**
  * Laravel-style batch eager-loading of a read's effective `?include` tree, so an included
@@ -719,7 +721,11 @@ final class RelatedIncludeBatcher
             return;
         }
 
-        (new EloquentCollection($models))->loadMissing($method);
+        $missing = \array_values(\array_filter($models, static fn(Model $model): bool => !$model->relationLoaded($method)));
+        $eager = $missing === [] ? null : EloquentRelation::noConstraints(static fn(): mixed => $missing[0]->{$method}());
+        if ($eager instanceof EloquentRelation) {
+            EagerMatch::run($eager, $missing, $method);
+        }
     }
 
     /**

@@ -29,6 +29,7 @@ use haddowg\JsonApi\Resource\Field\LinkRowFields;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Resource\Filter\InMemory\ArrayFilterHandler;
 use haddowg\JsonApi\Resource\Sort\InMemory\ArraySortHandler;
 use haddowg\JsonApi\Resource\Sort\SortByField;
@@ -219,12 +220,12 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // Decode the wire id to its storage key when the type declares an encoder.
         // An undecodable id is a 404: no row holds that key, so short-circuit without
         // querying (the SPI stays wire-id — only this reference impl decodes; ADR 0008).
-        $key = $this->storageKey($type, $id);
-        if ($key === null) {
+        $keys = $this->storageKeyForms($type, $id);
+        if ($keys === []) {
             return null;
         }
 
-        return $this->newQuery($type)->whereKey($key)->first();
+        return $this->newQuery($type)->whereKey(\count($keys) === 1 ? $keys[0] : $keys)->first();
     }
 
     /**
@@ -238,10 +239,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     {
         $keys = [];
         foreach ($ids as $id) {
-            $key = $this->storageKey($type, $id);
-            if ($key !== null) {
-                $keys[] = $key;
-            }
+            \array_push($keys, ...$this->storageKeyForms($type, $id));
         }
 
         return $keys === [] ? [] : \array_values($this->newQuery($type)->whereKey($keys)->get()->all());
@@ -253,10 +251,13 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     public function admitIds(string $type, array $ids): array
     {
         $byKey = [];
+        $keys = [];
         foreach ($ids as $id) {
-            $key = $this->storageKey($type, $id);
-            if (\is_int($key) || \is_string($key)) {
-                $byKey[(string) $key][] = $id;
+            foreach ($this->storageKeyForms($type, $id) as $key) {
+                if (\is_int($key) || \is_string($key)) {
+                    $byKey[StoredIdForms::comparable($key)][$id] = $id;
+                    $keys[] = (string) $key;
+                }
             }
         }
 
@@ -267,11 +268,12 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         $query = $this->newQuery($type);
         $model = $query->getModel();
         $admitted = [];
-        // The stored keys, read past the key's cast, compare with the decoded ids.
-        foreach ($query->whereKey(\array_map('strval', \array_keys($byKey)))->toBase()->pluck($model->qualifyColumn($model->getKeyName())) as $key) {
+        // The stored keys, read past the key's cast, compare with the decoded ids, a
+        // uuid-like key in either case.
+        foreach ($query->whereKey(\array_values(\array_unique($keys)))->toBase()->pluck($model->qualifyColumn($model->getKeyName())) as $key) {
             $compared = StoredKey::comparable($key);
             if ($compared !== null) {
-                \array_push($admitted, ...($byKey[$compared] ?? []));
+                \array_push($admitted, ...\array_values($byKey[StoredIdForms::comparable($compared)] ?? []));
             }
         }
 
@@ -287,12 +289,12 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      */
     public function fetchOneWithTrashed(string $type, string $id): ?object
     {
-        $key = $this->storageKey($type, $id);
-        if ($key === null) {
+        $keys = $this->storageKeyForms($type, $id);
+        if ($keys === []) {
             return null;
         }
 
-        return $this->newQueryWithTrashed($type)->whereKey($key)->first();
+        return $this->newQueryWithTrashed($type)->whereKey(\count($keys) === 1 ? $keys[0] : $keys)->first();
     }
 
     /**
@@ -513,9 +515,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
         // Eloquent's own eager pipeline: one query for the whole page, then the ORM-correct
         // dictionary partition + setRelation per parent (Builder::eagerLoadRelation's shape).
-        $eager->addEagerConstraints($models);
-        $models = $eager->initRelation($models, $method);
-        $eager->match($models, $eager->getEager(), $method);
+        $models = EagerMatch::run($eager, $models, $method);
 
         $encoder = $this->encoderFor($parentType);
 
@@ -668,9 +668,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // contract the batcher + WindowedRelationshipLinkage stake. The page reaches
         // the wire through the relationship-linkage seam; the parents stay untouched.
         $clones = \array_map(static fn(Model $model): Model => clone $model, $models);
-        $eager->addEagerConstraints($clones);
-        $clones = $eager->initRelation($clones, $method);
-        $eager->match($clones, $eager->getEager(), $method);
+        $clones = EagerMatch::run($eager, $clones, $method);
 
         // A countable relation's per-parent total is the SAME grouped, filtered COUNT the
         // ?withCount path builds (zero-filled for an empty partition).
@@ -837,9 +835,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         // windowed (limit + 1)-probe page is setRelation'd onto the clones, never the
         // caller's models — identical to the offset path's clone discipline.
         $clones = \array_map(static fn(Model $model): Model => clone $model, $models);
-        $eager->addEagerConstraints($clones);
-        $clones = $eager->initRelation($clones, $method);
-        $eager->match($clones, $eager->getEager(), $method);
+        $clones = EagerMatch::run($eager, $clones, $method);
 
         // The SAME row → keyset-value reader the per-parent path (runCursor) mints with, so
         // the single-window tokens are byte-identical to the per-parent tokens.
@@ -1062,9 +1058,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         }
 
         $method = $this->relationMethod($relation);
-        $eager->addEagerConstraints($models);
-        $models = $eager->initRelation($models, $method);
-        $eager->match($models, $eager->getEager(), $method);
+        $models = EagerMatch::run($eager, $models, $method);
 
         $encoder = $this->encoderFor($parentType);
 
@@ -1569,9 +1563,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
 
         $method = $this->relationMethod($relation);
         $copies = \array_map(static fn(Model $model): Model => $model->withoutRelations(), $models);
-        $eager->addEagerConstraints($copies);
-        $copies = $eager->initRelation($copies, $method);
-        $eager->match($copies, $eager->getEager(), $method);
+        $copies = EagerMatch::run($eager, $copies, $method);
 
         $encoder = $this->encoderFor($parentType);
         $maps = [];
@@ -1746,8 +1738,11 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             return $encoder->encode($key);
         }
 
-        // A key behind a value-object cast is its string form, as the Id field renders it.
-        return StoredKey::comparable($key) ?? '';
+        // A key behind a value-object cast is its string form, and a uuid-like key is in lower
+        // case, as the Id field renders it.
+        $compared = StoredKey::comparable($key);
+
+        return $compared === null ? '' : StoredIdForms::comparable($compared);
     }
 
     /**
@@ -1757,6 +1752,20 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * reference wiring keeps working; outside a container (a bare unit test) every type
      * resolves encoder-less.
      */
+    /**
+     * Each form the storage key a wire id of `$type` names may be stored in: a uuid-like key
+     * in both letter cases, which a text column may keep either of, and any other key once.
+     * Empty when no row can hold it.
+     *
+     * @return list<mixed>
+     */
+    private function storageKeyForms(string $type, string $id): array
+    {
+        $key = $this->storageKey($type, $id);
+
+        return $key === null ? [] : StoredIdForms::forms(null, [$key]);
+    }
+
     /**
      * The storage key a wire id of `$type` names, or null when no row can hold it: an id
      * the type's encoder can't decode, or one that isn't a UUID or ULID for a model that mints

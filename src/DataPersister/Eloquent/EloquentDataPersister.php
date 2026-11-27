@@ -18,9 +18,12 @@ use haddowg\JsonApi\Resource\Field\FieldInterface;
 use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\Field\Mode;
+use haddowg\JsonApi\Resource\Field\MorphColumns;
+use haddowg\JsonApi\Resource\Field\MorphTo as MorphToField;
 use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\Positions;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Resource\Field\Time;
 use haddowg\JsonApi\Resource\Field\Union;
 use haddowg\JsonApi\Schema\ResourceIdentifier;
@@ -447,6 +450,13 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
 
         $apply = function () use ($entity, $relation, $linkage, $mode, $flush): void {
             $method = $relation->column() ?? $relation->name();
+            // A MorphTo identified by columns, with no Eloquent relation behind it, writes them.
+            $columns = $relation instanceof MorphToField ? $relation->identifierColumns() : null;
+            if ($columns !== null && !\method_exists($entity, $method)) {
+                $this->writeMorphColumns($entity, $columns, $relation, $linkage, $flush);
+
+                return;
+            }
             $eloquentRelation = $entity->{$method}();
             \assert($eloquentRelation instanceof Relation);
 
@@ -580,6 +590,34 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             $eloquentRelation->dissociate();
         } else {
             $eloquentRelation->associate($this->referenceFor($relation, $identifier));
+        }
+
+        if ($flush) {
+            $parent->save();
+        }
+    }
+
+    /**
+     * Points a `MorphTo` declared with `identifiedByColumns()` at its linkage by writing the two
+     * columns: the type column takes the value naming the target's type, and the id column the
+     * target's key as its row stores it, or its wire id when the target's type declares an id
+     * encoder, since a storage key such as 16 raw bytes doesn't belong in a text column. Empty
+     * linkage clears both.
+     *
+     * @throws ResourceNotFound when no row of the target's type holds the id
+     */
+    private function writeMorphColumns(Model $parent, MorphColumns $columns, RelationInterface $relation, ToOneRelationship|ToManyRelationship $linkage, bool $flush): void
+    {
+        $identifier = $linkage instanceof ToOneRelationship ? $linkage->resourceIdentifier : null;
+        if ($identifier === null || $identifier->id === null) {
+            $parent->setAttribute($columns->type, null);
+            $parent->setAttribute($columns->id, null);
+        } else {
+            $relatedType = $this->relatedType($relation, $identifier);
+            $target = $this->findRelated($relation, $identifier) ?? throw new ResourceNotFound();
+            $parent->setAttribute($columns->type, $columns->storedValueFor($relatedType));
+            $encoder = $this->encoderFor($relatedType);
+            $parent->setAttribute($columns->id, $encoder !== null ? $encoder->encode(StoredKey::keyOf($target)) : StoredKey::keyOf($target));
         }
 
         if ($flush) {
@@ -797,6 +835,9 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         \assert($parent instanceof Model);
 
         $method = $relation->column() ?? $relation->name();
+        if (!\method_exists($parent, $method)) {
+            return [];
+        }
         $eloquentRelation = $parent->{$method}();
         if (!$eloquentRelation instanceof HasOneOrMany) {
             return [];
@@ -914,13 +955,8 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         // own related type) before it becomes a join-row key — an undecodable
         // token raises the same 404 a missing target would. A type with no encoder decodes
         // to itself, so the path is byte-identical to today for the common case.
-        $ids = [];
-        foreach ($linkage->resourceIdentifiers as $identifier) {
-            if ($identifier->id === null) {
-                continue;
-            }
-            $ids[] = $this->storedLinkageKey($this->relatedType($relation, $identifier), $identifier->id);
-        }
+        $keys = $this->joinKeys($eloquentRelation, $relation, $linkage->resourceIdentifiers, $mode);
+        $ids = \array_values($keys);
 
         // The join is written by raw id, past any global scope on the related model, so the ids
         // are checked against the scoped read first, and a replace keeps the hidden members.
@@ -928,7 +964,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
 
         $position = $mode !== Mode::Remove ? PositionColumn::of($relation) : null;
         if ($position !== null) {
-            $this->mutatePositionedJoin($eloquentRelation, $relation, $linkage, $mode, $ids, $hidden, $position);
+            $this->mutatePositionedJoin($eloquentRelation, $relation, $linkage, $mode, $keys, $hidden, $position);
 
             return;
         }
@@ -939,7 +975,8 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             match ($mode) {
                 Mode::Replace => $eloquentRelation->sync([...$ids, ...$hidden]),
                 Mode::Add => $eloquentRelation->syncWithoutDetaching($ids),
-                Mode::Remove => $eloquentRelation->detach($ids),
+                // A join row may keep a uuid-like key in either case.
+                Mode::Remove => $eloquentRelation->detach(StoredIdForms::forms(null, $ids)),
             };
 
             return;
@@ -955,11 +992,8 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         }
 
         $payload = [];
-        foreach ($linkage->resourceIdentifiers as $identifier) {
-            if ($identifier->id === null) {
-                continue;
-            }
-            $storageId = $this->storedLinkageKey($this->relatedType($relation, $identifier), $identifier->id);
+        foreach ($linkage->resourceIdentifiers as $index => $identifier) {
+            $storageId = $keys[$index] ?? null;
             if (!\is_scalar($storageId)) {
                 continue;
             }
@@ -991,11 +1025,12 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
      * takes its final position and its `meta.pivot` values, new members attaching there.
      *
      * @param BelongsToMany<Model, Model> $eloquentRelation
-     * @param list<mixed>                 $ids              the incoming storage ids
+     * @param array<int, mixed>           $keys             the incoming storage ids, by linkage index
      * @param list<string>                $hidden           the attached ids a scope hides
      */
-    private function mutatePositionedJoin(BelongsToMany $eloquentRelation, RelationInterface $relation, ToManyRelationship $linkage, Mode $mode, array $ids, array $hidden, string $position): void
+    private function mutatePositionedJoin(BelongsToMany $eloquentRelation, RelationInterface $relation, ToManyRelationship $linkage, Mode $mode, array $keys, array $hidden, string $position): void
     {
+        $ids = \array_values($keys);
         $relatedKey = $eloquentRelation->getRelatedPivotKeyName();
         $current = [];
         foreach ($eloquentRelation->newPivotQuery()->get([$relatedKey, $position]) as $row) {
@@ -1021,11 +1056,8 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
 
         $stored = $relation instanceof PivotRelation && self::writesPivotColumns($relation);
         $payload = [];
-        foreach ($linkage->resourceIdentifiers as $identifier) {
-            if ($identifier->id === null) {
-                continue;
-            }
-            $storageId = $this->storedLinkageKey($this->relatedType($relation, $identifier), $identifier->id);
+        foreach ($linkage->resourceIdentifiers as $index => $identifier) {
+            $storageId = $keys[$index] ?? null;
             if (!\is_scalar($storageId)) {
                 continue;
             }
@@ -1058,11 +1090,12 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         }
 
         $keyColumn = $related->qualifyColumn($eloquentRelation->getRelatedKeyName());
-        // Read past the key's cast, so the stored keys compare with the incoming ones.
-        $visible = $this->stringKeys($related->newQuery()->whereIn($keyColumn, $ids)->toBase()->pluck($keyColumn)->all());
+        // Read past the key's cast, so the stored keys compare with the incoming ones, a
+        // uuid-like key in either case.
+        $visible = \array_map(StoredIdForms::comparable(...), $this->stringKeys($related->newQuery()->whereIn($keyColumn, StoredIdForms::forms(null, $ids))->toBase()->pluck($keyColumn)->all()));
         foreach ($ids as $id) {
             $id = StoredKey::comparable($id);
-            if ($id === null || !\in_array($id, $visible, true)) {
+            if ($id === null || !\in_array(StoredIdForms::comparable($id), $visible, true)) {
                 throw new ResourceNotFound();
             }
         }
@@ -1227,7 +1260,9 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             return null;
         }
 
-        $found = $class::query()->find($this->storedLinkageKey($relatedType, $identifier->id));
+        $key = $this->storedLinkageKey($relatedType, $identifier->id);
+        $forms = StoredIdForms::forms(null, [$key]);
+        $found = \count($forms) > 1 ? $class::query()->whereKey($forms)->first() : $class::query()->find($key);
 
         return $found instanceof Model ? $found : null;
     }
@@ -1252,7 +1287,12 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
 
             $key = $this->storedLinkageKey($relatedType, $identifier->id);
             if (\is_int($key) || \is_string($key)) {
-                $keysByType[$relatedType][(string) $key] = $key;
+                // A uuid-like key may be stored in either case.
+                foreach (StoredIdForms::forms(null, [$key]) as $form) {
+                    if (\is_int($form) || \is_string($form)) {
+                        $keysByType[$relatedType][(string) $form] = $form;
+                    }
+                }
             }
         }
 
@@ -1261,7 +1301,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             $class = $this->modelByType[$relatedType];
             foreach ($class::query()->findMany(\array_values($keys)) as $model) {
                 if ($model instanceof Model) {
-                    $byKey[$relatedType][$this->key($model)] = $model;
+                    $byKey[$relatedType][StoredIdForms::comparable($this->key($model))] = $model;
                 }
             }
         }
@@ -1274,7 +1314,7 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
             }
 
             $key = $this->storedLinkageKey($relatedType, $identifier->id);
-            $model = \is_int($key) || \is_string($key) ? ($byKey[$relatedType][(string) $key] ?? null) : null;
+            $model = \is_int($key) || \is_string($key) ? ($byKey[$relatedType][StoredIdForms::comparable($key)] ?? null) : null;
             if ($model !== null) {
                 $found[$index] = $model;
             }
@@ -1404,6 +1444,58 @@ class EloquentDataPersister extends AbstractDataPersister implements WritesLinkR
         $model = new $class();
 
         return StoredKey::of($model, $model->getKeyName(), $decoded);
+    }
+
+    /**
+     * Each linkage member's key as a join row should hold it, by linkage index. A uuid-like
+     * key, which a text column may keep in either case, is the one a join row already holds
+     * for it, or else the related row's own key, so a write neither stores the case the
+     * linkage spelled nor attaches a member twice. Any other key is its stored form.
+     *
+     * @param BelongsToMany<Model, Model> $eloquentRelation
+     * @param list<ResourceIdentifier>    $identifiers
+     *
+     * @return array<int, mixed>
+     */
+    private function joinKeys(BelongsToMany $eloquentRelation, RelationInterface $relation, array $identifiers, Mode $mode): array
+    {
+        $keys = [];
+        $caseless = [];
+        foreach ($identifiers as $index => $identifier) {
+            if ($identifier->id === null) {
+                continue;
+            }
+            $keys[$index] = $this->storedLinkageKey($this->relatedType($relation, $identifier), $identifier->id);
+            if (\is_string($keys[$index]) && StoredIdForms::isUuidLike($keys[$index])) {
+                $caseless[] = $keys[$index];
+            }
+        }
+        if ($caseless === [] || $mode === Mode::Remove) {
+            return $keys;
+        }
+
+        $held = [];
+        $related = $eloquentRelation->getRelated();
+        $relatedKey = $related->qualifyColumn($eloquentRelation->getRelatedKeyName());
+        foreach ($related->newQueryWithoutScopes()->whereIn($relatedKey, StoredIdForms::forms(null, $caseless))->toBase()->pluck($relatedKey) as $key) {
+            $compared = StoredKey::comparable($key);
+            if ($compared !== null) {
+                $held[StoredIdForms::comparable($compared)] = $key;
+            }
+        }
+        foreach ($eloquentRelation->allRelatedIds() as $key) {
+            $compared = StoredKey::comparable($key);
+            if ($compared !== null) {
+                $held[StoredIdForms::comparable($compared)] = $key;
+            }
+        }
+        foreach ($keys as $index => $key) {
+            if (\is_string($key)) {
+                $keys[$index] = $held[StoredIdForms::comparable($key)] ?? $key;
+            }
+        }
+
+        return $keys;
     }
 
     private function hasIntegerKey(string $type): bool

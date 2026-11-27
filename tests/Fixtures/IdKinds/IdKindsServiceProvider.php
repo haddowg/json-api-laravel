@@ -66,28 +66,28 @@ final class IdKindsServiceProvider extends ServiceProvider
 
         $writers = [];
         foreach ($seed['writers'] as [$ref, $name]) {
-            $writers[IdKinds::wire($ref)] = new IkWriterRecord(IdKinds::wire($ref), $name);
+            $writers[IdKinds::held($ref)] = new IkWriterRecord(IdKinds::held($ref), $name);
         }
         $labels = [];
         foreach ($seed['labels'] as [$ref, $name, $hidden]) {
             if (!$hidden) {
-                $labels[IdKinds::wire($ref)] = new IkLabelRecord(IdKinds::wire($ref), $name);
+                $labels[IdKinds::held($ref)] = new IkLabelRecord(IdKinds::held($ref), $name);
             }
         }
         $books = [];
         foreach ($seed['books'] as $row) {
-            $id = IdKinds::wire($row['id']);
+            $id = IdKinds::held($row['id']);
             $book = new IkBookRecord($id, $row['title']);
             if ($row['writer'] !== null) {
-                $book->writer = $writers[IdKinds::wire($row['writer'])];
-                $book->writer_ref = IdKinds::wire($row['writer']);
+                $book->writer = $writers[IdKinds::held($row['writer'])];
+                $book->writer_ref = IdKinds::held($row['writer']);
                 $book->writer->books[] = $book;
             }
             if ($row['featuredBy'] !== null) {
-                $writers[IdKinds::wire($row['featuredBy'])]->featured = $book;
+                $writers[IdKinds::held($row['featuredBy'])]->featured = $book;
             }
             foreach ($row['labels'] as $ref) {
-                $label = $labels[IdKinds::wire($ref)] ?? null;
+                $label = $labels[IdKinds::held($ref)] ?? null;
                 if ($label !== null) {
                     $book->labels[] = $label;
                     $label->books[] = $book;
@@ -95,18 +95,18 @@ final class IdKindsServiceProvider extends ServiceProvider
             }
             if ($row['subject'] !== null) {
                 [$type, $ref] = $row['subject'];
-                $book->subject = $type === 'ikWriters' ? $writers[IdKinds::wire($ref)] : ($labels[IdKinds::wire($ref)] ?? null);
+                $book->subject = $type === 'ikWriters' ? $writers[IdKinds::held($ref)] : ($labels[IdKinds::held($ref)] ?? null);
             }
             // The witness's targets are the visible ones, so an origin the scope hides is none.
-            if ($row['origin'] !== null && ($row['origin'][0] === 'ikWriters' || isset($labels[IdKinds::wire($row['origin'][1])]))) {
+            if ($row['origin'] !== null && ($row['origin'][0] === 'ikWriters' || isset($labels[IdKinds::held($row['origin'][1])]))) {
                 [$book->origin_type, $ref] = $row['origin'];
-                $book->origin_id = IdKinds::wire($ref);
+                $book->origin_id = IdKinds::held($ref);
             }
             foreach ($row['pins'] as [$type, $ref]) {
-                if ($type === 'ikLabels' && !isset($labels[IdKinds::wire($ref)])) {
+                if ($type === 'ikLabels' && !isset($labels[IdKinds::held($ref)])) {
                     continue;
                 }
-                $book->pins[] = new IkPinRecord($type, IdKinds::wire($ref));
+                $book->pins[] = new IkPinRecord($type, IdKinds::held($ref));
             }
             $books[$id] = $book;
         }

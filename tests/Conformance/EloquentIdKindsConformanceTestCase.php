@@ -79,7 +79,42 @@ abstract class EloquentIdKindsConformanceTestCase extends IdKindsConformanceTest
 
         self::assertCount(1, $statements, \implode("\n", $statements));
         self::assertCount(1, $windowed, \implode("\n", $statements));
-        self::assertSame(\in_array(IdKinds::kind(), ['uuid', 'object'], true), \str_contains($windowed[0], 'partition by lower(ik_books.origin_id)'), $windowed[0]);
+        self::assertSame(\in_array(IdKinds::kind(), ['uuid', 'object', 'upper'], true), \str_contains($windowed[0], 'partition by lower(ik_books.origin_id)'), $windowed[0]);
+    }
+
+    /**
+     * A linkage write stores each foreign key as the row it names stores its key, whatever
+     * case the request spelled a uuid in.
+     */
+    #[Test]
+    public function aLinkageWriteStoresTheKeyAsTheRelatedRowStoresIt(): void
+    {
+        $headers = ['Accept' => 'application/vnd.api+json', 'Content-Type' => 'application/vnd.api+json'];
+        $book = '/api/ikBooks/' . IdKinds::sent('b3');
+        $this->json('PATCH', $book . '/relationships/writer', ['data' => ['type' => 'ikWriters', 'id' => IdKinds::sent('w3')]], $headers)->assertSuccessful();
+        $this->json('PATCH', $book . '/relationships/subject', ['data' => ['type' => 'ikLabels', 'id' => IdKinds::sent('l2')]], $headers)->assertSuccessful();
+        $this->json('POST', $book . '/relationships/labels', ['data' => [['type' => 'ikLabels', 'id' => IdKinds::sent('l1')]]], $headers)->assertSuccessful();
+        $this->json('POST', '/api/ikWriters/' . IdKinds::sent('w3') . '/relationships/authored', ['data' => [['type' => 'ikBooks', 'id' => IdKinds::sent('b1')]]], $headers)->assertSuccessful();
+        $this->json('POST', '/api/ikBooks', ['data' => [
+            'type' => 'ikBooks',
+            'id' => IdKinds::sent('b4'),
+            'attributes' => ['title' => 'Middlemarch'],
+            'relationships' => [
+                'writer' => ['data' => ['type' => 'ikWriters', 'id' => IdKinds::sent('w2')]],
+                'labels' => ['data' => [['type' => 'ikLabels', 'id' => IdKinds::sent('l2')]]],
+            ],
+        ]], $headers)->assertCreated()->assertJsonPath('data.id', IdKinds::wire('b4'));
+
+        $stored = static fn(string $ref): string => (string) IdKinds::stored($ref);
+        $row = static fn(string $ref): ?object => DB::table('ik_books')->where('id', IdKinds::stored($ref))->first();
+        self::assertSame($stored('w3'), (string) ($row('b3')->writer_id ?? ''));
+        self::assertSame($stored('l2'), (string) ($row('b3')->subject_id ?? ''));
+        self::assertSame($stored('w3'), (string) ($row('b1')->writer_id ?? ''));
+        self::assertSame([$stored('l1')], DB::table('ik_book_label')->where('book_id', IdKinds::stored('b3'))->pluck('label_id')->map(static fn(mixed $key): string => \is_scalar($key) ? (string) $key : '')->all());
+        $created = DB::table('ik_books')->where('title', 'Middlemarch')->first();
+        self::assertNotNull($created);
+        self::assertSame($stored('w2'), (string) ($created->writer_id ?? ''));
+        self::assertSame([$stored('l2')], DB::table('ik_book_label')->where('book_id', $created->id ?? null)->pluck('label_id')->map(static fn(mixed $key): string => \is_scalar($key) ? (string) $key : '')->all());
     }
 
     protected function defineDatabaseMigrations(): void
