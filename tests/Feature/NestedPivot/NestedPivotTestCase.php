@@ -186,6 +186,18 @@ abstract class NestedPivotTestCase extends Orchestra
         self::assertSame(['1' => $this->pivot(2, 1), '3' => $this->pivot(2, 3)], $this->linkagePivots($this->included($toMany, 'npCrates', '2'), 'records'));
     }
 
+    public function test_an_include_through_an_identified_polymorphic_relation_renders_pivot(): void
+    {
+        $toOne = $this->document('/api/npShelves/2?include=tagged.records');
+        self::assertSame(['type' => 'npCrates', 'id' => '2'], \data_get($toOne, 'data.relationships.tagged.data'));
+        self::assertSame(['1' => $this->pivot(2, 1), '3' => $this->pivot(2, 3)], $this->linkagePivots($this->included($toOne, 'npCrates', '2'), 'records'));
+
+        $toMany = $this->document('/api/npRooms/1?include=pinned.records');
+        self::assertSame([['type' => 'npCrates', 'id' => '1'], ['type' => 'npCrates', 'id' => '2']], \data_get($toMany, 'data.relationships.pinned.data'));
+        self::assertSame(['1' => $this->pivot(1, 1), '2' => $this->pivot(1, 2)], $this->linkagePivots($this->included($toMany, 'npCrates', '1'), 'records'));
+        self::assertSame(['1' => $this->pivot(2, 1), '3' => $this->pivot(2, 3)], $this->linkagePivots($this->included($toMany, 'npCrates', '2'), 'records'));
+    }
+
     public function test_a_not_sparse_relation_carries_the_pivot_below_it(): void
     {
         $document = $this->document('/api/npShelves/1?include=pinnedCrate.records&fields[npShelves]=name');

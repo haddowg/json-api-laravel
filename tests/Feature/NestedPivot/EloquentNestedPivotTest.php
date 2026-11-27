@@ -80,7 +80,7 @@ final class EloquentNestedPivotTest extends NestedPivotTestCase
 
         DB::flushQueryLog();
         DB::enableQueryLog();
-        $maps = $provider->fetchRelationshipPivotBatch('npCrates', \array_values(NpCrate::query()->orderBy('id')->get()->all()), $relation);
+        $maps = $provider->fetchRelatedPivotMapBatch('npCrates', 'npRecords', \array_values(NpCrate::query()->orderBy('id')->get()->all()), $relation);
         $queries = \count(DB::getQueryLog());
         DB::disableQueryLog();
 

@@ -11,6 +11,7 @@ use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
 use haddowg\JsonApiLaravel\Facades\JsonApi;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Database\Schema\ColumnDefinition;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
@@ -20,9 +21,11 @@ use Illuminate\Support\ServiceProvider;
  * records through a join with pivot columns. `npBins` is a writable view of the crates. Served
  * by Eloquent, or with `nested_pivot.store` set to `memory`, by in-memory providers holding the
  * same graph and no pivot rows, or set to `custom`, by the same in-memory providers with the
- * crates served through {@see NpPivotStoreProvider}, which holds the crates' pivot rows.
+ * crates and records served through {@see NpPivotStoreProvider}, which holds the crates' pivot
+ * rows.
  *
- * Room 1 holds shelves 1 and 2 and lists both crates as its polymorphic `things`. Shelf 1's
+ * Room 1 holds shelves 1 and 2 and lists both crates as its polymorphic `things`, and names
+ * them by stored pairs as its `pinned`. Each shelf names its crate by a stored pair as `tagged`. Shelf 1's
  * crate and polymorphic holder are crate 1 and its alternative crate is 2; shelf 2's crate and
  * holder are crate 2 and it has no alternative. Crate 1 holds records 1 and 2, crate 2 holds records 1
  * and 3, so record 1 sits in both crates with a different pivot row in each.
@@ -77,8 +80,8 @@ final class NestedPivotServiceProvider extends ServiceProvider
                 $records[(string) $record]->placedIn[] = $crates[(string) $crate];
             }
             $shelves = [
-                '1' => (object) ['id' => '1', 'name' => 'Top', 'crate' => $crates['1'], 'pinnedCrate' => $crates['1'], 'altCrate' => $crates['2'], 'holder' => $crates['1']],
-                '2' => (object) ['id' => '2', 'name' => 'Bottom', 'crate' => $crates['2'], 'pinnedCrate' => $crates['2'], 'altCrate' => null, 'holder' => $crates['2']],
+                '1' => (object) ['id' => '1', 'name' => 'Top', 'crate_id' => '1', 'crate' => $crates['1'], 'pinnedCrate' => $crates['1'], 'altCrate' => $crates['2'], 'holder' => $crates['1']],
+                '2' => (object) ['id' => '2', 'name' => 'Bottom', 'crate_id' => '2', 'crate' => $crates['2'], 'pinnedCrate' => $crates['2'], 'altCrate' => null, 'holder' => $crates['2']],
             ];
             $rooms = ['1' => (object) ['id' => '1', 'name' => 'Den', 'shelves' => [$shelves['1'], $shelves['2']], 'things' => [$crates['1'], $crates['2']]]];
 
@@ -86,7 +89,8 @@ final class NestedPivotServiceProvider extends ServiceProvider
             JsonApi::provider(new InMemoryDataProvider('npShelves', $shelves, identify: $identify));
             $crateProvider = new InMemoryDataProvider('npCrates', $crates, identify: $identify);
             JsonApi::provider($store === 'custom' ? new NpPivotStoreProvider($crateProvider) : $crateProvider);
-            JsonApi::provider(new InMemoryDataProvider('npRecords', $records, identify: $identify));
+            $recordProvider = new InMemoryDataProvider('npRecords', $records, identify: $identify);
+            JsonApi::provider($store === 'custom' ? new NpPivotStoreProvider($recordProvider) : $recordProvider);
             $bins = new InMemoryDataProvider('npBins', $crates, identify: $identify, assignId: static function (object $bin, string $id): void {
                 $bin->id = $id;
             });
@@ -116,47 +120,59 @@ final class NestedPivotServiceProvider extends ServiceProvider
      */
     public static function migrate(): void
     {
+        $key = static function (Blueprint $table, string $column): ColumnDefinition {
+            return match (NpKeys::kind()) {
+                'uuid', 'object' => $table->string($column, 36),
+                'binary' => $table->binary($column, 16, fixed: true),
+                default => $table->unsignedInteger($column),
+            };
+        };
+
         Schema::create('np_rooms', static function (Blueprint $table): void {
             $table->unsignedInteger('id')->primary();
             $table->string('name');
         });
-        Schema::create('np_shelves', static function (Blueprint $table): void {
+        Schema::create('np_shelves', static function (Blueprint $table) use ($key): void {
             $table->unsignedInteger('id')->primary();
             $table->string('name');
             $table->unsignedInteger('room_id');
-            $table->unsignedInteger('crate_id');
-            $table->unsignedInteger('alt_crate_id')->nullable();
+            $key($table, 'crate_id');
+            $key($table, 'alt_crate_id')->nullable();
             $table->string('holder_type')->nullable();
-            $table->unsignedInteger('holder_id')->nullable();
+            $key($table, 'holder_id')->nullable();
         });
-        Schema::create('np_crates', static function (Blueprint $table): void {
-            $table->increments('id');
+        Schema::create('np_crates', static function (Blueprint $table) use ($key): void {
+            if (NpKeys::stringKeys()) {
+                $key($table, 'id')->primary();
+            } else {
+                $table->increments('id');
+            }
             $table->string('title');
         });
-        Schema::create('np_records', static function (Blueprint $table): void {
-            $table->unsignedInteger('id')->primary();
+        Schema::create('np_records', static function (Blueprint $table) use ($key): void {
+            $key($table, 'id')->primary();
             $table->string('title');
         });
-        Schema::create('np_crate_record', static function (Blueprint $table): void {
-            $table->unsignedInteger('crate_id');
-            $table->unsignedInteger('record_id');
+        Schema::create('np_crate_record', static function (Blueprint $table) use ($key): void {
+            $key($table, 'crate_id');
+            $key($table, 'record_id');
             $table->integer('position');
             $table->dateTime('added_at')->nullable();
         });
 
         DB::table('np_rooms')->insert(['id' => 1, 'name' => 'Den']);
         DB::table('np_shelves')->insert([
-            ['id' => 1, 'name' => 'Top', 'room_id' => 1, 'crate_id' => 1, 'alt_crate_id' => 2, 'holder_type' => NpCrate::class, 'holder_id' => 1],
-            ['id' => 2, 'name' => 'Bottom', 'room_id' => 1, 'crate_id' => 2, 'alt_crate_id' => null, 'holder_type' => NpCrate::class, 'holder_id' => 2],
+            ['id' => 1, 'name' => 'Top', 'room_id' => 1, 'crate_id' => NpKeys::stored('c', 1), 'alt_crate_id' => NpKeys::stored('c', 2), 'holder_type' => NpCrate::class, 'holder_id' => NpKeys::stored('c', 1)],
+            ['id' => 2, 'name' => 'Bottom', 'room_id' => 1, 'crate_id' => NpKeys::stored('c', 2), 'alt_crate_id' => null, 'holder_type' => NpCrate::class, 'holder_id' => NpKeys::stored('c', 2)],
         ]);
         foreach (self::CRATES as $id => $title) {
-            DB::table('np_crates')->insert(['id' => $id, 'title' => $title]);
+            DB::table('np_crates')->insert(['id' => NpKeys::stored('c', $id), 'title' => $title]);
         }
         foreach (self::RECORDS as $id => $title) {
-            DB::table('np_records')->insert(['id' => $id, 'title' => $title]);
+            DB::table('np_records')->insert(['id' => NpKeys::stored('r', $id), 'title' => $title]);
         }
         foreach (self::LINKS as [$crate, $record, $position, $addedAt]) {
-            DB::table('np_crate_record')->insert(['crate_id' => $crate, 'record_id' => $record, 'position' => $position, 'added_at' => $addedAt]);
+            DB::table('np_crate_record')->insert(['crate_id' => NpKeys::stored('c', $crate), 'record_id' => NpKeys::stored('r', $record), 'position' => $position, 'added_at' => $addedAt]);
         }
     }
 }

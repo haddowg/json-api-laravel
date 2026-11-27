@@ -7,7 +7,6 @@ namespace haddowg\JsonApiLaravel\Tests\Fixtures\NestedPivot;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\Accessor;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
-use haddowg\JsonApi\Resource\Field\Id;
 use haddowg\JsonApi\Resource\Field\Integer;
 use haddowg\JsonApi\Resource\Field\PivotEdge;
 use haddowg\JsonApi\Resource\Field\Str;
@@ -25,7 +24,7 @@ final class NpBinResource extends AbstractResource
     public function fields(): array
     {
         return [
-            Id::make(),
+            NpKeys::id('c'),
             Str::make('title'),
             BelongsToMany::make('records', 'npRecords')
                 ->withData()

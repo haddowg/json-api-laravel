@@ -44,10 +44,10 @@ use haddowg\JsonApiLaravel\DataProvider\FetchesManyInterface;
 use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
 use haddowg\JsonApiLaravel\DataProvider\ForeignKeyParents;
 use haddowg\JsonApiLaravel\DataProvider\KeysCursorSortsInterface;
+use haddowg\JsonApiLaravel\DataProvider\PivotAwareProviderInterface;
 use haddowg\JsonApiLaravel\DataProvider\QueriesFilteredCollectionInterface;
 use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
 use haddowg\JsonApiLaravel\DataProvider\ReadsByForeignKeyInterface;
-use haddowg\JsonApiLaravel\DataProvider\ReadsRelationshipPivotBatchInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelatedBatch;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\DataProvider\ScopedArrayFilterHandler;
@@ -123,7 +123,7 @@ use Illuminate\Support\Str;
  *
  * @extends AbstractDataProvider<object>
  */
-final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, LinkRowQueryInterface, LinkRowKeysInterface, ReadsByForeignKeyInterface, KeysCursorSortsInterface, PivotRowRelations, ReadsRelationshipPivotBatchInterface
+final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, LinkRowQueryInterface, LinkRowKeysInterface, ReadsByForeignKeyInterface, KeysCursorSortsInterface, PivotRowRelations, PivotAwareProviderInterface
 {
     private readonly CriteriaApplier $applier;
 
@@ -1551,10 +1551,11 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     }
 
     /**
-     * Reads every parent's pivot rows in one eager query over the relation's join, grouped by
-     * the parent key the join row holds.
+     * Reads every parent's pivot rows in one eager query over the relation's join, partitioned
+     * by Eloquent's own eager match, as the include batch partitions them, onto copies of the
+     * parents so their loaded relations stay as they are.
      */
-    public function fetchRelationshipPivotBatch(string $type, array $parents, RelationInterface $relation): array
+    public function fetchRelatedPivotMapBatch(string $parentType, string $relatedType, array $parents, RelationInterface $relation): array
     {
         $models = $this->eloquentModels($parents);
         if ($models === [] || !$relation instanceof PivotRelation || $relation->storedPivotFields() === []) {
@@ -1566,26 +1567,18 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             return [];
         }
 
-        $eager->addEagerConstraints($models);
-        $accessor = $eager->getPivotAccessor();
-        $foreignKey = $eager->getForeignPivotKeyName();
+        $method = $this->relationMethod($relation);
+        $copies = \array_map(static fn(Model $model): Model => $model->withoutRelations(), $models);
+        $eager->addEagerConstraints($copies);
+        $copies = $eager->initRelation($copies, $method);
+        $eager->match($copies, $eager->getEager(), $method);
 
-        $members = [];
-        foreach ($eager->getEager() as $member) {
-            $pivot = $member->getRelation($accessor);
-            $key = $pivot instanceof Model ? $pivot->getAttribute($foreignKey) : null;
-            if (\is_int($key) || \is_string($key)) {
-                $members[(string) $key][] = $member;
-            }
-        }
-
-        $encoder = $this->encoderFor($type);
-        $parentKey = $eager->getParentKeyName();
+        $encoder = $this->encoderFor($parentType);
         $maps = [];
-        foreach ($models as $model) {
-            $key = $model->getAttribute($parentKey);
-            if ((\is_int($key) || \is_string($key)) && isset($members[(string) $key])) {
-                $maps[$this->wireId($model, $encoder)] = $this->readPivots($eager, $relation, $members[(string) $key]);
+        foreach ($copies as $copy) {
+            $members = $copy->getRelation($method);
+            if ($members instanceof EloquentCollection && $members->isNotEmpty()) {
+                $maps[$this->wireId($copy, $encoder)] = $this->readPivots($eager, $relation, \array_values($members->all()));
             }
         }
 

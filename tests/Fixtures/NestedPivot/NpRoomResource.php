@@ -22,6 +22,9 @@ final class NpRoomResource extends AbstractResource
             Id::make(),
             Str::make('name'),
             HasMany::make('shelves', 'npShelves'),
+            MorphToMany::make('pinned', ['npCrates', 'npRecords'])
+                ->identifiedBy(static fn(mixed $room): array => [['npCrates', '1'], ['npCrates', '2']])
+                ->readOnly(),
             MorphToMany::make('things', ['npCrates', 'npRecords'])->extractUsing(
                 static fn(mixed $room): array => $room instanceof NpRoom ? $room->thingList() : (\is_object($room) && \is_array($room->things ?? null) ? $room->things : []),
             ),

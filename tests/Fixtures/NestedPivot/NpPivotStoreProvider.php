@@ -9,18 +9,19 @@ use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
-use haddowg\JsonApiLaravel\DataProvider\ReadsRelationshipPivotBatchInterface;
+use haddowg\JsonApiLaravel\DataProvider\PivotAwareProviderInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelatedBatch;
 
 /**
  * A provider that keeps the crates' pivot rows beside an in-memory store, reads them through
- * the pivot SPI and doesn't query the join for its related reads. It counts its pivot reads.
+ * the pivot SPI and doesn't query the join for its related reads. Its batched read answers
+ * for the crates' relations only. It counts its pivot reads.
  *
  * @internal
  *
  * @implements DataProviderInterface<object>
  */
-final class NpPivotStoreProvider implements DataProviderInterface, ReadsRelationshipPivotBatchInterface
+final class NpPivotStoreProvider implements DataProviderInterface, PivotAwareProviderInterface
 {
     public static int $singleReads = 0;
 
@@ -81,8 +82,11 @@ final class NpPivotStoreProvider implements DataProviderInterface, ReadsRelation
         return $this->pivotsOf($parent, $relation);
     }
 
-    public function fetchRelationshipPivotBatch(string $type, array $parents, RelationInterface $relation): array
+    public function fetchRelatedPivotMapBatch(string $parentType, string $relatedType, array $parents, RelationInterface $relation): array
     {
+        if ($parentType !== 'npCrates') {
+            return [];
+        }
         self::$batchSizes[] = \count($parents);
 
         $maps = [];

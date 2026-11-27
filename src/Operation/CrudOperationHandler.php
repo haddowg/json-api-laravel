@@ -111,10 +111,10 @@ use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use haddowg\JsonApiLaravel\DataProvider\ForeignKeyReads;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphMembers;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphTargets;
+use haddowg\JsonApiLaravel\DataProvider\PivotAwareProviderInterface;
 use haddowg\JsonApiLaravel\DataProvider\PivotRowRelationRouter;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
 use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
-use haddowg\JsonApiLaravel\DataProvider\ReadsRelationshipPivotBatchInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
@@ -1935,7 +1935,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
     /**
      * Reads one member's stored pivot values for `$parent`'s `$relation`: off the pivot row the
-     * query that loaded the member hydrated, else from the parent provider's batched pivot map,
+     * query that loaded the member hydrated, else from the related provider's batched pivot map,
      * read once for every `$type` parent the include walk loaded. `null` when neither provider
      * reads stored pivot values.
      *
@@ -1946,9 +1946,9 @@ final class CrudOperationHandler implements OperationHandlerInterface
     private function storedPivotReader(Server $server, string $type, object $parent, BelongsToMany $relation, array &$batches): ?\Closure
     {
         $loaded = $this->pivotQueryingProvider($parent, $relation);
-        $batching = $this->providers->supportsType($type) ? $this->providers->forType($type) : null;
-        $batching = $batching instanceof ReadsRelationshipPivotBatchInterface ? $batching : null;
         $relatedType = $relation->relatedTypes()[0] ?? null;
+        $batching = $relatedType !== null && $this->providers->supportsType($relatedType) ? $this->providers->forType($relatedType) : null;
+        $batching = $batching instanceof PivotAwareProviderInterface ? $batching : null;
         if (($loaded === null && $batching === null) || $relatedType === null || !$server->hasSerializerFor($type) || !$server->hasSerializerFor($relatedType)) {
             return null;
         }
@@ -1971,7 +1971,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                             $parents[] = $candidate;
                         }
                     }
-                    $batches[$key]['map'] = \array_replace($batches[$key]['map'], $batching->fetchRelationshipPivotBatch($type, $parents, $relation));
+                    $batches[$key]['map'] = \array_replace($batches[$key]['map'], $batching->fetchRelatedPivotMapBatch($type, $relatedType, $parents, $relation));
                 }
                 $values = $batches[$key]['map'][$parentId][$memberId] ?? null;
             }

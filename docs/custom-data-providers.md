@@ -40,10 +40,11 @@ keys are a `400` and `meta.pivot` comes from `fetchRelationshipPivot()`.
 
 `fetchRelationshipPivot()` reads one parent's rows, which serves the related and relationship
 endpoints. An included pivot relation renders the stored values of every parent in the
-document, so it reads them through `ReadsRelationshipPivotBatchInterface` instead:
-`fetchRelationshipPivotBatch($type, $parents, $relation)` returns the values keyed by the parent's
-wire id, then the member's. The package calls it once per pivot relation, for every parent of
-that type the include walk loaded, and only for members that came back without their pivot row.
+document, so it reads them through `PivotAwareProviderInterface` instead, named and shaped as the
+Symfony bundle's: `fetchRelatedPivotMapBatch($parentType, $relatedType, $parents, $relation)`
+returns the values keyed by the parent's wire id, then the member's. The package asks the related
+type's provider, once per pivot relation, for every parent of that type the include walk loaded,
+and only for members that came back without their pivot row.
 A provider that stores pivot values and doesn't implement it renders only the computed fields of
 an included pivot relation.
 

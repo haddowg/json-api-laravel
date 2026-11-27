@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Fixtures\NestedPivot;
 
+use haddowg\JsonApiLaravel\Tests\Fixtures\IdKinds\IkKeyCast;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
@@ -14,6 +15,24 @@ final class NpCrate extends Model
     public $timestamps = false;
 
     protected $guarded = [];
+
+    public function getKeyType(): string
+    {
+        return NpKeys::stringKeys() ? 'string' : 'int';
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function getCasts(): array
+    {
+        return NpKeys::kind() === 'object' ? [...parent::getCasts(), 'id' => IkKeyCast::class] : parent::getCasts();
+    }
+
+    public function getIncrementing(): bool
+    {
+        return !NpKeys::stringKeys();
+    }
 
     /**
      * @return BelongsToMany<NpRecord, $this>
