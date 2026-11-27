@@ -269,6 +269,49 @@ abstract class IdKindsConformanceTestCase extends Orchestra
 
     #[Test]
     #[Group('spec:fetching-filtering')]
+    public function aTraversalEndingOnARelationMatchesAUuidIdInEitherCase(): void
+    {
+        if (!StoredIdForms::isUuidLike($this->w('w1'))) {
+            self::markTestSkipped('Only a uuid id has a letter case to ignore.');
+        }
+
+        foreach ([\strtolower(...), \strtoupper(...)] as $case) {
+            self::assertSame($this->refs('b1', 'b2'), $this->ids('/api/ikBooks?filter[writerIs]=' . $case($this->w('w1'))));
+            self::assertSame($this->refs('b1', 'b2'), $this->ids('/api/ikBooks?filter[writerIn]=' . $case($this->w('w1'))));
+            self::assertSame($this->refs('b3'), $this->ids('/api/ikBooks?filter[writerIsNot]=' . $case($this->w('w1'))));
+            self::assertSame($this->refs('w2'), $this->ids('/api/ikWriters?filter[bookIs]=' . $case($this->w('b3'))));
+            self::assertSame($this->refs('w2'), $this->ids('/api/ikWriters?filter[bookIn]=' . $case($this->w('b3'))));
+        }
+    }
+
+    #[Test]
+    #[Group('spec:fetching-filtering')]
+    public function aPivotRowFilterMatchesAUuidKeyInEitherCase(): void
+    {
+        if ($this->store() === 'memory') {
+            self::markTestSkipped('The in-memory witness holds no pivot rows to filter.');
+        }
+        $stored = IdKinds::stored('w2');
+        if (!\is_string($stored) || !StoredIdForms::isUuidLike($stored)) {
+            self::markTestSkipped('Only a uuid key has a letter case to ignore.');
+        }
+
+        $peers = fn(string $query): array => $this->ids($this->path('ikWriters', 'w1', 'peers') . '?' . $query);
+        $other = \strtolower($stored) === $stored ? \strtoupper($stored) : \strtolower($stored);
+        foreach ([$other, $stored] as $sent) {
+            self::assertSame($this->refs('w2'), $peers('filter[memberKey]=' . $sent), $sent);
+            self::assertSame($this->refs('w2'), $peers('filter[memberKeys]=' . $sent), $sent);
+            self::assertSame([], $peers('filter[memberKeyNot]=' . $sent), $sent);
+            self::assertSame([], $peers('filter[memberKeysNot]=' . $sent), $sent);
+        }
+        $third = IdKinds::stored('w3');
+        self::assertIsString($third);
+        self::assertSame($this->refs('w2'), $peers('filter[memberKeyNot]=' . \strtoupper($third)));
+        self::assertSame($this->refs('w2'), $peers('filter[memberKeysNot]=' . \strtolower($third)));
+    }
+
+    #[Test]
+    #[Group('spec:fetching-filtering')]
     public function aMalformedKeyMatchesNothing(): void
     {
         // A filter whose value its id format refuses is a 400; any other matches no row,

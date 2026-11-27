@@ -15,6 +15,10 @@ use haddowg\JsonApi\Resource\Field\MorphMany;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Filter\Where;
 use haddowg\JsonApi\Resource\Filter\WhereIdIn;
+use haddowg\JsonApi\Resource\Filter\WhereIn;
+use haddowg\JsonApi\Resource\Filter\WhereNotIn;
+use haddowg\JsonApi\Resource\Filter\WhereThrough;
+use haddowg\JsonApi\Resource\Filter\WhereThroughIn;
 
 /**
  * A writer's books through a native `hasMany`, through a to-one foreign key and through a
@@ -55,6 +59,8 @@ final class IkWriterResource extends AbstractResource
             WhereIdIn::make('books')->through('books')->acceptsList(),
             Where::make('peerName', 'name')->through('peers'),
             Where::make('followerName', 'name')->through('followers'),
+            WhereThrough::make('bookIs', 'books'),
+            WhereThroughIn::make('bookIn', 'books'),
         ];
     }
 
@@ -73,6 +79,10 @@ final class IkWriterResource extends AbstractResource
             Where::make('rank', 'rank')->through('pivot'),
             WhereIdIn::make('seatedBy')->through('pivot.' . $parentSide),
             WhereIdIn::make('seating')->through('pivot.' . $memberSide),
+            Where::make('memberKey', 'pivot.' . $memberSide . '_id'),
+            Where::make('memberKeyNot', 'pivot.' . $memberSide . '_id', '<>'),
+            WhereIn::make('memberKeys', 'pivot.' . $memberSide . '_id'),
+            WhereNotIn::make('memberKeysNot', 'pivot.' . $memberSide . '_id'),
         );
     }
 
