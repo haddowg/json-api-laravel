@@ -28,7 +28,8 @@ use Illuminate\Support\ServiceProvider;
  * them by stored pairs as its `pinned`. Each shelf names its crate by a stored pair as `tagged`. Shelf 1's
  * crate and polymorphic holder are crate 1 and its alternative crate is 2; shelf 2's crate and
  * holder are crate 2 and it has no alternative. Crate 1 holds records 1 and 2, crate 2 holds records 1
- * and 3, so record 1 sits in both crates with a different pivot row in each.
+ * and 3, so record 1 sits in both crates with a different pivot row in each. The `Np*` actions
+ * answer with crates, shelves and bins built outside the include walk.
  *
  * @internal
  */
@@ -56,7 +57,19 @@ final class NestedPivotServiceProvider extends ServiceProvider
 
     public function register(): void
     {
-        JsonApi::register([NpRoomResource::class, NpShelfResource::class, NpCrateResource::class, NpRecordResource::class, NpBinResource::class]);
+        JsonApi::register([
+            NpRoomResource::class,
+            NpShelfResource::class,
+            NpCrateResource::class,
+            NpRecordResource::class,
+            NpBinResource::class,
+            NpMusterCrate::class,
+            NpMusterShelf::class,
+            NpMusterBin::class,
+            NpRollCrates::class,
+            NpMixBinsAndCrates::class,
+            NpQueueCrate::class,
+        ]);
 
         $store = config('nested_pivot.store');
         if ($store === 'memory' || $store === 'custom') {

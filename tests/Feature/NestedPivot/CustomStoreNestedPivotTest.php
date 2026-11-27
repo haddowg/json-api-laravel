@@ -53,4 +53,17 @@ final class CustomStoreNestedPivotTest extends NestedPivotTestCase
             self::assertSame([2], NpPivotStoreProvider::$batchSizes, $uri);
         }
     }
+
+    public function test_an_action_reads_the_pivot_map_once_for_every_parent(): void
+    {
+        foreach (['/api/npCrates/-actions/roll?include=records', '/api/npShelves/1/-actions/muster?include=crate.records,altCrate.records'] as $uri) {
+            NpPivotStoreProvider::$singleReads = 0;
+            NpPivotStoreProvider::$batchSizes = [];
+
+            $this->action($uri);
+
+            self::assertSame(0, NpPivotStoreProvider::$singleReads, $uri);
+            self::assertSame([2], NpPivotStoreProvider::$batchSizes, $uri);
+        }
+    }
 }

@@ -335,8 +335,8 @@ BelongsToMany::make('items', 'items')->fields(
 
 `meta.pivot` renders on the related endpoint, the relationship endpoint and the `200` linkage a
 relationship mutation answers with. Reads of a resource, a collection or a related endpoint,
-polymorphic ones included, and create and update responses, atomic results among them, also
-render it wherever the relation's linkage carries data, at any depth of `?include`: on each
+polymorphic ones included, create and update responses, atomic results among them, and a
+custom action's response, its `202` job resource included, also render it wherever the relation's linkage carries data, at any depth of `?include`: on each
 linkage member of `GET /playlists/1?include=orderedTracks`, of an include that reaches
 `orderedTracks` through other relations, and on each track those include. The stored values
 come from the join row the include's own query loads with each member, so they cost no extra
@@ -346,10 +346,10 @@ takes its values from one batched read for every parent in the document
 in `included`, so its `meta.pivot` there is one playlist's, while each playlist's linkage
 carries its own.
 
-Two places render no pivot on included linkage: a custom action's response, and the resources
-below a `MorphTo` or `MorphToMany` declared with `identifiedBy()` when one of its types encodes
-its ids with an id encoder. Core encodes the stored ids of such a relation only through the
-type's own resource, so the package builds it as it would without pivots.
+The resources below a `MorphTo` or `MorphToMany` declared with `identifiedBy()` render no pivot
+on included linkage when one of its types encodes its ids with an id encoder. Core encodes the
+stored ids of such a relation only through the type's own resource, so the package builds it as
+it would without pivots.
 
 Only a provider that reads pivot rows supplies the stored fields, so the in-memory provider
 renders none of them; it renders only the [computed fields](#computed-pivot-fields).

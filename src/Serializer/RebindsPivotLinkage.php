@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Serializer;
 
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
+use haddowg\JsonApi\Resource\RendersRelationsTrait;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
 use haddowg\JsonApi\Schema\Relationship\AbstractRelationship;
 
@@ -21,28 +22,31 @@ use haddowg\JsonApi\Schema\Relationship\AbstractRelationship;
  * {@see PivotParentSerializer} rebinds ONE relation (the relationship-linkage endpoint and the
  * relationship mutation echo). A read's document rebinds every relation through
  * {@see PivotLinkageParentSerializer} instead.
+ *
+ * The callables come from core's {@see RendersRelationsTrait::relationshipCallable()}, so a
+ * relation declared `notSparseField()` still renders whatever `fields[type]` lists.
  */
 trait RebindsPivotLinkage
 {
+    use RendersRelationsTrait;
+
     /**
      * The relationship callable for `$relation`, rebuilding its linkage through a
      * {@see PivotSubstitutingResolver} over `$pivotSerializer` so each identifier carries
      * its pivot meta. The callable matches the core relationship-builder signature core
      * invokes from a serializer's `getRelationships()` map.
      *
-     * @return \Closure(mixed, JsonApiRequestInterface, string): AbstractRelationship
+     * @return callable(mixed, JsonApiRequestInterface, string): AbstractRelationship
      */
     protected function pivotLinkageBuilder(
         RelationInterface $relation,
         SerializerResolverInterface $resolver,
         PivotMetaSerializer $pivotSerializer,
-    ): \Closure {
-        $substituting = new PivotSubstitutingResolver(
+    ): callable {
+        return self::relationshipCallable($relation, new PivotSubstitutingResolver(
             $resolver,
             $relation->relatedTypes()[0] ?? '',
             $pivotSerializer,
-        );
-
-        return static fn(mixed $model, JsonApiRequestInterface $req, string $name): AbstractRelationship => $relation->buildRelationship($model, $req, $substituting);
+        ));
     }
 }

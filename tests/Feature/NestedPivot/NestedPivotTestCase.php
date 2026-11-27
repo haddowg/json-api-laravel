@@ -241,6 +241,124 @@ abstract class NestedPivotTestCase extends Orchestra
         );
     }
 
+    public function test_a_not_sparse_pivot_relation_stays_outside_the_fieldset(): void
+    {
+        foreach ([$this->document('/api/npBins/1?include=keptRecords&fields[npBins]=title'), $this->action('/api/npBins/1/-actions/muster?include=keptRecords&fields[npBins]=title')] as $document) {
+            $data = $this->arrayAt($document['data'] ?? null);
+            self::assertSame(['title'], \array_keys($this->arrayAt($data['attributes'] ?? null)));
+            self::assertSame(['keptRecords'], \array_keys($this->arrayAt($data['relationships'] ?? null)));
+            self::assertSame(['1' => $this->keptPivot(1), '2' => $this->keptPivot(2)], $this->linkagePivots($data, 'keptRecords'));
+            self::assertSame($this->keptPivot(2), $this->includedPivot($document, 'npRecords', '2'));
+        }
+    }
+
+    public function test_an_action_response_renders_the_pivot_of_its_include(): void
+    {
+        $document = $this->action('/api/npCrates/1/-actions/muster?include=records');
+
+        self::assertSame(['1' => $this->pivot(1, 1), '2' => $this->pivot(1, 2)], $this->linkagePivots($this->arrayAt($document['data'] ?? null), 'records'));
+        self::assertSame($this->pivot(1, 1), $this->includedPivot($document, 'npRecords', '1'));
+        self::assertSame($this->pivot(1, 2), $this->includedPivot($document, 'npRecords', '2'));
+    }
+
+    public function test_an_action_response_renders_the_pivot_of_a_nested_include(): void
+    {
+        $document = $this->action('/api/npShelves/2/-actions/muster?include=crate.records');
+
+        self::assertSame(['1' => $this->pivot(2, 1), '3' => $this->pivot(2, 3)], $this->linkagePivots($this->included($document, 'npCrates', '2'), 'records'));
+        self::assertSame($this->pivot(2, 1), $this->includedPivot($document, 'npRecords', '1'));
+        self::assertSame($this->pivot(2, 3), $this->includedPivot($document, 'npRecords', '3'));
+    }
+
+    public function test_an_action_response_renders_the_pivot_of_a_relation_with_data(): void
+    {
+        $document = $this->action('/api/npBins/2/-actions/muster');
+
+        self::assertSame(
+            ['1' => $this->binPivot('Beta', 1, 5), '3' => $this->binPivot('Beta', 3, 6)],
+            $this->linkagePivots($this->arrayAt($document['data'] ?? null), 'records'),
+        );
+        self::assertArrayNotHasKey('included', $document);
+    }
+
+    public function test_a_collection_action_response_renders_each_parents_pivot(): void
+    {
+        $document = $this->action('/api/npCrates/-actions/roll?include=records');
+
+        self::assertSame(['1' => $this->pivot(1, 1), '2' => $this->pivot(1, 2)], $this->linkagePivots($this->primary($document, '1'), 'records'));
+        self::assertSame(['1' => $this->pivot(2, 1), '3' => $this->pivot(2, 3)], $this->linkagePivots($this->primary($document, '2'), 'records'));
+        self::assertSame($this->pivot(2, 3), $this->includedPivot($document, 'npRecords', '3'));
+    }
+
+    public function test_a_mixed_type_action_response_renders_each_types_pivot(): void
+    {
+        $document = $this->action('/api/npCrates/-actions/mix?include=records');
+
+        $crate = $this->primaryOf($document, 'npCrates', '1');
+        $bin = $this->primaryOf($document, 'npBins', '2');
+        self::assertSame(['1' => $this->pivot(1, 1), '2' => $this->pivot(1, 2)], $this->linkagePivots($crate, 'records'));
+        self::assertSame(['1' => $this->binPivot('Beta', 1, 5), '3' => $this->binPivot('Beta', 3, 6)], $this->linkagePivots($bin, 'records'));
+        self::assertSame($this->pivot(1, 2), $this->includedPivot($document, 'npRecords', '2'));
+    }
+
+    public function test_an_accepted_actions_job_resource_renders_its_pivot(): void
+    {
+        $document = $this->action('/api/npCrates/2/-actions/queue?include=records', 202);
+
+        self::assertSame(['1' => $this->pivot(2, 1), '3' => $this->pivot(2, 3)], $this->linkagePivots($this->arrayAt($document['data'] ?? null), 'records'));
+        self::assertSame($this->pivot(2, 3), $this->includedPivot($document, 'npRecords', '3'));
+    }
+
+    public function test_a_sparse_fieldset_on_an_action_response_keeps_the_pivot(): void
+    {
+        $document = $this->action('/api/npShelves/1/-actions/muster?include=crate.records&fields[npShelves]=crate&fields[npCrates]=records&fields[npRecords]=title');
+
+        $crate = $this->included($document, 'npCrates', '1');
+        self::assertArrayNotHasKey('attributes', $crate);
+        self::assertSame(['1' => $this->pivot(1, 1), '2' => $this->pivot(1, 2)], $this->linkagePivots($crate, 'records'));
+
+        $record = $this->included($document, 'npRecords', '2');
+        self::assertSame(['title' => 'Two'], $record['attributes'] ?? null);
+        self::assertSame($this->pivot(1, 2), $this->includedPivot($document, 'npRecords', '2'));
+
+        // A shelf's `pinnedCrate` is declared notSparseField().
+        $document = $this->action('/api/npShelves/1/-actions/muster?include=pinnedCrate.records&fields[npShelves]=name');
+        self::assertSame(['pinnedCrate'], \array_keys($this->arrayAt(\data_get($document, 'data.relationships'))));
+        self::assertSame(['1' => $this->pivot(1, 1), '2' => $this->pivot(1, 2)], $this->linkagePivots($this->included($document, 'npCrates', '1'), 'records'));
+    }
+
+    /**
+     * The `meta.pivot` bin 1's `keptRecords` relation renders for record `$record`.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function keptPivot(int $record): ?array
+    {
+        foreach (NestedPivotServiceProvider::LINKS as [$crate, $linkRecord, $position]) {
+            if ($crate === 1 && $linkRecord === $record) {
+                return $this->storesWrittenPivots() ? ['position' => $position] : null;
+            }
+        }
+
+        self::fail(\sprintf('Bin 1 holds no record %d.', $record));
+    }
+
+    /**
+     * The document a custom action answers with.
+     *
+     * @return array<mixed>
+     */
+    protected function action(string $uri, int $status = 200): array
+    {
+        $response = $this->call('POST', $uri, [], [], [], [
+            'HTTP_ACCEPT' => self::MEDIA_TYPE,
+            'CONTENT_TYPE' => self::MEDIA_TYPE,
+        ]);
+        self::assertSame($status, $response->getStatusCode(), $uri . ': ' . $response->getContent());
+
+        return $this->arrayAt($response->json());
+    }
+
     /**
      * The `meta.pivot` a bin's `records` relation renders for a record at `$position`.
      *
@@ -354,6 +472,22 @@ abstract class NestedPivotTestCase extends Orchestra
         }
 
         self::fail('No primary resource ' . $id . '.');
+    }
+
+    /**
+     * @param array<mixed> $document
+     *
+     * @return array<mixed>
+     */
+    private function primaryOf(array $document, string $type, string $id): array
+    {
+        foreach ($this->arrayAt($document['data'] ?? null) as $resource) {
+            if (\data_get($resource, 'type') === $type && \data_get($resource, 'id') === $id) {
+                return $this->arrayAt($resource);
+            }
+        }
+
+        self::fail(\sprintf('No primary %s %s.', $type, $id));
     }
 
     /**

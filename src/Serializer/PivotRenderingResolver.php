@@ -15,6 +15,7 @@ use haddowg\JsonApi\Resource\ProvidesRelationAuthorizerInterface;
 use haddowg\JsonApi\Resource\ProvidesResourcesInterface;
 use haddowg\JsonApi\Resource\RejectsReadOnlyAttributesInterface;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
+use haddowg\JsonApi\Serializer\DeclaresRelationsInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 
 /**
@@ -71,6 +72,28 @@ final class PivotRenderingResolver implements SerializerResolverInterface, Provi
         return $this->serializers[$type] ??= $this->reachesPivot($type)
             ? new PivotLinkageParentSerializer($this->inner->serializerFor($type), $this)
             : $this->inner->serializerFor($type);
+    }
+
+    /**
+     * `$serializer` decorated so the `$type` resources it renders build their relationships
+     * through this resolver, for a document this resolver didn't build, such as a custom
+     * action's. The relations come from the server's `$type` resource when `$serializer`
+     * doesn't declare them. With `$onlyType`, `$serializer` renders other types too and
+     * the decorator leaves their resources as `$serializer` renders them. A type that
+     * reaches no pivot relation, or that the server doesn't serve, keeps `$serializer`.
+     */
+    public function decorate(SerializerInterface $serializer, string $type, bool $onlyType = false): SerializerInterface
+    {
+        if (!$this->inner->hasSerializerFor($type) || !$this->reachesPivot($type)) {
+            return $serializer;
+        }
+
+        $declaring = !$onlyType && $serializer instanceof DeclaresRelationsInterface ? $serializer : $this->inner->serializerFor($type);
+        if (!$declaring instanceof DeclaresRelationsInterface) {
+            return $serializer;
+        }
+
+        return new PivotLinkageParentSerializer($serializer, $this, $declaring, $onlyType ? $type : null);
     }
 
     public function hasSerializerFor(string $type): bool
