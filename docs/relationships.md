@@ -346,11 +346,6 @@ takes its values from one batched read for every parent in the document
 in `included`, so its `meta.pivot` there is one playlist's, while each playlist's linkage
 carries its own.
 
-The resources below a `MorphTo` or `MorphToMany` declared with `identifiedBy()` render no pivot
-on included linkage when one of its types encodes its ids with an id encoder. Core encodes the
-stored ids of such a relation only through the type's own resource, so the package builds it as
-it would without pivots.
-
 Only a provider that reads pivot rows supplies the stored fields, so the in-memory provider
 renders none of them; it renders only the [computed fields](#computed-pivot-fields).
 

@@ -65,6 +65,7 @@ final class NestedPivotServiceProvider extends ServiceProvider
             NpBinResource::class,
             NpMusterCrate::class,
             NpMusterShelf::class,
+            NpMusterRoom::class,
             NpMusterBin::class,
             NpRollCrates::class,
             NpMixBinsAndCrates::class,

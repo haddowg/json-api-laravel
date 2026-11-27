@@ -161,6 +161,28 @@ abstract class EloquentKeyedNestedPivotTestCase extends Orchestra
         self::assertSame($this->pivot(2, 1), \data_get($this->resource($job['included'] ?? null, 'npRecords', NpKeys::wire('r', 1)), 'meta.pivot'));
     }
 
+    public function test_an_identified_morph_to_renders_its_wire_id_and_the_pivot_below_it(): void
+    {
+        foreach ([$this->document('/api/npShelves/2?include=tagged.records'), $this->action('/api/npShelves/2/-actions/muster?include=tagged.records')] as $document) {
+            self::assertSame(['type' => 'npCrates', 'id' => NpKeys::wire('c', 2)], \data_get($document, 'data.relationships.tagged.data'));
+            self::assertSame($this->pivots(2), $this->linkagePivots($this->resource($document['included'] ?? null, 'npCrates', NpKeys::wire('c', 2)), 'records'));
+            self::assertSame($this->pivot(2, 3), \data_get($this->resource($document['included'] ?? null, 'npRecords', NpKeys::wire('r', 3)), 'meta.pivot'));
+        }
+    }
+
+    public function test_an_identified_morph_to_many_renders_its_wire_ids_and_the_pivot_below_it(): void
+    {
+        foreach ([$this->document('/api/npRooms/1?include=pinned.records'), $this->action('/api/npRooms/1/-actions/muster?include=pinned.records')] as $document) {
+            self::assertSame(
+                [['type' => 'npCrates', 'id' => NpKeys::wire('c', 1)], ['type' => 'npCrates', 'id' => NpKeys::wire('c', 2)]],
+                \data_get($document, 'data.relationships.pinned.data'),
+            );
+            self::assertSame($this->pivots(1), $this->linkagePivots($this->resource($document['included'] ?? null, 'npCrates', NpKeys::wire('c', 1)), 'records'));
+            self::assertSame($this->pivots(2), $this->linkagePivots($this->resource($document['included'] ?? null, 'npCrates', NpKeys::wire('c', 2)), 'records'));
+            self::assertSame($this->pivot(1, 2), \data_get($this->resource($document['included'] ?? null, 'npRecords', NpKeys::wire('r', 2)), 'meta.pivot'));
+        }
+    }
+
     public function test_the_batched_pivot_read_keys_each_parent_and_member_by_its_wire_id(): void
     {
         $relation = null;
