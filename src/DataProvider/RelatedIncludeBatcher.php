@@ -134,6 +134,14 @@ final class RelatedIncludeBatcher
      */
     private ?RelationshipLinkageInterface $windowed = null;
 
+    /**
+     * The resources the include walk visited since {@see forgetLoaded()}, keyed by type then
+     * object id.
+     *
+     * @var array<string, array<int, object>>
+     */
+    private array $loaded = [];
+
     private readonly ForeignKeyReads $foreignKeys;
 
     public function __construct(
@@ -157,6 +165,26 @@ final class RelatedIncludeBatcher
     public function pagination(): ?WindowedRelationshipPagination
     {
         return $this->pages === [] ? null : new WindowedRelationshipPagination($this->pages);
+    }
+
+    /**
+     * The resources of `$type` the include walk visited since {@see forgetLoaded()}, at any
+     * level: the parents a pivot read batches over.
+     *
+     * @return list<object>
+     */
+    public function loaded(string $type): array
+    {
+        return \array_values($this->loaded[$type] ?? []);
+    }
+
+    /**
+     * Forgets the resources the include walk visited, so a long-lived batcher holds none of
+     * an earlier request's.
+     */
+    public function forgetLoaded(): void
+    {
+        $this->loaded = [];
     }
 
     /**
@@ -246,6 +274,10 @@ final class RelatedIncludeBatcher
     ): void {
         if ($entities === [] || !$server->hasSerializerFor($type)) {
             return;
+        }
+
+        foreach ($entities as $entity) {
+            $this->loaded[$type][\spl_object_id($entity)] = $entity;
         }
 
         $relations = $this->types->readableRelationsFor($server, $type, $request);

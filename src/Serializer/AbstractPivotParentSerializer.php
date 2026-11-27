@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Serializer;
 
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
+use haddowg\JsonApi\Resource\Field\NestedFieldset;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApi\Resource\ResourceMeta;
+use haddowg\JsonApi\Resource\SerializerResolverAwareInterface;
+use haddowg\JsonApi\Resource\SerializerResolverInterface;
 use haddowg\JsonApi\Schema\Link\ResourceLinks;
 use haddowg\JsonApi\Serializer\CountableControlsInterface;
 use haddowg\JsonApi\Serializer\CountableSelfInterface;
@@ -18,6 +21,7 @@ use haddowg\JsonApi\Serializer\RendersDeclaredLinksInterface;
 use haddowg\JsonApi\Serializer\RendersResourceMetaInterface;
 use haddowg\JsonApi\Serializer\SelfLinkAwareInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
+use haddowg\JsonApi\Serializer\SerializesNestedFieldsetsInterface;
 use haddowg\JsonApi\Serializer\UriTypeAwareInterface;
 
 /**
@@ -30,7 +34,8 @@ use haddowg\JsonApi\Serializer\UriTypeAwareInterface;
  * inner serializer (an {@see \haddowg\JsonApi\Resource\AbstractResource}) implements —
  * counting ({@see CountableControlsInterface}/{@see CountableSelfInterface}),
  * strict-fieldset/eager/relation declarations, the self-link toggle, declared links and the URI
- * type, which keeps the relationship links on the type's own path — by implementing each and
+ * type, which keeps the relationship links on the type's own path, and the injected resolver,
+ * which carries the resource links a contributor adds — by implementing each and
  * `instanceof`-delegating. A decorator that dropped one of these would silently
  * break the corresponding feature on the decorated render (e.g. core's count gate reads
  * {@see CountableControlsInterface} off the *primary* serializer, so a non-forwarding
@@ -49,7 +54,9 @@ abstract class AbstractPivotParentSerializer implements
     DeclaresRelationsInterface,
     SelfLinkAwareInterface,
     RendersDeclaredLinksInterface,
-    UriTypeAwareInterface
+    UriTypeAwareInterface,
+    SerializerResolverAwareInterface,
+    SerializesNestedFieldsetsInterface
 {
     use RebindsPivotLinkage;
 
@@ -196,5 +203,33 @@ abstract class AbstractPivotParentSerializer implements
         $inner = $this->inner();
 
         return $inner instanceof UriTypeAwareInterface ? $inner->uriType() : '';
+    }
+
+    public function setSerializerResolver(SerializerResolverInterface $resolver): void
+    {
+        $inner = $this->inner();
+        if ($inner instanceof SerializerResolverAwareInterface) {
+            $inner->setSerializerResolver($resolver);
+        }
+    }
+
+    public function serializerResolver(): ?SerializerResolverInterface
+    {
+        $inner = $this->inner();
+
+        return $inner instanceof SerializerResolverAwareInterface ? $inner->serializerResolver() : null;
+    }
+
+    public function getNestedFieldsetAttribute(mixed $object, JsonApiRequestInterface $request, string $name, NestedFieldset $fieldset): mixed
+    {
+        $inner = $this->inner();
+        if ($inner instanceof SerializesNestedFieldsetsInterface) {
+            return $inner->getNestedFieldsetAttribute($object, $request, $name, $fieldset);
+        }
+
+        // The value core reads when the serializer selects no keys itself, which it then trims.
+        $attribute = $this->getAttributes($object, $request)[$name] ?? null;
+
+        return $attribute === null ? null : $attribute($object, $request, $name);
     }
 }
