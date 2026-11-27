@@ -7,9 +7,6 @@ namespace haddowg\JsonApiLaravel\Serializer;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\ResourceMeta;
-use haddowg\JsonApi\Schema\Link\ResourceLinks;
-use haddowg\JsonApi\Serializer\IncludeControlsInterface;
-use haddowg\JsonApi\Serializer\RendersDeclaredLinksInterface;
 use haddowg\JsonApi\Serializer\RendersResourceMetaInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 
@@ -18,11 +15,14 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  * per-member pivot values as `meta.pivot`, mirroring how core's
  * {@see \haddowg\JsonApi\Serializer\PolymorphicSerializer} decorates a polymorphic relation
  * (the Laravel twin of the Symfony bundle's serializer). It wraps the related type's real
- * serializer and delegates everything to it EXCEPT {@see getMeta()} and
+ * serializer and delegates everything to it, every optional serializer interface included
+ * ({@see AbstractPivotParentSerializer}), EXCEPT {@see getMeta()} and
  * {@see renderResourceMeta()}, where it merges the
  * member's pivot values (`pivotMap[id]`, read off Eloquent's pivot accessor via
  * {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider::fetchRelationshipPivot()})
- * under a top-level `pivot` key into the inner serializer's meta.
+ * under a top-level `pivot` key into the inner serializer's meta. Bound for one parent through
+ * an include ({@see PivotRenderingResolver}), it has no map and reads each member's stored
+ * values through `$storedPivotOf` instead.
  *
  * The transformer renders a full resource (the related endpoint `GET /{type}/{id}/{rel}`)
  * through `renderResourceMeta()`, which adds the pivot to the inner serializer's declared
@@ -47,7 +47,7 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  * The `pivot` key keeps the values namespaced so they never collide with the member
  * resource's own meta, and so a client can tell pivot data from intrinsic meta.
  */
-final class PivotMetaSerializer implements SerializerInterface, IncludeControlsInterface, RendersDeclaredLinksInterface, RendersResourceMetaInterface
+final class PivotMetaSerializer extends AbstractPivotParentSerializer
 {
     /**
      * @param SerializerInterface                 $inner    the related type's real serializer
@@ -55,6 +55,7 @@ final class PivotMetaSerializer implements SerializerInterface, IncludeControlsI
      * @param BelongsToMany|null                  $relation       the pivot relation whose fields decide what renders; without it the map renders as given
      * @param object|null                         $parent         the parent whose relation renders, which computed pivot fields read; without it they render nothing
      * @param string|null                         $outputTimezone the server's default output zone for computed date fields
+     * @param (\Closure(object): ?array<string, mixed>)|null $storedPivotOf reads a member's stored values when the map holds none for it, `null` when it has no stored row
      */
     public function __construct(
         private readonly SerializerInterface $inner,
@@ -62,17 +63,8 @@ final class PivotMetaSerializer implements SerializerInterface, IncludeControlsI
         private readonly ?BelongsToMany $relation = null,
         private readonly ?object $parent = null,
         private readonly ?string $outputTimezone = null,
+        private readonly ?\Closure $storedPivotOf = null,
     ) {}
-
-    public function getType(mixed $object): string
-    {
-        return $this->inner->getType($object);
-    }
-
-    public function getId(mixed $object): string
-    {
-        return $this->inner->getId($object);
-    }
 
     public function getMeta(mixed $object, JsonApiRequestInterface $request): array
     {
@@ -97,7 +89,8 @@ final class PivotMetaSerializer implements SerializerInterface, IncludeControlsI
      */
     private function withPivot(array $meta, mixed $object, JsonApiRequestInterface $request): array
     {
-        $pivot = $this->pivotMap[$this->inner->getId($object)] ?? null;
+        $pivot = $this->pivotMap[$this->inner->getId($object)]
+            ?? ($this->storedPivotOf !== null && \is_object($object) ? ($this->storedPivotOf)($object) : null);
         $computes = $this->relation !== null && $this->parent !== null && $this->relation->computedPivotFields() !== [];
         if ($this->relation !== null && ($pivot !== null || $computes)) {
             $stored = $pivot !== null;
@@ -120,58 +113,13 @@ final class PivotMetaSerializer implements SerializerInterface, IncludeControlsI
         return $meta;
     }
 
-    public function getLinks(mixed $object, JsonApiRequestInterface $request): ?ResourceLinks
-    {
-        return $this->inner->getLinks($object, $request);
-    }
-
-    public function renderDeclaredLinks(mixed $object, JsonApiRequestInterface $request): array
-    {
-        return $this->inner instanceof RendersDeclaredLinksInterface
-            ? $this->inner->renderDeclaredLinks($object, $request)
-            : [];
-    }
-
-    public function getAttributes(mixed $object, JsonApiRequestInterface $request): array
-    {
-        return $this->inner->getAttributes($object, $request);
-    }
-
-    public function getDefaultIncludedRelationships(mixed $object): array
-    {
-        return $this->inner->getDefaultIncludedRelationships($object);
-    }
-
     public function getRelationships(mixed $object, JsonApiRequestInterface $request): array
     {
         return $this->inner->getRelationships($object, $request);
     }
 
-    public function getNonIncludableRelationships(JsonApiRequestInterface $request, mixed $object): array
+    protected function inner(): SerializerInterface
     {
-        return $this->inner instanceof IncludeControlsInterface
-            ? $this->inner->getNonIncludableRelationships($request, $object)
-            : [];
-    }
-
-    public function maxIncludeDepth(): ?int
-    {
-        return $this->inner instanceof IncludeControlsInterface
-            ? $this->inner->maxIncludeDepth()
-            : null;
-    }
-
-    public function getAllowedIncludePaths(): ?array
-    {
-        return $this->inner instanceof IncludeControlsInterface
-            ? $this->inner->getAllowedIncludePaths()
-            : null;
-    }
-
-    public function getExcludedIncludePaths(): array
-    {
-        return $this->inner instanceof IncludeControlsInterface
-            ? $this->inner->getExcludedIncludePaths()
-            : [];
+        return $this->inner;
     }
 }

@@ -9,14 +9,7 @@ use haddowg\JsonApi\Resource\DeclaresSingletonTypesInterface;
 use haddowg\JsonApi\Resource\ProvidesOutputTimezoneInterface;
 use haddowg\JsonApi\Resource\ProvidesRelationAuthorizerInterface;
 use haddowg\JsonApi\Resource\RejectsReadOnlyAttributesInterface;
-use haddowg\JsonApi\Resource\RelationAuthorizerInterface;
 use haddowg\JsonApi\Resource\SerializerResolverInterface;
-use haddowg\JsonApi\Resource\SingletonContext;
-use haddowg\JsonApi\Serializer\RelationshipCountInterface;
-use haddowg\JsonApi\Serializer\RelationshipLinkageInterface;
-use haddowg\JsonApi\Serializer\RelationshipLoadStateInterface;
-use haddowg\JsonApi\Serializer\RelationshipPaginationInterface;
-use haddowg\JsonApi\Serializer\ResourceLinkContributorInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
 
 /**
@@ -39,6 +32,8 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  */
 final class PivotSubstitutingResolver implements SerializerResolverInterface, ProvidesOutputTimezoneInterface, ProvidesRelationAuthorizerInterface, RejectsReadOnlyAttributesInterface, DeclaresRelatedOnlyTypesInterface, DeclaresSingletonTypesInterface
 {
+    use ForwardsResolverSeams;
+
     public function __construct(
         private readonly SerializerResolverInterface $inner,
         private readonly string $type,
@@ -55,58 +50,8 @@ final class PivotSubstitutingResolver implements SerializerResolverInterface, Pr
         return $type === $this->type ? true : $this->inner->hasSerializerFor($type);
     }
 
-    public function relationshipLoadState(): ?RelationshipLoadStateInterface
+    protected function decorated(): SerializerResolverInterface
     {
-        return $this->inner->relationshipLoadState();
-    }
-
-    public function relationshipCount(): ?RelationshipCountInterface
-    {
-        return $this->inner->relationshipCount();
-    }
-
-    public function relationshipPagination(): ?RelationshipPaginationInterface
-    {
-        return $this->inner->relationshipPagination();
-    }
-
-    public function relationshipLinkage(): ?RelationshipLinkageInterface
-    {
-        return $this->inner->relationshipLinkage();
-    }
-
-    public function resourceLinkContributor(): ?ResourceLinkContributorInterface
-    {
-        return $this->inner->resourceLinkContributor();
-    }
-
-    public function outputTimezone(): ?string
-    {
-        return $this->inner instanceof ProvidesOutputTimezoneInterface ? $this->inner->outputTimezone() : null;
-    }
-
-    public function relationAuthorizer(): ?RelationAuthorizerInterface
-    {
-        return $this->inner instanceof ProvidesRelationAuthorizerInterface ? $this->inner->relationAuthorizer() : null;
-    }
-
-    public function rejectsReadOnlyAttributes(): bool
-    {
-        return $this->inner instanceof RejectsReadOnlyAttributesInterface && $this->inner->rejectsReadOnlyAttributes();
-    }
-
-    public function isRelatedOnly(string $type): bool
-    {
-        return $this->inner instanceof DeclaresRelatedOnlyTypesInterface && $this->inner->isRelatedOnly($type);
-    }
-
-    public function isSingleton(string $type): bool
-    {
-        return $this->inner instanceof DeclaresSingletonTypesInterface && $this->inner->isSingleton($type);
-    }
-
-    public function resolveSingletonId(string $type, SingletonContext $context): ?string
-    {
-        return $this->inner instanceof DeclaresSingletonTypesInterface ? $this->inner->resolveSingletonId($type, $context) : null;
+        return $this->inner;
     }
 }

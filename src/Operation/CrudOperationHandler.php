@@ -140,6 +140,7 @@ use haddowg\JsonApiLaravel\Event\BeforeUpdateEvent;
 use haddowg\JsonApiLaravel\Serializer\BatchedRelationshipCount;
 use haddowg\JsonApiLaravel\Serializer\PivotMetaSerializer;
 use haddowg\JsonApiLaravel\Serializer\PivotParentSerializer;
+use haddowg\JsonApiLaravel\Serializer\PivotRenderingResolver;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipCount;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipLinkage;
 use haddowg\JsonApiLaravel\Serializer\RequestScopedRelationshipPagination;
@@ -611,7 +612,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $activatedProfiles = $this->loadRelations($server, [$model], $type, $request);
             $this->applyRelationshipCounts($server, $type, [$model], $request);
 
-            $response = DataResponse::fromResource($model, $serializer);
+            $response = DataResponse::fromResource($model, $this->pivotRendering($server)->serializerFor($type));
 
             // The after-fetch-one lifecycle hook (post-fetch) may replace the response
             // — a custom-action shaping of the read. Skipped for a programmatic
@@ -710,6 +711,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // activated, surfaced onto each collection response below.
         $activatedProfiles = $this->loadRelations($server, $items, $type, $request);
         $this->applyRelationshipCounts($server, $type, $items, $request);
+        $serializer = $this->pivotRendering($server)->serializerFor($type);
 
         if ($singular) {
             return $this->afterFetchCollection(DataResponse::fromResource($items[0] ?? null, $serializer), $type, $request, $items, null, $activatedProfiles);
@@ -917,7 +919,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $serializer = match (true) {
                 $identifiedTypes !== null => $this->identifiedSerializer($relation, $server, $identifiedTypes, $identifiedPivots),
                 $polymorphic => $this->polymorphicSerializer($relation, $server),
-                default => $server->serializerFor($relatedType),
+                default => $this->pivotRendering($server)->serializerFor($relatedType),
             };
 
             $items = $this->materialize($result);
@@ -1049,9 +1051,11 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $polymorphic = false;
         }
 
-        $serializer = $pair !== null
-            ? $server->serializerFor($relatedType)
-            : $relation->resolveSerializer($related, $server) ?? $server->serializerFor($relatedType);
+        $serializer = match (true) {
+            $pair !== null => $server->serializerFor($relatedType),
+            !$polymorphic => $this->pivotRendering($server)->serializerFor($relatedType),
+            default => $relation->resolveSerializer($related, $server) ?? $server->serializerFor($relatedType),
+        };
 
         // Preload the related resource's own ?include tree (a single related object as a
         // one-element list) and install its `?withCount` counts, so a `?withCount=<rel>` named
@@ -1865,6 +1869,19 @@ final class CrudOperationHandler implements OperationHandlerInterface
             ? $pivotProvider->pivotMapOf($parent, $relation, $members)
             : $this->providers->forType($type)->fetchRelationshipPivot($type, $parent, $relation);
 
+        return $this->formatPivotDates($server, $relation, $pivots);
+    }
+
+    /**
+     * `$pivots` with each `\DateTimeInterface` a `DateTime` pivot field holds rendered in the
+     * field's format and zone.
+     *
+     * @param array<string, array<string, mixed>> $pivots
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function formatPivotDates(Server $server, BelongsToMany $relation, array $pivots): array
+    {
         $dates = [];
         foreach ($relation->pivotFields() as $field) {
             if ($server->outputTimezone() !== null && $field instanceof AcceptsDefaultOutputTimezoneInterface) {
@@ -1889,6 +1906,41 @@ final class CrudOperationHandler implements OperationHandlerInterface
         }
 
         return $pivots;
+    }
+
+    /**
+     * The resolver a read's document builds its relationships through, so every pivot
+     * relation the include tree reaches renders `meta.pivot`: the stored values from the
+     * members its include loaded, the computed ones from each parent and member.
+     */
+    private function pivotRendering(Server $server): PivotRenderingResolver
+    {
+        return new PivotRenderingResolver(
+            $server,
+            fn(string $type): array => $this->types->relationsFor($server, $type),
+            fn(object $parent, BelongsToMany $relation): ?\Closure => $this->storedPivotReader($server, $parent, $relation),
+        );
+    }
+
+    /**
+     * Reads one member's stored pivot values for `$parent`'s `$relation` off the pivot row
+     * the query that loaded the member hydrated, or `null` when the related provider reads no
+     * pivot columns for it.
+     *
+     * @return (\Closure(object): ?array<string, mixed>)|null
+     */
+    private function storedPivotReader(Server $server, object $parent, BelongsToMany $relation): ?\Closure
+    {
+        $provider = $this->pivotQueryingProvider($parent, $relation);
+        if ($provider === null) {
+            return null;
+        }
+
+        return function (object $member) use ($server, $provider, $parent, $relation): ?array {
+            $pivots = $this->formatPivotDates($server, $relation, $provider->pivotMapOf($parent, $relation, [$member]));
+
+            return $pivots === [] ? null : \array_values($pivots)[0];
+        };
     }
 
     /**

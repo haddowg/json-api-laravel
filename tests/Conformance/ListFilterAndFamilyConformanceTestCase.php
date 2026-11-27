@@ -285,7 +285,7 @@ abstract class ListFilterAndFamilyConformanceTestCase extends Orchestra
         }
 
         if ($this->queriesPivotColumns()) {
-            self::assertSame([['type' => 'books', 'id' => '2']], $responses['rank'] ?? null);
+            self::assertSame([['type' => 'books', 'id' => '2', 'meta' => ['pivot' => ['rank' => 1]]]], $responses['rank'] ?? null);
             self::assertSame($responses['rank'] ?? null, $responses['join.rank'] ?? null);
         }
     }
