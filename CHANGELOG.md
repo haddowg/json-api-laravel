@@ -1,5 +1,37 @@
 # Changelog
 
+## [2.26.0](https://github.com/haddowg/json-api-laravel/compare/v2.25.0...v2.26.0) (2026-11-28)
+
+
+### Features
+
+* declare supportsPivot, fetchRelatedPivotCollection and fetchRelatedPivotMap on PivotAwareProviderInterface as the bundle does, which a custom provider implementing it must now add ([80bee3b](https://github.com/haddowg/json-api-laravel/commit/80bee3bc50d40c813f78a6077ed3f1619086389c))
+* deprecate QueriesPivotColumnsInterface with the Eloquent provider's queriesPivotColumns and pivotMapOf, which the package no longer consults; filter, sort and page by pivot fields through supportsPivot and fetchRelatedPivotCollection ([80bee3b](https://github.com/haddowg/json-api-laravel/commit/80bee3bc50d40c813f78a6077ed3f1619086389c))
+* pass the served parent type first to fetchRelatedPivotMap, a signature change a custom PivotAwareProviderInterface implementation must follow ([80bee3b](https://github.com/haddowg/json-api-laravel/commit/80bee3bc50d40c813f78a6077ed3f1619086389c))
+
+
+### Bug Fixes
+
+* fail the boot and jsonapi:optimize for a relation with stored pivot fields whose Eloquent parent model's relation method is not a belongsToMany ([80bee3b](https://github.com/haddowg/json-api-laravel/commit/80bee3bc50d40c813f78a6077ed3f1619086389c))
+* fail the boot and jsonapi:optimize for a relation with stored pivot fields whose related provider doesn't implement PivotAwareProviderInterface ([80bee3b](https://github.com/haddowg/json-api-laravel/commit/80bee3bc50d40c813f78a6077ed3f1619086389c))
+* fail the render with a reported 500 for a member of a stored pivot relation that has no pivot row ([80bee3b](https://github.com/haddowg/json-api-laravel/commit/80bee3bc50d40c813f78a6077ed3f1619086389c))
+* find a pivot row whose provider keys it by the stored id behind an id encoder ([80bee3b](https://github.com/haddowg/json-api-laravel/commit/80bee3bc50d40c813f78a6077ed3f1619086389c))
+* match a uuid-shaped value in either case on Where, WhereIn and WhereNotIn over a plain column ([15d7989](https://github.com/haddowg/json-api-laravel/commit/15d7989764344c0a79e0cb7503d86b401b51422e))
+* name the relation and the parent's provider when the Eloquent provider is asked for the pivot rows of a parent that isn't an Eloquent model ([80bee3b](https://github.com/haddowg/json-api-laravel/commit/80bee3bc50d40c813f78a6077ed3f1619086389c))
+* read stored pivot values from the related type's provider on the related and relationship endpoints, as a document's linkage does ([80bee3b](https://github.com/haddowg/json-api-laravel/commit/80bee3bc50d40c813f78a6077ed3f1619086389c))
+* render an empty meta.pivot object for a member whose every pivot field is hidden ([80bee3b](https://github.com/haddowg/json-api-laravel/commit/80bee3bc50d40c813f78a6077ed3f1619086389c))
+* store pivot rows in the in-memory provider and render their stored fields on every path ([80bee3b](https://github.com/haddowg/json-api-laravel/commit/80bee3bc50d40c813f78a6077ed3f1619086389c))
+
+
+### Performance Improvements
+
+* skip the profile window for a relation the sparse fieldset leaves out ([80bee3b](https://github.com/haddowg/json-api-laravel/commit/80bee3bc50d40c813f78a6077ed3f1619086389c))
+
+
+### Miscellaneous Chores
+
+* pin the bundle's documents to 2.26.0 ([#349](https://github.com/haddowg/json-api-laravel/issues/349)) ([f8a42d5](https://github.com/haddowg/json-api-laravel/commit/f8a42d51142a1366d453ab04e5e159223d500bbc))
+
 ## [2.25.0](https://github.com/haddowg/json-api-laravel/compare/v2.24.0...v2.25.0) (2026-11-27)
 
 
