@@ -1313,7 +1313,54 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             )),
         };
 
+        if (($sqlOperator === '=' || $sqlOperator === '<>') && \is_string($expected) && StoredIdForms::isUuidLike($expected)) {
+            $forms = $this->caseForms($query, $column, [$expected]);
+            if (\count($forms) > 1) {
+                $this->whereIn($query, $column, $forms, $sqlOperator === '<>');
+
+                return;
+            }
+        }
+
         $this->compare($query, $column, $sqlOperator, $expected);
+    }
+
+    /**
+     * `$values` with each uuid-like string in both cases a text column may keep it in, so
+     * an equality filter binds every form rather than lowering the column and an index
+     * still serves the query. A column PostgreSQL keeps as a native uuid compares without
+     * case already, so its values are left alone, and so is every other value.
+     *
+     * @param Builder<Model> $query
+     * @param list<mixed>    $values
+     *
+     * @return list<mixed>
+     */
+    private function caseForms(Builder $query, string $column, array $values): array
+    {
+        if (\array_filter($values, static fn(mixed $value): bool => \is_string($value) && StoredIdForms::isUuidLike($value)) === []) {
+            return $values;
+        }
+        [$model, $attribute, $table] = $this->columnOf($query, $column);
+        if ($model->getConnection()->getDriverName() === 'pgsql' && StoredKey::columnFamily($model, $attribute, $table) === 'uuid') {
+            return $values;
+        }
+
+        $forms = [];
+        $seen = [];
+        foreach ($values as $value) {
+            foreach (\is_string($value) && StoredIdForms::isUuidLike($value) ? StoredIdForms::forms(null, [$value]) : [$value] as $form) {
+                if (\is_string($form) && isset($seen[$form])) {
+                    continue;
+                }
+                if (\is_string($form)) {
+                    $seen[$form] = true;
+                }
+                $forms[] = $form;
+            }
+        }
+
+        return $forms;
     }
 
     /**
@@ -1372,13 +1419,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
      */
     private function storable(Builder $query, string $column, array $values): array
     {
-        [$model, $attribute] = $this->modelOf($query, $column);
-        $table = $this->pivot !== null && ($this->onPivotRow || \str_starts_with($this->rowColumn($column), RelationCriteriaFactory::PIVOT_PREFIX)) ? $this->pivot->getTable() : $model->getTable();
-        $dot = \strrpos($attribute, '.');
-        if ($dot !== false) {
-            $table = \substr($attribute, 0, $dot);
-            $attribute = \substr($attribute, $dot + 1);
-        }
+        [$model, $attribute, $table] = $this->columnOf($query, $column);
         if ($model->getConnection()->getDriverName() !== 'pgsql') {
             return $values;
         }
@@ -1388,6 +1429,27 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
             'uuid' => \array_values(\array_filter($values, static fn(mixed $value): bool => !\is_string($value) || Str::isUuid($value))),
             default => $values,
         };
+    }
+
+    /**
+     * The model whose casts describe `$column`, the column's name on it and the table that
+     * holds it.
+     *
+     * @param Builder<Model> $query
+     *
+     * @return array{Model, string, string}
+     */
+    private function columnOf(Builder $query, string $column): array
+    {
+        [$model, $attribute] = $this->modelOf($query, $column);
+        $table = $this->pivot !== null && ($this->onPivotRow || \str_starts_with($this->rowColumn($column), RelationCriteriaFactory::PIVOT_PREFIX)) ? $this->pivot->getTable() : $model->getTable();
+        $dot = \strrpos($attribute, '.');
+        if ($dot !== false) {
+            $table = \substr($attribute, 0, $dot);
+            $attribute = \substr($attribute, $dot + 1);
+        }
+
+        return [$model, $attribute, $table];
     }
 
     /**
@@ -1536,7 +1598,7 @@ final class EloquentFilterHandler implements FilterHandlerInterface, TargetsType
         }
 
         $qualified = $this->qualify($query, $column);
-        $values = $this->storable($query, $column, \array_values($values));
+        $values = $this->storable($query, $column, $this->caseForms($query, $column, \array_values($values)));
         if ($values === []) {
             if (!$negate) {
                 $query->whereRaw('1 = 0');

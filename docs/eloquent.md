@@ -178,6 +178,21 @@ kind, a filter value such a column can't hold matches no row: an equality or `IN
 out, and an inequality keeps every row with a value. The column's type is read from the schema
 once per column. Other databases compare such a value and find no row anyway.
 
+### A uuid value matches in either case
+
+An equality filter whose value is a uuid in its canonical 8-4-4-4-12 hex form matches a column
+keeping it in either case, as the id filters do, so `filter[writerKey]=0b6a…` finds a row whose
+`writer_id` holds `0B6A…`. That covers `Where` with `=`, `==`, `===`, `!=` or `<>`, `WhereIn` and
+`WhereNotIn`, at a plain column, at the leaf of a `->through()` path, `WhereThrough` and
+`WhereThroughIn`, on a pivot row and in a `relatedQuery` filter. The filter becomes a `whereIn`
+or `whereNotIn` over the value as sent and its lower- and upper-case forms, never a `LOWER()` on
+the column, so the column's index still serves the query, and a negated filter leaves the row
+out in both cases. A column cast to a value object compares the same strings. A column
+PostgreSQL keeps as a native `uuid` compares without case already and keeps its single
+comparison. A uuid stored in mixed case matches only as sent. The ordered operators, `Range`,
+`DateRange`, `like`, `starts` and `ends` are unchanged, and every value that is no uuid compares
+exactly.
+
 ### Filter families
 
 Some filter keys are data, the filter twin of a [sort family](#sort-families). Core's
