@@ -10,6 +10,7 @@ use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\Date;
 use haddowg\JsonApi\Resource\Field\DateTime;
 use haddowg\JsonApi\Resource\Field\Id;
+use haddowg\JsonApi\Resource\Field\PivotEdge;
 use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApi\Resource\Field\Time;
 use haddowg\JsonApiLaravel\Attribute\AsJsonApiResource;
@@ -37,6 +38,10 @@ final class GigResource extends AbstractResource
             BelongsTo::make('venue', 'venues'),
             BelongsToMany::make('performers', 'performers')->fields(
                 DateTime::make('bookedAt')->storedAs('booked_at')->readOnly()->build(),
+                // The kind and value of the stored `bookedAt` a pivot hook receives.
+                Str::make('booking')->computedUsing(static fn(mixed $edge): string => $edge instanceof PivotEdge
+                    ? \get_debug_type($edge->pivot['bookedAt'] ?? null) . ' ' . (\is_string($edge->pivot['bookedAt'] ?? null) ? $edge->pivot['bookedAt'] : '')
+                    : '')->build(),
             ),
         ];
     }

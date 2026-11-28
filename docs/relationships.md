@@ -517,10 +517,8 @@ join table included, and its `meta.pivot` renders wherever a stored one does: th
 endpoint, the relationship endpoint, a mutation's linkage and an include at any depth. A relation mixing stored and computed
 fields reads the stored ones off the pivot model and computes the rest.
 
-Computed fields don't depend on storage, so the in-memory provider renders them too, with an
-empty `$edge->pivot`. It renders only the computed members of `meta.pivot`, on an all-computed
-and a mixed relation alike, and never a stored member, a stored field with an `extractUsing()`
-hook included.
+Computed fields don't depend on storage, so every provider renders them, beside the stored
+fields the provider reads.
 
 A computed pivot field is read-only. A write that sends it in linkage `meta` ignores it, as it
 ignores a `readOnly()` field, even when the field is not declared `readOnly()`, and the
@@ -530,7 +528,9 @@ it is not a sort key, and a pivot filter can't target it.
 A stored pivot field with an `extractUsing()` hook is not computed. As on an attribute, the
 hook changes only how the field is read: it keeps its column in `withPivot()`, is written from
 linkage `meta`, sorts and filters on its column, and appears in the request pivot schema. Its
-hook receives the same `PivotEdge`, so it reads the stored value from `$edge->pivot`:
+hook receives the same `PivotEdge`, so it reads the stored value from `$edge->pivot`. Each value
+is in the form the response renders, on every provider: a date is the string the field renders
+in the server's output zone:
 
 ```php
 Integer::make('weight')->extractUsing(

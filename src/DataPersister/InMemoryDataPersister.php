@@ -402,7 +402,8 @@ final class InMemoryDataPersister implements WritesLinkRowsInterface, DataPersis
 
         $rows = [];
         foreach ($members as $member) {
-            $key = StoredIdForms::comparable($this->idOf($member));
+            // Keyed by the id the member's own store keys it by, the wire id a linkage names.
+            $key = StoredIdForms::comparable(InMemoryStore::holding($member)?->idOf($member) ?? $this->idOf($member));
             $creating = !isset($held[$key]);
             $row = $held[$key] ?? [];
             foreach ($mode === Mode::Remove ? [] : $relation->writablePivotFields($creating) as $field) {

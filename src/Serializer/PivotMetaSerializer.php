@@ -6,7 +6,7 @@ namespace haddowg\JsonApiLaravel\Serializer;
 
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
-use haddowg\JsonApi\Resource\Field\StoredIdForms;
+use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\ResourceMeta;
 use haddowg\JsonApi\Serializer\RendersResourceMetaInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
@@ -58,6 +58,7 @@ final class PivotMetaSerializer extends AbstractPivotParentSerializer
      * @param string|null                         $outputTimezone the server's default output zone for computed date fields
      * @param (\Closure(object): ?array<string, mixed>)|null $storedPivotOf reads a member's stored values when the map holds none for it, `null` when it has no stored row
      * @param PivotRowSource|null                 $source         the parent and provider the map came from, named when a member has no row
+     * @param IdEncoderInterface|null             $memberEncoder  the related type's id encoder, which decodes a member's wire id to the id the map may be keyed by
      */
     public function __construct(
         private readonly SerializerInterface $inner,
@@ -67,6 +68,7 @@ final class PivotMetaSerializer extends AbstractPivotParentSerializer
         private readonly ?string $outputTimezone = null,
         private readonly ?\Closure $storedPivotOf = null,
         private readonly ?PivotRowSource $source = null,
+        private readonly ?IdEncoderInterface $memberEncoder = null,
     ) {}
 
     public function getMeta(mixed $object, JsonApiRequestInterface $request): array
@@ -93,8 +95,7 @@ final class PivotMetaSerializer extends AbstractPivotParentSerializer
     private function withPivot(array $meta, mixed $object, JsonApiRequestInterface $request): array
     {
         $id = $this->inner->getId($object);
-        $pivot = $this->pivotMap[$id]
-            ?? $this->byComparableId()[StoredIdForms::comparable($id)]
+        $pivot = PivotKeys::find($this->pivotMap, $id, $this->memberEncoder)
             ?? ($this->storedPivotOf !== null && \is_object($object) ? ($this->storedPivotOf)($object) : null);
         if ($this->relation === null) {
             if ($pivot !== null) {
@@ -141,22 +142,6 @@ final class PivotMetaSerializer extends AbstractPivotParentSerializer
         $meta['pivot'] = $readable === [] ? new \stdClass() : $readable;
 
         return $meta;
-    }
-
-    /**
-     * The pivot map keyed by each member's comparable id, so a uuid-shaped id the provider
-     * keyed in capitals matches the lower case the member renders in.
-     *
-     * @return array<string, array<string, mixed>>
-     */
-    private function byComparableId(): array
-    {
-        $keyed = [];
-        foreach ($this->pivotMap as $id => $values) {
-            $keyed[StoredIdForms::comparable((string) $id)] = $values;
-        }
-
-        return $keyed;
     }
 
     public function getRelationships(mixed $object, JsonApiRequestInterface $request): array

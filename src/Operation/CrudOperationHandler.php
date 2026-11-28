@@ -62,7 +62,6 @@ use haddowg\JsonApi\Resource\Field\MorphToMany;
 use haddowg\JsonApi\Resource\Field\PivotRelationInterface;
 use haddowg\JsonApi\Resource\Field\Positions;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
-use haddowg\JsonApi\Resource\Field\StoredIdForms;
 use haddowg\JsonApi\Resource\Field\Time;
 use haddowg\JsonApi\Resource\Field\Union;
 use haddowg\JsonApi\Resource\Filter\FilterInterface;
@@ -142,6 +141,7 @@ use haddowg\JsonApiLaravel\Event\BeforeSaveEvent;
 use haddowg\JsonApiLaravel\Event\BeforeUpdateEvent;
 use haddowg\JsonApiLaravel\Serializer\BatchedRelationshipCount;
 use haddowg\JsonApiLaravel\Serializer\MissingPivotRow;
+use haddowg\JsonApiLaravel\Serializer\PivotKeys;
 use haddowg\JsonApiLaravel\Serializer\PivotMetaSerializer;
 use haddowg\JsonApiLaravel\Serializer\PivotParentSerializer;
 use haddowg\JsonApiLaravel\Serializer\PivotRenderingResolver;
@@ -1011,7 +1011,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $pivotMap = $this->pivotMap($server, $type, $parent, $relation, $items);
                 if ($this->rendersPivotMeta($relation, $pivotMap)) {
                     \assert($relation instanceof BelongsToMany);
-                    $serializer = new PivotMetaSerializer($serializer, $pivotMap, $relation, $parent, $server->outputTimezone(), source: $this->pivotSource($server, $type, $parent, $relation));
+                    $serializer = new PivotMetaSerializer($serializer, $pivotMap, $relation, $parent, $server->outputTimezone(), source: $this->pivotSource($server, $type, $parent, $relation), memberEncoder: $this->idEncoders?->encoderFor($relatedType));
                 }
             }
 
@@ -1905,7 +1905,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $relationshipName,
             $relation,
             $server,
-            new PivotMetaSerializer($server->serializerFor($relatedType), $pivotMap, $relation instanceof BelongsToMany ? $relation : null, $parent, $server->outputTimezone(), source: $this->pivotSource($server, $type, $parent, $relation)),
+            new PivotMetaSerializer($server->serializerFor($relatedType), $pivotMap, $relation instanceof BelongsToMany ? $relation : null, $parent, $server->outputTimezone(), source: $this->pivotSource($server, $type, $parent, $relation), memberEncoder: $this->idEncoders?->encoderFor($relatedType)),
         );
     }
 
@@ -2069,15 +2069,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
                             $parents[] = $candidate;
                         }
                     }
-                    // Keyed by comparable ids, so a provider that keys a uuid-shaped id in
-                    // capitals, or by the id it stores, still matches the rendered member.
-                    foreach ($batching->fetchRelatedPivotMapBatch($type, $relatedType, $parents, $relation) as $parentKey => $members) {
-                        foreach ($members as $memberKey => $row) {
-                            $batches[$key]['map'][StoredIdForms::comparable((string) $parentKey)][StoredIdForms::comparable((string) $memberKey)] = $row;
-                        }
-                    }
+                    $batches[$key]['map'] = \array_replace($batches[$key]['map'], $batching->fetchRelatedPivotMapBatch($type, $relatedType, $parents, $relation));
                 }
-                $values = $batches[$key]['map'][StoredIdForms::comparable($parentId)][StoredIdForms::comparable($memberId)] ?? null;
+                // A provider keys its map by the wire ids or by the ids it stores, which the
+                // encoders decode the wire ids to.
+                $members = PivotKeys::find($batches[$key]['map'], $parentId, $this->idEncoders?->encoderFor($type));
+                $values = \is_array($members) ? PivotKeys::find($members, $memberId, $this->idEncoders?->encoderFor($relatedType)) : null;
             }
 
             if ($values === null) {

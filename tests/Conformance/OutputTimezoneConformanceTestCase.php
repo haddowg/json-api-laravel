@@ -239,7 +239,12 @@ abstract class OutputTimezoneConformanceTestCase extends Orchestra
 
         $this->jsonApi()->get('/admin/gigs/1/relationships/performers')
             ->assertOk()
-            ->assertJsonPath('data.0.meta.pivot.bookedAt', '2024-05-01T04:00:00-04:00');
+            ->assertJsonPath('data.0.meta.pivot.bookedAt', '2024-05-01T04:00:00-04:00')
+            // A pivot hook reads the stored date as its wire string in the server's zone.
+            ->assertJsonPath('data.0.meta.pivot.booking', 'string 2024-05-01T04:00:00-04:00');
+        $this->jsonApi()->get('/api/gigs/1?include=performers')
+            ->assertOk()
+            ->assertJsonPath('data.relationships.performers.data.0.meta.pivot.booking', 'string 2024-05-01T08:00:00+00:00');
     }
 
     #[Test]
