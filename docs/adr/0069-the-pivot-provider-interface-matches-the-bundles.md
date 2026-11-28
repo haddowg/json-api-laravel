@@ -1,0 +1,3 @@
+# The pivot provider interface declares the bundle's four methods
+
+`PivotAwareProviderInterface` declares the same `supportsPivot()`, `fetchRelatedPivotCollection()`, `fetchRelatedPivotMap()` and `fetchRelatedPivotMapBatch()` as the Symfony bundle's, so one custom provider design serves both adapters. Pivot filters, sorts and pages now run through `fetchRelatedPivotCollection()`, which returns the page with its pivot map, and a single parent's rows come from `fetchRelatedPivotMap()`. `QueriesPivotColumnsInterface` is deprecated and no longer consulted; it goes in the next major. A custom provider that implemented only the batched method breaks, a cost taken in a minor release so a provider written for one adapter ports to the other.

@@ -13,6 +13,8 @@ use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
 use haddowg\JsonApiLaravel\DataProvider\FetchesManyInterface;
 use haddowg\JsonApiLaravel\DataProvider\PivotAwareProviderInterface;
+use haddowg\JsonApiLaravel\DataProvider\PivotCollectionResult;
+use haddowg\JsonApiLaravel\DataProvider\PivotCursorCollectionResult;
 
 /**
  * An application provider that owns ONE type and scopes it: a row whose `hidden` flag is set is
@@ -25,6 +27,7 @@ use haddowg\JsonApiLaravel\DataProvider\PivotAwareProviderInterface;
  * pivot values of its members come from the provider it wraps.
  *
  * @extends AbstractDataProvider<object>
+ * @implements PivotAwareProviderInterface<object>
  */
 final class HidesHiddenRows extends AbstractDataProvider implements FetchesManyInterface, PivotAwareProviderInterface
 {
@@ -39,6 +42,21 @@ final class HidesHiddenRows extends AbstractDataProvider implements FetchesManyI
     public function supports(string $type): bool
     {
         return $type === $this->type;
+    }
+
+    public function supportsPivot(string $relatedType, RelationInterface $relation): bool
+    {
+        return false;
+    }
+
+    public function fetchRelatedPivotCollection(string $relatedType, object $parent, RelationInterface $relation, CollectionCriteria $criteria, JsonApiRequestInterface $request): PivotCollectionResult|PivotCursorCollectionResult
+    {
+        throw new \LogicException('This provider does not query pivot rows.');
+    }
+
+    public function fetchRelatedPivotMap(string $relatedType, object $parent, RelationInterface $relation): array
+    {
+        return $this->inner instanceof PivotAwareProviderInterface ? $this->inner->fetchRelatedPivotMap($relatedType, $parent, $relation) : [];
     }
 
     public function fetchRelatedPivotMapBatch(string $parentType, string $relatedType, array $parents, RelationInterface $relation): array

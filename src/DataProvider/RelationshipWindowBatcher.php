@@ -332,7 +332,7 @@ final class RelationshipWindowBatcher
         $countRequested = $root && $relation->isCountable() && $request->countsRelationship($relation->name());
         $wantsCount = !$paginator instanceof CursorPaginator
             && (($paginator?->wantsCount() ?? false) || $countRequested);
-        $pivot = !$polymorphic && $this->queriesPivotColumns($type, $parents[0], $relation);
+        $pivot = !$polymorphic && $this->queriesPivotColumns($type, $relation);
 
         $criteria = $this->relationCriteria->criteriaFor(
             new QueryParameters(
@@ -636,7 +636,7 @@ final class RelationshipWindowBatcher
                 $relatedResource,
                 $relation,
                 null,
-                includePivotFields: $this->queriesPivotColumns($type, $parent, $relation),
+                includePivotFields: $this->queriesPivotColumns($type, $relation),
                 request: $request,
                 server: $server,
                 parentType: $type,
@@ -945,14 +945,15 @@ final class RelationshipWindowBatcher
      * Whether `$type`'s provider reads the relation's pivot columns, so a read order the
      * relation declares over a pivot field windows as it orders the related endpoint.
      */
-    private function queriesPivotColumns(string $type, object $parent, RelationInterface $relation): bool
+    private function queriesPivotColumns(string $type, RelationInterface $relation): bool
     {
-        if (!$this->providers->supportsType($type)) {
+        $relatedType = $relation->relatedTypes()[0] ?? null;
+        if ($relatedType === null || !$this->providers->supportsType($type)) {
             return false;
         }
 
         $provider = $this->providers->forType($type);
 
-        return $provider instanceof QueriesPivotColumnsInterface && $provider->queriesPivotColumns($parent, $relation);
+        return $provider instanceof PivotAwareProviderInterface && $provider->supportsPivot($relatedType, $relation);
     }
 }

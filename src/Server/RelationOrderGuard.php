@@ -13,7 +13,7 @@ use haddowg\JsonApi\Resource\Sort\SortInterface;
 use haddowg\JsonApi\Resource\Sort\SortMatcher;
 use haddowg\JsonApi\Serializer\RelationOrderValidator;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
-use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
+use haddowg\JsonApiLaravel\DataProvider\PivotAwareProviderInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
 use haddowg\JsonApiLaravel\OpenApi\PivotFields;
 
@@ -51,7 +51,8 @@ final class RelationOrderGuard
             }
 
             $providers = ($this->providers)();
-            if (!$providers->supportsType($relatedType) || $providers->forType($relatedType) instanceof QueriesPivotColumnsInterface) {
+            $provider = $providers->supportsType($relatedType) ? $providers->forType($relatedType) : null;
+            if ($provider === null || ($provider instanceof PivotAwareProviderInterface && $provider->supportsPivot($relatedType, $relation))) {
                 continue;
             }
 

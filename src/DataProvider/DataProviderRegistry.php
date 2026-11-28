@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\DataProvider;
 
+use haddowg\JsonApi\Collection\CollectionResult;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\ForeignKey;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
@@ -32,11 +33,58 @@ final class DataProviderRegistry
     private readonly array $providers;
 
     /**
+     * The pivot values each parent's pivot pages were read with, keyed by parent, then parent
+     * type and relation, then member id.
+     *
+     * @var \WeakMap<object, array<string, array<array-key, array<string, mixed>>>>
+     */
+    private \WeakMap $loadedPivots;
+
+    /**
      * @param iterable<DataProviderInterface<object>> $providers in priority order, highest first
      */
     public function __construct(iterable $providers)
     {
         $this->providers = \is_array($providers) ? \array_values($providers) : \iterator_to_array($providers, false);
+        $this->loadedPivots = new \WeakMap();
+    }
+
+    /**
+     * Keeps the pivot values `$parent`'s page of `$relation` (of `$parentType`) was read with,
+     * when the page carries them, so its members' `meta.pivot` renders without reading the
+     * rows again. Several pages of one relation merge.
+     *
+     * @param CollectionResult<object> $result
+     */
+    public function rememberPivotMap(string $parentType, RelationInterface $relation, object $parent, CollectionResult $result): void
+    {
+        if (!$result instanceof PivotCollectionResult && !$result instanceof PivotCursorCollectionResult) {
+            return;
+        }
+
+        $key = $parentType . "\0" . $relation->name();
+        $maps = $this->loadedPivots[$parent] ?? [];
+        $maps[$key] = $result->pivotMap + ($maps[$key] ?? []);
+        $this->loadedPivots[$parent] = $maps;
+    }
+
+    /**
+     * The pivot values of the members of `$parent`'s `$relationName` (of `$parentType`) that a
+     * page read in this operation loaded, keyed by member id, or `null` when none was read.
+     *
+     * @return array<array-key, array<string, mixed>>|null
+     */
+    public function loadedPivotMap(string $parentType, string $relationName, object $parent): ?array
+    {
+        return $this->loadedPivots[$parent][$parentType . "\0" . $relationName] ?? null;
+    }
+
+    /**
+     * Drops the pivot values read with pivot pages so far.
+     */
+    public function forgetPivotMaps(): void
+    {
+        $this->loadedPivots = new \WeakMap();
     }
 
     /**
@@ -211,6 +259,7 @@ final class DataProviderRegistry
             $results[$wireId] = $batch->has($wireId)
                 ? $batch->for($wireId)
                 : $single->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
+            $this->rememberPivotMap($parentType, $relation, $parent, $results[$wireId]);
         }
 
         return new RelatedBatch($results);

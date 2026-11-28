@@ -32,26 +32,32 @@ window) and returns a `CollectionResult` (the page of objects + total/`hasMore`)
 relationship seams power `?include` batching, `?withCount`, relationship-existence checks, and
 pivots — the batcher orchestrates them provider-agnostically.
 
-A provider that can filter and sort a `belongsToMany` on its join columns also implements
-`QueriesPivotColumnsInterface`. Its `fetchRelatedCollection()` then receives the relation's
-`pivot.`-columned filters and the pivot field sorts, and `pivotMapOf()` reads each fetched
-member's pivot values for `meta.pivot` without another query. Without it, pivot sort and filter
-keys are a `400` and `meta.pivot` comes from `PivotAwareProviderInterface`.
+### Reading pivot rows
 
-`PivotAwareProviderInterface` is named and shaped as the Symfony bundle's:
-`fetchRelatedPivotMapBatch($parentType, $relatedType, $parents, $relation)` returns the values
-keyed by the parent's wire id, then the member's. The package asks the related type's provider,
-for members that came back without their pivot row. A document's linkage asks it once per pivot
-relation for every parent of that type the include walk loaded, and the related and relationship
-endpoints ask it for their one parent, so every path renders the values one provider reads.
-A relation with stored pivot fields whose related type's provider doesn't implement it fails the
-boot and `jsonapi:optimize`, naming the relation, the type, the provider and the interface.
+A `belongsToMany` with stored pivot fields renders each member's `meta.pivot` wherever its
+linkage data renders, and the provider of its related type reads the stored values. Implement
+`PivotAwareProviderInterface` on it, named and shaped as the Symfony bundle's:
+`fetchRelatedPivotMap()` returns one parent's values and `fetchRelatedPivotMapBatch()` every
+parent's at one include path, keyed by the parent's wire id and then the member's.
+`supportsPivot()` says whether it also queries the rows, filtering, sorting and paging a related
+read by a pivot field through `fetchRelatedPivotCollection()`; answer `false` and the related
+reads take the plain path, as the in-memory provider's do. A related read that returns a
+`PivotCollectionResult`, from `fetchRelatedPivotCollection()` or from
+`fetchRelatedCollectionBatch()` for an include, carries its members' values, so they render
+from that page, and `fetchRelatedPivotMapBatch()` is asked only for the parents whose page
+didn't carry them. A relation with stored pivot fields whose related type's provider doesn't
+implement the interface fails the boot and `jsonapi:optimize`, naming the relation, the type,
+the provider and the interface.
+
+`QueriesPivotColumnsInterface` and its `pivotMapOf()` are deprecated and go in the next major.
+The package no longer consults them, so a provider that filtered or sorted by pivot columns
+through them implements `supportsPivot()` and `fetchRelatedPivotCollection()` instead.
 
 `fetchRelationshipPivot()` reads one parent's existing rows when a write arrives, and the
 validator merges each incoming member's `meta.pivot` over the row it already has.
 
-That interface also decides where a `->through()` path starting with `pivot` runs: its filters and
-sorts reach `fetchRelatedCollection()` beside the `pivot.`-columned ones. A path that goes on past
+`supportsPivot()` also decides where a `->through()` path starting with `pivot` runs: its filters
+and sorts reach `fetchRelatedPivotCollection()` beside the `pivot.`-columned ones. A path that goes on past
 a pivot row, such as `pivot.addedBy`, needs the provider serving the relation's related type to
 implement core's
 [`PivotRowRelations`](https://github.com/haddowg/json-api/blob/main/src/Resource/Through/PivotRowRelations.php),

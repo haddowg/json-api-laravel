@@ -65,6 +65,7 @@ use Illuminate\Database\Eloquent\Builder;
  * @template-covariant TModel of object = object
  *
  * @extends AbstractDataProvider<object>
+ * @implements PivotAwareProviderInterface<object>
  */
 final class InMemoryDataProvider extends AbstractDataProvider implements PivotAwareProviderInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, ReadsByForeignKeyInterface
 {
@@ -497,6 +498,33 @@ final class InMemoryDataProvider extends AbstractDataProvider implements PivotAw
      * @return array<string, array<string, mixed>>
      */
     public function fetchRelationshipPivot(string $type, object $parent, RelationInterface $relation): array
+    {
+        return self::pivotValues($parent, $relation);
+    }
+
+    /**
+     * The in-memory store reads its pivot rows but doesn't query them, so no pivot field is a
+     * filter or sort key here and the related reads take the plain path.
+     */
+    public function supportsPivot(string $relatedType, RelationInterface $relation): bool
+    {
+        return false;
+    }
+
+    /**
+     * Never called, as {@see supportsPivot()} routes every related read to the plain path.
+     */
+    public function fetchRelatedPivotCollection(
+        string $relatedType,
+        object $parent,
+        RelationInterface $relation,
+        CollectionCriteria $criteria,
+        JsonApiRequestInterface $request,
+    ): PivotCollectionResult|PivotCursorCollectionResult {
+        throw new \LogicException(\sprintf('The in-memory provider of "%s" does not query pivot rows.', $relatedType));
+    }
+
+    public function fetchRelatedPivotMap(string $relatedType, object $parent, RelationInterface $relation): array
     {
         return self::pivotValues($parent, $relation);
     }

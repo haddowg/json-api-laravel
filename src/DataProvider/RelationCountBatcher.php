@@ -103,7 +103,7 @@ final class RelationCountBatcher
                 continue;
             }
 
-            $criteria = $this->countCriteria($server, $type, $relation, $request, $provider instanceof QueriesPivotColumnsInterface && $provider->queriesPivotColumns($parents[0], $relation));
+            $criteria = $this->countCriteria($server, $type, $relation, $request, $provider instanceof PivotAwareProviderInterface && ($relation->relatedTypes()[0] ?? null) !== null && $provider->supportsPivot($relation->relatedTypes()[0], $relation));
 
             // An identified MorphToMany counts its pairs, with each scoped type admitted first.
             if ($this->identifiedMembers !== null && IdentifiedMorphMembers::identifies($relation)) {

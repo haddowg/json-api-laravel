@@ -1007,7 +1007,9 @@ final class RelatedIncludeBatcher
                 continue;
             }
 
-            $items = $this->itemsOf($batch->for($wireId));
+            $result = $batch->for($wireId);
+            $this->providers->rememberPivotMap($type, $relation, $entity, $result);
+            $items = $this->itemsOf($result);
             $this->hold($entity, $relation, $column, $items, $linkages, $outOfBand);
             foreach ($items as $target) {
                 $targets[] = $target;
@@ -1120,7 +1122,7 @@ final class RelatedIncludeBatcher
         return $this->relationCriteria->linkageCriteriaFor(
             $relatedType !== null ? $this->types->resourceFor($server, $relatedType) : null,
             $relation,
-            $provider instanceof QueriesPivotColumnsInterface && $provider->queriesPivotColumns($entity, $relation),
+            $provider instanceof PivotAwareProviderInterface && $relatedType !== null && $provider->supportsPivot($relatedType, $relation),
             $request,
             $server,
             $type,

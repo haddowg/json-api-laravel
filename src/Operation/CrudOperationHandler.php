@@ -113,9 +113,10 @@ use haddowg\JsonApiLaravel\DataProvider\ForeignKeyReads;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphMembers;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphTargets;
 use haddowg\JsonApiLaravel\DataProvider\PivotAwareProviderInterface;
+use haddowg\JsonApiLaravel\DataProvider\PivotCollectionResult;
+use haddowg\JsonApiLaravel\DataProvider\PivotCursorCollectionResult;
 use haddowg\JsonApiLaravel\DataProvider\PivotRowRelationRouter;
 use haddowg\JsonApiLaravel\DataProvider\Polymorphism;
-use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
 use haddowg\JsonApiLaravel\DataProvider\RelatedIncludeBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCountBatcher;
 use haddowg\JsonApiLaravel\DataProvider\RelationCriteriaFactory;
@@ -332,6 +333,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
         // in this long-lived handler; its callbacks must never run in this one.
         if ($this->depth === 0) {
             $this->afterCommit?->reset();
+            // Nor may an earlier request's pivot pages stand in for this one's.
+            $this->providers->forgetPivotMaps();
         }
 
         ++$this->depth;
@@ -956,7 +959,8 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
             // A provider that queries the pivot join also accepts the relation's pivot
             // filters and sorts, and returns each member with its pivot row.
-            $pivotQuery = !$polymorphic && $this->pivotQueryingProvider($parent, $relation) !== null;
+            $pivotProvider = $polymorphic ? null : $this->pivotProvider($relation);
+            $pivotQuery = $pivotProvider !== null;
 
             $criteria = $this->relationCriteria->criteriaFor(
                 $operation->queryParameters(),
@@ -991,6 +995,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $result = match (true) {
                     $this->foreignKeys()->reads($relation) => $this->foreignKeys()->page($server, $type, $parent, $relation, $criteria, $request),
                     \count($relatedTypes) > 1 && $this->providers->relatesToScopedType($type, $relation) => $this->polymorphicMembers()->window($criteria, $this->narrowedMembers($server, $type, $parent, $relation, $request)),
+                    $pivotProvider !== null => $pivotProvider->fetchRelatedPivotCollection($relatedType, $parent, $relation, $criteria, $request),
                     default => $relatedProvider->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request),
                 };
             }
@@ -1008,7 +1013,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             // per-member pivot map (Eloquent reads it off the fetched page; the in-memory
             // witness returns none, so the wrap is a no-op there).
             if (!$polymorphic) {
-                $pivotMap = $this->pivotMap($server, $type, $parent, $relation, $items);
+                $pivotMap = $this->pivotMap($server, $type, $parent, $relation, $result);
                 if ($this->rendersPivotMeta($relation, $pivotMap)) {
                     \assert($relation instanceof BelongsToMany);
                     $serializer = new PivotMetaSerializer($serializer, $pivotMap, $relation, $parent, $server->outputTimezone(), source: $this->pivotSource($server, $type, $parent, $relation), memberEncoder: $this->idEncoders?->encoderFor($relatedType));
@@ -1358,7 +1363,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $relation,
             $window,
             wantsCount: $wantsCount,
-            includePivotFields: $this->pivotQueryingProvider($parent, $relation) !== null,
+            includePivotFields: $this->pivotProvider($relation) !== null,
             request: $request,
             server: $server,
             parentType: $type,
@@ -1367,12 +1372,12 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         $result = $this->foreignKeys()->reads($relation)
             ? $this->foreignKeys()->page($server, $type, $parent, $relation, $criteria, $request)
-            : $this->providers->forType($relatedType)->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
+            : $this->fetchRelatedPage($relatedType, $parent, $relation, $criteria, $request);
         $items = $this->materialize($result);
 
         return [
             'page' => $this->supplyWindowedRelationship($parent, $relation->name(), $items, $paginator, $result, $wantsCount, $request, $queryParameters),
-            'pivotMap' => $this->pivotMap($server, $type, $parent, $relation, $items),
+            'pivotMap' => $this->pivotMap($server, $type, $parent, $relation, $result),
             'total' => $request->countsRelationship('_self_') ? $result->total : null,
         ];
     }
@@ -1927,8 +1932,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
     private function pivotSource(Server $server, string $type, object $parent, RelationInterface $relation): PivotRowSource
     {
         $relatedType = $relation->relatedTypes()[0] ?? null;
-        $provider = $this->pivotQueryingProvider($parent, $relation)
-            ?? ($relatedType !== null && $this->providers->supportsType($relatedType) ? $this->providers->forType($relatedType) : null);
+        $provider = $relatedType !== null && $this->providers->supportsType($relatedType) ? $this->providers->forType($relatedType) : null;
 
         return new PivotRowSource($type, $server->serializerFor($type)->getId($parent), $provider === null ? 'no provider' : $provider::class);
     }
@@ -1936,39 +1940,34 @@ final class CrudOperationHandler implements OperationHandlerInterface
     /**
      * The stored per-member pivot map (`relatedId => [field => value]`) for a `belongsToMany`
      * relation declaring stored pivot fields, or `[]` when the relation is not a pivot relation,
-     * declares no stored pivot fields or the related type's provider reads none (the in-memory
-     * boundary).
+     * declares no stored pivot fields or the related type's provider reads none.
      *
-     * Given the fetched `$members` of a page, a related provider that queries the pivot join
-     * ({@see QueriesPivotColumnsInterface}) supplies the map off those members with no further
-     * query; otherwise the related type's {@see PivotAwareProviderInterface} reads this parent's
-     * rows, as it does for a document's linkage, so every path renders the same values.
+     * A page its provider read over the pivot rows ({@see PivotAwareProviderInterface::fetchRelatedPivotCollection()})
+     * carries the map with no further query; otherwise the related type's provider reads this
+     * parent's rows with {@see PivotAwareProviderInterface::fetchRelatedPivotMap()}.
      *
      * A pivot value the provider returns as a `\DateTimeInterface` renders through its
      * `DateTime`, `Date` or `Time` field, in the field's format and, for a `DateTime`, in
      * the field's own `outputTimezone()` or else the server's. Every other value
      * renders as the provider returned it.
      *
-     * @param list<object>|null $members
+     * @param CollectionResult<object>|null $page
      *
      * @return array<string, array<string, mixed>>
      */
-    private function pivotMap(Server $server, string $type, object $parent, RelationInterface $relation, ?array $members = null): array
+    private function pivotMap(Server $server, string $type, object $parent, RelationInterface $relation, ?CollectionResult $page = null): array
     {
         if (!$relation instanceof BelongsToMany || $relation->storedPivotFields() === []) {
             return [];
         }
 
-        $pivotProvider = $members !== null ? $this->pivotQueryingProvider($parent, $relation) : null;
-        if ($pivotProvider !== null && $members !== null) {
-            $pivots = $pivotProvider->pivotMapOf($parent, $relation, $members);
+        if ($page instanceof PivotCollectionResult || $page instanceof PivotCursorCollectionResult) {
+            $pivots = $page->pivotMap;
         } else {
-            // The related type's provider, the one a document's linkage asks, so the related
-            // and relationship endpoints render what that linkage does.
             $relatedType = $relation->relatedTypes()[0] ?? null;
             $relatedProvider = $relatedType !== null && $this->providers->supportsType($relatedType) ? $this->providers->forType($relatedType) : null;
             $pivots = $relatedProvider instanceof PivotAwareProviderInterface && $relatedType !== null
-                ? \array_values($relatedProvider->fetchRelatedPivotMapBatch($type, $relatedType, [$parent], $relation))[0] ?? []
+                ? $relatedProvider->fetchRelatedPivotMap($relatedType, $parent, $relation)
                 : [];
         }
 
@@ -2043,43 +2042,49 @@ final class CrudOperationHandler implements OperationHandlerInterface
      */
     private function storedPivotReader(Server $server, string $type, object $parent, BelongsToMany $relation, array &$batches): ?\Closure
     {
-        $loaded = $this->pivotQueryingProvider($parent, $relation);
         $relatedType = $relation->relatedTypes()[0] ?? null;
         $batching = $relatedType !== null && $this->providers->supportsType($relatedType) ? $this->providers->forType($relatedType) : null;
         $batching = $batching instanceof PivotAwareProviderInterface ? $batching : null;
-        if (($loaded === null && $batching === null) || $relatedType === null || !$server->hasSerializerFor($type) || !$server->hasSerializerFor($relatedType)) {
+        if ($batching === null || $relatedType === null || !$server->hasSerializerFor($type) || !$server->hasSerializerFor($relatedType)) {
             return null;
         }
 
-        return function (object $member) use ($server, $type, $relatedType, $parent, $relation, $loaded, $batching, &$batches): array {
+        return function (object $member) use ($server, $type, $relatedType, $parent, $relation, $batching, &$batches): array {
             $memberId = $server->serializerFor($relatedType)->getId($member);
-            $values = $loaded?->pivotMapOf($parent, $relation, [$member])[$memberId] ?? null;
+            $memberEncoder = $this->idEncoders?->encoderFor($relatedType);
+            $loaded = $this->providers->loadedPivotMap($type, $relation->name(), $parent);
+            $values = $loaded === null ? null : PivotKeys::find($loaded, $memberId, $memberEncoder);
 
-            if ($values === null && $batching !== null) {
+            if ($values === null) {
                 $key = $type . '.' . $relation->name();
                 $batches[$key] ??= ['covered' => [], 'map' => []];
                 $serializer = $server->serializerFor($type);
                 $parentId = $serializer->getId($parent);
                 if (!isset($batches[$key]['covered'][$parentId])) {
+                    // The parents whose page carried their pivot values are read only when one
+                    // of them misses a member; the rest are read together.
                     $parents = [];
                     foreach ([...$this->includeBatcher->loaded($type), $parent] as $candidate) {
                         $candidateId = $serializer->getId($candidate);
-                        if (!isset($batches[$key]['covered'][$candidateId])) {
-                            $batches[$key]['covered'][$candidateId] = true;
-                            $parents[] = $candidate;
+                        if (isset($batches[$key]['covered'][$candidateId])) {
+                            continue;
                         }
+                        if ($loaded === null && $candidate !== $parent && $this->providers->loadedPivotMap($type, $relation->name(), $candidate) !== null) {
+                            continue;
+                        }
+                        $batches[$key]['covered'][$candidateId] = true;
+                        $parents[] = $candidate;
                     }
                     $batches[$key]['map'] = \array_replace($batches[$key]['map'], $batching->fetchRelatedPivotMapBatch($type, $relatedType, $parents, $relation));
                 }
                 // A provider keys its map by the wire ids or by the ids it stores, which the
                 // encoders decode the wire ids to.
                 $members = PivotKeys::find($batches[$key]['map'], $parentId, $this->idEncoders?->encoderFor($type));
-                $values = \is_array($members) ? PivotKeys::find($members, $memberId, $this->idEncoders?->encoderFor($relatedType)) : null;
+                $values = \is_array($members) ? PivotKeys::find($members, $memberId, $memberEncoder) : null;
             }
 
             if ($values === null) {
-                $provider = $batching ?? $loaded;
-                throw MissingPivotRow::for($type, $relation->name(), $server->serializerFor($type)->getId($parent), $memberId, $provider !== null ? $provider::class : 'no provider');
+                throw MissingPivotRow::for($type, $relation->name(), $server->serializerFor($type)->getId($parent), $memberId, $batching::class);
             }
 
             return $this->formatPivotDates($server, $relation, [$memberId => $values])[$memberId];
@@ -2087,10 +2092,13 @@ final class CrudOperationHandler implements OperationHandlerInterface
     }
 
     /**
-     * The related type's provider when it filters, sorts and reads `meta.pivot` over
-     * `$relation`'s pivot join for this parent, else `null`.
+     * The related type's provider when it reads `$relation`'s related collection over its
+     * pivot rows ({@see PivotAwareProviderInterface::supportsPivot()}), so the relation's pivot
+     * filters and sorts apply and each member's pivot rides the page, else `null`.
+     *
+     * @return PivotAwareProviderInterface<object>|null
      */
-    private function pivotQueryingProvider(object $parent, RelationInterface $relation): ?QueriesPivotColumnsInterface
+    private function pivotProvider(RelationInterface $relation): ?PivotAwareProviderInterface
     {
         $relatedTypes = $relation->relatedTypes();
         if (!Polymorphism::isMonomorphic($relation) || !$this->providers->supportsType($relatedTypes[0])) {
@@ -2099,9 +2107,24 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         $provider = $this->providers->forType($relatedTypes[0]);
 
-        return $provider instanceof QueriesPivotColumnsInterface && $provider->queriesPivotColumns($parent, $relation)
+        return $provider instanceof PivotAwareProviderInterface && $provider->supportsPivot($relatedTypes[0], $relation)
             ? $provider
             : null;
+    }
+
+    /**
+     * A related page of `$relation` for `$parent` as its related endpoint reads it: over the
+     * pivot rows when the related provider queries them, else the plain related read.
+     *
+     * @return CollectionResult<object>
+     */
+    private function fetchRelatedPage(string $relatedType, object $parent, RelationInterface $relation, CollectionCriteria $criteria, JsonApiRequestInterface $request): CollectionResult
+    {
+        $pivotProvider = $this->pivotProvider($relation);
+
+        return $pivotProvider !== null
+            ? $pivotProvider->fetchRelatedPivotCollection($relatedType, $parent, $relation, $criteria, $request)
+            : $this->providers->forType($relatedType)->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
     }
 
     /**

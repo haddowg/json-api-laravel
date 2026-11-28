@@ -196,6 +196,46 @@ final class EloquentPivotRelationshipEndpointTest extends Orchestra
         $this->assertResponseMatchesGeneratedSchema($response, 'playlists', SchemaDocumentKind::Relationship, 'orderedTracks');
     }
 
+    public function test_an_included_pivot_page_renders_the_pivot_its_include_query_read(): void
+    {
+        foreach (['/api/playlists?include=orderedTracks', '/api/playlists/' . Fixtures::PLAYLIST_ONE . '?include=orderedTracks'] as $uri) {
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $response = $this->fetch($uri)->assertOk();
+            $queries = \array_column(DB::getQueryLog(), 'query');
+            DB::disableQueryLog();
+
+            // The include's page carries its members' pivot columns, so their meta.pivot
+            // needs no query of its own.
+            self::assertCount(1, \array_filter($queries, static fn(string $sql): bool => \str_contains($sql, '"mc_playlist_track".')), $uri . "\n" . \implode("\n", $queries));
+
+            $playlists = $response->json('data');
+            self::assertIsArray($playlists);
+            $playlists = \array_is_list($playlists) ? $playlists : [$playlists];
+            $members = 0;
+            foreach ($playlists as $playlist) {
+                self::assertIsArray($playlist);
+                $id = $playlist['id'] ?? null;
+                self::assertIsString($id);
+                $linkage = \data_get($playlist, 'relationships.orderedTracks.data');
+                self::assertIsArray($linkage);
+                $expected = [];
+                foreach ((array) $this->fetch('/api/playlists/' . $id . '/relationships/orderedTracks?page[size]=100')->assertOk()->json('data') as $member) {
+                    self::assertIsArray($member);
+                    self::assertIsString($member['id'] ?? null);
+                    $expected[$member['id']] = \data_get($member, 'meta.pivot');
+                }
+                foreach ($linkage as $member) {
+                    self::assertIsArray($member);
+                    self::assertIsString($member['id'] ?? null);
+                    self::assertSame($expected[$member['id']] ?? 'missing', \data_get($member, 'meta.pivot'), $uri . ' playlist ' . $id);
+                    ++$members;
+                }
+            }
+            self::assertGreaterThan(0, $members, $uri);
+        }
+    }
+
     /**
      * Asserts every member of the page carries the `meta.pivot` its join row stores.
      *

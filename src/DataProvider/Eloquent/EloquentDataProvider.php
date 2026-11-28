@@ -46,6 +46,8 @@ use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
 use haddowg\JsonApiLaravel\DataProvider\ForeignKeyParents;
 use haddowg\JsonApiLaravel\DataProvider\KeysCursorSortsInterface;
 use haddowg\JsonApiLaravel\DataProvider\PivotAwareProviderInterface;
+use haddowg\JsonApiLaravel\DataProvider\PivotCollectionResult;
+use haddowg\JsonApiLaravel\DataProvider\PivotCursorCollectionResult;
 use haddowg\JsonApiLaravel\DataProvider\QueriesFilteredCollectionInterface;
 use haddowg\JsonApiLaravel\DataProvider\QueriesPivotColumnsInterface;
 use haddowg\JsonApiLaravel\DataProvider\ReadsByForeignKeyInterface;
@@ -123,6 +125,7 @@ use Illuminate\Support\Str;
  * sits above the auto pair, so it shadows per type.
  *
  * @extends AbstractDataProvider<object>
+ * @implements PivotAwareProviderInterface<object>
  */
 final class EloquentDataProvider extends AbstractDataProvider implements FetchesTrashed, QueriesPivotColumnsInterface, FetchesManyInterface, AdmitsIdsInterface, QueriesFilteredCollectionInterface, LinkRowQueryInterface, LinkRowKeysInterface, ReadsByForeignKeyInterface, KeysCursorSortsInterface, PivotRowRelations, PivotAwareProviderInterface
 {
@@ -483,6 +486,71 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      * the relation renders lazily.
      */
     public function fetchRelatedCollectionBatch(
+        string $parentType,
+        array $parents,
+        RelationInterface $relation,
+        CollectionCriteria $criteria,
+        JsonApiRequestInterface $request,
+    ): RelatedBatch {
+        $batch = $this->loadRelatedCollectionBatch($parentType, $parents, $relation, $criteria, $request);
+
+        return $this->withPivotMaps($parentType, $parents, $relation, $batch);
+    }
+
+    /**
+     * `$batch` with each parent's page of a pivot relation carrying its members' pivot
+     * values, which the members' pivot rows hold as the batch loaded them.
+     *
+     * @param list<object> $parents
+     */
+    private function withPivotMaps(string $parentType, array $parents, RelationInterface $relation, RelatedBatch $batch): RelatedBatch
+    {
+        $models = $this->eloquentModels($parents);
+        if ($models === [] || !$relation->isToMany() || $this->pivotRelation($models[0], $relation) === null) {
+            return $batch;
+        }
+
+        $encoder = $this->encoderFor($parentType);
+        $results = [];
+        foreach ($models as $model) {
+            $wireId = $this->wireId($model, $encoder);
+            if ($batch->has($wireId)) {
+                $results[$wireId] = $this->withPivotMap($model, $relation, $batch->for($wireId));
+            }
+        }
+
+        return new RelatedBatch($results);
+    }
+
+    /**
+     * `$result` as the pivot result its members' loaded pivot rows make it, or as it is when
+     * `$relation` is not a pivot relation of `$parent`.
+     *
+     * @param CollectionResult<object> $result
+     *
+     * @return CollectionResult<object>
+     */
+    private function withPivotMap(object $parent, RelationInterface $relation, CollectionResult $result): CollectionResult
+    {
+        if ($result instanceof PivotCollectionResult || $result instanceof PivotCursorCollectionResult) {
+            return $result;
+        }
+
+        $items = \is_array($result->items) ? \array_values($result->items) : \iterator_to_array($result->items, false);
+        $eloquentRelation = $this->pivotRelation($parent, $relation);
+        $pivotMap = $eloquentRelation !== null && $relation instanceof PivotRelation
+            ? $this->readPivots($eloquentRelation, $relation, \array_values(\array_filter($items, \is_object(...))))
+            : [];
+
+        return $result instanceof CursorCollectionResult
+            ? new PivotCursorCollectionResult($items, $pivotMap, $result->cursorBefore, $result->cursorAfter, $result->hasPrevious, $result->hasMore, $result->total)
+            : new PivotCollectionResult($items, $pivotMap, $result->total, $result->windowed, $result->hasMore);
+    }
+
+    /**
+     * @param list<object> $parents
+     */
+    private function loadRelatedCollectionBatch(
         string $parentType,
         array $parents,
         RelationInterface $relation,
@@ -1532,7 +1600,56 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         return [$builder->whereIn($column, \array_map(StoredKey::keyOf(...), $parents)), $column, StoredKey::keyOf(...)];
     }
 
+    /**
+     * The stored pivot rows of `$parent`'s pivot `$relation`, which the validator folds under
+     * an incoming member's meta: {@see fetchRelatedPivotMap()}, or `[]` for a relation this
+     * provider doesn't query over a join.
+     */
     public function fetchRelationshipPivot(string $type, object $parent, RelationInterface $relation): array
+    {
+        $relatedType = $relation->relatedTypes()[0] ?? null;
+        if ($relatedType === null || !$this->supportsPivot($relatedType, $relation)) {
+            return [];
+        }
+
+        return $this->fetchRelatedPivotMap($relatedType, $parent, $relation);
+    }
+
+    /**
+     * A `belongsToMany` declaring stored pivot fields, over one related type, is read over its
+     * Eloquent `belongsToMany` join.
+     */
+    public function supportsPivot(string $relatedType, RelationInterface $relation): bool
+    {
+        return $relation instanceof PivotRelation
+            && $relation->storedPivotFields() !== []
+            && \count($relation->relatedTypes()) === 1;
+    }
+
+    /**
+     * The related page over the relation's join, its `pivot.`-columned filters and pivot
+     * field sorts applied, each member hydrated with its pivot row, which gives the pivot map
+     * with no further query.
+     */
+    public function fetchRelatedPivotCollection(
+        string $relatedType,
+        object $parent,
+        RelationInterface $relation,
+        CollectionCriteria $criteria,
+        JsonApiRequestInterface $request,
+    ): PivotCollectionResult|PivotCursorCollectionResult {
+        $result = $this->withPivotMap($parent, $relation, $this->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request));
+        if ($result instanceof PivotCollectionResult || $result instanceof PivotCursorCollectionResult) {
+            return $result;
+        }
+
+        return new PivotCollectionResult($result->items, [], $result->total, $result->windowed, $result->hasMore);
+    }
+
+    /**
+     * Every member of `$parent`'s pivot relation with its pivot row, in one query over the join.
+     */
+    public function fetchRelatedPivotMap(string $relatedType, object $parent, RelationInterface $relation): array
     {
         $eloquentRelation = $this->pivotRelation($parent, $relation);
         if ($eloquentRelation === null) {
@@ -1577,6 +1694,9 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         return $maps;
     }
 
+    /**
+     * @deprecated use {@see supportsPivot()}; removed with {@see QueriesPivotColumnsInterface} in the next major
+     */
     public function queriesPivotColumns(object $parent, RelationInterface $relation): bool
     {
         return $this->pivotRelation($parent, $relation) !== null;
@@ -1585,6 +1705,8 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     /**
      * Reads each member's pivot off the `pivot` relation {@see selectPivot()} hydrated during
      * the fetch, so no query runs.
+     *
+     * @deprecated read the pivot map {@see fetchRelatedPivotCollection()} returns; removed with {@see QueriesPivotColumnsInterface} in the next major
      */
     public function pivotMapOf(object $parent, RelationInterface $relation, array $members): array
     {
