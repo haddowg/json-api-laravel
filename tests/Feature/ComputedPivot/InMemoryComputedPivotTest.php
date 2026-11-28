@@ -10,9 +10,9 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 use Workbench\App\Providers\ConformanceInMemoryServiceProvider;
 
 /**
- * {@see ComputedPivotTestCase} on the in-memory witness. It stores no pivot row, so a relation
- * mixing stored and computed fields renders only its computed ones there, never a stored one,
- * even a stored one read through an extract hook.
+ * {@see ComputedPivotTestCase} on the in-memory witness, which keeps the pivot rows beside each
+ * crate, so a relation mixing stored and computed fields renders both, a stored one read through
+ * an extract hook included, as the Eloquent provider does.
  *
  * @internal
  */
@@ -33,13 +33,12 @@ final class InMemoryComputedPivotTest extends ComputedPivotTestCase
         ];
     }
 
-    public function test_a_mixed_relation_renders_only_its_computed_field(): void
+    public function test_a_stored_and_a_computed_pivot_field_render_side_by_side(): void
     {
         foreach (['/api/crates/1/mixedTracks', '/api/crates/1/relationships/mixedTracks'] as $uri) {
             $response = $this->read($uri)->assertOk();
 
-            // Neither the stored position nor the stored, hook-read weight renders.
-            self::assertSame(['label' => 'Best Of / Karma Police'], $this->pivotOf($response, '3'), $uri);
+            self::assertSame(['position' => 2, 'label' => 'Best Of / Karma Police', 'weight' => 300], $this->pivotOf($response, '3'), $uri);
         }
     }
 }

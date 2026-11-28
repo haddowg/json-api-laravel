@@ -7,15 +7,15 @@ namespace haddowg\JsonApiLaravel\DataProvider;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 
 /**
- * A provider that can filter and sort a `belongsToMany` related collection on its pivot
- * columns, and whose fetched members carry their own pivot row.
+ * A provider that could filter and sort a `belongsToMany` related collection on its pivot
+ * columns, and whose fetched members carried their own pivot row.
  *
- * When the related type's provider implements this and {@see queriesPivotColumns()} holds,
- * the related and relationship endpoints accept the relation's `pivot.`-columned filters and
- * its pivot field sorts, and read each member's `meta.pivot` off the fetched page through
- * {@see pivotMapOf()} instead of a whole-association read. A provider that does not
- * implement it (the in-memory witness) leaves pivot keys unrecognised (a `400`) and renders
- * `meta.pivot` from {@see DataProviderInterface::fetchRelationshipPivot()}, if it stores any.
+ * The package no longer consults it. A provider queries pivot rows through
+ * {@see PivotAwareProviderInterface::supportsPivot()} and
+ * {@see PivotAwareProviderInterface::fetchRelatedPivotCollection()}, which returns the page
+ * with its pivot map, as the Symfony bundle's providers do.
+ *
+ * @deprecated implement {@see PivotAwareProviderInterface} instead; this interface is removed in the next major
  */
 interface QueriesPivotColumnsInterface
 {

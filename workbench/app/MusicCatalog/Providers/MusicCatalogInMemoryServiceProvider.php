@@ -183,6 +183,16 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
 
         $playlists = new InMemoryDataProvider('playlists', $graph['playlists'], identify: self::identify());
         JsonApi::provider($playlists);
+        // Each playlist's orderedTracks pivot rows, from its entries.
+        foreach ($graph['playlists'] as $playlist) {
+            $rows = [];
+            foreach ($playlist->entries as $entry) {
+                if ($entry->track !== null) {
+                    $rows[(string) $entry->track->id] = ['position' => $entry->position, 'weight' => $entry->weight, 'added_at' => $entry->added_at];
+                }
+            }
+            $playlists->store()->writePivotRows($playlist, 'orderedTracks', $rows);
+        }
         JsonApi::persister(new InMemoryDataPersister('playlists', $playlists->store(), static fn(): Playlist => new Playlist()));
 
         $favorites = new InMemoryDataProvider('favorites', $graph['favorites'], identify: self::identify(), assignId: self::assignId());
@@ -388,9 +398,8 @@ final class MusicCatalogInMemoryServiceProvider extends ServiceProvider
                 $track->playlists[] = $playlists[$row['playlist_id']];
             }
         }
-        // The ordered pivot rows backing orderedTracks — the in-memory analogue of the
-        // Eloquent mc_playlist_track pivot (the witness stores no pivot meta, but the members
-        // must be present so both arms serve the same orderedTracks membership).
+        // The ordered pivot rows backing orderedTracks, the in-memory analogue of the
+        // Eloquent mc_playlist_track pivot.
         foreach (Fixtures::orderedTracks() as $row) {
             $playlist = $playlists[$row['playlist_id']] ?? null;
             $track = $tracks[(string) $row['track_id']] ?? null;

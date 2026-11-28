@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature\MusicCatalog;
 
+use haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Testing\SchemaConformanceTrait;
 use haddowg\JsonApiLaravel\Testing\SchemaDocumentKind;
@@ -194,6 +195,52 @@ final class EloquentPivotRelationshipEndpointTest extends Orchestra
 
         self::assertSame('2024-01-01T00:00:00+00:00', $response->json('data.0.meta.pivot.addedAt'));
         $this->assertResponseMatchesGeneratedSchema($response, 'playlists', SchemaDocumentKind::Relationship, 'orderedTracks');
+    }
+
+    public function test_an_included_pivot_page_renders_the_pivot_its_include_query_read(): void
+    {
+        $profile = self::MEDIA_TYPE . ';profile="' . RelationshipQueriesProfile::URI . '"';
+        foreach ([
+            ['/api/playlists?include=orderedTracks', self::MEDIA_TYPE],
+            ['/api/playlists/' . Fixtures::PLAYLIST_ONE . '?include=orderedTracks', self::MEDIA_TYPE],
+            ['/api/playlists?include=orderedTracks&fields[playlists]=orderedTracks', self::MEDIA_TYPE],
+            ['/api/playlists?include=orderedTracks&fields[playlists]=orderedTracks', $profile],
+        ] as [$uri, $accept]) {
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $response = $this->get($uri, ['Accept' => $accept])->assertOk();
+            $queries = \array_column(DB::getQueryLog(), 'query');
+            DB::disableQueryLog();
+
+            // The include's page carries its members' pivot columns, so their meta.pivot
+            // needs no query of its own.
+            self::assertCount(1, \array_filter($queries, static fn(string $sql): bool => \str_contains($sql, '"mc_playlist_track".')), $uri . "\n" . \implode("\n", $queries));
+
+            $playlists = $response->json('data');
+            self::assertIsArray($playlists);
+            $playlists = \array_is_list($playlists) ? $playlists : [$playlists];
+            $members = 0;
+            foreach ($playlists as $playlist) {
+                self::assertIsArray($playlist);
+                $id = $playlist['id'] ?? null;
+                self::assertIsString($id);
+                $linkage = \data_get($playlist, 'relationships.orderedTracks.data');
+                self::assertIsArray($linkage);
+                $expected = [];
+                foreach ((array) $this->fetch('/api/playlists/' . $id . '/relationships/orderedTracks?page[size]=100')->assertOk()->json('data') as $member) {
+                    self::assertIsArray($member);
+                    self::assertIsString($member['id'] ?? null);
+                    $expected[$member['id']] = \data_get($member, 'meta.pivot');
+                }
+                foreach ($linkage as $member) {
+                    self::assertIsArray($member);
+                    self::assertIsString($member['id'] ?? null);
+                    self::assertSame($expected[$member['id']] ?? 'missing', \data_get($member, 'meta.pivot'), $uri . ' playlist ' . $id);
+                    ++$members;
+                }
+            }
+            self::assertGreaterThan(0, $members, $uri);
+        }
     }
 
     /**

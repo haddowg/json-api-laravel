@@ -26,11 +26,6 @@ final class EloquentRelationshipWriteConformanceTest extends RelationshipWriteCo
         return EloquentWorkbenchServiceProvider::class;
     }
 
-    protected function providerRendersPivotMeta(): bool
-    {
-        return true;
-    }
-
     /**
      * @param \Illuminate\Foundation\Application $app
      */

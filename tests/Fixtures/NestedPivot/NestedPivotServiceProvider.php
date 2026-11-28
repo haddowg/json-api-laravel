@@ -20,7 +20,7 @@ use Illuminate\Support\ServiceProvider;
  * Rooms hold shelves, each shelf points at a crate and an alternative crate, and crates hold
  * records through a join with pivot columns. `npBins` is a writable view of the crates. Served
  * by Eloquent, or with `nested_pivot.store` set to `memory`, by in-memory providers holding the
- * same graph and no pivot rows, or set to `custom`, by the same in-memory providers with the
+ * same graph and its pivot rows, or set to `custom`, by the same in-memory providers with the
  * crates and records served through {@see NpPivotStoreProvider}, which holds the crates' pivot
  * rows.
  *
@@ -109,6 +109,22 @@ final class NestedPivotServiceProvider extends ServiceProvider
                 $bin->id = $id;
             });
             JsonApi::provider($bins);
+            // The pivot rows live with the parents. A crate is held by the crates and the bins
+            // stores alike, so both hold its rows, as one join serves both types.
+            $crateRows = [];
+            $recordRows = [];
+            foreach (self::LINKS as [$crate, $record, $position, $addedAt]) {
+                $crateRows[(string) $crate][(string) $record] = ['position' => $position, 'added_at' => new \DateTimeImmutable($addedAt, new \DateTimeZone('UTC'))];
+                $recordRows[(string) $record][(string) $crate] = ['position' => $position];
+            }
+            foreach ($crateRows as $id => $rows) {
+                $crateProvider->store()->writePivotRows($crates[$id], 'records', $rows);
+                $bins->store()->writePivotRows($crates[$id], 'records', $rows);
+            }
+            foreach ($recordRows as $id => $rows) {
+                $recordProvider->store()->writePivotRows($records[$id], 'crates', $rows);
+            }
+
             JsonApi::persister(new InMemoryDataPersister(
                 'npBins',
                 $bins->store(),
@@ -117,6 +133,19 @@ final class NestedPivotServiceProvider extends ServiceProvider
             ));
 
             return;
+        }
+
+        // `nested_pivot.foreign_crates` serves the crates from plain objects while the Eloquent
+        // provider serves their records, so the Eloquent pivot read has no model to join from.
+        if (config('nested_pivot.foreign_crates') === true) {
+            JsonApi::provider(new InMemoryDataProvider('npCrates', ['1' => (object) ['id' => '1', 'title' => 'Loose', 'records' => []]]));
+        }
+
+        // `nested_pivot.batch_only` serves one type through a provider that reads pivot rows
+        // only through the batched pivot SPI.
+        $batchOnly = config('nested_pivot.batch_only');
+        if ($batchOnly === 'npCrates' || $batchOnly === 'npRecords') {
+            JsonApi::provider(new NpBatchOnlyProvider(new EloquentDataProvider([$batchOnly => $batchOnly === 'npCrates' ? NpCrate::class : NpRecord::class])));
         }
 
         JsonApi::provider(new EloquentDataProvider([

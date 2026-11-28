@@ -6,6 +6,7 @@ namespace haddowg\JsonApiLaravel\Serializer;
 
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
+use haddowg\JsonApi\Resource\Field\IdEncoderInterface;
 use haddowg\JsonApi\Resource\ResourceMeta;
 use haddowg\JsonApi\Serializer\RendersResourceMetaInterface;
 use haddowg\JsonApi\Serializer\SerializerInterface;
@@ -18,8 +19,8 @@ use haddowg\JsonApi\Serializer\SerializerInterface;
  * serializer and delegates everything to it, every optional serializer interface included
  * ({@see AbstractPivotParentSerializer}), EXCEPT {@see getMeta()} and
  * {@see renderResourceMeta()}, where it merges the
- * member's pivot values (`pivotMap[id]`, read off Eloquent's pivot accessor via
- * {@see \haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider::fetchRelationshipPivot()})
+ * member's pivot values (`pivotMap[id]`, read off the fetched members' pivot rows or the
+ * related type's {@see \haddowg\JsonApiLaravel\DataProvider\PivotAwareProviderInterface})
  * under a top-level `pivot` key into the inner serializer's meta. Bound for one parent through
  * an include ({@see PivotRenderingResolver}), it has no map and reads each member's stored
  * values through `$storedPivotOf` instead.
@@ -56,6 +57,8 @@ final class PivotMetaSerializer extends AbstractPivotParentSerializer
      * @param object|null                         $parent         the parent whose relation renders, which computed pivot fields read; without it they render nothing
      * @param string|null                         $outputTimezone the server's default output zone for computed date fields
      * @param (\Closure(object): ?array<string, mixed>)|null $storedPivotOf reads a member's stored values when the map holds none for it, `null` when it has no stored row
+     * @param PivotRowSource|null                 $source         the parent and provider the map came from, named when a member has no row
+     * @param IdEncoderInterface|null             $memberEncoder  the related type's id encoder, which decodes a member's wire id to the id the map may be keyed by
      */
     public function __construct(
         private readonly SerializerInterface $inner,
@@ -64,6 +67,8 @@ final class PivotMetaSerializer extends AbstractPivotParentSerializer
         private readonly ?object $parent = null,
         private readonly ?string $outputTimezone = null,
         private readonly ?\Closure $storedPivotOf = null,
+        private readonly ?PivotRowSource $source = null,
+        private readonly ?IdEncoderInterface $memberEncoder = null,
     ) {}
 
     public function getMeta(mixed $object, JsonApiRequestInterface $request): array
@@ -89,26 +94,52 @@ final class PivotMetaSerializer extends AbstractPivotParentSerializer
      */
     private function withPivot(array $meta, mixed $object, JsonApiRequestInterface $request): array
     {
-        $pivot = $this->pivotMap[$this->inner->getId($object)]
+        $id = $this->inner->getId($object);
+        $pivot = PivotKeys::find($this->pivotMap, $id, $this->memberEncoder)
             ?? ($this->storedPivotOf !== null && \is_object($object) ? ($this->storedPivotOf)($object) : null);
-        $computes = $this->relation !== null && $this->parent !== null && $this->relation->computedPivotFields() !== [];
-        if ($this->relation !== null && ($pivot !== null || $computes)) {
-            $stored = $pivot !== null;
-            $values = $this->parent !== null
-                ? [...($pivot ?? []), ...$this->relation->hookedPivotValues($this->parent, $object, $pivot ?? [], $request, $this->outputTimezone)]
-                : ($pivot ?? []);
-            $readable = [];
-            foreach ($this->relation->readablePivotFieldsFor($request, $object) as $field) {
-                if ($stored || BelongsToMany::isComputedPivotField($field)) {
-                    $readable[$field->name()] = $values[$field->name()] ?? null;
-                }
+        if ($this->relation === null) {
+            if ($pivot !== null) {
+                $meta['pivot'] = $pivot === [] ? new \stdClass() : $pivot;
             }
-            $pivot = $readable;
+
+            return $meta;
         }
 
-        if ($pivot !== null && $pivot !== []) {
-            $meta['pivot'] = $pivot;
+        // A relation declaring no pivot field, an additionalProperties entry at most, renders
+        // none. Stored fields render wherever pivot rows were read, and a member with no row
+        // fails the render; computed fields render wherever the parent is known.
+        if ($this->relation->pivotFields() === []) {
+            return $meta;
         }
+
+        $stored = $pivot !== null || $this->storedPivotOf !== null || $this->pivotMap !== [] || $this->source !== null;
+        if ($stored && $pivot === null && $this->relation->storedPivotFields() !== []) {
+            throw MissingPivotRow::for(
+                $this->source->parentType ?? 'unknown',
+                $this->relation->name(),
+                $this->source->parentId ?? 'unknown',
+                $id,
+                $this->source->provider ?? 'its provider',
+            );
+        }
+        $computes = $this->parent !== null && $this->relation->computedPivotFields() !== [];
+        if (!$stored && !$computes) {
+            return $meta;
+        }
+
+        $values = $this->parent !== null
+            ? [...($pivot ?? []), ...$this->relation->hookedPivotValues($this->parent, $object, $pivot ?? [], $request, $this->outputTimezone)]
+            : ($pivot ?? []);
+        $readable = [];
+        foreach ($this->relation->readablePivotFieldsFor($request, $object) as $field) {
+            if ($stored || BelongsToMany::isComputedPivotField($field)) {
+                $readable[$field->name()] = $values[$field->name()] ?? null;
+            }
+        }
+
+        // A member whose every pivot field is hidden for this request still carries the
+        // object, empty, as the response pivot schema requires.
+        $meta['pivot'] = $readable === [] ? new \stdClass() : $readable;
 
         return $meta;
     }

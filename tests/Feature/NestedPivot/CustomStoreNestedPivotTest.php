@@ -36,11 +36,6 @@ final class CustomStoreNestedPivotTest extends NestedPivotTestCase
         return true;
     }
 
-    protected function storesWrittenPivots(): bool
-    {
-        return false;
-    }
-
     public function test_an_include_reads_the_pivot_map_once_for_every_parent(): void
     {
         foreach (['/api/npShelves?include=crate.records', '/api/npRooms/1?include=shelves.crate.records', '/api/npShelves/1?include=crate.records,altCrate.records'] as $uri) {
@@ -65,5 +60,24 @@ final class CustomStoreNestedPivotTest extends NestedPivotTestCase
             self::assertSame(0, NpPivotStoreProvider::$singleReads, $uri);
             self::assertSame([2], NpPivotStoreProvider::$batchSizes, $uri);
         }
+    }
+
+    public function test_a_linkage_rendered_without_an_include_reads_the_pivot_map_once_for_every_parent(): void
+    {
+        foreach (['/api/npCrates', '/api/npShelves?include=crate', '/api/npRooms/1/things', '/api/npRooms/1?include=pinned,things', '/api/npRecords/1/crates'] as $uri) {
+            NpPivotStoreProvider::$singleReads = 0;
+            NpPivotStoreProvider::$batchSizes = [];
+
+            $this->document($uri);
+
+            self::assertSame(0, NpPivotStoreProvider::$singleReads, $uri);
+            self::assertSame([2], NpPivotStoreProvider::$batchSizes, $uri);
+        }
+
+        NpPivotStoreProvider::$singleReads = 0;
+        NpPivotStoreProvider::$batchSizes = [];
+        $this->action('/api/npCrates/-actions/roll');
+        self::assertSame(0, NpPivotStoreProvider::$singleReads);
+        self::assertSame([2], NpPivotStoreProvider::$batchSizes);
     }
 }

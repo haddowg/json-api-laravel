@@ -99,6 +99,20 @@ abstract class EloquentKeyedNestedPivotTestCase extends Orchestra
         self::assertSame($records, $this->linkagePivots($this->arrayAt(\data_get($response->json(), 'data')), 'records'));
     }
 
+    public function test_a_pivot_linkage_rendered_without_an_include_carries_the_pivot_under_its_wire_ids(): void
+    {
+        $collection = $this->document('/api/npCrates');
+        self::assertSame($this->pivots(1), $this->linkagePivots($this->resource($collection['data'] ?? null, 'npCrates', NpKeys::wire('c', 1)), 'records'));
+        self::assertSame($this->pivots(2), $this->linkagePivots($this->resource($collection['data'] ?? null, 'npCrates', NpKeys::wire('c', 2)), 'records'));
+
+        $nested = $this->document('/api/npShelves?include=crate');
+        self::assertSame($this->pivots(1), $this->linkagePivots($this->resource($nested['included'] ?? null, 'npCrates', NpKeys::wire('c', 1)), 'records'));
+        self::assertSame($this->pivots(2), $this->linkagePivots($this->resource($nested['included'] ?? null, 'npCrates', NpKeys::wire('c', 2)), 'records'));
+
+        $page = $this->document('/api/npRooms/1/things');
+        self::assertSame($this->pivots(2), $this->linkagePivots($this->resource($page['data'] ?? null, 'npCrates', NpKeys::wire('c', 2)), 'records'));
+    }
+
     public function test_a_morph_identified_by_a_callback_includes_its_target_under_its_wire_id(): void
     {
         $shelf = $this->document('/api/npShelves/2?include=tagged');

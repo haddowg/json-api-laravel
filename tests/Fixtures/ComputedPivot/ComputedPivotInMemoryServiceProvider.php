@@ -50,6 +50,16 @@ final class ComputedPivotInMemoryServiceProvider extends ServiceProvider
             return \is_scalar($id) ? (string) $id : '';
         };
         $provider = new InMemoryDataProvider('crates', $crates, identify: $identify);
+        // The `orderedTracks` pivot rows, as the Eloquent join holds them.
+        $rows = [];
+        foreach (ConformanceFixtures::playlistTracks() as $row) {
+            $rows[(string) $row['playlist_id']][(string) $row['track_id']] = ['position' => $row['position'], 'weight' => $row['weight'], 'added_at' => $row['added_at']];
+        }
+        foreach ($rows as $id => $members) {
+            if (isset($crates[$id])) {
+                $provider->store()->writePivotRows($crates[$id], 'orderedTracks', $members);
+            }
+        }
         JsonApi::provider($provider);
         JsonApi::persister(new InMemoryDataPersister(
             'crates',

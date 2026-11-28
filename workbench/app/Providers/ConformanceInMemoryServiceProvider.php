@@ -65,18 +65,24 @@ final class ConformanceInMemoryServiceProvider extends ServiceProvider
         $albumResolver = static fn(string $type, string $id): ?object => $type === 'artists' ? ($artists[$id] ?? null) : null;
         JsonApi::persister(new InMemoryDataPersister('albums', $albumProvider->store(), static fn(): Album => new Album(), $albumResolver));
 
-        // The pivot surface: playlists ⇄ tracks. The in-memory witness stores no
-        // pivot meta (the documented boundary — `meta.pivot` is Eloquent-only), so it wires
-        // the plain member lists the `orderedTracks`/`tracks` relations resolve off, and a
-        // writable `playlists` persister whose relatedResolver turns an incoming `tracks`
-        // linkage id back into the stored Track — making the relationship-mutation endpoints
-        // writable on the witness too (the pivot meta is simply not stored/rendered).
+        // The pivot surface: playlists ⇄ tracks. The witness wires the member lists the
+        // `orderedTracks`/`tracks` relations resolve off, the `orderedTracks` pivot rows the
+        // Eloquent join holds, and a writable `playlists` persister whose relatedResolver turns
+        // an incoming `tracks` linkage id back into the stored Track, so the
+        // relationship-mutation endpoints write their pivot rows on the witness too.
         [$playlists, $tracks] = $this->pivotCatalog();
 
         JsonApi::provider(new InMemoryDataProvider('tracks', $tracks, identify: self::identify()));
 
         $playlistProvider = new InMemoryDataProvider('playlists', $playlists, identify: self::identify(), assignId: self::assignId());
         JsonApi::provider($playlistProvider);
+        $rows = [];
+        foreach (ConformanceFixtures::playlistTracks() as $row) {
+            $rows[(string) $row['playlist_id']][(string) $row['track_id']] = ['position' => $row['position'], 'weight' => $row['weight'], 'added_at' => $row['added_at']];
+        }
+        foreach ($rows as $id => $members) {
+            $playlistProvider->store()->writePivotRows($playlists[$id], 'orderedTracks', $members);
+        }
 
         $relatedResolver = static fn(string $type, string $id): ?object => match ($type) {
             'tracks' => $tracks[$id] ?? null,

@@ -125,6 +125,16 @@ final class RestrictedPivotFieldsTest extends Orchestra
         }
     }
 
+    public function test_a_member_whose_every_pivot_field_is_hidden_renders_an_empty_pivot_object(): void
+    {
+        foreach (['/api/mixtapes/1/quietTracks', '/api/mixtapes/1/relationships/quietTracks', '/api/mixtapes/1?include=quietTracks'] as $uri) {
+            $content = (string) $this->read($uri)->assertOk()->getContent();
+
+            self::assertStringContainsString('"id":"2","meta":{"pivot":{}}', \str_replace(['"type":"tracks",'], '', $content), $uri);
+            self::assertStringNotContainsString('"pivot":[]', $content, $uri);
+        }
+    }
+
     public function test_the_rendered_pivot_matches_the_response_pivot_schema(): void
     {
         DB::table('playlist_track')->where('playlist_id', 1)->where('track_id', 1)->update(['weight' => null]);

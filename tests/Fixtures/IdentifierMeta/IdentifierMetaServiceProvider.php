@@ -49,7 +49,10 @@ final class IdentifierMetaServiceProvider extends ServiceProvider
             return \is_scalar($id) ? (string) $id : '';
         };
 
-        JsonApi::provider(new InMemoryDataProvider('shelves', $shelves, identify: $identify));
+        $shelfProvider = new InMemoryDataProvider('shelves', $shelves, identify: $identify);
+        // The shelf's book positions, as the Eloquent join holds them.
+        $shelfProvider->store()->writePivotRows($shelves['1'], 'books', ['1' => ['position' => 1], '2' => ['position' => 2]]);
+        JsonApi::provider($shelfProvider);
         JsonApi::provider(new InMemoryDataProvider('books', $books, identify: $identify));
         JsonApi::provider(new InMemoryDataProvider('curators', $curators, identify: $identify));
     }

@@ -332,7 +332,7 @@ final class RelationshipWindowBatcher
         $countRequested = $root && $relation->isCountable() && $request->countsRelationship($relation->name());
         $wantsCount = !$paginator instanceof CursorPaginator
             && (($paginator?->wantsCount() ?? false) || $countRequested);
-        $pivot = !$polymorphic && $this->queriesPivotColumns($type, $parents[0], $relation);
+        $pivot = !$polymorphic && $this->queriesPivotColumns($type, $relation);
 
         $criteria = $this->relationCriteria->criteriaFor(
             new QueryParameters(
@@ -526,6 +526,20 @@ final class RelationshipWindowBatcher
     }
 
     /**
+     * Whether the request's sparse fieldset for `$type` renders `$relation`: it names it, or
+     * the relation is declared `notSparseField()` and the fieldset isn't the empty one, and a
+     * sparse-by-default relation only when named.
+     */
+    private static function inFieldset(JsonApiRequestInterface $request, string $type, RelationInterface $relation): bool
+    {
+        $named = $request->getIncludedFields($type);
+        $rendered = $request->isIncludedField($type, $relation->name())
+            || (!$relation->isSparseField() && !\in_array('', $named, true));
+
+        return $rendered && (!$relation->isSparseByDefault() || \in_array($relation->name(), $named, true));
+    }
+
+    /**
      * The to-many relations among `$allRelations` that may be windowed under the profile: a
      * monomorphic to-many whose linkage DATA renders for THIS request. A polymorphic to-many
      * (members span types — no single related provider or shared vocabulary) and a to-one are
@@ -565,10 +579,12 @@ final class RelationshipWindowBatcher
             }
 
             // Window only when this to-many's linkage data renders for the request: included at
-            // the primary level (default-includes honoured) or withData.
+            // the primary level (default-includes honoured), or withData and kept by the sparse
+            // fieldset. An included relation is windowed whatever the fieldset, since its page
+            // decides the included members.
             if (
-                $relation->emitsDataOnlyWhenLoaded()
-                && !$request->isIncludedRelationship('', $relation->name(), $defaults)
+                !$request->isIncludedRelationship('', $relation->name(), $defaults)
+                && ($relation->emitsDataOnlyWhenLoaded() || !self::inFieldset($request, $type, $relation))
             ) {
                 continue;
             }
@@ -636,7 +652,7 @@ final class RelationshipWindowBatcher
                 $relatedResource,
                 $relation,
                 null,
-                includePivotFields: $this->queriesPivotColumns($type, $parent, $relation),
+                includePivotFields: $this->queriesPivotColumns($type, $relation),
                 request: $request,
                 server: $server,
                 parentType: $type,
@@ -945,14 +961,15 @@ final class RelationshipWindowBatcher
      * Whether `$type`'s provider reads the relation's pivot columns, so a read order the
      * relation declares over a pivot field windows as it orders the related endpoint.
      */
-    private function queriesPivotColumns(string $type, object $parent, RelationInterface $relation): bool
+    private function queriesPivotColumns(string $type, RelationInterface $relation): bool
     {
-        if (!$this->providers->supportsType($type)) {
+        $relatedType = $relation->relatedTypes()[0] ?? null;
+        if ($relatedType === null || !$this->providers->supportsType($type)) {
             return false;
         }
 
         $provider = $this->providers->forType($type);
 
-        return $provider instanceof QueriesPivotColumnsInterface && $provider->queriesPivotColumns($parent, $relation);
+        return $provider instanceof PivotAwareProviderInterface && $provider->supportsPivot($relatedType, $relation);
     }
 }

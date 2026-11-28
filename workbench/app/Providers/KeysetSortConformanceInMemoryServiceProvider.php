@@ -30,8 +30,16 @@ final class KeysetSortConformanceInMemoryServiceProvider extends ServiceProvider
 
         $members = \array_values($teams);
         JsonApi::provider(new InMemoryDataProvider('scoreTeams', $teams, sortArms: [new TeamArrayArm()]));
+        // Each team's `slot` pivot row, its id, as the Eloquent join holds it.
+        $slots = [];
+        foreach ($teams as $id => $team) {
+            $slots[$id] = ['slot' => (int) $id];
+        }
         foreach (['scoreLeagues', 'scoreDivisions'] as $type) {
-            JsonApi::provider(new InMemoryDataProvider($type, ['1' => new ScoreGroup('1', $members, $members)], sortArms: [new TeamArrayArm()]));
+            $group = new ScoreGroup('1', $members, $members);
+            $provider = new InMemoryDataProvider($type, ['1' => $group], sortArms: [new TeamArrayArm()]);
+            $provider->store()->writePivotRows($group, 'slottedTeams', $slots);
+            JsonApi::provider($provider);
         }
     }
 }

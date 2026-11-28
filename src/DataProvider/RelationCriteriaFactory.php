@@ -53,7 +53,7 @@ use haddowg\JsonApiLaravel\OpenApi\PivotFields;
  * `pivot.`-prefixed column (`Where::make('position', 'pivot.position')`); a pivot sort is
  * derived from each declared pivot field (`?sort=position`), columned `pivot.<column>`. Both
  * reach the criteria only when the caller passes `includePivotFields` (a provider that can
- * query the join, see {@see QueriesPivotColumnsInterface}); otherwise every `pivot.`-columned
+ * query the join, see {@see PivotAwareProviderInterface::supportsPivot()}); otherwise every `pivot.`-columned
  * filter is dropped, including one a filter family resolves, so the key is an unrecognised
  * `400` rather than a query against a column the provider cannot reach. The Eloquent
  * handlers resolve the `pivot.` prefix to the relation's join table, whichever key matched.

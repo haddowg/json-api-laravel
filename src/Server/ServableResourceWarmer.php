@@ -388,7 +388,8 @@ final class ServableResourceWarmer
 
     /**
      * Reports a pivot side `through()` names that its Eloquent relation doesn't key
-     * ({@see PivotSideGuard}), and a relation that can't reach its rows ({@see ForeignKeyGuard}): a foreign key that
+     * ({@see PivotSideGuard}), stored pivot fields no provider reads ({@see PivotStorageGuard}),
+     * and a relation that can't reach its rows ({@see ForeignKeyGuard}): a foreign key that
      * holds no parent id or that its related type's provider or persister can't use, or a
      * to-many of a parent no model serves into a type whose global scopes it would bypass.
      * Route registration makes the same check, but a cached route table skips it.
@@ -409,6 +410,12 @@ final class ServableResourceWarmer
 
         try {
             (new PivotSideGuard(fn(): DataProviderRegistry => $this->providers))->check($type, $resource);
+        } catch (\LogicException $e) {
+            $problems[] = $e->getMessage();
+        }
+
+        try {
+            (new PivotStorageGuard(fn(): DataProviderRegistry => $this->providers))->check($type, $resource);
         } catch (\LogicException $e) {
             $problems[] = $e->getMessage();
         }

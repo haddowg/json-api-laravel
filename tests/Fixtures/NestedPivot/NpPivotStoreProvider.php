@@ -10,16 +10,20 @@ use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
 use haddowg\JsonApiLaravel\DataProvider\PivotAwareProviderInterface;
+use haddowg\JsonApiLaravel\DataProvider\PivotCollectionResult;
+use haddowg\JsonApiLaravel\DataProvider\PivotCursorCollectionResult;
 use haddowg\JsonApiLaravel\DataProvider\RelatedBatch;
 
 /**
  * A provider that keeps the crates' pivot rows beside an in-memory store, reads them through
  * the pivot SPI and doesn't query the join for its related reads. Its batched read answers
- * for the crates' relations only. It counts its pivot reads.
+ * for the crates' relations itself and leaves the rest to the in-memory provider it wraps. It
+ * counts its pivot reads.
  *
  * @internal
  *
  * @implements DataProviderInterface<object>
+ * @implements PivotAwareProviderInterface<object>
  */
 final class NpPivotStoreProvider implements DataProviderInterface, PivotAwareProviderInterface
 {
@@ -82,10 +86,30 @@ final class NpPivotStoreProvider implements DataProviderInterface, PivotAwarePro
         return $this->pivotsOf($parent, $relation);
     }
 
+    public function supportsPivot(string $relatedType, RelationInterface $relation): bool
+    {
+        return false;
+    }
+
+    public function fetchRelatedPivotCollection(string $relatedType, object $parent, RelationInterface $relation, CollectionCriteria $criteria, JsonApiRequestInterface $request): PivotCollectionResult|PivotCursorCollectionResult
+    {
+        throw new \LogicException('This provider does not query pivot rows.');
+    }
+
+    public function fetchRelatedPivotMap(string $parentType, string $relatedType, object $parent, RelationInterface $relation): array
+    {
+        if ($parentType !== 'npCrates') {
+            return $this->inner instanceof PivotAwareProviderInterface ? $this->inner->fetchRelatedPivotMap($parentType, $relatedType, $parent, $relation) : [];
+        }
+        ++self::$singleReads;
+
+        return $this->pivotsOf($parent, $relation);
+    }
+
     public function fetchRelatedPivotMapBatch(string $parentType, string $relatedType, array $parents, RelationInterface $relation): array
     {
         if ($parentType !== 'npCrates') {
-            return [];
+            return $this->inner instanceof PivotAwareProviderInterface ? $this->inner->fetchRelatedPivotMapBatch($parentType, $relatedType, $parents, $relation) : [];
         }
         self::$batchSizes[] = \count($parents);
 

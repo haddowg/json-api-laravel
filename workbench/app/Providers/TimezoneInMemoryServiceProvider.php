@@ -48,15 +48,22 @@ final class TimezoneInMemoryServiceProvider extends ServiceProvider
             );
         }
 
+        $rows = [];
         foreach (TimezoneFixtures::bookings() as $row) {
             $gig = $gigs[(string) $row['gig_id']] ?? null;
             $performer = $performers[(string) $row['performer_id']] ?? null;
             if ($gig !== null && $performer !== null) {
                 $gig->performers[] = $performer;
+                $rows[(string) $row['gig_id']][(string) $row['performer_id']] = ['booked_at' => $row['booked_at']];
             }
         }
 
-        JsonApi::provider(new InMemoryDataProvider('gigs', $gigs));
+        $gigProvider = new InMemoryDataProvider('gigs', $gigs);
+        // Each booking's pivot row, as the Eloquent join holds it.
+        foreach ($rows as $id => $members) {
+            $gigProvider->store()->writePivotRows($gigs[$id], 'performers', $members);
+        }
+        JsonApi::provider($gigProvider);
         JsonApi::provider(new InMemoryDataProvider('venues', $venues));
         JsonApi::provider(new InMemoryDataProvider('performers', $performers));
     }

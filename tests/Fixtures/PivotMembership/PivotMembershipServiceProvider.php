@@ -68,6 +68,17 @@ final class PivotMembershipServiceProvider extends ServiceProvider
             $coordinator = $this->app->make(InMemorySnapshotCoordinator::class);
             $crateProvider = new InMemoryDataProvider('crates', $crates, identify: static fn(object $row): string => $row instanceof CrateRow ? $row->id : '', coordinator: $coordinator);
             $this->app->instance('pm.crates', $crateProvider);
+            // Each link's pivot row, its slot unset as the Eloquent join leaves it.
+            foreach (self::CRATES as [$id, , $links]) {
+                $rows = [];
+                foreach ($links as [, $record]) {
+                    $rows[(string) $record] = ['slot' => null];
+                }
+                $crate = $crates[(string) $id] ?? null;
+                if ($crate !== null) {
+                    $crateProvider->store()->writePivotRows($crate, 'records', $rows);
+                }
+            }
             JsonApi::provider($crateProvider);
             JsonApi::persister(new InMemoryDataPersister(
                 'crates',

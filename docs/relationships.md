@@ -336,9 +336,13 @@ BelongsToMany::make('items', 'items')->fields(
 `meta.pivot` renders on the related endpoint, the relationship endpoint and the `200` linkage a
 relationship mutation answers with. Reads of a resource, a collection or a related endpoint,
 polymorphic ones included, create and update responses, atomic results among them, and a
-custom action's response, its `202` job resource included, also render it wherever the relation's linkage carries data, at any depth of `?include`: on each
+custom action's response, its `202` job resource included, also render it on every member of
+the relation's linkage wherever that linkage carries data, at any depth of `?include`: on each
 linkage member of `GET /playlists/1?include=orderedTracks`, of an include that reaches
-`orderedTracks` through other relations, and on each track those include. The stored values
+`orderedTracks` through other relations, and on each track those include. Whatever makes the
+data render, the pivot comes with it: an `?include`, `withData()`, a relation already loaded on
+the model, or a sparse fieldset naming a relation whose data renders. A linkage that renders
+links only reads no pivot. The stored values
 come from the join row the include's own query loads with each member, so they cost no extra
 query. A member that comes back without its row, such as one a provider reads without the join,
 takes its values from one batched read for every parent in the document
@@ -346,12 +350,17 @@ takes its values from one batched read for every parent in the document
 in `included`, so its `meta.pivot` there is one playlist's, while each playlist's linkage
 carries its own.
 
-Only a provider that reads pivot rows supplies the stored fields, so the in-memory provider
-renders none of them; it renders only the [computed fields](#computed-pivot-fields).
+The related type's provider reads the stored fields on every path, so they all render the same
+values. The in-memory provider keeps each pivot row beside its parent: a relationship write, a
+create or update carrying the relationship, and an atomic operation store the fields each
+member's `meta.pivot` sends, and every read renders them. A relation with stored pivot fields
+whose related type's provider reads no pivot rows fails the boot and `jsonapi:optimize`, naming
+the relation, the type, the provider and `PivotAwareProviderInterface`, which it must implement.
 
 Each member's `meta.pivot` carries every pivot field a response may show for that member:
 core's `BelongsToMany::readablePivotFieldsFor($request, $member)`, which leaves out a field that
-is hidden or write-only for the request. A field's `hidden(when:)` predicate receives the
+is hidden or write-only for the request. A member whose every field is left out still carries
+`"pivot": {}`. A relation that declares only an `AdditionalProperties` entry renders no pivot. A field's `hidden(when:)` predicate receives the
 related member (the track here, an Eloquent model or whatever the provider returns), so it
 can hide a value for one member and show it for another:
 
@@ -361,6 +370,10 @@ Integer::make('position')->hidden(static fn(mixed $track): bool => Accessor::get
 
 A field the join row holds no value for renders as `null`, which is what the response pivot
 schema in the [OpenAPI document](openapi.md) promises when it lists the field as `required`.
+A member the provider returns no pivot row for is a data integrity fault: the response fails
+with a reported `500` naming the type, the relation, the parent and member ids and the
+provider, and in debug the error's meta says the same. A relation whose fields are all computed
+has no row to miss.
 A `Date`, `DateTime` or `Time` pivot field renders in its format (ISO 8601 with an offset for
 a `DateTime` by default), and a `DateTime` follows the server's
 [`output_timezone`](configuration.md#output_timezone). The pivot model doesn't have to cast
@@ -372,7 +385,7 @@ on the related endpoint, the relationship endpoint, a Relationship Queries
 `relatedQuery[<relation>][filter]` window on an include, and the `?withCount` total that window
 reports. The endpoints page at the relation's paginator, and both read each member's pivot row in
 the same query as the page, so `meta.pivot` costs no extra query. The Eloquent provider resolves the `pivot.` prefix against the join table.
-A provider that stores no pivot columns, such as the in-memory one, answers a pivot sort or
+A provider that doesn't query the join, such as the in-memory one, answers a pivot sort or
 filter key with a `400`, and so a filter or sort whose `->through()` path reaches a pivot row;
 see [the in-memory provider](custom-data-providers.md#the-in-memory-provider) for each case.
 
@@ -504,10 +517,8 @@ join table included, and its `meta.pivot` renders wherever a stored one does: th
 endpoint, the relationship endpoint, a mutation's linkage and an include at any depth. A relation mixing stored and computed
 fields reads the stored ones off the pivot model and computes the rest.
 
-Computed fields don't depend on storage, so the in-memory provider renders them too, with an
-empty `$edge->pivot`. It renders only the computed members of `meta.pivot`, on an all-computed
-and a mixed relation alike, and never a stored member, a stored field with an `extractUsing()`
-hook included.
+Computed fields don't depend on storage, so every provider renders them, beside the stored
+fields the provider reads.
 
 A computed pivot field is read-only. A write that sends it in linkage `meta` ignores it, as it
 ignores a `readOnly()` field, even when the field is not declared `readOnly()`, and the
@@ -517,7 +528,9 @@ it is not a sort key, and a pivot filter can't target it.
 A stored pivot field with an `extractUsing()` hook is not computed. As on an attribute, the
 hook changes only how the field is read: it keeps its column in `withPivot()`, is written from
 linkage `meta`, sorts and filters on its column, and appears in the request pivot schema. Its
-hook receives the same `PivotEdge`, so it reads the stored value from `$edge->pivot`:
+hook receives the same `PivotEdge`, so it reads the stored value from `$edge->pivot`. Each value
+is in the form the response renders, on every provider: a date is the string the field renders
+in the server's output zone:
 
 ```php
 Integer::make('weight')->extractUsing(
