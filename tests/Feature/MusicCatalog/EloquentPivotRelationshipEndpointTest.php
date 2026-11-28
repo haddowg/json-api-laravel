@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace haddowg\JsonApiLaravel\Tests\Feature\MusicCatalog;
 
+use haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile;
 use haddowg\JsonApiLaravel\JsonApiServiceProvider;
 use haddowg\JsonApiLaravel\Testing\SchemaConformanceTrait;
 use haddowg\JsonApiLaravel\Testing\SchemaDocumentKind;
@@ -198,10 +199,16 @@ final class EloquentPivotRelationshipEndpointTest extends Orchestra
 
     public function test_an_included_pivot_page_renders_the_pivot_its_include_query_read(): void
     {
-        foreach (['/api/playlists?include=orderedTracks', '/api/playlists/' . Fixtures::PLAYLIST_ONE . '?include=orderedTracks'] as $uri) {
+        $profile = self::MEDIA_TYPE . ';profile="' . RelationshipQueriesProfile::URI . '"';
+        foreach ([
+            ['/api/playlists?include=orderedTracks', self::MEDIA_TYPE],
+            ['/api/playlists/' . Fixtures::PLAYLIST_ONE . '?include=orderedTracks', self::MEDIA_TYPE],
+            ['/api/playlists?include=orderedTracks&fields[playlists]=orderedTracks', self::MEDIA_TYPE],
+            ['/api/playlists?include=orderedTracks&fields[playlists]=orderedTracks', $profile],
+        ] as [$uri, $accept]) {
             DB::flushQueryLog();
             DB::enableQueryLog();
-            $response = $this->fetch($uri)->assertOk();
+            $response = $this->get($uri, ['Accept' => $accept])->assertOk();
             $queries = \array_column(DB::getQueryLog(), 'query');
             DB::disableQueryLog();
 

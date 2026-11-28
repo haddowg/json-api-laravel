@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace haddowg\JsonApiLaravel\Tests\Feature\NestedPivot;
 
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
+use haddowg\JsonApi\Schema\Profile\RelationshipQueriesProfile;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\Testing\SchemaConformanceTrait;
 use haddowg\JsonApiLaravel\Testing\SchemaDocumentKind;
@@ -65,6 +66,37 @@ final class EloquentNestedPivotTest extends NestedPivotTestCase
             self::assertStringNotContainsString('"crate_id" = ?', $query);
             self::assertStringNotContainsString('"record_id" = ?', $query);
         }
+    }
+
+    public function test_a_with_data_relation_the_fieldset_leaves_out_is_not_windowed(): void
+    {
+        $accept = ['Accept' => 'application/vnd.api+json;profile="' . RelationshipQueriesProfile::URI . '"'];
+        $query = '/api/npBins/1?relatedQuery[records][sort]=-position';
+
+        // records renders data unasked, so the profile windows it in its relatedQuery order;
+        // keptRecords, never sparse, renders whatever the fieldset.
+        $sorted = static fn(array $queries): array => \array_values(\array_filter($queries, static fn(string $query): bool => \str_contains($query, '"pivot_position" desc') || \str_contains($query, '"position" desc')));
+        self::assertCount(1, $sorted($this->profileQueries($query, $accept)));
+        self::assertSame([], $sorted($this->profileQueries($query . '&fields[npBins]=title', $accept)));
+        $this->get($query . '&relatedQuery[records][filter][nope]=1&fields[npBins]=title', $accept)->assertStatus(400);
+    }
+
+    /**
+     * The join-table queries a profile read runs.
+     *
+     * @param array<string, string> $headers
+     *
+     * @return list<string>
+     */
+    private function profileQueries(string $uri, array $headers): array
+    {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->get($uri, $headers)->assertOk();
+        $queries = \array_column(DB::getQueryLog(), 'query');
+        DB::disableQueryLog();
+
+        return \array_values(\array_filter($queries, static fn(string $query): bool => \str_contains($query, 'np_crate_record')));
     }
 
     public function test_the_provider_reads_every_parents_pivot_rows_in_one_query(): void
