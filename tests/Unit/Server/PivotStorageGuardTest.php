@@ -13,8 +13,13 @@ use haddowg\JsonApi\Resource\Field\Str;
 use haddowg\JsonApiLaravel\DataProvider\AbstractDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\InMemoryDataProvider;
 use haddowg\JsonApiLaravel\Server\PivotStorageGuard;
+use Illuminate\Database\Capsule\Manager as Capsule;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -46,6 +51,56 @@ final class PivotStorageGuardTest extends TestCase
 
         $guard->check('pivot-storage-shelves', new PivotStorageShelfResource());
         $this->addToAssertionCount(1);
+    }
+
+    #[Test]
+    public function aPivotQueryOverAParentModelWhoseRelationIsNotABelongsToManyIsRefused(): void
+    {
+        self::bootEloquent();
+        $guard = new PivotStorageGuard(static fn(): DataProviderRegistry => new DataProviderRegistry([new EloquentDataProvider([
+            'pivot-storage-shelves' => PivotStorageHasManyShelf::class,
+            'pivot-storage-items' => PivotStorageItem::class,
+        ])]));
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('The relation "slots" on type "pivot-storage-shelves" declares stored pivot fields, which ' . EloquentDataProvider::class . ' reads over the relation\'s join, but ' . PivotStorageHasManyShelf::class . '::slots() is a ' . HasMany::class . ', not an Eloquent belongsToMany.');
+
+        $guard->check('pivot-storage-shelves', new PivotStorageShelfResource());
+    }
+
+    #[Test]
+    public function aPivotQueryOverAParentModelWithNoRelationMethodIsRefused(): void
+    {
+        self::bootEloquent();
+        $guard = new PivotStorageGuard(static fn(): DataProviderRegistry => new DataProviderRegistry([new EloquentDataProvider([
+            'pivot-storage-shelves' => PivotStorageItem::class,
+            'pivot-storage-items' => PivotStorageItem::class,
+        ])]));
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage(PivotStorageItem::class . '::slots() is missing, not an Eloquent belongsToMany.');
+
+        $guard->check('pivot-storage-shelves', new PivotStorageShelfResource());
+    }
+
+    #[Test]
+    public function aPivotQueryOverAParentModelsBelongsToManyIsAccepted(): void
+    {
+        self::bootEloquent();
+        $guard = new PivotStorageGuard(static fn(): DataProviderRegistry => new DataProviderRegistry([new EloquentDataProvider([
+            'pivot-storage-shelves' => PivotStorageJoinedShelf::class,
+            'pivot-storage-items' => PivotStorageItem::class,
+        ])]));
+
+        $guard->check('pivot-storage-shelves', new PivotStorageShelfResource());
+        $this->addToAssertionCount(1);
+    }
+
+    private static function bootEloquent(): void
+    {
+        $capsule = new Capsule();
+        $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+        $capsule->bootEloquent();
     }
 
     #[Test]
@@ -110,5 +165,38 @@ final class PivotStorageComputedShelfResource extends AbstractResource
             Id::make(),
             BelongsToMany::make('slots', 'pivot-storage-items')->fields(Str::make('label')->computedUsing(static fn(): string => 'x')),
         ];
+    }
+}
+
+/**
+ * @internal
+ */
+final class PivotStorageItem extends Model {}
+
+/**
+ * @internal
+ */
+final class PivotStorageHasManyShelf extends Model
+{
+    /**
+     * @return HasMany<PivotStorageItem, $this>
+     */
+    public function slots(): HasMany
+    {
+        return $this->hasMany(PivotStorageItem::class);
+    }
+}
+
+/**
+ * @internal
+ */
+final class PivotStorageJoinedShelf extends Model
+{
+    /**
+     * @return EloquentBelongsToMany<PivotStorageItem, $this>
+     */
+    public function slots(): EloquentBelongsToMany
+    {
+        return $this->belongsToMany(PivotStorageItem::class)->withPivot('position');
     }
 }

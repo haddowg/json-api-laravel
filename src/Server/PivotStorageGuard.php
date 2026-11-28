@@ -7,7 +7,9 @@ namespace haddowg\JsonApiLaravel\Server;
 use haddowg\JsonApi\Resource\AbstractResource;
 use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\PivotAwareProviderInterface;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany as EloquentBelongsToMany;
 
 /**
  * Checks that a `belongsToMany` declaring stored pivot fields has a provider that reads its
@@ -43,6 +45,10 @@ final class PivotStorageGuard
 
             $provider = $providers->forType($relatedType);
             if ($provider instanceof PivotAwareProviderInterface) {
+                if ($provider->supportsPivot($relatedType, $relation)) {
+                    self::checkEloquentJoin($providers, $type, $relation, $provider);
+                }
+
                 continue;
             }
 
@@ -55,5 +61,40 @@ final class PivotStorageGuard
                 PivotAwareProviderInterface::class,
             ));
         }
+    }
+
+    /**
+     * A provider that queries the pivot rows reads them over the Eloquent `belongsToMany`
+     * behind the relation, so on an Eloquent parent model the relation's method must be one.
+     *
+     * @param PivotAwareProviderInterface<object> $provider
+     *
+     * @throws \LogicException when the parent model's relation method is not an Eloquent belongsToMany
+     */
+    private static function checkEloquentJoin(DataProviderRegistry $providers, string $type, BelongsToMany $relation, PivotAwareProviderInterface $provider): void
+    {
+        $parentProvider = $providers->supportsType($type) ? $providers->forType($type) : null;
+        $class = $parentProvider instanceof EloquentDataProvider ? $parentProvider->modelClassFor($type) : null;
+        if ($class === null) {
+            return;
+        }
+
+        $model = new $class();
+        $method = $relation->column() ?? $relation->name();
+        $eloquent = \method_exists($model, $method) ? $model->{$method}() : null;
+        if ($eloquent instanceof EloquentBelongsToMany) {
+            return;
+        }
+
+        throw new \LogicException(\sprintf(
+            'The relation "%s" on type "%s" declares stored pivot fields, which %s reads over the relation\'s join, but %s::%s() is %s, not an Eloquent belongsToMany. Return a belongsToMany from %s(), or declare the relation without stored pivot fields.',
+            $relation->name(),
+            $type,
+            $provider::class,
+            $class,
+            $method,
+            \is_object($eloquent) ? 'a ' . $eloquent::class : 'missing',
+            $method,
+        ));
     }
 }
