@@ -6,7 +6,6 @@ namespace haddowg\JsonApiLaravel\Tests\Fixtures\NestedPivot;
 
 use haddowg\JsonApi\Collection\CollectionResult;
 use haddowg\JsonApi\Request\JsonApiRequestInterface;
-use haddowg\JsonApi\Resource\Field\BelongsToMany;
 use haddowg\JsonApi\Resource\Field\RelationInterface;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderInterface;
@@ -97,12 +96,10 @@ final class NpPivotStoreProvider implements DataProviderInterface, PivotAwarePro
         throw new \LogicException('This provider does not query pivot rows.');
     }
 
-    public function fetchRelatedPivotMap(string $relatedType, object $parent, RelationInterface $relation): array
+    public function fetchRelatedPivotMap(string $parentType, string $relatedType, object $parent, RelationInterface $relation): array
     {
-        // The bins are a view of the same objects, so only the crates' relation, the one
-        // storing `addedAt`, reads this store's rows.
-        if (!$relation instanceof BelongsToMany || $relation->name() !== 'records' || $relation->pivotField('addedAt') === null) {
-            return $this->inner instanceof PivotAwareProviderInterface ? $this->inner->fetchRelatedPivotMap($relatedType, $parent, $relation) : [];
+        if ($parentType !== 'npCrates') {
+            return $this->inner instanceof PivotAwareProviderInterface ? $this->inner->fetchRelatedPivotMap($parentType, $relatedType, $parent, $relation) : [];
         }
         ++self::$singleReads;
 

@@ -135,6 +135,12 @@ final class NestedPivotServiceProvider extends ServiceProvider
             return;
         }
 
+        // `nested_pivot.foreign_crates` serves the crates from plain objects while the Eloquent
+        // provider serves their records, so the Eloquent pivot read has no model to join from.
+        if (config('nested_pivot.foreign_crates') === true) {
+            JsonApi::provider(new InMemoryDataProvider('npCrates', ['1' => (object) ['id' => '1', 'title' => 'Loose', 'records' => []]]));
+        }
+
         // `nested_pivot.batch_only` serves one type through a provider that reads pivot rows
         // only through the batched pivot SPI.
         $batchOnly = config('nested_pivot.batch_only');

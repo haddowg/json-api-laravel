@@ -38,7 +38,9 @@ A `belongsToMany` with stored pivot fields renders each member's `meta.pivot` wh
 linkage data renders, and the provider of its related type reads the stored values. Implement
 `PivotAwareProviderInterface` on it, named and shaped as the Symfony bundle's:
 `fetchRelatedPivotMap()` returns one parent's values and `fetchRelatedPivotMapBatch()` every
-parent's at one include path, keyed by the parent's wire id and then the member's.
+parent's at one include path, keyed by the parent's wire id and then the member's. Both take the
+served parent type first, `$parentType, $relatedType`, so a provider serving one object as
+several types can tell them apart.
 `supportsPivot()` says whether it also queries the rows, filtering, sorting and paging a related
 read by a pivot field through `fetchRelatedPivotCollection()`; answer `false` and the related
 reads take the plain path, as the in-memory provider's do. A related read that returns a
@@ -48,6 +50,12 @@ from that page, and `fetchRelatedPivotMapBatch()` is asked only for the parents 
 didn't carry them. A relation with stored pivot fields whose related type's provider doesn't
 implement the interface fails the boot and `jsonapi:optimize`, naming the relation, the type,
 the provider and the interface.
+
+The Eloquent provider reads pivot rows over a parent model's `belongsToMany`. When a custom
+provider serves the parent type and the Eloquent provider the related type, the first pivot read
+throws a configuration error naming the relation and the parent's provider: serve the related
+type from a provider that implements `PivotAwareProviderInterface` for those parents, answering
+`supportsPivot()` false, or serve the parent type from the Eloquent provider.
 
 `QueriesPivotColumnsInterface` and its `pivotMapOf()` are deprecated and go in the next major.
 The package no longer consults them, so a provider that filtered or sorted by pivot columns

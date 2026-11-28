@@ -35,9 +35,9 @@ final class VisibleRecordsOnly extends AbstractDataProvider implements PivotAwar
         throw new \LogicException('This provider does not query pivot rows.');
     }
 
-    public function fetchRelatedPivotMap(string $relatedType, object $parent, RelationInterface $relation): array
+    public function fetchRelatedPivotMap(string $parentType, string $relatedType, object $parent, RelationInterface $relation): array
     {
-        return $this->inner->fetchRelatedPivotMap($relatedType, $parent, $relation);
+        return $this->inner->fetchRelatedPivotMap($parentType, $relatedType, $parent, $relation);
     }
 
     public function fetchRelatedPivotMapBatch(string $parentType, string $relatedType, array $parents, RelationInterface $relation): array

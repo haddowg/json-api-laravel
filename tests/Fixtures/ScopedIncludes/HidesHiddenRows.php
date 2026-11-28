@@ -54,9 +54,9 @@ final class HidesHiddenRows extends AbstractDataProvider implements FetchesManyI
         throw new \LogicException('This provider does not query pivot rows.');
     }
 
-    public function fetchRelatedPivotMap(string $relatedType, object $parent, RelationInterface $relation): array
+    public function fetchRelatedPivotMap(string $parentType, string $relatedType, object $parent, RelationInterface $relation): array
     {
-        return $this->inner instanceof PivotAwareProviderInterface ? $this->inner->fetchRelatedPivotMap($relatedType, $parent, $relation) : [];
+        return $this->inner instanceof PivotAwareProviderInterface ? $this->inner->fetchRelatedPivotMap($parentType, $relatedType, $parent, $relation) : [];
     }
 
     public function fetchRelatedPivotMapBatch(string $parentType, string $relatedType, array $parents, RelationInterface $relation): array

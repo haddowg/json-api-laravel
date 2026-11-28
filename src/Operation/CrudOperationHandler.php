@@ -107,7 +107,9 @@ use haddowg\JsonApiLaravel\DataPersister\WriteTransaction;
 use haddowg\JsonApiLaravel\DataPersister\WriteTransactionContext;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\EloquentDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\Eloquent\NaiveDateTimeStorage;
+use haddowg\JsonApiLaravel\DataProvider\Eloquent\PivotParentNotAModel;
 use haddowg\JsonApiLaravel\DataProvider\FilterPaths;
 use haddowg\JsonApiLaravel\DataProvider\ForeignKeyReads;
 use haddowg\JsonApiLaravel\DataProvider\IdentifiedMorphMembers;
@@ -995,7 +997,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
                 $result = match (true) {
                     $this->foreignKeys()->reads($relation) => $this->foreignKeys()->page($server, $type, $parent, $relation, $criteria, $request),
                     \count($relatedTypes) > 1 && $this->providers->relatesToScopedType($type, $relation) => $this->polymorphicMembers()->window($criteria, $this->narrowedMembers($server, $type, $parent, $relation, $request)),
-                    $pivotProvider !== null => $pivotProvider->fetchRelatedPivotCollection($relatedType, $parent, $relation, $criteria, $request),
+                    $pivotProvider !== null => $this->fetchPivotPage($pivotProvider, $type, $relatedType, $parent, $relation, $criteria, $request),
                     default => $relatedProvider->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request),
                 };
             }
@@ -1372,7 +1374,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
 
         $result = $this->foreignKeys()->reads($relation)
             ? $this->foreignKeys()->page($server, $type, $parent, $relation, $criteria, $request)
-            : $this->fetchRelatedPage($relatedType, $parent, $relation, $criteria, $request);
+            : $this->fetchRelatedPage($type, $relatedType, $parent, $relation, $criteria, $request);
         $items = $this->materialize($result);
 
         return [
@@ -1967,7 +1969,7 @@ final class CrudOperationHandler implements OperationHandlerInterface
             $relatedType = $relation->relatedTypes()[0] ?? null;
             $relatedProvider = $relatedType !== null && $this->providers->supportsType($relatedType) ? $this->providers->forType($relatedType) : null;
             $pivots = $relatedProvider instanceof PivotAwareProviderInterface && $relatedType !== null
-                ? $relatedProvider->fetchRelatedPivotMap($relatedType, $parent, $relation)
+                ? $relatedProvider->fetchRelatedPivotMap($type, $relatedType, $parent, $relation)
                 : [];
         }
 
@@ -2118,13 +2120,32 @@ final class CrudOperationHandler implements OperationHandlerInterface
      *
      * @return CollectionResult<object>
      */
-    private function fetchRelatedPage(string $relatedType, object $parent, RelationInterface $relation, CollectionCriteria $criteria, JsonApiRequestInterface $request): CollectionResult
+    private function fetchRelatedPage(string $type, string $relatedType, object $parent, RelationInterface $relation, CollectionCriteria $criteria, JsonApiRequestInterface $request): CollectionResult
     {
         $pivotProvider = $this->pivotProvider($relation);
 
         return $pivotProvider !== null
-            ? $pivotProvider->fetchRelatedPivotCollection($relatedType, $parent, $relation, $criteria, $request)
+            ? $this->fetchPivotPage($pivotProvider, $type, $relatedType, $parent, $relation, $criteria, $request)
             : $this->providers->forType($relatedType)->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request);
+    }
+
+    /**
+     * `$parent`'s related page over its pivot rows. The Eloquent provider reads them over a
+     * model's join, so a parent of `$type` another provider serves is refused by name.
+     *
+     * @param PivotAwareProviderInterface<object> $pivotProvider
+     *
+     * @return CollectionResult<object>
+     *
+     * @throws PivotParentNotAModel
+     */
+    private function fetchPivotPage(PivotAwareProviderInterface $pivotProvider, string $type, string $relatedType, object $parent, RelationInterface $relation, CollectionCriteria $criteria, JsonApiRequestInterface $request): CollectionResult
+    {
+        if ($pivotProvider instanceof EloquentDataProvider && !$parent instanceof Model) {
+            throw PivotParentNotAModel::for($relation->name(), $parent, $type, $this->providers->supportsType($type) ? $this->providers->forType($type)::class : null);
+        }
+
+        return $pivotProvider->fetchRelatedPivotCollection($relatedType, $parent, $relation, $criteria, $request);
     }
 
     /**

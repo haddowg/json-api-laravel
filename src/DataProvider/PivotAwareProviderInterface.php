@@ -65,11 +65,15 @@ interface PivotAwareProviderInterface
     /**
      * The pivot map for every member of `$parent`'s pivot `$relation`, with no window and
      * no filter, `memberId => [field => typed value]`, for a single parent whose members
-     * were read without their pivot rows.
+     * were read without their pivot rows. `$parentType` is the served type of `$parent`,
+     * which tells apart one object served as several types.
+     *
+     * @param string $parentType the served parent type, as {@see fetchRelatedPivotMapBatch()} takes it
      *
      * @return array<string, array<string, mixed>>
      */
     public function fetchRelatedPivotMap(
+        string $parentType,
         string $relatedType,
         object $parent,
         RelationInterface $relation,

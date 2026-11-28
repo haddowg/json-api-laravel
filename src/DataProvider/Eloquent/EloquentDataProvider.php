@@ -41,6 +41,7 @@ use haddowg\JsonApiLaravel\DataProvider\AbstractDataProvider;
 use haddowg\JsonApiLaravel\DataProvider\AdmitsIdsInterface;
 use haddowg\JsonApiLaravel\DataProvider\CollectionCriteria;
 use haddowg\JsonApiLaravel\DataProvider\CriteriaApplier;
+use haddowg\JsonApiLaravel\DataProvider\DataProviderRegistry;
 use haddowg\JsonApiLaravel\DataProvider\FetchesManyInterface;
 use haddowg\JsonApiLaravel\DataProvider\FetchesTrashed;
 use haddowg\JsonApiLaravel\DataProvider\ForeignKeyParents;
@@ -1612,7 +1613,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
             return [];
         }
 
-        return $this->fetchRelatedPivotMap($relatedType, $parent, $relation);
+        return $this->fetchRelatedPivotMap($type, $relatedType, $parent, $relation);
     }
 
     /**
@@ -1638,6 +1639,7 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         CollectionCriteria $criteria,
         JsonApiRequestInterface $request,
     ): PivotCollectionResult|PivotCursorCollectionResult {
+        $this->assertModelParent($parent, $relation, null);
         $result = $this->withPivotMap($parent, $relation, $this->fetchRelatedCollection($relatedType, $parent, $relation, $criteria, $request));
         if ($result instanceof PivotCollectionResult || $result instanceof PivotCursorCollectionResult) {
             return $result;
@@ -1649,8 +1651,9 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
     /**
      * Every member of `$parent`'s pivot relation with its pivot row, in one query over the join.
      */
-    public function fetchRelatedPivotMap(string $relatedType, object $parent, RelationInterface $relation): array
+    public function fetchRelatedPivotMap(string $parentType, string $relatedType, object $parent, RelationInterface $relation): array
     {
+        $this->assertModelParent($parent, $relation, $parentType);
         $eloquentRelation = $this->pivotRelation($parent, $relation);
         if ($eloquentRelation === null) {
             return [];
@@ -1668,6 +1671,9 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
      */
     public function fetchRelatedPivotMapBatch(string $parentType, string $relatedType, array $parents, RelationInterface $relation): array
     {
+        foreach ($parents as $parent) {
+            $this->assertModelParent($parent, $relation, $parentType);
+        }
         $models = $this->eloquentModels($parents);
         if ($models === [] || !$relation instanceof PivotRelation || $relation->storedPivotFields() === []) {
             return [];
@@ -1927,6 +1933,25 @@ final class EloquentDataProvider extends AbstractDataProvider implements Fetches
         $this->encoderFor($type);
 
         return $this->idEncoders?->resourceFor($type);
+    }
+
+    /**
+     * Refuses to read the pivot rows of a stored pivot relation for a parent that isn't an
+     * Eloquent model, naming the relation and the provider serving the parent.
+     *
+     * @throws PivotParentNotAModel
+     */
+    private function assertModelParent(object $parent, RelationInterface $relation, ?string $parentType): void
+    {
+        if ($parent instanceof Model || !$this->supportsPivot($relation->relatedTypes()[0] ?? '', $relation)) {
+            return;
+        }
+
+        $container = Container::getInstance();
+        $providers = $parentType !== null && $container->bound(DataProviderRegistry::class) ? $container->make(DataProviderRegistry::class) : null;
+        $provider = $providers instanceof DataProviderRegistry && $parentType !== null && $providers->supportsType($parentType) ? $providers->forType($parentType)::class : null;
+
+        throw PivotParentNotAModel::for($relation->name(), $parent, $parentType, $provider);
     }
 
     private function encoderFor(string $type): ?IdEncoderInterface
